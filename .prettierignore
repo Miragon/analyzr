@@ -1,0 +1,21 @@
+# Markdown keeps the repository's compact table style (CONCEPT.md, eval/README.md)
+**/*.md
+
+# eval/tools keeps its own style; corpus files are generated or hand-written YAML
+eval/
+
+# tooling and generated output
+.claude/
+.playwright-mcp/
+pnpm-lock.yaml
+**/dist/
+**/coverage/
+**/test-results/
+**/playwright-report/
+**/drizzle/meta/
+packages/client/src/generated/
+packages/client/openapi.json
+**/__snapshots__/
+
+# vendored brand tokens (Miragon/corporate-identity, copied unchanged)
+apps/web/src/theme/cd-tokens.generated.css

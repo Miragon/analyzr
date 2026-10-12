@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "analyzr": {
+      "command": "/opt/homebrew/bin/node",
+      "args": ["/path/to/analyzr/apps/cli/src/main.ts", "mcp"],
+      "env": { "ANALYZR_URL": "http://127.0.0.1:7400", "ANALYZR_TOKEN": "analyzr_at_…" }
+    }
+  }
+}

@@ -1,0 +1,30 @@
+# dependencies and build output
+node_modules/
+dist/
+coverage/
+.vite/
+.turbo/
+*.tsbuildinfo
+
+# test output
+test-results/
+playwright-report/
+.playwright-mcp/
+
+# local secrets
+.env
+**/.env
+.gh-secrets
+.gh-vars
+
+# editors and OS
+.DS_Store
+.idea
+.vscode
+*.swp
+*.swo
+*.orig
+*.rej
+
+# Claude Code local settings
+.claude/settings.local.json

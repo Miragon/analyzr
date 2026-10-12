@@ -1,0 +1,34 @@
+# Build context is the repository root; only what the image needs goes in.
+**/node_modules
+**/dist
+**/coverage
+**/.vite
+.git
+.github
+.claude
+.playwright-mcp
+.idea
+.vscode
+**/.env
+**/.env.*
+
+# Documentation (LICENSE and THIRD-PARTY-NOTICES.md stay: the image ships both)
+docs
+
+# Eval answers, results and agent setups: the image needs the corpus models
+# (`analyzr seed`) and the golden value chains (`analyzr seed --value-chains`) only,
+# and an agent with shell access to the container must not find the expected
+# relations or placements there. A chain file holds steps only, without links:
+# the same document an agent reads over MCP once a project is seeded with it.
+# expected-placements.yaml, the READMEs and the validator stay out; CI's docker
+# job checks that no expected*, *.md, *.mjs or *.jsonl file is under /app/eval.
+eval/corpus/*/expected.yaml
+eval/corpus/*/README.md
+eval/corpus/*/spec
+eval/recordings
+eval/reports
+eval/value-chains/**
+!eval/value-chains/*/value-chain.vc.json
+examples
+plugins
+.claude-plugin

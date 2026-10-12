@@ -1,0 +1,17 @@
+{
+  "name": "@analyzr/notices",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "description": "Generates THIRD-PARTY-NOTICES.md from `pnpm licenses list --prod --json` plus the build tools bundled into the web UI (`pnpm notices`); its test fails while the committed file is stale",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "generate": "node src/main.ts",
+    "typecheck": "tsc",
+    "lint": "eslint .",
+    "test": "vitest run"
+  }
+}

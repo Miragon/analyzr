@@ -1,0 +1,81 @@
+# analyzr local stack (CONCEPT §6, local mode). Compose project "analyzr".
+#
+#   docker compose -p analyzr -f docker/compose.yaml up -d --build --wait     # PostgreSQL + analyzr
+#   docker compose -p analyzr -f docker/compose.yaml up -d --wait db          # database only (pnpm db:up)
+#   docker compose -p analyzr -f docker/compose.yaml exec server analyzr seed # load the eval landscapes
+#   docker compose -p analyzr -f docker/compose.yaml down                     # stop; add -v to drop the data
+#
+# Everything binds to 127.0.0.1 only. analyzr listens on 0.0.0.0 inside its
+# container; the host port is published on 127.0.0.1, and the server still
+# rejects non-localhost Host/Origin headers. analyzr runs pending migrations at
+# start and creates its owner key (the CLI's credential) in the volume
+# analyzr-state on first start.
+#
+# Host ports: ANALYZR_HOST_PORT (default 7400) and ANALYZR_DB_PORT (default
+# 55432), e.g. `ANALYZR_HOST_PORT=7500 docker compose -p analyzr -f
+# docker/compose.yaml up -d` when 7400 is taken; the Origin check follows
+# ANALYZR_HOST_PORT. ANALYZR_IMAGE overrides the image tag (default
+# analyzr:local), so a second checkout can build and run its own.
+name: analyzr
+
+services:
+  db:
+    image: postgres:17.11
+    environment:
+      POSTGRES_USER: analyzr
+      POSTGRES_PASSWORD: analyzr
+      POSTGRES_DB: analyzr
+    ports:
+      - '127.0.0.1:${ANALYZR_DB_PORT:-55432}:5432'
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U analyzr -d analyzr']
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+
+  server:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: ${ANALYZR_IMAGE:-analyzr:local}
+    environment:
+      DATABASE_URL: postgres://analyzr:analyzr@db:5432/analyzr
+      # Listen on all interfaces inside the container; local mode allows that
+      # only with this opt-in, because the port below is published on 127.0.0.1.
+      ANALYZR_HOST: 0.0.0.0
+      ANALYZR_ALLOW_NON_LOOPBACK: '1'
+      ANALYZR_PORT: '7400'
+      ANALYZR_MIGRATE: auto
+      ANALYZR_OWNER_KEY_FILE: /var/lib/analyzr/owner-key
+      # Browsers send the published port in Origin; 7401 is the Vite dev server.
+      ANALYZR_ORIGIN_PORTS: '${ANALYZR_HOST_PORT:-7400},7401'
+      # Lets `analyzr token create` in the container print a Claude Desktop entry
+      # that starts the bridge with `docker exec -i analyzr-server-1 analyzr mcp`.
+      ANALYZR_CONTAINER: analyzr-server-1
+    ports:
+      - '127.0.0.1:${ANALYZR_HOST_PORT:-7400}:7400'
+    volumes:
+      - analyzr-state:/var/lib/analyzr
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:7400/health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 3s
+      start_period: 20s
+      retries: 6
+    restart: unless-stopped
+
+volumes:
+  db-data:
+  analyzr-state:

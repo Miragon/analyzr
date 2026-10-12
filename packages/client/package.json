@@ -1,0 +1,23 @@
+{
+  "name": "@analyzr/client",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "description": "Typed REST client for the analyzr API, generated with hey-api from the @analyzr/contracts OpenAPI document",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "generate": "node scripts/write-openapi.ts && openapi-ts && prettier --write src/generated",
+    "typecheck": "tsc",
+    "lint": "eslint .",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@analyzr/contracts": "workspace:0.0.0"
+  },
+  "devDependencies": {
+    "@hey-api/openapi-ts": "0.99.0"
+  }
+}

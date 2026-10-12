@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "analyzr": {
+      "type": "http",
+      "url": "${ANALYZR_URL:-http://127.0.0.1:7400}/mcp",
+      "headers": { "Authorization": "Bearer ${ANALYZR_TOKEN}" },
+      "alwaysLoad": true
+    }
+  }
+}

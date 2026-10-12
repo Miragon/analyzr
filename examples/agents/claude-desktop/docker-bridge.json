@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "analyzr": {
+      "command": "/usr/local/bin/docker",
+      "args": ["exec", "-i", "-e", "ANALYZR_TOKEN", "analyzr-server-1", "analyzr", "mcp"],
+      "env": { "ANALYZR_TOKEN": "analyzr_at_…" }
+    }
+  }
+}

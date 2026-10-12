@@ -1,0 +1,16 @@
+{
+  "name": "analyzr",
+  "owner": {
+    "name": "Miragon"
+  },
+  "metadata": {
+    "description": "Claude Code plugins for analyzr, the headless store for BPMN process landscapes."
+  },
+  "plugins": [
+    {
+      "name": "analyzr",
+      "source": "./plugins/analyzr",
+      "description": "The analyzr pipeline procedures as skills: /analyzr:relations judges candidate relations between BPMN processes, /analyzr:placements places processes on the value chain. Connect the analyzr MCP server separately."
+    }
+  ]
+}

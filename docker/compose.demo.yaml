@@ -1,0 +1,39 @@
+# analyzr public read-only demo (owner decision 20), run locally as on Fly.io:
+# docker/Dockerfile.demo with its own PostgreSQL and the seed baked in.
+# Compose project "analyzr-demo"; the image tag is analyzr-demo:local (never the
+# product's analyzr:local).
+#
+#   docker compose -p analyzr-demo -f docker/compose.demo.yaml up -d --build --wait
+#   pnpm --filter @analyzr/demo check --url http://127.0.0.1:7480
+#   ANALYZR_E2E_URL=http://127.0.0.1:7480 pnpm --filter @analyzr/web e2e demo
+#   docker compose -p analyzr-demo -f docker/compose.demo.yaml restart demo   # back to the seed
+#   ANALYZR_DEMO_SEED=$(date +%s) docker compose -p analyzr-demo -f docker/compose.demo.yaml up -d --build --wait   # a fresh seed
+#   docker compose -p analyzr-demo -f docker/compose.demo.yaml down -v && docker image rm analyzr-demo:local
+#
+# ANALYZR_DEMO_PORT moves the host port (default 7480); ANALYZR_DEMO_IMAGE the tag.
+# One CPU and 1 GB as the Fly.io VM (docker/fly.demo.toml). The postgres base
+# image declares a volume nothing uses; `down -v` removes it.
+name: analyzr-demo
+
+services:
+  demo:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.demo
+      args:
+        # The seed's id; unchanged, a rebuild reuses the cached seed layer.
+        # `ANALYZR_DEMO_SEED=$(date +%s) docker compose … up -d --build` seeds afresh.
+        ANALYZR_DEMO_SEED: ${ANALYZR_DEMO_SEED:-local}
+    image: ${ANALYZR_DEMO_IMAGE:-analyzr-demo:local}
+    init: true
+    cpus: 1
+    mem_limit: 1g
+    environment:
+      # The browser's origins of the published port (http on loopback only).
+      ANALYZR_PUBLIC_ORIGIN: 'http://127.0.0.1:${ANALYZR_DEMO_PORT:-7480},http://localhost:${ANALYZR_DEMO_PORT:-7480}'
+      # The operator's legal pages, as in docker/fly.demo.toml [env].
+      ANALYZR_DEMO_IMPRINT_URL: 'https://miragon.io/impressum'
+      ANALYZR_DEMO_PRIVACY_URL: 'https://miragon.io/datenschutz/'
+    ports:
+      - '127.0.0.1:${ANALYZR_DEMO_PORT:-7480}:8080'
+    restart: 'no'

@@ -1,0 +1,25 @@
+# The analyzr workspace (CONCEPT §8). pnpm 11 reads its settings from this
+# file; .npmrc only carries auth and registry settings.
+packages:
+  - apps/*
+  - packages/*
+  - eval/tools
+  - tools/*
+
+# pnpm 11 runs no dependency install scripts unless allowed here. esbuild
+# (drizzle-kit, tsx) checks its platform binary; the others are optional
+# native add-ons of testcontainers' ssh transport and are not needed.
+allowBuilds:
+  cpu-features: false
+  esbuild: true
+  protobufjs: false
+  ssh2: false
+
+# One vite for the whole workspace (vitest would otherwise pull its own).
+# The value chain packages need none (M4 §5): they pin the diagram-js,
+# diagram-js-direct-editing and zod versions the workspace already uses.
+overrides:
+  vite: 8.3.2
+
+# Exact versions only: `pnpm add` writes "1.2.3", never "^1.2.3".
+saveExact: true

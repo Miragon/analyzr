@@ -1,0 +1,20 @@
+{
+  "name": "@analyzr/contracts",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "description": "zod schemas, TypeScript types and the OpenAPI 3.1 document shared by server, client, CLI and web",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc",
+    "lint": "eslint .",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@asteasolutions/zod-to-openapi": "9.1.0",
+    "zod": "4.6.5"
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "name": "@analyzr/cli",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "description": "The analyzr command: seed and import models, agent tokens, status and the MCP stdio bridge",
+  "type": "module",
+  "bin": {
+    "analyzr": "./src/main.ts"
+  },
+  "exports": {
+    ".": "./src/program.ts"
+  },
+  "scripts": {
+    "analyzr": "node src/main.ts",
+    "typecheck": "tsc",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:unit": "vitest run --project unit",
+    "test:e2e": "vitest run --project e2e",
+    "test:live": "vitest run --project live"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/client": "2.3.1",
+    "@modelcontextprotocol/server": "2.3.1",
+    "@analyzr/client": "workspace:0.0.0",
+    "@analyzr/contracts": "workspace:0.0.0",
+    "commander": "15.0.0",
+    "yaml": "2.9.1"
+  },
+  "devDependencies": {
+    "@testcontainers/postgresql": "12.2.0",
+    "@types/pg": "8.23.1",
+    "pg": "8.23.1"
+  }
+}

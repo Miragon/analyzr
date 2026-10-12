@@ -1,0 +1,20 @@
+{
+  "name": "@analyzr/relations",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "description": "Rule tier, candidate generation for agents and the baseline-label/1 comparison (CONCEPT §2, §7)",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc",
+    "lint": "eslint .",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@analyzr/bpmn-facts": "workspace:0.0.0",
+    "@analyzr/contracts": "workspace:0.0.0"
+  }
+}

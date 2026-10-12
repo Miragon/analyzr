@@ -1,0 +1,23 @@
+{
+  "name": "@analyzr/demo",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "description": "The public read-only demo (owner decision 20): seeds the demo database at image build time, supervises PostgreSQL and the server at run time, and checks a running demo",
+  "type": "module",
+  "bin": {
+    "analyzr-demo": "./src/main.ts"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "check": "node src/main.ts check",
+    "typecheck": "tsc",
+    "lint": "eslint .",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@analyzr/contracts": "workspace:0.0.0"
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "name": "@analyzr/procedures",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "description": "Analysis procedures for agents (CONCEPT §7): Markdown with frontmatter, served by MCP get_procedure, wrapped by the work_pipeline prompt and the Claude Code skill of plugins/analyzr",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "generate": "node scripts/generate.ts",
+    "typecheck": "tsc",
+    "lint": "eslint .",
+    "test": "vitest run"
+  }
+}
