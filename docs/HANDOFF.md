@@ -54,13 +54,13 @@ and code are in English.
   `ANALYZR_DEMO=readonly`, the demo image with the seed baked in, Fly.io
   configuration and deploy workflow, built and checked locally, a review round's fixes are in,
   Miragon's Impressum and privacy policy linked in the banner (decision 21); deployed and live
-  on Fly.io (organization `miragon`) under the earlier name since 2026-10-10, under analyzr after
-  the setup in §7 "Demo deployment (owner decision 20)"), and the **migration to analyzr**
+  on Fly.io (organization `miragon`) since 2026-10-10, as **https://analyzr-demo.fly.dev** since
+  2026-10-12, issue [#1](https://github.com/Miragon/analyzr/issues/1)), and the **migration to analyzr**
   (decision 23, 2026-10-11: the new repository with a fresh history, every name renamed, also in
   the holdout files (blindly, §7 "Migration owner actions", step 0), MIT
   with `THIRD-PARTY-NOTICES.md`, version `0.1.0-alpha.0`).
-- **Next:** the GitHub and Fly.io setup of decision 23 (§7 "Migration owner actions"), then the
-  **owner's live runs** of `analyzr-relations@0.2.0` and `analyzr-placements@0.1.0`, only in
+- **Next:** the remaining owner actions of decision 23 (§7 "Migration owner actions": the rules
+  on `main`, the MCP clients), then the **owner's live runs** of `analyzr-relations@0.2.0` and `analyzr-placements@0.1.0`, only in
   analyzr (`docs/M3-LIVE-RUNS.md`, steps 1–6 and 6a: 3 runs per landscape and model incl. the
   holdout), a chain drafted in Claude Desktop and rated, the holdout import check. After the live
   runs the owner chooses auto-accept thresholds from the what-if (§7 "Auto-accept rules"). **The
@@ -157,7 +157,7 @@ and code are in English.
     nachts … aber ich muss es machen können“): the owner resets the demo on demand, with
     one documented action; visitors have no reset endpoint. No Camunda engines; analyzr holds no LLM
     credentials. **Live 2026-10-10** under the earlier name; under analyzr at
-    https://analyzr-demo.fly.dev after the setup in §7: CONCEPT §6 "Read-only demo", DEVELOPMENT.md
+    https://analyzr-demo.fly.dev since 2026-10-12: CONCEPT §6 "Read-only demo", DEVELOPMENT.md
     "Demo deployment (Fly.io)" with "Reset the demo".
 21. **Demo legal links and the entry ceiling** (2026-10-10): (1) the demo links Miragon's own
     legal pages („nimm die dinge vom miragon.io impressum“): the Impressum
@@ -687,8 +687,7 @@ optional links fails it alone, the read walk still runs), and M4 §5 names the n
   machine stop`/`start` (or the manual run with `-f action=restart`). "Re-run all jobs" in the
   browser works only within 30 days and only on the newest run that deployed the current head (it
   repeats commit and inputs).
-- Optional: a custom domain (`fly certs add`, DNS, `FLY_DEMO_PUBLIC_ORIGIN`), a comment with the
-  new URL on the demo's issue once it is transferred, and the open question in §8 (no-links in the
+- Optional: a custom domain (`fly certs add`, DNS, `FLY_DEMO_PUBLIC_ORIGIN`) and the open question in §8 (no-links in the
   review). While the repository is private, the banner's link „analyzr auf GitHub“ answers 404
   for visitors (§8).
 
@@ -696,8 +695,7 @@ optional links fails it alone, the read walk still runs), and M4 §5 names the n
 
 The bottom-up network of relations (diagram-js + elkjs, value chain steps as groups, saved views,
 impact analysis, end-to-end paths, MCP `impact_of` and `trace_landscape_path`); scope and open
-questions are in its issue, which moves to `Miragon/analyzr` with the migration (§7 "Migration
-owner actions", step 4; put the new issue link here). First step when the owner resumes: the
+questions are in issue [#2](https://github.com/Miragon/analyzr/issues/2). First step when the owner resumes: the
 concept `docs/M5-PROCESS-MAP.md` (as `docs/M4-VALUE-CHAIN.md`), then slices.
 
 ### Later (R1 and beyond)
@@ -713,23 +711,23 @@ Git/bpmiq.yml import, MCP App widget.
    `eval/corpus/stadtwerke-auental/README.md` was the old baseline id; the main agent replaced it
    blindly with `sed` by `baseline-label/1`. Every holdout file now counts 0 matches
    (`grep -ric proa eval/corpus/stadtwerke-auental eval/value-chains/stadtwerke-auental`).
-1. Create the private repository `Miragon/analyzr` and push the initial commit to `main` (the
-   main agent), only after step 0.
+1. **Done 2026-10-12:** the private repository `Miragon/analyzr` with the initial commit on
+   `main` (`f83ce07`); CI green (all three jobs).
 2. Set a ruleset for `main` (the owner): the three CI jobs of `ci.yml` as required status checks,
    "Typecheck, lint, test", "Docker image and compose stack" and "Read-only demo image" (rulesets
    require checks by job name, not by workflow; they appear in the picker only after CI has run
    once, so after the push of step 1), and the commit and merge rules of §8.
-3. Fly.io: `fly apps create analyzr-demo --org miragon`; a new app-scoped deploy token
-   (`fly tokens create deploy --app analyzr-demo --expiry 8760h`, note the expiry date) →
-   `gh secret set FLY_API_TOKEN --repo Miragon/analyzr`; the first deploy with `gh workflow run
-   demo-deploy.yml --repo Miragon/analyzr --ref main`, then `pnpm --filter @analyzr/demo check
-   --url https://analyzr-demo.fly.dev` (DEVELOPMENT.md "One-time setup on Fly.io (owner)").
-4. Transfer the issues: `gh issue transfer 3 Miragon/analyzr --repo Miragon/ProA` and the same for
-   `4`; put the new numbers into these docs (§7 "Next milestone", the demo's owner actions).
-   Labels or milestones that do not exist in the new repository are dropped.
-5. Close PR #2 in `Miragon/ProA` with a pointer to the new repository (no merge).
-6. Optional, once `analyzr-demo` is live: `fly apps destroy proa-demo` and delete the secret
-   `FLY_API_TOKEN` in `Miragon/ProA` (§8).
+3. **Done 2026-10-12:** the Fly app `analyzr-demo` (organization `miragon`), an app-scoped deploy
+   token as the secret `FLY_API_TOKEN` (**expires 2027-10-12**; renew with `fly tokens create
+   deploy --app analyzr-demo --expiry 8760h | gh secret set FLY_API_TOKEN --repo
+   Miragon/analyzr`), the first deploy dispatched on `main`; the smoke check passed 126 checks
+   against https://analyzr-demo.fly.dev with both legal links; a shared IPv4 (free), one
+   `shared-cpu-1x` machine with 1 GB that stops when idle.
+4. **Done 2026-10-12:** the issues moved from `Miragon/ProA` (#3 → [#1](https://github.com/Miragon/analyzr/issues/1),
+   the demo, closed as delivered; #4 → [#2](https://github.com/Miragon/analyzr/issues/2), the
+   process network map, rewritten for analyzr).
+5. Not needed: the owner deletes the repository `Miragon/ProA` (with PR #2 and its secrets).
+6. **Done 2026-10-12:** the old Fly app `proa-demo` is destroyed (its deploy token with it).
 7. Re-add the MCP server as `analyzr` in Claude Code, Claude Desktop and Codex with new agent
    tokens (old tokens, owner keys, the `proa` entries and `mcp__proa__*` allow-lists no longer
    work), and install the plugin `analyzr` (`claude plugin install analyzr@analyzr`).
@@ -744,7 +742,6 @@ Git/bpmiq.yml import, MCP App widget.
 | Logo and trademark | The web UI shows the Miragon mark next to the analyzr wordmark; the README says the Miragon name and logo are not licensed under MIT. Should analyzr get a logo of its own? A trademark check of the name (and of the npm scope `@analyzr`) before a first release? | Decision 23 |
 | Dependabot | Set up Dependabot for the pnpm workspace (exact versions, grouped updates)? Until then dependency bumps are manual. | Decision 23 |
 | Holdout per-item lists | `eval/reports/candidates.md` and `replay.md` list the holdout's misses and wrong pairs per item (`placements.md` shows aggregates only). Fine while the repository is private; switch them to aggregates before it goes public? | Decision 23 |
-| Old demo app | Keep or destroy the old Fly app `proa-demo` (stopped, costs cents per month) once `analyzr-demo` is live? | Decision 23 |
 | First users | UI upload or Git/bpmiq.yml repos? Decides whether folder/bpmiq.yml import moves earlier. | CONCEPT §12 |
 | Shared-name flag | The bulk dialog flags 20–22 of 33 key-tier pairs (names used by >2 processes), incl. legitimate broadcasts. Keep, or flag only names with several senders? | M2 web stage |
 | `correct` on a typed pair | Correcting towards a pair that already has a key-tier proposal creates a second, manual relation. Offer "accept the existing proposal instead"? | M2 e2e |
