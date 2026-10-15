@@ -1,4 +1,4 @@
-# analyzr – Handoff (status as of 2026-10-12)
+# analyzr – Handoff (status as of 2026-10-15)
 
 This file lets another person or AI agent continue analyzr without the original
 conversation. It records **where we stand, what the owner decided, what is open and what comes
@@ -66,6 +66,15 @@ and code are in English.
   runs the owner chooses auto-accept thresholds from the what-if (§7 "Auto-accept rules"). **The
   next milestone** is the process network map (owner decision 22), on hold until the owner
   resumes; OKF (the R1 export and **S6**) is deferred (decision 22).
+- **In progress (2026-10-15):** **M6 "Landscape integration and gap analysis"**
+  (`docs/M6-INTEGRATION-AND-GAPS.md`, branch `feat/integration-and-gaps`): the owner's wish for
+  tools around analyzr that integrate customer landscapes from ARIS, Signavio, Visio & co
+  quickly (skills, plugin, CLI, converters), for agents that say what is missing to build more
+  links, answered by the consultant in the web UI too, and for interview skills. The owner's
+  answers are recorded as the proposed decision 24 (M6 §2); the trust policy (an amendment to
+  decision 9) and the order M6 before M5 wait for the owner (M6 §10). S0 (the concept) is done;
+  S1 "Import hygiene" is next, then S3a/S3b; the owner reviews these „erste Anfänge“ before the
+  rest (§7 "M6").
 
 ## 2. Read in this order
 
@@ -79,6 +88,7 @@ and code are in English.
 | 5 | `docs/M4-VALUE-CHAIN.md` | The value chain milestone (concept, slices, open questions) |
 | 6 | `eval/README.md`, `eval/tools/SPEC.md`, `eval/value-chains/README.md` | Test landscapes, trap catalog, generator/validator, golden value chains |
 | 7 | `examples/agents/README.md` | The reference agent setups (Claude Code, Claude Desktop, Codex) |
+| 8 | `docs/M6-INTEGRATION-AND-GAPS.md` | M6, in progress: integration toolkit, gap analysis, interviews (concept, proposed decision 24, slices, open questions) |
 
 ## 3. Repository state
 
@@ -691,6 +701,29 @@ optional links fails it alone, the read walk still runs), and M4 §5 names the n
   review). While the repository is private, the banner's link „analyzr auf GitHub“ answers 404
   for visitors (§8).
 
+### M6 – landscape integration and gap analysis (in progress, proposed 2026-10-15)
+
+The owner asked (2026-10-15) for a mechanism, maybe a CLI, to dump models in easily and write
+integrations ad hoc; for analysing and importing landscapes from ARIS, Signavio, Visio & co; for
+skills that surface processes from interviews; and for agents that assess models deliberately
+and say what is missing to build more links. The owner's answers (M6 §2, the proposed decision
+24): the priority is the toolkit around analyzr („tools drum herum … Skills & Co“, concept and
+first beginnings now); the consultant answers gaps, also in the web UI; the gap output form was
+left to the agent, which chose a `gaps` field in `analyzr-relations@0.3.0` and
+`analyzr-placements@0.2.0` after the live runs (no pipeline kind of its own); customer exports and
+transcripts may go to the operator's LLM vendor for now; work step by step. **Open:** the trust
+policy (calls in engine-less, converted, agent-uploaded or reconstructed models only proposed,
+amending decision 9), the order M6 before M5, and the other questions of M6 §10 (listed in §8).
+
+Slices (M6 §8): S0 concept (**done 2026-10-15**, reviewed from three lenses: code accuracy, owner
+decisions, consultant usefulness), **S1 "Import hygiene"** (next: one shared file rule and key
+derivation in `@analyzr/contracts`, `.xml` in the CLI, duplicate keys across batches, extractor
+warnings in import and PUT results, `analyzr models list|requeue|delete`, the next-step block;
+live-run neutral), S3a `eval:descriptive`, S3b the plugin `analyzr-integrate` v0; then the owner
+reviews before S4 („Offene Fragen“), S5a (answers in the UI), S2 (provenance, manifest, dry run),
+S3c, S6 (interviews), and after the live runs S5b and S7. Nothing of M6 changes released
+procedures, claim inputs or the MCP surface before the owner's live runs.
+
 ### Next milestone: process network map (owner decision 22)
 
 The bottom-up network of relations (diagram-js + elkjs, value chain steps as groups, saved views,
@@ -759,6 +792,14 @@ Git/bpmiq.yml import, MCP App widget.
 | Auto-accept: marks for editors | Editors see which acceptances a rule made (the ledger names rule, revision, agent and confidence, never the criteria); only owners see the rules, apply and revoke. Keep, or show the marks to viewers too? | Decision 19 review |
 | Auto-accept: take-over | A rule whose author lost the owner role matches nothing until an owner saves it; saving it, also unchanged, makes that owner its author (its later acceptances are recorded under them). Keep, or add an explicit „Übernehmen“ action? | Decision 19 review |
 | Demo: no-links in the review | Decision 20(4) asks the review to show no-links; the simulation agent's are all on pairs without a relation, where no „Einwand“ can appear. The review round added the inbox tab „Kein Zusammenhang“ (`GET …/no-links`, read-only, every role and mode, model and stage filters). Keep it there, move it (e.g. per model in the model view), or also want example disagreements („Einwand“ on proposals, which needs a second agent's verdict on judged pairs and so conflicts with decision 17)? | Owner decision 20, review round |
+| M6: trust policy | Calls in engine-less, converted, agent-uploaded or reconstructed models only proposed (tier `key`, 0.9), and decision-19 rules may accept them per derived kind and converter; older revisions keep their acceptances (a) or turn into proposals (b)? Recommendation: yes, (a). Amends decisions 9 and 19. | M6 §10.1, §3.10 |
+| M6: order | M6 before the paused process network map (amends decision 22's "next milestone")? | M6 §10.7 |
+| M6: agent summaries | Show submission summaries read-only in „Offene Fragen“ (reverses M3-RELATIONS-PROCEDURE.md question 1)? | M6 §10.2 |
+| M6: address form | „Sie“ in interview guides for customers, „du“ elsewhere? | M6 §10.3 |
+| M6: sample exports | Sandbox instances or anonymized exports of ARIS, Signavio, ADONIS, Bizagi, Visio? | M6 §10.4 |
+| M6: answers re-queue | May S5b widen the relations judgement basis by human notes and queue tasks (after the live runs)? | M6 §10.5 |
+| M6: erasure | One database per customer engagement for now, a purge use case with server mode? | M6 §10.6 |
+| M6: principle 7 | Does principle 7 count `packages/*` only, so `tools/integrate` may ship the toolkit's scripts? S3b needs it. | M6 §10.8 |
 
 ## 9. Working agreements and pitfalls
 
