@@ -15,6 +15,10 @@ pnpm-lock.yaml
 **/drizzle/meta/
 packages/client/src/generated/
 packages/client/openapi.json
+plugins/analyzr-integrate/scripts/
+
+# synthetic exports and golden bundles of tools/integrate, compared byte for byte
+tools/integrate/test/fixtures/
 **/__snapshots__/
 
 # vendored brand tokens (Miragon/corporate-identity, copied unchanged)

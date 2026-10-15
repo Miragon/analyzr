@@ -1,9 +1,10 @@
 // The importable API of @analyzr/eval-tools, for tests of other packages (the
-// server's integration test reads a live project the way eval:live does) and
+// server's integration test reads a live project the way eval:live does, its
+// unit test pins eval:descriptive's claim estimate to the real renderer) and
 // the placement scorer M4b (S5) plugs recorded submissions into.
 // The commands themselves run as scripts: candidates.ts, replay.ts, live.ts,
-// placements.ts. Only light modules are exported here: none of them loads the
-// corpus toolchain (bpmn-moddle, bpmnlint), so `loadPlacementRun`
+// placements.ts, descriptive.ts. Only light modules are exported here: none
+// of them loads the corpus toolchain (bpmn-moddle, bpmnlint), so `loadPlacementRun`
 // (placements-load.ts, which extracts the corpus facts) is imported from its
 // module inside eval/tools.
 export {
@@ -39,6 +40,15 @@ export {
   type LiveGateStatus,
   type LiveRun,
 } from './live-gate.ts';
+export {
+  CLAIM_BUDGET_BYTES,
+  ESTIMATE_REVISION_ID,
+  claimBytes,
+  estimateClaimInput,
+  estimateRelationId,
+  modelNameOf,
+  type ClaimEstimateSource,
+} from './claim-estimate.ts';
 export { RECORDINGS_DIR, RecordingError, loadRecordings, parseRecording, type RecordingFile } from './recordings.ts';
 export {
   HOLDOUT_MIN_GROUP,

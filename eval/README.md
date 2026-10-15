@@ -24,6 +24,9 @@ eval/
     src/placements*.ts       eval:placements (M4): the golden value chains against the process facts, the rule tier and baseline-prefix/1
     src/placements-replay*.ts  eval:replay's placement part (M4b): placement recordings on the golden chain
     src/placement-live-gate.ts the placement live gate (eval:live enforces it, eval:replay reports it)
+    src/descriptive*.ts      eval:descriptive (M6): the corpus models as descriptive tools export them, scored like eval:candidates
+    src/claim-estimate.ts    the claim input size estimate eval:descriptive uses (pinned to the server's renderer)
+    lib/descriptive.mjs      eval:descriptive's model transforms
     lib/  test/
   recordings/
     <procedure>@<version>/<agent>/<llmModel>/<landscape>.jsonl   agent runs: simulation agent and live runs (below)
@@ -31,6 +34,7 @@ eval/
     candidates.md, .json     last eval:candidates report (generated, deterministic)
     replay.md, .json         last eval:replay report (generated, deterministic)
     placements.md, .json     last eval:placements report (generated, deterministic; the holdout as numbers only)
+    descriptive.md, .json    last eval:descriptive report (generated, deterministic; the holdout in aggregate only)
   corpus/
     <landscape>/
       landscape.yaml         metadata (below)
@@ -91,6 +95,55 @@ as hit, may, coarse, trap, wrong or none, with precision, recall@1/@3, level 0, 
 usage error. The baselines are a floor, not a gate; CI requires the committed report to match a
 fresh run. The analyzr rules check of the golden chains runs in `pnpm test`
 (`apps/server/test/unit/value-chain-golden.test.ts`).
+
+`pnpm eval:descriptive` (M6 §3.11) measures how much of the LLM-free relation
+finding survives descriptive, tool-style models. It transforms every scored
+landscape's models with five cumulative, deterministic variants
+(`lib/descriptive.mjs`): `engine-stripped` (the Camunda namespaces and
+everything in them removed, so no engine is detected; a C8 call target moves
+verbatim to the standard `calledElement`), `descriptive` (plus
+`isExecutable="false"`, call activities as collapsed subprocesses named after
+the callee, messages and signals without `messageRef` and `signalRef` and
+without their `bpmn:message` and `bpmn:signal` definitions), `pools` (plus every
+message endpoint without a message flow in its file gets a message flow to or
+from a black-box pool per partner, every element staying what it is), `tasks`
+(plus those endpoints' intermediate message throws and catches and send and
+receive tasks becoming plain tasks with the same flows; start, end and boundary
+events and catches after an event-based gateway stay events) and `no-docs`
+(plus every documentation removed). `pools` and `tasks` are separate so the
+report shows which assumption costs what: the message flows silence
+dangling-throw and unmatched-catch, the tasks cost the message endpoints.
+Element ids never change, so `expected.yaml` applies unchanged. The partners and
+callee names come from the unchanged models' facts (the rule tier's
+message-name pairs), never from `expected.yaml`, so a transformed model carries
+no ground truth, and transformed models are never written to disk. A collapsed
+subprocess carries the callee's exact process name and a partner pool the
+partner's exact pool or process name: the optimistic case, known only through
+the call targets and message names the variants strip. Facts v1 reads neither,
+so no number depends on them today; before a facts version matches subprocess
+or pool names, the eval needs a variant whose names are not copied verbatim. An
+endpoint without a partner by name gets one pool „Externer Partner“, so no pool
+carries a message name. Per variant (and the unchanged models) and per relation
+type it reports must_link coverage among rules ∪ candidates (the
+eval:candidates metric), within key/lexical candidates and within the rule
+tier, the rule tier's acceptances with their precision and how many decision
+24.2's trust policy keeps accepted, candidate volume, the estimated claim input
+size per model against the 100 KB budget (`src/claim-estimate.ts`: the input
+`renderClaimInput` renders on a fresh import, every candidate listed, without
+`judged` and `skip`; the server's unit test `claim-estimate.test.ts` requires
+the same bytes) and the findings, and writes `reports/descriptive.{md,json}`.
+The report header lists the tool behaviour the variants assume, all of it still
+to verify against real exports, and the facts v1 effects that are not tool
+behaviour: a C8 FEEL call target (`=expr`) that engine-stripped moves into
+`calledElement` counts as a static target in a file without an engine (facts v1
+checks only JUEL there), so engine-stripped shows an unresolved call where the
+original has a dynamic one; `descriptive.test.ts` pins this until a facts
+version fixes it. Report only, no threshold; exit 1 when a transform fails or
+yields BPMN the extractor warns about, 2 on a usage error; `--out <dir>`,
+`--no-write` and landscape names as for eval:candidates. CI requires the
+committed report to match a fresh run, so a change to the facts, the rule tier,
+the claim renderer or the corpus regenerates it. The holdout appears in
+aggregate only (holdout hygiene below).
 
 `generate` owns `models/`: it rewrites changed models and removes `.bpmn` files
 without a spec. Output is byte-stable, so a diff in `models/` always means the
@@ -428,6 +481,19 @@ and a miss only the holdout shows is documented, not special-cased.
   whole-landscape numbers only. Whoever works on a procedure may open both
   files; they still carry the holdout's whole-landscape numbers, so tune
   nothing against them.
+- **eval:descriptive** (`reports/descriptive.md` and `descriptive.json`)
+  shows the holdout as whole-landscape numbers only: no model names, no ground
+  truth per relation type or tag, a ground-truth count of 1 to 4 items or over
+  a group of fewer than 5 as „< 5“, and a number as „hidden“ when it differs by
+  1 to 4 from a number it is nested with: the same metric in another variant;
+  the must_link total and the coverage in rules ∪ candidates, in rules ∪
+  key/lexical and in the rule tier within one variant; the candidate,
+  rule-tier relation and acceptance counts they lie in; the expected and
+  computed findings (`redactGrid` in `src/descriptive-score.ts`;
+  `descriptive.test.ts` checks every nested pair of the real holdout section
+  and prints PASS/FAIL only). The console prints the same redacted numbers.
+  Whoever works on a procedure may open both files; they still carry the
+  holdout's whole-landscape numbers, so tune nothing against them.
 - **The auto-accept what-if** (owner decision 19) shows the holdout as
   aggregate rows only, relations without the tier split, rows and exclusion
   counts under 5 items as „< 5“, a row as „hidden“ when its difference to the

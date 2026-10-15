@@ -1,0 +1,104 @@
+{
+  "format": "analyzr-import/1",
+  "source": {
+    "system": "signavio",
+    "systemVersion": "19.6.0",
+    "exportedAt": "2026-10-14T00:00:00Z",
+    "importer": {
+      "name": "analyzr-integrate/normalize-bpmn",
+      "version": "0.1.0"
+    }
+  },
+  "files": [
+    {
+      "path": "archiv/auftragsabwicklung-alt.bpmn",
+      "key": "archiv/auftragsabwicklung-alt",
+      "externalId": "sid-0E1D2C3B-4A59-4687-9564-738291A0B1C9",
+      "externalPath": "Archiv/Auftragsabwicklung (alt)",
+      "derived": {
+        "kind": "export",
+        "converter": null,
+        "llmModel": null,
+        "from": []
+      },
+      "sha256": "c2537d8d1224ec08be59133d7f9173eea90c73ead75d7d5515694bbbf4b54c78"
+    },
+    {
+      "path": "finanzen/bonitaetspruefung.bpmn",
+      "key": "finanzen/bonitaetspruefung",
+      "externalId": "sid-5A6B7C8D-9E0F-4A1B-8C2D-3E4F5A6B7C40",
+      "externalPath": "Gemeinsame Dokumente/Finanzen/Bonitätsprüfung",
+      "derived": {
+        "kind": "converted",
+        "converter": "normalize-bpmn@0.1.0",
+        "llmModel": null,
+        "from": []
+      },
+      "losses": [
+        {
+          "code": "id-rewritten",
+          "count": 4
+        }
+      ],
+      "sha256": "9d11c30f23f47a6d295feb01c23eb31a6d5517d6ab0afeeb8a561d932b242862"
+    },
+    {
+      "path": "finanzen/rechnungsstellung.bpmn",
+      "key": "finanzen/rechnungsstellung",
+      "externalId": "sid-3F4A5B6C-7D8E-4F9A-8B0C-1D2E3F4A5B6C",
+      "externalPath": "Gemeinsame Dokumente/Finanzen/Rechnungsstellung",
+      "derived": {
+        "kind": "converted",
+        "converter": "normalize-bpmn@0.1.0",
+        "llmModel": null,
+        "from": []
+      },
+      "sha256": "4d708dacbca6c4f118d020d76d5f65d8e490a8a6aaa3d1a2d1a63f901cb1dec1"
+    },
+    {
+      "path": "logistik/versand.bpmn",
+      "key": "logistik/versand",
+      "externalId": "sid-5F0E4D3C-2B1A-4F9E-8D7C-6B5A4F3E2D78",
+      "externalPath": "Gemeinsame Dokumente/Logistik/Versand",
+      "derived": {
+        "kind": "converted",
+        "converter": "normalize-bpmn@0.1.0",
+        "llmModel": null,
+        "from": []
+      },
+      "losses": [
+        {
+          "code": "id-rewritten",
+          "count": 2
+        }
+      ],
+      "sha256": "41315e238711d535a198110b7be305cd5866d6e4e67d88753d6d821a3c00595b"
+    },
+    {
+      "path": "vertrieb/angebotserstellung.bpmn",
+      "key": "vertrieb/angebotserstellung",
+      "externalId": "sid-B1A0C2D3-E4F5-4A6B-8C7D-9E0F1A2B3C01",
+      "externalPath": "Gemeinsame Dokumente/Vertrieb/Angebotserstellung",
+      "derived": {
+        "kind": "export",
+        "converter": null,
+        "llmModel": null,
+        "from": []
+      },
+      "sha256": "1705140d352c6b347f654b6da4b355fc51c4145117c087c84363934cd4fea1c0"
+    },
+    {
+      "path": "vertrieb/auftragsabwicklung.bpmn",
+      "key": "vertrieb/auftragsabwicklung",
+      "externalId": "sid-F5E4A6B7-C8D9-4E0F-9A1B-3C4D5E6F7A05",
+      "externalPath": "Gemeinsame Dokumente/Vertrieb/Auftragsabwicklung",
+      "derived": {
+        "kind": "export",
+        "converter": null,
+        "llmModel": null,
+        "from": []
+      },
+      "sha256": "a849d2521c42033e71c1d7adb2e42f99c3a90ae657b73afecbe114284fcb9e32"
+    }
+  ]
+}

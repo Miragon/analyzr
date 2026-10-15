@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SYNTHETIC, UNVERIFIED Signavio-style export for analyzr tests (tools/integrate/test/fixtures/signavio/README.md) -->
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:omgdc="http://www.omg.org/spec/DD/20100524/DC" xmlns:omgdi="http://www.omg.org/spec/DD/20100524/DI" xmlns:signavio="http://www.signavio.com" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" exporter="Signavio Process Editor, http://www.signavio.com" exporterVersion="19.6.0" expressionLanguage="http://www.w3.org/TR/XPath" id="sid-5A6B7C8D-9E0F-4A1B-8C2D-3E4F5A6B7C40" targetNamespace="http://www.signavio.com" typeLanguage="http://www.w3.org/2001/XMLSchema" xsi:schemaLocation="http://www.omg.org/spec/BPMN/20100524/MODEL http://www.omg.org/spec/BPMN/2.0/20100501/BPMN20.xsd">
+   <process id="sid-6B7C8D9E-0F1A-4B2C-9D3E-4F5A6B7C8D41" isClosed="false" isExecutable="false" name="Bonitätsprüfung" processType="None">
+      <documentation>Prüft die Bonität eines Neukunden vor der Auftragsbestätigung.</documentation>
+      <extensionElements>
+         <signavio:signavioDiagramMetaData metaKey="revisionid" metaValue="0f1e2d3c4b5a69788796a5b4c3d2e1f0"/>
+      </extensionElements>
+      <startEvent id="sid-7C8D9E0F-1A2B-4C3D-8E4F-5A6B7C8D9E42" name="Prüfung angefordert">
+         <outgoing>sid-1A2B3C4D-5E6F-407A-8C8D-9E0F1A2B3C46</outgoing>
+      </startEvent>
+      <task completionQuantity="1" id="Aufgabe_Bonität_prüfen" isForCompensation="false" name="Bonität bei Auskunftei abfragen" startQuantity="1">
+         <extensionElements>
+            <signavio:signavioMetaData metaKey="bgcolor" metaValue="#ffffcc"/>
+         </extensionElements>
+         <incoming>sid-1A2B3C4D-5E6F-407A-8C8D-9E0F1A2B3C46</incoming>
+         <outgoing>sid-2B3C4D5E-6F7A-418B-9D9E-0F1A2B3C4D47</outgoing>
+      </task>
+      <exclusiveGateway gatewayDirection="Diverging" id="sid-8D9E0F1A-2B3C-4D4E-9F5A-6B7C8D9E0F43" name="Bonität ausreichend?">
+         <incoming>sid-2B3C4D5E-6F7A-418B-9D9E-0F1A2B3C4D47</incoming>
+         <outgoing>sid-3C4D5E6F-7A8B-429C-8E0F-1A2B3C4D5E48</outgoing>
+         <outgoing>sid-4D5E6F7A-8B9C-43AD-9F1A-2B3C4D5E6F49</outgoing>
+      </exclusiveGateway>
+      <endEvent id="sid-9E0F1A2B-3C4D-4E5F-8A6B-7C8D9E0F1A44" name="Bonität bestätigt">
+         <incoming>sid-3C4D5E6F-7A8B-429C-8E0F-1A2B3C4D5E48</incoming>
+      </endEvent>
+      <endEvent id="sid-0F1A2B3C-4D5E-4F6A-9B7C-8D9E0F1A2B45" name="Vorkasse verlangt">
+         <incoming>sid-4D5E6F7A-8B9C-43AD-9F1A-2B3C4D5E6F49</incoming>
+      </endEvent>
+      <dataStoreReference id="4711" name="Auskunftei"/>
+      <sequenceFlow id="sid-1A2B3C4D-5E6F-407A-8C8D-9E0F1A2B3C46" name="" sourceRef="sid-7C8D9E0F-1A2B-4C3D-8E4F-5A6B7C8D9E42" targetRef="Aufgabe_Bonität_prüfen"/>
+      <sequenceFlow id="sid-2B3C4D5E-6F7A-418B-9D9E-0F1A2B3C4D47" name="" sourceRef="Aufgabe_Bonität_prüfen" targetRef="sid-8D9E0F1A-2B3C-4D4E-9F5A-6B7C8D9E0F43"/>
+      <sequenceFlow id="sid-3C4D5E6F-7A8B-429C-8E0F-1A2B3C4D5E48" name="ja" sourceRef="sid-8D9E0F1A-2B3C-4D4E-9F5A-6B7C8D9E0F43" targetRef="sid-9E0F1A2B-3C4D-4E5F-8A6B-7C8D9E0F1A44"/>
+      <sequenceFlow id="sid-4D5E6F7A-8B9C-43AD-9F1A-2B3C4D5E6F49" name="nein" sourceRef="sid-8D9E0F1A-2B3C-4D4E-9F5A-6B7C8D9E0F43" targetRef="sid-0F1A2B3C-4D5E-4F6A-9B7C-8D9E0F1A2B45"/>
+      <textAnnotation id="sid-5E6F7A8B-9CAD-44BE-8A2B-3C4D5E6F7A50" textFormat="text/plain">
+         <text>Externe Auskunftei, Abfrage kostenpflichtig</text>
+      </textAnnotation>
+      <association associationDirection="None" id="sid-6F7A8B9C-ADBE-45CF-9B3C-4D5E6F7A8B51" sourceRef="4711" targetRef="sid-5E6F7A8B-9CAD-44BE-8A2B-3C4D5E6F7A50"/>
+   </process>
+   <bpmndi:BPMNDiagram id="sid-7A8B9CAD-BECF-46D0-8C4D-5E6F7A8B9C52">
+      <bpmndi:BPMNPlane bpmnElement="sid-6B7C8D9E-0F1A-4B2C-9D3E-4F5A6B7C8D41" id="sid-8B9CADBE-CFD0-47E1-9D5E-6F7A8B9CAD53">
+         <bpmndi:BPMNShape bpmnElement="sid-7C8D9E0F-1A2B-4C3D-8E4F-5A6B7C8D9E42" id="sid-7C8D9E0F-1A2B-4C3D-8E4F-5A6B7C8D9E42_gui">
+            <omgdc:Bounds height="30.0" width="30.0" x="100.0" y="125.0"/>
+         </bpmndi:BPMNShape>
+         <bpmndi:BPMNShape bpmnElement="Aufgabe_Bonität_prüfen" id="Aufgabe_Bonität_prüfen_gui">
+            <omgdc:Bounds height="80.0" width="100.0" x="180.0" y="100.0"/>
+         </bpmndi:BPMNShape>
+         <bpmndi:BPMNShape bpmnElement="sid-8D9E0F1A-2B3C-4D4E-9F5A-6B7C8D9E0F43" id="sid-8D9E0F1A-2B3C-4D4E-9F5A-6B7C8D9E0F43_gui" isMarkerVisible="true">
+            <omgdc:Bounds height="40.0" width="40.0" x="330.0" y="120.0"/>
+         </bpmndi:BPMNShape>
+         <bpmndi:BPMNShape bpmnElement="sid-9E0F1A2B-3C4D-4E5F-8A6B-7C8D9E0F1A44" id="sid-9E0F1A2B-3C4D-4E5F-8A6B-7C8D9E0F1A44_gui">
+            <omgdc:Bounds height="28.0" width="28.0" x="420.0" y="126.0"/>
+         </bpmndi:BPMNShape>
+         <bpmndi:BPMNShape bpmnElement="sid-0F1A2B3C-4D5E-4F6A-9B7C-8D9E0F1A2B45" id="sid-0F1A2B3C-4D5E-4F6A-9B7C-8D9E0F1A2B45_gui">
+            <omgdc:Bounds height="28.0" width="28.0" x="336.0" y="230.0"/>
+         </bpmndi:BPMNShape>
+         <bpmndi:BPMNShape bpmnElement="4711" id="4711_gui">
+            <omgdc:Bounds height="50.0" width="50.0" x="205.0" y="250.0"/>
+         </bpmndi:BPMNShape>
+         <bpmndi:BPMNShape bpmnElement="sid-5E6F7A8B-9CAD-44BE-8A2B-3C4D5E6F7A50" id="sid-5E6F7A8B-9CAD-44BE-8A2B-3C4D5E6F7A50_gui">
+            <omgdc:Bounds height="40.0" width="180.0" x="290.0" y="320.0"/>
+         </bpmndi:BPMNShape>
+         <bpmndi:BPMNEdge bpmnElement="sid-1A2B3C4D-5E6F-407A-8C8D-9E0F1A2B3C46" id="sid-1A2B3C4D-5E6F-407A-8C8D-9E0F1A2B3C46_gui">
+            <omgdi:waypoint x="130.0" y="140.0"/>
+            <omgdi:waypoint x="180.0" y="140.0"/>
+         </bpmndi:BPMNEdge>
+         <bpmndi:BPMNEdge bpmnElement="sid-2B3C4D5E-6F7A-418B-9D9E-0F1A2B3C4D47" id="sid-2B3C4D5E-6F7A-418B-9D9E-0F1A2B3C4D47_gui">
+            <omgdi:waypoint x="280.0" y="140.0"/>
+            <omgdi:waypoint x="330.0" y="140.0"/>
+         </bpmndi:BPMNEdge>
+         <bpmndi:BPMNEdge bpmnElement="sid-3C4D5E6F-7A8B-429C-8E0F-1A2B3C4D5E48" id="sid-3C4D5E6F-7A8B-429C-8E0F-1A2B3C4D5E48_gui">
+            <omgdi:waypoint x="370.0" y="140.0"/>
+            <omgdi:waypoint x="420.0" y="140.0"/>
+         </bpmndi:BPMNEdge>
+         <bpmndi:BPMNEdge bpmnElement="sid-4D5E6F7A-8B9C-43AD-9F1A-2B3C4D5E6F49" id="sid-4D5E6F7A-8B9C-43AD-9F1A-2B3C4D5E6F49_gui">
+            <omgdi:waypoint x="350.0" y="160.0"/>
+            <omgdi:waypoint x="350.0" y="230.0"/>
+         </bpmndi:BPMNEdge>
+         <bpmndi:BPMNEdge bpmnElement="sid-6F7A8B9C-ADBE-45CF-9B3C-4D5E6F7A8B51" id="sid-6F7A8B9C-ADBE-45CF-9B3C-4D5E6F7A8B51_gui">
+            <omgdi:waypoint x="255.0" y="290.0"/>
+            <omgdi:waypoint x="290.0" y="340.0"/>
+         </bpmndi:BPMNEdge>
+      </bpmndi:BPMNPlane>
+   </bpmndi:BPMNDiagram>
+</definitions>

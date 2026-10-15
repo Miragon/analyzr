@@ -24,6 +24,7 @@
     "eval:replay": "pnpm --filter @analyzr/eval-tools replay",
     "eval:live": "pnpm --filter @analyzr/eval-tools live",
     "eval:placements": "pnpm --filter @analyzr/eval-tools placements",
+    "eval:descriptive": "pnpm --filter @analyzr/eval-tools descriptive",
     "dev": "pnpm --parallel --filter @analyzr/server --filter @analyzr/web dev",
     "docker:up": "docker compose -p analyzr -f docker/compose.yaml up -d --build --wait",
     "db:up": "docker compose -p analyzr -f docker/compose.yaml up -d --wait db",

@@ -1,7 +1,8 @@
 # analyzr – Milestone M6 "Landscape integration and gap analysis"
 
 Status: in progress (2026-10-15); owner decision 24 (§2, HANDOFF §4); S0 (this concept, revised
-after review) and S1 done · Branch: `feat/integration-and-gaps` ·
+after review), S1, S3a and S3b done, the „erste Anfänge“ await the owner's review (§8) · Branch:
+`feat/integration-and-gaps` ·
 Spec: [CONCEPT.md](CONCEPT.md) §1–§7 · Previous: [M4-VALUE-CHAIN.md](M4-VALUE-CHAIN.md) · Paused:
 the process network map (decision 22, issue [#2](https://github.com/Miragon/analyzr/issues/2)),
 which keeps the name M5. M6 goes ahead of it; that amends decision 22's "next milestone" (decision
@@ -578,6 +579,45 @@ transforms never opens the holdout's `expected.yaml`, `README.md` or `spec/`. Th
 tool behaviour that is itself to verify (§3.8). S3a also records the size of `get_landscape` per
 model on the seeded `nordwind-handel` and states the v1 limit in §6.
 
+**Results (S3a, 2026-10-15, `eval/reports/descriptive.md`).** Delivered as five variants: `pools`
+keeps every element and adds the message flows, and a separate `tasks` turns the exchange events
+into tasks (§8 "S3a as delivered"). On `nordwind-handel` (31 models; 42 must_link: 9 call, 25
+message, 6 signal, 2 trigger), each variant on top of the previous one:
+
+| Variant | must_link in rules ∪ candidates | in rules ∪ key/lexical | in rule tier | rule-tier accepted (precision; under 24.2) | candidates | claim input mean / max | dangling-throw / unmatched-catch |
+|---|---|---|---|---|---|---|---|
+| baseline | 42/42 | 42/42 | 37/42 | 9 (100 %; 9) | 1806 | 40.8 / 80.1 KB | 5 / 4 |
+| `engine-stripped` | 42/42 | 42/42 | 37/42 | 9 (100 %; 0) | 1806 | 40.8 / 80.1 KB | 5 / 4 |
+| `descriptive` | 33/42 | 31/42 | 0/42 | 0 | 1670 | 35.6 / 61.1 KB | 25 / 29 |
+| `pools` | 33/42 | 31/42 | 0/42 | 0 | 1670 | 35.7 / 61.2 KB | 2 / 6 |
+| `tasks` | 9/42 | 9/42 | 0/42 | 0 | 989 | 24.6 / 43.5 KB | 2 / 6 |
+| `no-docs` | 9/42 | 9/42 | 0/42 | 0 | 989 | 21.6 / 39.7 KB | 2 / 6 |
+
+By type: calls 9/9, then 0/9 from `descriptive` on (a collapsed subprocess yields no fact);
+messages 25/25 through `pools` (23/25 within key/lexical, 0/25 in the rule tier), 1/25 from
+`tasks` on (a task with a message flow is no endpoint in facts v1); signals 6/6 and triggers 2/2
+in every variant, the signals through lexical candidates once `descriptive` strips `signalRef`. No
+claim input exceeds 100 KB, and no variant draws an extractor warning. The holdout (26 models, 40
+must_link; aggregate only) moves the same way: 40/40 in baseline and `engine-stripped`, 12/40 from
+`tasks` on (its `descriptive` and `pools` coverage is hidden by the redaction), no rule-tier
+acceptance under 24.2 once the engine is gone, claim input max 74.9 → 43.3 KB. What it means:
+
+- `engine-stripped` costs nothing today; under the trust policy (S2c) every rule-tier acceptance
+  of such a model becomes a proposal.
+- `descriptive` loses every call and the whole key tier: agents have to find every message and
+  signal link themselves, and the dangling/unmatched findings jump from 9 to 54.
+- `pools` keeps the coverage, but its message flows answer the throws and catches, so those
+  findings vanish, the expected ones too: the gap list (S4) loses that signal on such models.
+- `tasks` loses almost every message link (25 → 1).
+- Documentation only shrinks the claim input.
+
+That makes the case for facts v2 (§6: collapsed subprocesses as call endpoints, task-to-pool
+messages, black-box participants) and for the guidance for descriptive models in S7 (decision
+24.4). Found along the way: without an engine, facts v1 treats only a JUEL `calledElement` as
+dynamic, so a C8 FEEL target (`=expr`) moved into `calledElement` counts as static
+(`engine-stripped`: `dynamic-call` 2 → 1, `unresolved-call` 2 → 3); `descriptive.test.ts` pins it
+until a facts version fixes it. The `get_landscape` size and the v1 limit are in §6.
+
 ## 4. Part B: Gap analysis
 
 ### 4.1 Sources that exist today
@@ -816,7 +856,7 @@ draft (after the owner's rated draft run, M4b) are later work.
 
 | Candidate | Why, and when |
 |---|---|
-| Paged landscape digest (`get_landscape_digest`, CONCEPT §5's `landscape.json` resource) | `get_landscape` takes only `projectId` and returns the whole head unpaged, and `draft_value_chain` reads it; a 200–300-model customer landscape may not fit an agent's context. S3a measures the size per model and states the v1 limit here; the integrate report warns above it and suggests drafting the chain from the customer's process map or by hand in the chain editor. The digest itself comes after the live runs (the MCP surface is frozen until then), before the first large customer landscape. |
+| Paged landscape digest (`get_landscape_digest`, CONCEPT §5's `landscape.json` resource) | `get_landscape` takes only `projectId` and returns the whole head unpaged, and `draft_value_chain` reads it; a 200–300-model customer landscape may not fit an agent's context. **S3a measured it** on `nordwind-handel` (31 models; `apps/server/test/integration/landscape-size.test.ts`, the text content an agent reads, in UTF-8 bytes): 42.2 KB seeded (1,394 B per model), 71.4 KB after the simulation agent's relations tasks (2,359 B per model; 57 relations, 48 of them resting on agent proposals at about 1.1 KB each with provenance and 273-character rationales: relations dominate); the HTTP response carries the JSON twice (text and `structuredContent`). **v1 limit: 40 models per project for `get_landscape`-based work (`draft_value_chain`), with a warning from 35**: with LLM rationales of about 400 characters a model costs about 2.56 KB, so 40 models fill the ~100 KB a tool page holds (CONCEPT §6); Claude Code's 500,000-character result limit (`MAX_RESULT_SIZE_CHARS`) is reached at about 200 models, and a 200–300-model landscape would be about 470–700 KB. The integrate report warns above the limit and suggests drafting the chain from the customer's process map or by hand in the chain editor (not yet in skill v0, §8 "S3b as delivered"). The digest itself comes after the live runs (the MCP surface is frozen until then), before the first large customer landscape. |
 | Duplicate, variant and contradiction detection | exports hold copies (ARIS and Signavio of one process, archived versions, as-told next to modelled); a `possible-variant` signal first, an agent verdict later. After S4 shows real data. |
 | Change summary per import, events since seq X | re-imports are routine; reviewers need "what changed since I looked" (CONCEPT §5's `/events` is not in the contracts). Builds on `importImpact`. |
 | MCP `get_project_status` | lets a consultant's agent decide what to run next; today only `analyzr status`. After the live runs. |
@@ -1119,6 +1159,175 @@ own compose project (AGENTS.md), with a checkout's CLI and with the web path; th
 passes. Done when (S3c): rendered fixtures extract without warnings and import into bpmn-js
 without warnings; a spec from an `adhoc:` converter yields no `calledElement`; `node
 scripts/analyzr.mjs import` works against the scratch stack.
+
+**S3a as delivered** (2026-10-15, branch `feat/integration-and-gaps`; every gate green, together
+with S3b): `pnpm eval:descriptive` (`eval/tools/src/descriptive.ts`, `descriptive-context.ts`,
+`descriptive-score.ts`, `descriptive-report.ts`, the transforms in
+`eval/tools/lib/descriptive.mjs`), the report `eval/reports/descriptive.{md,json}` with a CI drift
+step, report only; results in §3.11. `get_landscape` is measured by
+`apps/server/test/integration/landscape-size.test.ts`, which requires < 100 KB on
+`nordwind-handel`; results and the v1 limit in §6. The claim size estimate
+(`eval/tools/src/claim-estimate.ts`, exported by `@analyzr/eval-tools`) is pinned byte for byte to
+the server's `renderClaimInput` on every dev model by
+`apps/server/test/unit/claim-estimate.test.ts`. Deviations:
+
+- Five variants, not four: `pools` (message flows to black-box pools, every element unchanged) and
+  `tasks` (the exchange events and send and receive tasks as plain tasks with those flows) are
+  separate, so the report attributes the findings drop to the flows and the coverage drop to the
+  tasks.
+- `descriptive` strips signals like messages (no `signalRef`, no `bpmn:signal`), not only
+  `messageRef`.
+- Only intermediate message throws and catches and send and receive tasks become tasks; start, end
+  and boundary events and a catch or receive task after an event-based gateway stay events, so the
+  BPMN stays valid.
+
+Choices the spec left open:
+
+- The transforms run through bpmn-moddle without engine extensions and keep every element id
+  (only message and signal definitions and the event definitions of converted events go; a test
+  checks every corpus model in every variant), so `expected.yaml` applies unchanged.
+- `engine-stripped` moves a C8 `zeebe:calledElement` verbatim to the standard `calledElement` (the
+  optimistic case: the tool keeps the target). That is how S3a found the FEEL gap of facts v1
+  (§3.11); `normalize-bpmn` never moves a target there and leaves expressions alone.
+- Collapsed subprocesses take the callee's exact process name, partner pools the partner's exact
+  pool or process name (the optimistic case; facts v1 reads neither name, and a variant without
+  verbatim names is a prerequisite before a facts version matches them); unresolved and dynamic
+  calls keep their label.
+- Partners come from the rule tier's message-name pairs on the unchanged models, never from
+  `expected.yaml`, so a transformed model carries no ground truth, and no transformed model is
+  written to disk. An endpoint without such a pair gets one pool „Externer Partner“, never one
+  named after the message; there is one pool per partner name and model, and message flows carry
+  no name. A single-process model gets a collaboration around its process; the generated DI passes
+  the corpus validator's `checkDi` (except its rule that subprocesses are expanded).
+- An extractor warning on any variant is an error (exit 1).
+- The claim size is the input `renderClaimInput` renders on a fresh import with every candidate
+  listed and without `judged` and `skip`, which depend on the claim order; the baseline (mean
+  40.8 KB, max 80.1 KB) equals the M3 measurement.
+- „Accepted under decision 24.2“ is computed (acceptances whose caller has an engine), since S2c
+  does not exist yet.
+- The holdout section shows whole-landscape numbers only, with no model names and no ground truth
+  per relation type or tag (one type's count would equal the total minus the others'). A count of
+  1 to 4 items is „< 5“, and a number that differs by 1 to 4 from any shown number it is nested
+  with (the same metric in another variant, the coverage levels within a variant, the totals they
+  lie in, expected against computed findings) is „hidden“ (`redactGrid` in
+  `eval/tools/src/descriptive-score.ts`; a test checks every nested pair of the real holdout
+  section and prints PASS/FAIL only). The console prints the same redacted numbers.
+- The tool behaviour the variants assume is listed in the report header as assumptions to verify,
+  separate from the facts v1 effects.
+
+**S3b as delivered** (2026-10-15, branch `feat/integration-and-gaps`; every gate green, together
+with S3a): the plugin `plugins/analyzr-integrate` 0.1.0 (`.claude-plugin/plugin.json`,
+`skills/integrate-landscape/SKILL.md`, `reference/{signavio,aris,visio,adonis,bizagi}.md` with
+the four sections and the status line "unverified: based on public documentation", the generated
+`scripts/{inspect,normalize-bpmn}.mjs` and `THIRD-PARTY-NOTICES.md`), listed in
+`.claude-plugin/marketplace.json` (`claude plugin validate --strict` passes for both with Claude
+Code 2.1.300); the private package `tools/integrate` (`@analyzr/integrate`, imported by nothing
+in `apps/` or `packages/`; it imports only the zod-free `@analyzr/contracts/paths`, so its keys
+are `modelKeyFromPath`'s) with the sources and 145 tests. `pnpm --filter @analyzr/integrate
+generate` bundles each entry with rolldown 1.2.12, the version Vite 8.3.2 locks (no new package
+in the lockfile, only the importer entry; `pnpm notices` unchanged), into a self-contained,
+unminified ES module (inspect 32 KB, normalize-bpmn 228 KB) and writes the plugin's notices
+(bpmn-moddle, camunda-bpmn-moddle, min-dash, moddle, moddle-xml, saxen, zeebe-bpmn-moddle, all
+MIT). The drift test compares both with a fresh build, checks that the bundles import Node
+built-ins only and name no local path, and runs them copied away from `node_modules`. Deviations:
+
+- `normalize-bpmn` has four subcommands: `file`, `plan` (the keys; `--write` after the
+  consultant's yes), `bundle` and `inventory` (a CSV catalog, UTF-8 or Windows-1252, into
+  `analyzr-inventory/1`, taking only the named columns, so columns naming people never reach it).
+  Key planning and the bundle live there instead of a third script, since BPMN is v0's only path
+  (the pure `keymap.ts` and `bundle.ts` can serve S3c's renderer).
+- Missing DI is the loss code `layout-missing` (elements bpmn-js draws without a shape or edge,
+  their ids listed); §3.2's list lacks it, so S2a's `ImportManifest` must accept it.
+- References follow rewritten ids through every reference property bpmn-moddle's descriptors
+  declare (attributes such as `sourceRef`, `default`, `processRef`, `bpmnElement` and reference
+  texts such as `<incoming>` and `<flowNodeRef>`), not only the seven names of §3.7; a static
+  `calledElement` that is no safe id is rewritten like the process id it names, so calls across
+  files stay consistent; an expression (`=…`, `${…}`, `#{…}`) is left alone.
+- An element analyzr or bpmn-js needs an id for (flow elements, processes, collaborations,
+  participants, lanes, message flows, artifacts) that has none gets one, `<Type>_<hash of the
+  nearest id above, type, name and position>`, stable when unrelated elements are added and
+  counted as `id-rewritten` (reason `missing`): §3.4 rule 2 has no source id to derive it from,
+  and without one the extractor skips the element (`missing-id`).
+- The workspace gains `inventory/` for catalogs and `reports/<…>.{models,plan,bundle}.json` for
+  the scripts' complete results; `keymap.json` records per system the key rule, the scope and the
+  folders to leave out (formats `analyzr-keymap/1` and `analyzr-workspace/1`).
+- The skill pre-approves only `inspect.mjs`; §3.1's `analyzr import … --dry-run` waits for S2b
+  (`allowed-tools` lasts for the invoking turn only). The guard setup it offers (a
+  `permissions.deny` rule `Read(~/.local/state/analyzr/**)`, the sandbox with a
+  `credentials.files` deny, `autoAllowBashIfSandboxed` and `allowUnsandboxedCommands` false)
+  follows the setting descriptions of Claude Code 2.1.300 but was not tried in a live session, so
+  §3.1's "the exact rules are verified in S3b" stays open; the skill asks the consultant to check
+  `/permissions` and `/sandbox`. Codex's sandbox modes restrict writes, not reads, so the Codex
+  sandbox without read access to the key that §3.1 names does not exist: its approvals are the
+  guard (`examples/agents/codex/README.md`).
+- The skill unpacks a zip export into `exports/` itself after the consultant's yes, as it copies
+  a folder there; the zip itself is not copied.
+- Not in v0: the report's warning above §6's v1 limit, which S3a fixed in parallel; the next
+  plugin version adds it.
+
+Choices the spec left open:
+
+- An id is kept only if analyzr and bpmn-moddle both accept it (`[A-Za-z_][A-Za-z0-9_.-]*`, at
+  most 255 characters). bpmn-moddle drops an element whose id fails its ASCII check, so `Prüfen`,
+  a valid NCName, is rewritten (`Task_Pruefen`) like `4711` (`DataStoreReference_4711`).
+  Duplicates get `_2`, `_3`: the k-th DI shape goes to the k-th element; `sourceRef`,
+  `targetRef`, `incoming`, `outgoing` and `default` go to the occurrence the flow starts or ends
+  at, in order when several do; every other reference goes to the first, and references the
+  script could only guess are listed as `ambiguousReferences`.
+- Bytes analyzr reads completely pass through unchanged (`derived.kind` `export`, `converter`
+  null); everything else gets text edits and is then read and written by bpmn-moddle (the
+  extension chosen as `extractFacts` chooses it) and is `converted` (`normalize-bpmn@0.1.0`).
+  Besides UTF-16, a declared ISO-8859-1 or windows-1252 file is transcoded; undeclared entities
+  such as `&nbsp;` stay undecoded, as bpmn-moddle's reader leaves them, and a DOCTYPE is refused.
+  The input may be up to 10 MB (UTF-16 doubles the bytes); analyzr's 5 MB and 50,000 elements are
+  checked on the output, which is written compact when indenting would exceed 5 MB and refused
+  (`failed`) otherwise.
+- Identity: a file matches its `keymap.json` entry by tool id (the `<definitions id>`, to verify
+  per tool) when that id is unique in the export and not generic (`Definitions_1` and the like),
+  else by its tool path unless file and entry carry different ids. Flags: `duplicate-external-id`
+  (the file at the known path keeps its key, a copy is new), `generic-external-id`, `renamed`,
+  `exists-in-analyzr`
+  (with `plan --existing`, the output of `analyzr models list --json`, which the skill runs read
+  only), `outside-scope` and `no-key`. Keys are `modelKeyFromPath` of the path below the export
+  after an optional `--strip <folder>`, with an optional `--prefix`; collisions get `-2`, `-3`.
+  The rule is fixed after a system's first import; every key in `keymap.json` stays taken (absent
+  models too); `plan --write` adds and moves entries but never removes one; `plan --reset` drops
+  one system's rule and keys while nothing of it is imported; `plan --exclude` (archive folders,
+  which `inspect --summary` lists as `archiveLike`) is recorded per system.
+- The manifest: `exportedAt` from `--exported-at` (a bare date becomes midnight UTC);
+  `systemVersion` is the exporter version when every file agrees; an empty `losses` and a null
+  `externalId` are left out. The bundle's details give each call a `match` (`one` with its target
+  key and process, `none`, `several`, `expression`, `empty`), from which the report lists the
+  calls analyzr will accept on import (decision 9).
+- The scripts print short JSON (long lists cut to their first entries plus a count; on a
+  200-model export inspect 5.8 KB, plan 1.9 KB, bundle 6.6 KB), and `plan` and `bundle` write the
+  complete result with `--json-out`. They refuse an `--out`, `--json-out` or `--workspace` inside
+  the export or inside an analyzr checkout (symbolic links resolved).
+- The report's extractor warnings: normalize-bpmn reports bpmn-moddle's warnings for the written
+  bytes (analyzr's `parse-warning`s) before the import; the other codes appear only at import,
+  because bundling `@analyzr/bpmn-facts` would pull in the whole contracts package with zod.
+- Every command the skill prints is `<cli> --url "<analyzrUrl>" …`; the report says that the
+  import needs the owner key (`ANALYZR_OWNER_KEY_FILE` with analyzr in Docker) and gives the web
+  path. A probe project is recommended only when the bundle shows failed files, warnings, missing
+  layout or ambiguous references; confirmations 1 and 3 and the archive question go in one
+  message.
+- Releases: `RELEASES` in `tools/integrate/test/plugin.test.ts` pins a sha256 over the plugin's
+  files per plugin version, and `CONVERTER_OUTPUTS` in `tools/integrate/test/bundle.test.ts` the
+  golden bundle's models per `NORMALIZE_BPMN_VERSION`, so a change of the plugin moves its
+  version and a change of what normalize-bpmn writes moves the converter's. The golden bundle of
+  the synthetic Signavio-style fixture (`tools/integrate/test/fixtures/signavio/bundle`, rewritten
+  with `ANALYZR_UPDATE_GOLDEN=1`) is what the CLI and web tests read.
+
+End to end, by the implementing agent (the consultant's three answers given by the agent): the
+skill on the synthetic export gave a bundle of 6 models, 3 of them converted (one UTF-16 file, 4
+rewritten and 2 duplicate ids), and a German report. Against its own compose project
+`analyzr-s3b` (database only, the server from source, removed with `down -v`) the checkout CLI
+imported the bundle under the pinned keys without a warning (one call accepted by the rule tier),
+while the raw export failed one file, drew 11 `parse-warning`s and got `gemeinsame-dokumente/…`
+keys. A re-export with a moved folder and the archive deleted kept `logistik/versand` and imported
+as 5 `unchanged`. These runs preceded the review round, whose fixes left the golden bundle's bytes
+unchanged; after it, „Hochladen“ in Chromium (Playwright, the folder picker) gave the same 6 keys
+and skipped the manifest.
 
 **S4 "Open questions".** Scope: §4.1–§4.4 without `extractor-loss` (S2); summaries only with the
 owner's OK. Does not touch: `FindingKind`, the claim inputs, MCP, stages. Done when: every source

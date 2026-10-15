@@ -1,0 +1,1616 @@
+{
+  "variants": [
+    "baseline",
+    "engine-stripped",
+    "descriptive",
+    "pools",
+    "tasks",
+    "no-docs"
+  ],
+  "budgetBytes": 102400,
+  "assumptions": [
+    "Descriptive tools (Signavio, ARIS, ADONIS, Bizagi, Visio exports) write no Camunda namespaces and no `modeler:executionPlatform`, so `engine` is null.",
+    "A tool that keeps a call target writes the standard `calledElement` (engine-stripped); one that links a subprocess to another diagram exports a collapsed `bpmn:subProcess` named exactly like the linked process, without a call target (descriptive; the exact name is the optimistic case).",
+    "Descriptive message and signal events carry no `messageRef` or `signalRef` and the tool writes no `bpmn:message` or `bpmn:signal`; the names exist only as labels.",
+    "Modellers connect an exchange with another process by a message flow to a black-box pool named exactly like the partner (pools; the exact name is the optimistic case, and a partner the unchanged models do not reveal becomes one pool „Externer Partner“).",
+    "Modellers draw such an exchange as a task (tasks); they keep message start, end and boundary events, and catches after an event-based gateway, as events.",
+    "Message flows to black-box pools carry no name; the layout of added pools and flows is generated (pools below the diagram).",
+    "Element ids survive the export unchanged (as the integrate skill requires, M6 §3.4); labels and documentation are the corpus texts."
+  ],
+  "factsEffects": [
+    "engine-stripped copies a C8 FEEL call target (`=expr`) verbatim into `calledElement`. Without an engine, facts v1 treats only a JUEL expression there as dynamic, so such a call counts as a static target: an unresolved call instead of a dynamic one. The shift of unresolved-call and dynamic-call in engine-stripped is this facts gap, not tool behaviour; `descriptive.test.ts` pins it until a facts version fixes it.",
+    "Facts v1 makes no relation endpoint of a collapsed subprocess (descriptive: no call relations left), of a task with a message flow (tasks: the message endpoints it converts are gone) or of a black-box pool.",
+    "A message flow to a black-box pool answers its throw or catch: from pools on, no dangling-throw or unmatched-catch is computed for it, while candidates still pair it (only the exact pair a flow connects in one file is excluded)."
+  ],
+  "landscapes": [
+    {
+      "name": "nordwind-handel",
+      "split": "dev",
+      "models": 31,
+      "variants": [
+        {
+          "variant": "baseline",
+          "warnings": 0,
+          "engines": {
+            "c7": 17,
+            "c8": 14,
+            "none": 0
+          },
+          "processes": 32,
+          "executableProcesses": 32,
+          "facts": 383,
+          "mustLink": {
+            "total": 42,
+            "covered": 42,
+            "keyLexical": 42,
+            "rules": 37
+          },
+          "ruleTier": {
+            "accepted": 9,
+            "correct": 9,
+            "precision": 1,
+            "proposed": 33,
+            "acceptedUnderTrustPolicy": 9
+          },
+          "candidates": {
+            "total": 1806,
+            "rule": 9,
+            "key": 33,
+            "lexical": 165,
+            "compatible": 1599
+          },
+          "claim": {
+            "meanBytes": 41749,
+            "maxBytes": 82066,
+            "maxModel": "vertrieb/order-handling",
+            "overBudget": 0
+          },
+          "findings": [
+            {
+              "kind": "unresolved-call",
+              "computed": 2,
+              "expected": 2,
+              "found": 2
+            },
+            {
+              "kind": "dynamic-call",
+              "computed": 2,
+              "expected": 2,
+              "found": 2
+            },
+            {
+              "kind": "duplicate-process-id",
+              "computed": 1,
+              "expected": 1,
+              "found": 1
+            },
+            {
+              "kind": "dangling-throw",
+              "computed": 5,
+              "expected": 3,
+              "found": 3
+            },
+            {
+              "kind": "unmatched-catch",
+              "computed": 4,
+              "expected": 2,
+              "found": 2
+            }
+          ],
+          "byType": [
+            {
+              "type": "call",
+              "coverage": {
+                "total": 9,
+                "covered": 9,
+                "keyLexical": 9,
+                "rules": 9
+              },
+              "endpoints": {
+                "from": 14,
+                "to": 32
+              },
+              "candidates": 135,
+              "ruleAccepted": 9,
+              "ruleAcceptedCorrect": 9
+            },
+            {
+              "type": "message",
+              "coverage": {
+                "total": 25,
+                "covered": 25,
+                "keyLexical": 25,
+                "rules": 22
+              },
+              "endpoints": {
+                "from": 32,
+                "to": 33
+              },
+              "candidates": 996,
+              "ruleAccepted": 0,
+              "ruleAcceptedCorrect": 0
+            },
+            {
+              "type": "signal",
+              "coverage": {
+                "total": 6,
+                "covered": 6,
+                "keyLexical": 6,
+                "rules": 6
+              },
+              "endpoints": {
+                "from": 2,
+                "to": 6
+              },
+              "candidates": 12,
+              "ruleAccepted": 0,
+              "ruleAcceptedCorrect": 0
+            },
+            {
+              "type": "trigger",
+              "coverage": {
+                "total": 2,
+                "covered": 2,
+                "keyLexical": 2,
+                "rules": 0
+              },
+              "endpoints": {
+                "from": 49,
+                "to": 14
+              },
+              "candidates": 663,
+              "ruleAccepted": 0,
+              "ruleAcceptedCorrect": 0
+            }
+          ]
+        },
+        {
+          "variant": "engine-stripped",
+          "warnings": 0,
+          "engines": {
+            "c7": 0,
+            "c8": 0,
+            "none": 31
+          },
+          "processes": 32,
+          "executableProcesses": 32,
+          "facts": 383,
+          "mustLink": {
+            "total": 42,
+            "covered": 42,
+            "keyLexical": 42,
+            "rules": 37
+          },
+          "ruleTier": {
+            "accepted": 9,
+            "correct": 9,
+            "precision": 1,
+            "proposed": 33,
+            "acceptedUnderTrustPolicy": 0
+          },
+          "candidates": {
+            "total": 1806,
+            "rule": 9,
+            "key": 33,
+            "lexical": 165,
+            "compatible": 1599
+          },
+          "claim": {
+            "meanBytes": 41749,
+            "maxBytes": 82066,
+            "maxModel": "vertrieb/order-handling",
+            "overBudget": 0
+          },
+          "findings": [
+            {
+              "kind": "unresolved-call",
+              "computed": 3,
+              "expected": 2,
+              "found": 2
+            },
+            {
+              "kind": "dynamic-call",
+              "computed": 1,
+              "expected": 2,
+              "found": 1
+            },
+            {
+              "kind": "duplicate-process-id",
+              "computed": 1,
+              "expected": 1,
+              "found": 1
+            },
+            {
+              "kind": "dangling-throw",
+              "computed": 5,
+              "expected": 3,
+              "found": 3
+            },
+            {
+              "kind": "unmatched-catch",
+              "computed": 4,
+              "expected": 2,
+              "found": 2
+            }
+          ],
+          "byType": [
+            {
+              "type": "call",
+              "coverage": {
+                "total": 9,
+                "covered": 9,
+                "keyLexical": 9,
+                "rules": 9
+              },
+              "endpoints": {
+                "from": 14,
+                "to": 32
+              },
+              "candidates": 135,
+              "ruleAccepted": 9,
+              "ruleAcceptedCorrect": 9
+            },
+            {
+              "type": "message",
+              "coverage": {
+                "total": 25,
+                "covered": 25,
+                "keyLexical": 25,
+                "rules": 22
+              },
+              "endpoints": {
+                "from": 32,
+                "to": 33
+              },
+              "candidates": 996,
+              "ruleAccepted": 0,
+              "ruleAcceptedCorrect": 0
+            },
+            {
+              "type": "signal",
+              "coverage": {
+                "total": 6,
+                "covered": 6,
+                "keyLexical": 6,
+                "rules": 6
+              },
+              "endpoints": {
+                "from": 2,
+                "to": 6
+              },
+              "candidates": 12,
+              "ruleAccepted": 0,
+              "ruleAcceptedCorrect": 0
+            },
+            {
+              "type": "trigger",
+              "coverage": {
+                "total": 2,
+                "covered": 2,
+                "keyLexical": 2,
+                "rules": 0
+              },
+              "endpoints": {
+                "from": 49,
+                "to": 14
+              },
+              "candidates": 663,
+              "ruleAccepted": 0,
+              "ruleAcceptedCorrect": 0
+            }
+          ]
+        },
+        {
+          "variant": "descriptive",
+          "warnings": 0,
+          "engines": {
+            "c7": 0,
+            "c8": 0,
+            "none": 31
+          },
+          "processes": 32,
+          "executableProcesses": 0,
+          "facts": 369,
+          "mustLink": {
+            "total": 42,
+            "covered": 33,
+            "keyLexical": 31,
+            "rules": 0
+          },
+          "ruleTier": {
+            "accepted": 0,
+            "correct": 0,
+            "precision": null,
+            "proposed": 0,
+            "acceptedUnderTrustPolicy": 0
+          },
+          "candidates": {
+            "total": 1670,
+            "rule": 0,
+            "key": 0,
+            "lexical": 174,
+            "compatible": 1496
+          },
+          "claim": {
+            "meanBytes": 36489,
+            "maxBytes": 62544,
+            "maxModel": "vertrieb/order-handling",
+            "overBudget": 0
+          },
+          "findings": [
+            {
+              "kind": "unresolved-call",
+              "computed": 0,
+              "expected": 2,
+              "found": 0
+            },
+            {
+              "kind": "dynamic-call",
+              "computed": 0,
+              "expected": 2,
+              "found": 0
+            },
+            {
+              "kind": "duplicate-process-id",
+              "computed": 1,
+              "expected": 1,
+              "found": 1
+            },
+            {
+              "kind": "dangling-throw",
+              "computed": 25,
+              "expected": 3,
+              "found": 3
+            },
+            {
+              "kind": "unmatched-catch",
+              "computed": 29,
+              "expected": 2,
+              "found": 2
+            }
+          ],
+          "byType": [
+            {
+              "type": "call",
+              "coverage": {
+                "total": 9,
+                "covered": 0,
+                "keyLexical": 0,
+                "rules": 0
+              },
+              "endpoints": {
+                "from": 0,
+                "to": 32
+              },
+              "candidates": 0,
+              "ruleAccepted": 0,
+              "ruleAcceptedCorrect": 0
+            },
+            {
+              "type": "message",
+              "coverage": {
+                "total": 25,
+                "covered": 25,
+                "keyLexical": 23,
+                "rules": 0
+              },
+              "endpoints": {
+                "from": 32,
+                "to": 33
+              },
+              "candidates": 995,
+              "ruleAccepted": 0,
+              "ruleAcceptedCorrect": 0
+            },
+            {
+              "type": "signal",
+              "coverage": {
+                "total": 6,
+                "covered": 6,
+                "keyLexical": 6,
+                "rules": 0
+              },
+              "endpoints": {
+                "from": 2,
+                "to": 6
+              },
+              "candidates": 12,
+              "ruleAccepted": 0,
+              "ruleAcceptedCorrect": 0
+            },
+            {
+              "type": "trigger",
+              "coverage": {
+                "total": 2,
+                "covered": 2,
+                "keyLexical": 2,
+                "rules": 0
+              },
+              "endpoints": {
+                "from": 49,
+                "to": 14
+              },
+              "candidates": 663,
+              "ruleAccepted": 0,
+              "ruleAcceptedCorrect": 0
+            }
+          ]
+        },
+        {
+          "variant": "pools",
+          "warnings": 0,
+          "engines": {
+            "c7": 0,
+            "c8": 0,
+            "none": 31
+          },
+          "processes": 32,
+          "executableProcesses": 0,
+          "facts": 421,
+          "mustLink": {
+            "total": 42,
+            "covered": 33,
+            "keyLexical": 31,
+            "rules": 0
+          },
+          "ruleTier": {
+            "accepted": 0,
+            "correct": 0,
+            "precision": null,
+            "proposed": 0,
+            "acceptedUnderTrustPolicy": 0
+          },
+          "candidates": {
+            "total": 1670,
+            "rule": 0,
+            "key": 0,
+            "lexical": 174,
+            "compatible": 1496
+          },
+          "claim": {
+            "meanBytes": 36575,
+            "maxBytes": 62632,
+            "maxModel": "vertrieb/order-handling",
+            "overBudget": 0
+          },
+          "findings": [
+            {
+              "kind": "unresolved-call",
+              "computed": 0,
+              "expected": 2,
+              "found": 0
+            },
+            {
+              "kind": "dynamic-call",
+              "computed": 0,
+              "expected": 2,
+              "found": 0
+            },
+            {
+              "kind": "duplicate-process-id",
+              "computed": 1,
+              "expected": 1,
+              "found": 1
+            },
+            {
+              "kind": "dangling-throw",
+              "computed": 2,
+              "expected": 3,
+              "found": 0
+            },
+            {
+              "kind": "unmatched-catch",
+              "computed": 6,
+              "expected": 2,
+              "found": 0
+            }
+          ],
+          "byType": [
+            {
+              "type": "call",
+              "coverage": {
+                "total": 9,
+                "covered": 0,
+                "keyLexical": 0,
+                "rules": 0
+              },
+              "endpoints": {
+                "from": 0,
+                "to": 32
+              },
+              "candidates": 0,
+              "ruleAccepted": 0,
+              "ruleAcceptedCorrect": 0
+            },
+            {
+              "type": "message",
+              "coverage": {
+                "total": 25,
+                "covered": 25,
+                "keyLexical": 23,
+                "rules": 0
+              },
+              "endpoints": {
+                "from": 32,
+                "to": 33
+              },
+              "candidates": 995,
+              "ruleAccepted": 0,
+              "ruleAcceptedCorrect": 0
+            },
+            {
+              "type": "signal",
+              "coverage": {
+                "total": 6,
+                "covered": 6,
+                "keyLexical": 6,
+                "rules": 0
+              },
+              "endpoints": {
+                "from": 2,
+                "to": 6
+              },
+              "candidates": 12,
+              "ruleAccepted": 0,
+              "ruleAcceptedCorrect": 0
+            },
+            {
+              "type": "trigger",
+              "coverage": {
+                "total": 2,
+                "covered": 2,
+                "keyLexical": 2,
+                "rules": 0
+              },
+              "endpoints": {
+                "from": 49,
+                "to": 14
+              },
+              "candidates": 663,
+              "ruleAccepted": 0,
+              "ruleAcceptedCorrect": 0
+            }
+          ]
+        },
+        {
+          "variant": "tasks",
+          "warnings": 0,
+          "engines": {
+            "c7": 0,
+            "c8": 0,
+            "none": 31
+          },
+          "processes": 32,
+          "executableProcesses": 0,
+          "facts": 421,
+          "mustLink": {
+            "total": 42,
+            "covered": 9,
+            "keyLexical": 9,
+            "rules": 0
+          },
+          "ruleTier": {
+            "accepted": 0,
+            "correct": 0,
+            "precision": null,
+            "proposed": 0,
+            "acceptedUnderTrustPolicy": 0
+          },
+          "candidates": {
+            "total": 989,
+            "rule": 0,
+            "key": 0,
+            "lexical": 100,
+            "compatible": 889
+          },
+          "claim": {
+            "meanBytes": 25218,
+            "maxBytes": 44594,
+            "maxModel": "einkauf/bestellanforderung",
+            "overBudget": 0
+          },
+          "findings": [
+            {
+              "kind": "unresolved-call",
+              "computed": 0,
+              "expected": 2,
+              "found": 0
+            },
+            {
+              "kind": "dynamic-call",
+              "computed": 0,
+              "expected": 2,
+              "found": 0
+            },
+            {
+              "kind": "duplicate-process-id",
+              "computed": 1,
+              "expected": 1,
+              "found": 1
+            },
+            {
+              "kind": "dangling-throw",
+              "computed": 2,
+              "expected": 3,
+              "found": 0
+            },
+            {
+              "kind": "unmatched-catch",
+              "computed": 6,
+              "expected": 2,
+              "found": 0
+            }
+          ],
+          "byType": [
+            {
+              "type": "call",
+              "coverage": {
+                "total": 9,
+                "covered": 0,
+                "keyLexical": 0,
+                "rules": 0
+              },
+              "endpoints": {
+                "from": 0,
+                "to": 32
+              },
+              "candidates": 0,
+              "ruleAccepted": 0,
+              "ruleAcceptedCorrect": 0
+            },
+            {
+              "type": "message",
+              "coverage": {
+                "total": 25,
+                "covered": 1,
+                "keyLexical": 1,
+                "rules": 0
+              },
+              "endpoints": {
+                "from": 13,
+                "to": 26
+              },
+              "candidates": 314,
+              "ruleAccepted": 0,
+              "ruleAcceptedCorrect": 0
+            },
+            {
+              "type": "signal",
+              "coverage": {
+                "total": 6,
+                "covered": 6,
+                "keyLexical": 6,
+                "rules": 0
+              },
+              "endpoints": {
+                "from": 2,
+                "to": 6
+              },
+              "candidates": 12,
+              "ruleAccepted": 0,
+              "ruleAcceptedCorrect": 0
+            },
+            {
+              "type": "trigger",
+              "coverage": {
+                "total": 2,
+                "covered": 2,
+                "keyLexical": 2,
+                "rules": 0
+              },
+              "endpoints": {
+                "from": 49,
+                "to": 14
+              },
+              "candidates": 663,
+              "ruleAccepted": 0,
+              "ruleAcceptedCorrect": 0
+            }
+          ]
+        },
+        {
+          "variant": "no-docs",
+          "warnings": 0,
+          "engines": {
+            "c7": 0,
+            "c8": 0,
+            "none": 31
+          },
+          "processes": 32,
+          "executableProcesses": 0,
+          "facts": 421,
+          "mustLink": {
+            "total": 42,
+            "covered": 9,
+            "keyLexical": 9,
+            "rules": 0
+          },
+          "ruleTier": {
+            "accepted": 0,
+            "correct": 0,
+            "precision": null,
+            "proposed": 0,
+            "acceptedUnderTrustPolicy": 0
+          },
+          "candidates": {
+            "total": 989,
+            "rule": 0,
+            "key": 0,
+            "lexical": 100,
+            "compatible": 889
+          },
+          "claim": {
+            "meanBytes": 22096,
+            "maxBytes": 40624,
+            "maxModel": "einkauf/bestellanforderung",
+            "overBudget": 0
+          },
+          "findings": [
+            {
+              "kind": "unresolved-call",
+              "computed": 0,
+              "expected": 2,
+              "found": 0
+            },
+            {
+              "kind": "dynamic-call",
+              "computed": 0,
+              "expected": 2,
+              "found": 0
+            },
+            {
+              "kind": "duplicate-process-id",
+              "computed": 1,
+              "expected": 1,
+              "found": 1
+            },
+            {
+              "kind": "dangling-throw",
+              "computed": 2,
+              "expected": 3,
+              "found": 0
+            },
+            {
+              "kind": "unmatched-catch",
+              "computed": 6,
+              "expected": 2,
+              "found": 0
+            }
+          ],
+          "byType": [
+            {
+              "type": "call",
+              "coverage": {
+                "total": 9,
+                "covered": 0,
+                "keyLexical": 0,
+                "rules": 0
+              },
+              "endpoints": {
+                "from": 0,
+                "to": 32
+              },
+              "candidates": 0,
+              "ruleAccepted": 0,
+              "ruleAcceptedCorrect": 0
+            },
+            {
+              "type": "message",
+              "coverage": {
+                "total": 25,
+                "covered": 1,
+                "keyLexical": 1,
+                "rules": 0
+              },
+              "endpoints": {
+                "from": 13,
+                "to": 26
+              },
+              "candidates": 314,
+              "ruleAccepted": 0,
+              "ruleAcceptedCorrect": 0
+            },
+            {
+              "type": "signal",
+              "coverage": {
+                "total": 6,
+                "covered": 6,
+                "keyLexical": 6,
+                "rules": 0
+              },
+              "endpoints": {
+                "from": 2,
+                "to": 6
+              },
+              "candidates": 12,
+              "ruleAccepted": 0,
+              "ruleAcceptedCorrect": 0
+            },
+            {
+              "type": "trigger",
+              "coverage": {
+                "total": 2,
+                "covered": 2,
+                "keyLexical": 2,
+                "rules": 0
+              },
+              "endpoints": {
+                "from": 49,
+                "to": 14
+              },
+              "candidates": 663,
+              "ruleAccepted": 0,
+              "ruleAcceptedCorrect": 0
+            }
+          ]
+        }
+      ],
+      "byTag": [
+        {
+          "tag": "call-unique",
+          "mustLink": 9,
+          "covered": [
+            9,
+            9,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "collaboration",
+          "mustLink": 25,
+          "covered": [
+            25,
+            25,
+            22,
+            22,
+            3,
+            3
+          ]
+        },
+        {
+          "tag": "cross-engine-message",
+          "mustLink": 14,
+          "covered": [
+            14,
+            14,
+            14,
+            14,
+            1,
+            1
+          ]
+        },
+        {
+          "tag": "de-en",
+          "mustLink": 2,
+          "covered": [
+            2,
+            2,
+            2,
+            2,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "exact-key",
+          "mustLink": 8,
+          "covered": [
+            8,
+            8,
+            8,
+            8,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "semantic",
+          "mustLink": 1,
+          "covered": [
+            1,
+            1,
+            1,
+            1,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "signal-broadcast",
+          "mustLink": 6,
+          "covered": [
+            6,
+            6,
+            6,
+            6,
+            6,
+            6
+          ]
+        },
+        {
+          "tag": "transliteration",
+          "mustLink": 3,
+          "covered": [
+            3,
+            3,
+            3,
+            3,
+            1,
+            1
+          ]
+        },
+        {
+          "tag": "trigger",
+          "mustLink": 2,
+          "covered": [
+            2,
+            2,
+            2,
+            2,
+            2,
+            2
+          ]
+        }
+      ]
+    },
+    {
+      "name": "stadtwerke-auental",
+      "split": "holdout",
+      "models": 26,
+      "note": "holdout: whole-landscape numbers only, no per-item lines (no model names) and no ground truth per relation type or tag; a ground-truth count of 1 to 4 items, or over a group of fewer than 5, is „< 5“, and one that differs by 1 to 4 from a number it is nested with is „hidden“: the same metric in another variant; must_link total, coverage in rules ∪ candidates, in rules ∪ key/lexical and in the rule tier within one variant; the candidate, rule-tier relation and acceptance counts they lie in; expected and computed findings (eval/README.md, holdout hygiene)",
+      "variants": [
+        {
+          "variant": "baseline",
+          "warnings": 0,
+          "engines": {
+            "c7": 10,
+            "c8": 16,
+            "none": 0
+          },
+          "processes": 27,
+          "executableProcesses": 27,
+          "facts": 367,
+          "mustLink": {
+            "total": 40,
+            "covered": 40,
+            "keyLexical": "hidden",
+            "rules": "hidden"
+          },
+          "ruleTier": {
+            "accepted": 3,
+            "correct": "< 5",
+            "precision": "< 5",
+            "proposed": 36,
+            "acceptedUnderTrustPolicy": 3
+          },
+          "candidates": {
+            "total": 1891,
+            "rule": 3,
+            "key": 36,
+            "lexical": 117,
+            "compatible": 1735
+          },
+          "claim": {
+            "meanBytes": 49804,
+            "maxBytes": 76658,
+            "maxModel": null,
+            "overBudget": 0
+          },
+          "findings": [
+            {
+              "kind": "unresolved-call",
+              "computed": 1,
+              "expected": "< 5",
+              "found": "< 5"
+            },
+            {
+              "kind": "dynamic-call",
+              "computed": 2,
+              "expected": "< 5",
+              "found": "< 5"
+            },
+            {
+              "kind": "duplicate-process-id",
+              "computed": 1,
+              "expected": "< 5",
+              "found": "< 5"
+            },
+            {
+              "kind": "dangling-throw",
+              "computed": 6,
+              "expected": "< 5",
+              "found": "< 5"
+            },
+            {
+              "kind": "unmatched-catch",
+              "computed": 7,
+              "expected": "< 5",
+              "found": "< 5"
+            }
+          ],
+          "byType": [
+            {
+              "type": "call",
+              "endpoints": {
+                "from": 7,
+                "to": 27
+              },
+              "candidates": 83,
+              "ruleAccepted": 3
+            },
+            {
+              "type": "message",
+              "endpoints": {
+                "from": 44,
+                "to": 41
+              },
+              "candidates": 1518,
+              "ruleAccepted": 0
+            },
+            {
+              "type": "signal",
+              "endpoints": {
+                "from": 2,
+                "to": 6
+              },
+              "candidates": 12,
+              "ruleAccepted": 0
+            },
+            {
+              "type": "trigger",
+              "endpoints": {
+                "from": 41,
+                "to": 7
+              },
+              "candidates": 278,
+              "ruleAccepted": 0
+            }
+          ]
+        },
+        {
+          "variant": "engine-stripped",
+          "warnings": 0,
+          "engines": {
+            "c7": 0,
+            "c8": 0,
+            "none": 26
+          },
+          "processes": 27,
+          "executableProcesses": 27,
+          "facts": 367,
+          "mustLink": {
+            "total": 40,
+            "covered": 40,
+            "keyLexical": "hidden",
+            "rules": "hidden"
+          },
+          "ruleTier": {
+            "accepted": 3,
+            "correct": "< 5",
+            "precision": "< 5",
+            "proposed": 36,
+            "acceptedUnderTrustPolicy": 0
+          },
+          "candidates": {
+            "total": 1891,
+            "rule": 3,
+            "key": 36,
+            "lexical": 117,
+            "compatible": 1735
+          },
+          "claim": {
+            "meanBytes": 49804,
+            "maxBytes": 76643,
+            "maxModel": null,
+            "overBudget": 0
+          },
+          "findings": [
+            {
+              "kind": "unresolved-call",
+              "computed": 2,
+              "expected": "< 5",
+              "found": "< 5"
+            },
+            {
+              "kind": "dynamic-call",
+              "computed": 1,
+              "expected": "< 5",
+              "found": "< 5"
+            },
+            {
+              "kind": "duplicate-process-id",
+              "computed": 1,
+              "expected": "< 5",
+              "found": "< 5"
+            },
+            {
+              "kind": "dangling-throw",
+              "computed": 6,
+              "expected": "< 5",
+              "found": "< 5"
+            },
+            {
+              "kind": "unmatched-catch",
+              "computed": 7,
+              "expected": "< 5",
+              "found": "< 5"
+            }
+          ],
+          "byType": [
+            {
+              "type": "call",
+              "endpoints": {
+                "from": 7,
+                "to": 27
+              },
+              "candidates": 83,
+              "ruleAccepted": 3
+            },
+            {
+              "type": "message",
+              "endpoints": {
+                "from": 44,
+                "to": 41
+              },
+              "candidates": 1518,
+              "ruleAccepted": 0
+            },
+            {
+              "type": "signal",
+              "endpoints": {
+                "from": 2,
+                "to": 6
+              },
+              "candidates": 12,
+              "ruleAccepted": 0
+            },
+            {
+              "type": "trigger",
+              "endpoints": {
+                "from": 41,
+                "to": 7
+              },
+              "candidates": 278,
+              "ruleAccepted": 0
+            }
+          ]
+        },
+        {
+          "variant": "descriptive",
+          "warnings": 0,
+          "engines": {
+            "c7": 0,
+            "c8": 0,
+            "none": 26
+          },
+          "processes": 27,
+          "executableProcesses": 0,
+          "facts": 360,
+          "mustLink": {
+            "total": 40,
+            "covered": "hidden",
+            "keyLexical": 30,
+            "rules": 0
+          },
+          "ruleTier": {
+            "accepted": 0,
+            "correct": 0,
+            "precision": null,
+            "proposed": 0,
+            "acceptedUnderTrustPolicy": 0
+          },
+          "candidates": {
+            "total": 1782,
+            "rule": 0,
+            "key": 0,
+            "lexical": 125,
+            "compatible": 1657
+          },
+          "claim": {
+            "meanBytes": 44479,
+            "maxBytes": 67106,
+            "maxModel": null,
+            "overBudget": 0
+          },
+          "findings": [
+            {
+              "kind": "unresolved-call",
+              "computed": 0,
+              "expected": "< 5",
+              "found": "< 5"
+            },
+            {
+              "kind": "dynamic-call",
+              "computed": 0,
+              "expected": "< 5",
+              "found": "< 5"
+            },
+            {
+              "kind": "duplicate-process-id",
+              "computed": 1,
+              "expected": "< 5",
+              "found": "< 5"
+            },
+            {
+              "kind": "dangling-throw",
+              "computed": 32,
+              "expected": "< 5",
+              "found": "< 5"
+            },
+            {
+              "kind": "unmatched-catch",
+              "computed": 37,
+              "expected": "< 5",
+              "found": "< 5"
+            }
+          ],
+          "byType": [
+            {
+              "type": "call",
+              "endpoints": {
+                "from": 0,
+                "to": 27
+              },
+              "candidates": 0,
+              "ruleAccepted": 0
+            },
+            {
+              "type": "message",
+              "endpoints": {
+                "from": 44,
+                "to": 41
+              },
+              "candidates": 1492,
+              "ruleAccepted": 0
+            },
+            {
+              "type": "signal",
+              "endpoints": {
+                "from": 2,
+                "to": 6
+              },
+              "candidates": 12,
+              "ruleAccepted": 0
+            },
+            {
+              "type": "trigger",
+              "endpoints": {
+                "from": 41,
+                "to": 7
+              },
+              "candidates": 278,
+              "ruleAccepted": 0
+            }
+          ]
+        },
+        {
+          "variant": "pools",
+          "warnings": 0,
+          "engines": {
+            "c7": 0,
+            "c8": 0,
+            "none": 26
+          },
+          "processes": 27,
+          "executableProcesses": 0,
+          "facts": 428,
+          "mustLink": {
+            "total": 40,
+            "covered": "hidden",
+            "keyLexical": 30,
+            "rules": 0
+          },
+          "ruleTier": {
+            "accepted": 0,
+            "correct": 0,
+            "precision": null,
+            "proposed": 0,
+            "acceptedUnderTrustPolicy": 0
+          },
+          "candidates": {
+            "total": 1782,
+            "rule": 0,
+            "key": 0,
+            "lexical": 125,
+            "compatible": 1657
+          },
+          "claim": {
+            "meanBytes": 44605,
+            "maxBytes": 67165,
+            "maxModel": null,
+            "overBudget": 0
+          },
+          "findings": [
+            {
+              "kind": "unresolved-call",
+              "computed": 0,
+              "expected": "< 5",
+              "found": "< 5"
+            },
+            {
+              "kind": "dynamic-call",
+              "computed": 0,
+              "expected": "< 5",
+              "found": "< 5"
+            },
+            {
+              "kind": "duplicate-process-id",
+              "computed": 1,
+              "expected": "< 5",
+              "found": "< 5"
+            },
+            {
+              "kind": "dangling-throw",
+              "computed": 2,
+              "expected": "< 5",
+              "found": "< 5"
+            },
+            {
+              "kind": "unmatched-catch",
+              "computed": 6,
+              "expected": "< 5",
+              "found": "< 5"
+            }
+          ],
+          "byType": [
+            {
+              "type": "call",
+              "endpoints": {
+                "from": 0,
+                "to": 27
+              },
+              "candidates": 0,
+              "ruleAccepted": 0
+            },
+            {
+              "type": "message",
+              "endpoints": {
+                "from": 44,
+                "to": 41
+              },
+              "candidates": 1492,
+              "ruleAccepted": 0
+            },
+            {
+              "type": "signal",
+              "endpoints": {
+                "from": 2,
+                "to": 6
+              },
+              "candidates": 12,
+              "ruleAccepted": 0
+            },
+            {
+              "type": "trigger",
+              "endpoints": {
+                "from": 41,
+                "to": 7
+              },
+              "candidates": 278,
+              "ruleAccepted": 0
+            }
+          ]
+        },
+        {
+          "variant": "tasks",
+          "warnings": 0,
+          "engines": {
+            "c7": 0,
+            "c8": 0,
+            "none": 26
+          },
+          "processes": 27,
+          "executableProcesses": 0,
+          "facts": 428,
+          "mustLink": {
+            "total": 40,
+            "covered": 12,
+            "keyLexical": "hidden",
+            "rules": 0
+          },
+          "ruleTier": {
+            "accepted": 0,
+            "correct": 0,
+            "precision": null,
+            "proposed": 0,
+            "acceptedUnderTrustPolicy": 0
+          },
+          "candidates": {
+            "total": 934,
+            "rule": 0,
+            "key": 0,
+            "lexical": 40,
+            "compatible": 894
+          },
+          "claim": {
+            "meanBytes": 29311,
+            "maxBytes": 49682,
+            "maxModel": null,
+            "overBudget": 0
+          },
+          "findings": [
+            {
+              "kind": "unresolved-call",
+              "computed": 0,
+              "expected": "< 5",
+              "found": "< 5"
+            },
+            {
+              "kind": "dynamic-call",
+              "computed": 0,
+              "expected": "< 5",
+              "found": "< 5"
+            },
+            {
+              "kind": "duplicate-process-id",
+              "computed": 1,
+              "expected": "< 5",
+              "found": "< 5"
+            },
+            {
+              "kind": "dangling-throw",
+              "computed": 2,
+              "expected": "< 5",
+              "found": "< 5"
+            },
+            {
+              "kind": "unmatched-catch",
+              "computed": 6,
+              "expected": "< 5",
+              "found": "< 5"
+            }
+          ],
+          "byType": [
+            {
+              "type": "call",
+              "endpoints": {
+                "from": 0,
+                "to": 27
+              },
+              "candidates": 0,
+              "ruleAccepted": 0
+            },
+            {
+              "type": "message",
+              "endpoints": {
+                "from": 19,
+                "to": 36
+              },
+              "candidates": 644,
+              "ruleAccepted": 0
+            },
+            {
+              "type": "signal",
+              "endpoints": {
+                "from": 2,
+                "to": 6
+              },
+              "candidates": 12,
+              "ruleAccepted": 0
+            },
+            {
+              "type": "trigger",
+              "endpoints": {
+                "from": 41,
+                "to": 7
+              },
+              "candidates": 278,
+              "ruleAccepted": 0
+            }
+          ]
+        },
+        {
+          "variant": "no-docs",
+          "warnings": 0,
+          "engines": {
+            "c7": 0,
+            "c8": 0,
+            "none": 26
+          },
+          "processes": 27,
+          "executableProcesses": 0,
+          "facts": 428,
+          "mustLink": {
+            "total": 40,
+            "covered": 12,
+            "keyLexical": "hidden",
+            "rules": 0
+          },
+          "ruleTier": {
+            "accepted": 0,
+            "correct": 0,
+            "precision": null,
+            "proposed": 0,
+            "acceptedUnderTrustPolicy": 0
+          },
+          "candidates": {
+            "total": 934,
+            "rule": 0,
+            "key": 0,
+            "lexical": 40,
+            "compatible": 894
+          },
+          "claim": {
+            "meanBytes": 24836,
+            "maxBytes": 44314,
+            "maxModel": null,
+            "overBudget": 0
+          },
+          "findings": [
+            {
+              "kind": "unresolved-call",
+              "computed": 0,
+              "expected": "< 5",
+              "found": "< 5"
+            },
+            {
+              "kind": "dynamic-call",
+              "computed": 0,
+              "expected": "< 5",
+              "found": "< 5"
+            },
+            {
+              "kind": "duplicate-process-id",
+              "computed": 1,
+              "expected": "< 5",
+              "found": "< 5"
+            },
+            {
+              "kind": "dangling-throw",
+              "computed": 2,
+              "expected": "< 5",
+              "found": "< 5"
+            },
+            {
+              "kind": "unmatched-catch",
+              "computed": 6,
+              "expected": "< 5",
+              "found": "< 5"
+            }
+          ],
+          "byType": [
+            {
+              "type": "call",
+              "endpoints": {
+                "from": 0,
+                "to": 27
+              },
+              "candidates": 0,
+              "ruleAccepted": 0
+            },
+            {
+              "type": "message",
+              "endpoints": {
+                "from": 19,
+                "to": 36
+              },
+              "candidates": 644,
+              "ruleAccepted": 0
+            },
+            {
+              "type": "signal",
+              "endpoints": {
+                "from": 2,
+                "to": 6
+              },
+              "candidates": 12,
+              "ruleAccepted": 0
+            },
+            {
+              "type": "trigger",
+              "endpoints": {
+                "from": 41,
+                "to": 7
+              },
+              "candidates": 278,
+              "ruleAccepted": 0
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

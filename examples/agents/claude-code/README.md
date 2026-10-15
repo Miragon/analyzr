@@ -127,6 +127,31 @@ settings, hooks, `CLAUDE.md`); the empty working directory only keeps the reposi
 `--bare` would skip `~/.claude` too, but it never uses the subscription login (it needs an API
 key), so the script does not pass it.
 
+## Integrating a landscape (plugin `analyzr-integrate`)
+
+The second plugin [`plugins/analyzr-integrate`](../../../plugins/analyzr-integrate) (M6 §3.7)
+holds `/analyzr-integrate:integrate-landscape <export> [--workspace <dir>]`: it turns a
+customer's BPMN 2.0 export into an import bundle and a German report, and the consultant runs
+the import. It needs a shell and Node 24, no MCP server and no agent token, and it is never
+loaded in live runs (those pass `--plugin-dir plugins/analyzr` only).
+
+```sh
+claude plugin marketplace add /path/to/analyzr      # once, as above
+claude plugin install analyzr-integrate@analyzr     # or: --plugin-dir /path/to/analyzr/plugins/analyzr-integrate
+
+mkdir -p ~/Kunden/kunde-x/exports && cd ~/Kunden/kunde-x   # one workspace per customer, outside the checkout
+claude                                              # the workspace is the project folder
+```
+
+Then, in the session: `/analyzr-integrate:integrate-landscape exports/2026-10-14-signavio`
+(a folder, a zip or a file; the skill copies or unpacks an export from elsewhere into
+`exports/` after asking). Start Claude Code in the workspace: the skill finds its
+`analyzr-workspace.json` there, and the guard setup it offers (`.claude/settings.json`: no
+reading of analyzr's owner key, every command asked for) applies only with the workspace as the
+project folder; check it with `/permissions` and `/sandbox`, and restart Claude Code if the
+sandbox does not show as active. Do not run the skill in a bypass or auto-approve mode. The
+skill pre-approves only its read-only `inspect` script; everything else asks first.
+
 ## What was verified
 
 - `claude plugin validate plugins/analyzr` and `claude plugin validate .` (the marketplace) pass,

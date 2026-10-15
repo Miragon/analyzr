@@ -34,6 +34,6 @@ Rules that always apply:
   its hash to `RELEASED` in `packages/procedures/test/plugin.test.ts`).
 - Run all gates before claiming something works: `pnpm format:check`, `pnpm -r typecheck`,
   `pnpm -r lint`, `pnpm -r test`, `pnpm eval:candidates`, `pnpm eval:replay`,
-  `pnpm eval:placements`.
+  `pnpm eval:placements`, `pnpm eval:descriptive`.
 - Commits and merges (proposal until the owner decides, HANDOFF §8): work on feature branches;
   nothing lands on `main` without the owner's explicit OK.

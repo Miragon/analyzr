@@ -29,9 +29,14 @@ published (every workspace package is `private: true`). What is decided and what
 - **Interfaces:** REST under `/api/v1` (OpenAPI 3.1), MCP under `/mcp` (Streamable HTTP, agent
   tokens), the `analyzr` CLI with a stdio bridge for Claude Desktop.
 - **An eval corpus as the spec:** two synthetic landscapes with ground truth, LLM-free gates in CI
-  (`eval:candidates`, `eval:replay`, `eval:placements`) and tooling for live runs (`eval:live`).
+  (`eval:candidates`, `eval:replay`, `eval:placements`, `eval:descriptive`) and tooling for live
+  runs (`eval:live`).
 - **Reference agents:** a Claude Code plugin (`analyzr`, skills `/analyzr:relations` and
   `/analyzr:placements`), Claude Desktop and Codex setups in [examples/agents](examples/agents/README.md).
+- **Integration toolkit (M6, in progress):** a second plugin `analyzr-integrate` with the skill
+  `/analyzr-integrate:integrate-landscape`, which turns a customer's BPMN export (Signavio, ARIS,
+  ADONIS, Bizagi, …) into an import bundle with stable model keys and a German report; the
+  consultant runs the import ([docs/M6-INTEGRATION-AND-GAPS.md](docs/M6-INTEGRATION-AND-GAPS.md)).
 
 ## Quick start (Docker)
 
@@ -72,7 +77,7 @@ Node 24 and pnpm 11.1.3 (`packageManager` in `package.json`):
 ```sh
 pnpm install
 pnpm format:check && pnpm -r typecheck && pnpm -r lint && pnpm -r test   # server tests use Testcontainers (Docker)
-pnpm eval:candidates && pnpm eval:replay && pnpm eval:placements
+pnpm eval:candidates && pnpm eval:replay && pnpm eval:placements && pnpm eval:descriptive
 pnpm dev   # server on 127.0.0.1:7400, Vite on 127.0.0.1:7401 (PostgreSQL: pnpm db:up)
 ```
 

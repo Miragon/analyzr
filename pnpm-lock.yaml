@@ -344,6 +344,28 @@ importers:
         specifier: workspace:0.0.0
         version: link:../contracts
 
+  tools/integrate:
+    dependencies:
+      '@analyzr/contracts':
+        specifier: workspace:0.0.0
+        version: link:../../packages/contracts
+      bpmn-moddle:
+        specifier: 10.3.1
+        version: 10.3.1
+      camunda-bpmn-moddle:
+        specifier: 8.0.2
+        version: 8.0.2
+      zeebe-bpmn-moddle:
+        specifier: 2.0.0
+        version: 2.0.0(moddle@8.2.1)
+    devDependencies:
+      '@analyzr/bpmn-facts':
+        specifier: workspace:0.0.0
+        version: link:../../packages/bpmn-facts
+      rolldown:
+        specifier: 1.2.12
+        version: 1.2.12
+
   tools/notices: {}
 
 packages:

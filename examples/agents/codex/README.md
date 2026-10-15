@@ -53,3 +53,33 @@ answers can therefore read `eval/`, the holdout's ground truth included.
 
 Not verified: Codex was not run against analyzr here. The entry was checked against the
 documentation above and parses as TOML (Python `tomllib`).
+
+## Integrating a landscape (plugin `analyzr-integrate`)
+
+The skill `integrate-landscape` of the second plugin ([`plugins/analyzr-integrate`](../../../plugins/analyzr-integrate),
+M6 §3.7) needs a shell, no MCP server and no agent token. Codex has no Claude Code skills, but
+it can follow the same text by path:
+
+1. Put the customer's export into a workspace **outside the checkout** (one per customer,
+   `exports/<YYYY-MM-DD>-<system>/`) and start Codex in that workspace with approvals on (it
+   shows every command before it runs; never a full-auto or bypass mode): the skill never
+   imports, the consultant does.
+2. Start with a prompt such as: „Lies `<checkout>/plugins/analyzr-integrate/skills/integrate-landscape/SKILL.md`
+   und folge ihm für den Export `exports/2026-10-14-signavio`. `SCRIPTS` ist
+   `<checkout>/plugins/analyzr-integrate/scripts`, `REFERENCE` ist
+   `<checkout>/plugins/analyzr-integrate/reference`.“ (Codex does not expand
+   `${CLAUDE_SKILL_DIR}` and `$ARGUMENTS`; the skill text says how to read them.)
+3. The scripts run with `node` (Node 24) and write only into the workspace (`keymap.json`,
+   `inventory/`, `bundles/`, `reports/`), never into the export or an analyzr checkout, which
+   a `workspace-write` sandbox allows; the health check and `models list` of the skill need
+   network access to analyzr and may fail in the sandbox, which the skill tolerates (the
+   report then says the existing keys were not checked). The skill's "Guard setup" is for
+   Claude Code only.
+
+The sandbox does not keep Codex from reading files outside the workspace
+([above](#not-isolated-from-the-checkout)), including
+analyzr's owner key file (`~/.local/state/analyzr/owner-key`): the approvals are the guard. M6
+§3.1 asked for a Codex sandbox without read access to that path; its sandbox modes restrict
+writes, not reads, so only an environment without access to the key (a container, VM or
+another OS user, as for the holdout above) adds to the approvals. Not verified: Codex was not
+run with the skill.

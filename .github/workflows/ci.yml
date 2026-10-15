@@ -95,6 +95,17 @@ jobs:
           git diff --exit-code --stat -- eval/reports
           test -z "$(git status --porcelain -- eval/reports)"
 
+      # How much of the LLM-free relation finding survives descriptive,
+      # tool-style models (M6 §3.11): deterministic transforms of the corpus
+      # models, scored like eval:candidates. Report only (no threshold); it fails
+      # when a transform yields BPMN the extractor warns about. The committed
+      # report (and eval/reports/descriptive.json) must match a fresh run.
+      - name: eval:descriptive
+        run: |
+          pnpm eval:descriptive
+          git diff --exit-code --stat -- eval/reports
+          test -z "$(git status --porcelain -- eval/reports)"
+
       - name: Build
         run: pnpm build
 

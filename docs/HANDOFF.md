@@ -71,9 +71,10 @@ and code are in English.
   tools around analyzr that integrate customer landscapes from ARIS, Signavio, Visio & co
   quickly (skills, plugin, CLI, converters), for agents that say what is missing to build more
   links, answered by the consultant in the web UI too, and for interview skills (decision 24:
-  M6 before M5, the trust policy, `tools/integrate`, summaries read-only). S0 (the concept) and
-  S1 "Import hygiene" are done (M6 §8 "S1 as delivered"); S3b is next, with S3a in parallel; the
-  owner reviews these „erste Anfänge“ before the rest (§7 "M6").
+  M6 before M5, the trust policy, `tools/integrate`, summaries read-only). S0 (the concept), S1
+  "Import hygiene", S3a `eval:descriptive` and S3b, the plugin `analyzr-integrate` v0, are done
+  (M6 §8 "S1 as delivered", "S3a as delivered", "S3b as delivered"); next is the owner's review
+  of these „erste Anfänge“, then S4 per M6 §8's order (§7 "M6").
 
 ## 2. Read in this order
 
@@ -87,7 +88,7 @@ and code are in English.
 | 5 | `docs/M4-VALUE-CHAIN.md` | The value chain milestone (concept, slices, open questions) |
 | 6 | `eval/README.md`, `eval/tools/SPEC.md`, `eval/value-chains/README.md` | Test landscapes, trap catalog, generator/validator, golden value chains |
 | 7 | `examples/agents/README.md` | The reference agent setups (Claude Code, Claude Desktop, Codex) |
-| 8 | `docs/M6-INTEGRATION-AND-GAPS.md` | M6, in progress: integration toolkit, gap analysis, interviews (concept, proposed decision 24, slices, open questions) |
+| 8 | `docs/M6-INTEGRATION-AND-GAPS.md` | M6, in progress: integration toolkit, gap analysis, interviews (concept, decision 24, slices with what each delivered, the `eval:descriptive` results in §3.11, the `get_landscape` limit in §6, open questions) |
 
 ## 3. Repository state
 
@@ -342,15 +343,17 @@ overall, the holdout aggregate only with „< 5“ and a secondary suppression o
 | `packages/bpmn-facts` | C7/C8 fact extraction, hostile-XML protection, `FACTS_VERSION` |
 | `packages/relations` | rule tier (unambiguous calls, key-tier proposals, findings), candidates for agents, `baseline-label/1`, pair assessor, and since M4 S2 `baseline-prefix/1` and the name-stem rule for placements (`placement.ts`) |
 | `packages/procedures` | the released procedures `analyzr-relations@0.2.0` (`relations.md`; judge each pair once) and `analyzr-placements@0.1.0` (`placements.md`, `kind: placement`, M4 S5; judge each process once), the wrappers for the `work_pipeline` and `place_processes` prompts and the Claude Code skills, the `draft_value_chain` prompt text (`prompts/`), the skill generator and drift tests |
-| `plugins/analyzr`, `.claude-plugin/marketplace.json` | Claude Code plugin 0.3.0 with the generated skills `/analyzr:relations` and `/analyzr:placements [project] [max-tasks]`; its own version since two skills ship (a test pins every skill's sha256 per plugin release) |
+| `plugins/analyzr`, `.claude-plugin/marketplace.json` | Claude Code plugin 0.3.0 with the generated skills `/analyzr:relations` and `/analyzr:placements [project] [max-tasks]`; its own version since two skills ship (a test pins every skill's sha256 per plugin release); the marketplace lists both plugins since M6 S3b |
+| `plugins/analyzr-integrate` | the second Claude Code plugin (M6 S3b, 0.1.0) for interactive, non-pipeline skills: `/analyzr-integrate:integrate-landscape <export> [--workspace <dir>]` turns a customer's BPMN 2.0 export into an import bundle `analyzr-import/1` and a German report in the consultant's workspace (keys pinned in `keymap.json`), never imports (the consultant does); reference notes per tool (unverified), the bundled scripts `inspect.mjs` and `normalize-bpmn.mjs` (generated) and their notices; a sha256 per plugin release in `tools/integrate/test/plugin.test.ts`; never loaded in live runs |
+| `tools/integrate` | `@analyzr/integrate` (M6 S3b, decision 24.8): the sources and tests of the integrate plugin's scripts (`inspect`, `normalize-bpmn` with `file`, `plan`, `bundle`, `inventory`), bundled by `pnpm --filter @analyzr/integrate generate` with a drift test; a synthetic Signavio-style export and its golden bundle, which the CLI and web tests import; imported by nothing in `apps/` or `packages/` |
 | `examples/agents` | reference setups: Claude Code (interactive and `run-headless.sh [--skill placements]`), Claude Desktop (configs + German start prompts for relations, placements and drafting a chain), Codex; documentation, not in the image |
 | `apps/server` | Hono server: domain (pure, dependency-cruiser enforced), Drizzle/PostgreSQL, REST `/api/v1`, MCP `/mcp` (stateless Streamable HTTP), local mode, agent tokens, pipeline, review; since M4 S1/S2 the value chain and placements (`src/domain/value-chain/`: storage, lifecycle, `prepareRevision`, rule proposals, findings; REST under `/value-chains`, six MCP tools; the web page since S3); since decision 19 the owner's auto-accept rules (`src/domain/auto-accept/`, seven owner-only routes and the ledger for every reviewer, no MCP) |
-| `apps/cli` | `analyzr health / status / import / seed [--project --issue-tokens --token-name --value-chains] / token create\|list\|revoke / value-chain push\|pull / rules list\|show\|add\|edit\|enable\|disable\|preview\|apply\|revoke / mcp` (stdio bridge) |
+| `apps/cli` | `analyzr health / status / import / seed [--project --issue-tokens --token-name --value-chains] / models list\|requeue\|delete / token create\|list\|revoke / value-chain push\|pull / rules list\|show\|add\|edit\|enable\|disable\|preview\|apply\|revoke / mcp` (stdio bridge) |
 | `apps/web` | projects, models, relations, findings, bpmn-js model view, upload, connect-an-agent, inbox, review screen; since M4 S3 the value chain page (`/projects/{key}/value-chain`: renderer viewer/modeler in a lazy chunk, placement review, save with dry run and conflict, drafts, link editing) and the step view; since decision 19 the tab „Regeln“ (auto-accept rules with live preview, apply, revoke) and the marks and filters of auto-accepted items in the review views |
 | `apps/agent-sim` | LLM-free reference agent that works the pipeline over MCP, both task kinds since M4 S5 |
 | `apps/demo` | `analyzr-demo seed\|serve\|check` (owner decision 20): seeds the read-only demo while its image is built, supervises PostgreSQL and the server in the container, checks a running demo from outside |
 | `eval/corpus` | test landscapes `nordwind-handel` (dev, 31 models, 17 C7/14 C8) and `stadtwerke-auental` (holdout, 26 models, 10 C7/16 C8) + `_sample`; every model deploys on Camunda 7.24.0 and 8.9.22 |
-| `eval/tools` | spec format, BPMN generator with DI, validator, deploy check (`engines.compose.yaml`), `eval:candidates`, `eval:replay`, `eval:live` and the live gate, `eval:placements` (M4 S4: the golden value chains, the rule tier and `baseline-prefix/1`), the „Auto-accept what-if“ of `eval:replay` (decision 19) |
+| `eval/tools` | spec format, BPMN generator with DI, validator, deploy check (`engines.compose.yaml`), `eval:candidates`, `eval:replay`, `eval:live` and the live gate, `eval:placements` (M4 S4: the golden value chains, the rule tier and `baseline-prefix/1`), the „Auto-accept what-if“ of `eval:replay` (decision 19), `eval:descriptive` (M6 S3a: how much of the LLM-free relation finding survives descriptive, tool-style models; report only) |
 | `eval/recordings`, `eval/reports` | recorded submissions (today the sim agent under `analyzr-relations@0.2.0` and `analyzr-placements@0.1.0`; the owner's live runs go here too) and generated reports incl. both live gates, pairs judged twice and uncovered pairs |
 | `eval/value-chains` | golden value chains + expected placements for both landscapes (M4); `validate-value-chains.mjs` checks them with `@miragon/value-chain-schema-model` 0.3.0 from npm (pinned in `eval/tools`) and its built-in cross-check, run by `pnpm test` |
 | `docker/` | `compose.yaml` (project `analyzr`: PostgreSQL 17 on 127.0.0.1:55432, analyzr on 127.0.0.1:7400) and `Dockerfile`; the read-only demo (owner decision 20): `Dockerfile.demo` with its `.dockerignore`, `compose.demo.yaml` (project `analyzr-demo`, 127.0.0.1:7480), `fly.demo.toml` |
@@ -385,7 +388,7 @@ pairs twice). Three LLM dev runs of `0.2.0` (Sonnet 5.5, concurrent claims) kept
 ```sh
 pnpm install
 pnpm format:check && pnpm -r typecheck && pnpm -r lint && pnpm -r test   # server tests use Testcontainers (Docker)
-pnpm eval:candidates && pnpm eval:replay && pnpm eval:placements
+pnpm eval:candidates && pnpm eval:replay && pnpm eval:placements && pnpm eval:descriptive
 docker compose -p analyzr -f docker/compose.yaml up -d --build --wait     # analyzr on http://127.0.0.1:7400
 docker compose -p analyzr -f docker/compose.yaml exec server analyzr seed      # loads both landscapes
 docker compose -p analyzr -f docker/compose.yaml exec server analyzr seed --value-chains   # and their golden value chains
@@ -734,11 +737,22 @@ decisions, consultant usefulness), **S1 "Import hygiene"** (**done 2026-10-15** 
 `feat/integration-and-gaps`; M6 §8 "S1 as delivered" records its deviations: one shared file rule
 and key derivation in `@analyzr/contracts`, `.xml` in the CLI,
 duplicate keys across batches, extractor warnings in import and PUT results, `analyzr models
-list|requeue|delete`, the next-step block; live-run neutral), **next** S3b the plugin
-`analyzr-integrate` v0, with S3a `eval:descriptive` in parallel; then the owner
-reviews before S4 („Offene Fragen“), S5a (answers in the UI), S2 (provenance, manifest, dry run),
-S3c, S6 (interviews), and after the live runs S5b and S7. Nothing of M6 changes released
-procedures, claim inputs or the MCP surface before the owner's live runs.
+list|requeue|delete`, the next-step block; live-run neutral), **S3a `eval:descriptive`**
+(**done 2026-10-15**; M6 §8 "S3a as delivered", results in M6 §3.11: on `nordwind-handel` the
+must_link coverage among rules ∪ candidates falls from 42/42 to 33/42 for descriptive models and
+to 9/42 when message exchanges are drawn as tasks, every rule-tier acceptance is lost under the
+trust policy once the engine is gone; `get_landscape` is 42.2 KB seeded and 71.4 KB after the
+simulation agent, so the v1 limit is 40 models per project with a warning from 35, M6 §6) and
+**S3b, the plugin `analyzr-integrate` v0** (**done 2026-10-15**; M6 §8 "S3b as delivered":
+`/analyzr-integrate:integrate-landscape` for BPMN 2.0 exports, `tools/integrate` with `inspect`
+and `normalize-bpmn`, the workspace with `keymap.json`, the bundle and the German report, run end
+to end against a scratch stack with the CLI and the web upload; its guard setup is not yet tried
+in a live Claude Code session, and its report does not yet warn above the 40-model limit). These
+three are the „erste Anfänge“ of decision 24.1. **Next:** the owner reviews them, ideally on a
+sandbox or anonymized export (M6 §10.4), and confirms the rest of the order, proposed as S4
+(„Offene Fragen“) → S5a (answers in the UI) → S2a/S2b (provenance, manifest, dry run) → S3c → S6
+(interviews), and after the live runs S5b and S7; S2c only with the owner's OK. Nothing of M6
+changes released procedures, claim inputs or the MCP surface before the owner's live runs.
 
 ### Paused milestone: process network map, M5 (owner decisions 22 and 24)
 
@@ -844,7 +858,10 @@ Git/bpmiq.yml import, MCP App widget.
   links, the document an agent reads over MCP in a seeded project anyway; the expected
   placements stay out (CI checks it). The placement report `eval/reports/placements.*` shows
   the holdout as aggregate numbers only, none over fewer than 5 processes (no rule tier split,
-  no per-tag numbers of small tags).
+  no per-tag numbers of small tags). The descriptive report `eval/reports/descriptive.*` (M6 S3a)
+  shows it as whole-landscape numbers only, „< 5“ for 1 to 4 items and „hidden“ where nested
+  numbers would differ by 1 to 4 (`eval/README.md`, holdout hygiene); its transforms read the
+  holdout's models, never its `expected.yaml` (partners come from the unchanged models' facts).
 - **Procedure releases are immutable:** recordings are keyed by `<id>@<version>`, and Git-hosted
   plugin installs stay at their version. A change to `relations.md`, to the wrapper
   (`packages/procedures/src/wrappers.ts`) or to the skill frontmatter needs a new version: bump it,
@@ -854,6 +871,13 @@ Git/bpmiq.yml import, MCP App widget.
   never deletes the old one: remove it by hand). Since decision 23 the table holds
   `analyzr-relations@0.2.0` and `analyzr-placements@0.1.0` only, and the plugin 0.3.0 has one
   release row; the earlier versions were released under the old ids (§3).
+- **The integrate plugin moves its version with every change** (M6 S3b): `plugins/analyzr-integrate`
+  is unversioned in `RELEASED` and `PLUGIN_RELEASES`; `RELEASES` in
+  `tools/integrate/test/plugin.test.ts` pins a sha256 over its files per plugin version (the
+  failing test prints it), and `CONVERTER_OUTPUTS` in `tools/integrate/test/bundle.test.ts` pins
+  what `normalize-bpmn` writes per converter version. After a change of `tools/integrate/src`, run
+  `pnpm --filter @analyzr/integrate generate` (the drift test fails until the bundled scripts
+  match). A version counts as released once it is committed; until then its row may change.
 - **Large MCP results:** Claude Code saves tool results above 50,000 characters to a file unless
   the tool declares `anthropic/maxResultSizeChars` (analyzr's tools do); with `--tools ""` an agent
   could not read that file. Keep the declaration on new tools.

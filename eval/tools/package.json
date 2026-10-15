@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "license": "MIT",
-  "description": "Spec format, BPMN generator and validator for the analyzr eval corpus; eval:candidates, eval:replay, eval:live and eval:placements",
+  "description": "Spec format, BPMN generator and validator for the analyzr eval corpus; eval:candidates, eval:replay, eval:live, eval:placements and eval:descriptive",
   "type": "module",
   "exports": {
     ".": "./src/index.ts"
@@ -27,7 +27,8 @@
     "candidates": "node src/candidates.ts",
     "replay": "node src/replay.ts",
     "live": "node src/live.ts",
-    "placements": "node src/placements.ts"
+    "placements": "node src/placements.ts",
+    "descriptive": "node src/descriptive.ts"
   },
   "dependencies": {
     "@miragon/value-chain-schema-model": "0.3.0",

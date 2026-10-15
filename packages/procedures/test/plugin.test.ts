@@ -129,6 +129,8 @@ describe('Claude Code plugin (plugins/analyzr)', () => {
   });
 
   it('is listed in the repository marketplace and declares no MCP server', () => {
+    // The second plugin, analyzr-integrate (M6 §3.7), is unversioned here: tools/integrate
+    // tests its files and pins its releases.
     expect(json('.claude-plugin/marketplace.json')).toEqual({
       name: 'analyzr',
       owner: { name: 'Miragon' },
@@ -142,6 +144,12 @@ describe('Claude Code plugin (plugins/analyzr)', () => {
           source: './plugins/analyzr',
           description:
             'The analyzr pipeline procedures as skills: /analyzr:relations judges candidate relations between BPMN processes, /analyzr:placements places processes on the value chain. Connect the analyzr MCP server separately.',
+        },
+        {
+          name: 'analyzr-integrate',
+          source: './plugins/analyzr-integrate',
+          description:
+            'Interactive skills that bring customer process landscapes into analyzr: /analyzr-integrate:integrate-landscape turns a BPMN 2.0 export (Signavio, ARIS, ADONIS, Bizagi, …) into an import bundle and a German report; the consultant runs the import. Needs a shell and Node 24.',
         },
       ],
     });

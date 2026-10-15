@@ -1,0 +1,27 @@
+{
+  "name": "@analyzr/integrate",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "description": "Sources and tests of the scripts of the Claude Code plugin plugins/analyzr-integrate (M6 §3.7): inspect and normalize-bpmn, bundled into self-contained plugins/analyzr-integrate/scripts/*.mjs by `pnpm --filter @analyzr/integrate generate`; imported by nothing in apps/ or packages/",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "generate": "node scripts/generate.ts",
+    "typecheck": "tsc",
+    "lint": "eslint .",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@analyzr/contracts": "workspace:0.0.0",
+    "bpmn-moddle": "10.3.1",
+    "camunda-bpmn-moddle": "8.0.2",
+    "zeebe-bpmn-moddle": "2.0.0"
+  },
+  "devDependencies": {
+    "@analyzr/bpmn-facts": "workspace:0.0.0",
+    "rolldown": "1.2.12"
+  }
+}
