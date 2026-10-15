@@ -188,7 +188,7 @@ The stage shows in `GET /projects/{p}/models?stage=` and MCP `list_processes`; h
 - A judgement lost outside an analysis (a revoked token, `withdraw_proposal`) queues both endpoint models again, or makes a claimed task queue a follow-up when it is submitted.
 - Double work that remains: a `compatible` pair that two concurrent partner searches both examine, re-claims after a lease expired, and candidate-cap drift between two claims (the pair then stays unjudged until one of its models changes).
 
-**Requeue.** A new revision with a changed `facts_hash` cancels the open task and queues a new one. Same facts, or another model's change, only update `endpoint_state`; a lost judgement queues its models (above). A deleted model turns partner relations `missing` (open items). An extractor change runs `analyzr reindex`, and a procedure upgrade uses `POST …/analyses/requeue {modelKeys | all}` (`{valueChain: true}` for the placement task).
+**Requeue.** A new revision with a changed `facts_hash` cancels the open task and queues a new one. Same facts, or another model's change, only update `endpoint_state`; a lost judgement queues its models (above). A deleted model turns partner relations `missing` (open items). An extractor change bumps `FACTS_VERSION`, which reaches revisions ingested afterwards (stored facts are not extracted again: there is no reindex yet; one with judgement carry-over is a later candidate, M6 §6), and a procedure upgrade uses `POST …/analyses/requeue {modelKeys | all}` (`analyzr models requeue`; `{valueChain: true}` for the placement task, `analyzr value-chain requeue`).
 
 **Task kinds** (M4b, [M4-VALUE-CHAIN.md](M4-VALUE-CHAIN.md) §3.2): `relations` (subject: a model revision, procedure `analyzr-relations`) and `placement` (subject: the project's value chain, procedure `analyzr-placements`; the agent places processes on the chain's steps). The claim result carries `kind` and the input of that kind (`analyzr-claim/1` or `analyzr-claim-placement/1`); `submit_analysis` takes flat optional fields per kind (`relations`/`noLinks` or `placements`/`unsure`; a field of the other kind is 422 `wrong-task-kind`). The chain's stage (view `value_chain_pipeline`) maps like a model's. **Judge each process once** holds for placements as judge each pair once does for relations:
 - A process's **input hash** (`analyzr-placement-input/1`) covers what a claim shows of it and nothing else: the expected procedure, the process ref, a digest of the process's own fields (name, lanes, start and end labels, documentation as cut), a digest of the chain's steps as the claim lists them (names normalized, kinds, parents, children, resolved links, the `sequence` connections) with its live step generations, the neighbours through accepted relations with their accepted steps, and the last non-agent placement assertion the claim shows (a human decision, a note, also on an open proposal, a rule-tier proposal or withdrawal). Agent proposals, withdrawals and relation proposals are left out, so agents never re-trigger the pipeline; org units, layout and the rest of the process's model are left out, so an organisational edit or a change to a sibling process re-offers nothing.
@@ -209,7 +209,7 @@ The stage shows in `GET /projects/{p}/models?stage=` and MCP `list_processes`; h
 
 Git only wins in rows a read-only export covers too. **Decision: hybrid, but asymmetric.** Postgres is canonical for everything computed or decided; BPMN bytes are canonical at their origin (the revision for uploads; a linked repo, later, mirrored with `source={repo,commit,path}` and closed to UI upload).
 
-**Import.** Every adapter yields `{path, bytes, sha256, source}` for `ingest(projectId, files, actor)`; the model key is the slugified path. Upload/`PUT` ships in v1, `analyzr import <dir>` in R1, a one-shot bpmiq.yml import (vendored MIT `content.ts`) in R2, linked sync and OKF restore later.
+**Import.** Every adapter yields `{path, bytes, sha256, source}` for `ingest(projectId, files, actor)`; the model key is the slugified path (`modelKeyFromPath`, with the BPMN file rule `.bpmn`, `.bpmn2`, `.bpmn20.xml`, `.xml` in `@analyzr/contracts`, shared by the server, the CLI and the web since M6 S1). Upload/`PUT`, the web upload and `analyzr import <dir>` ship in v1 (the CLI derives every key before sending and refuses a key twice across its batches; extractor warnings come back in the results, not stored), a one-shot bpmiq.yml import (vendored MIT `content.ts`) in R2, the import bundle with a manifest is proposed for M6 S2, linked sync and OKF restore later.
 
 **OKF projection (R1, minimal).** Each project head exports as one OKF 0.2 bundle. Leases, memberships and agent tokens are never exported.
 
@@ -241,8 +241,8 @@ Rejected relations are exported on purpose, so offline agents do not propose the
 | `/projects[/{p}]`, `…/members` (users, and services as `(iss, client_id)`), `…/invitations` | CRUD (create: any user; other writes: owner) |
 | `/projects/{p}/agent-tokens[/{t}]` | GET, POST (secret shown once), DELETE |
 | `/projects/{p}/models?stage=`, `…/models/{m}[/revisions/{r}/(content\|facts)]` | GET, DELETE |
-| `/projects/{p}/models/by-key/{key}` | PUT raw BPMN → 201 new model, 200 new revision, 200 `unchanged` |
-| `/projects/{p}/imports` | POST ≤ 50 files, outcome per file |
+| `/projects/{p}/models/by-key/{key}` | PUT raw BPMN → 201 new model, 200 new revision, 200 `unchanged`; a new model or revision carries the extractor's `warnings` (≤ 20) and `warningCount` when there are any |
+| `/projects/{p}/imports` | POST ≤ 50 files, outcome per file (with the extractor's warnings, as PUT) |
 | `/projects/{p}/landscape`, `…/relations[/{rel}]` | GET; POST to propose or add a manual relation |
 | `…/no-links` (`?modelKey=`) | GET: agents' live, current no-links, also on pairs without a relation |
 | `…/relations/{rel}/decision` (`accept`, `reject`, `hold`), `…/decisions` | POST; bulk needs ids, versions and `expectedCount` |
@@ -451,10 +451,10 @@ packages/{contracts,client,bpmn-facts,relations,procedures}
 
 - **Versioning:** project versions, branches, named tags and a diff view (later one `landscape_tag(project_id, name, seq)` table), the landscape "as of seq".
 - **Pipeline:** neighbour rechecks, priorities, lease renewal, a judgment cache beyond judging each pair once per change of its models (§3), `agent_run` bookkeeping, minimum procedure versions, a runner shipped with analyzr.
-- **Relations and content:** cross-project relations, external placeholders, error/escalation/link/compensation relations, DMN refs, fuzzy data-store matching, agent findings, comments, embeddings, runtime data.
+- **Relations and content:** cross-project relations, external placeholders, error/escalation/link/compensation relations, DMN refs, fuzzy data-store matching, agent findings (owner decision 24 lifts this in part: gap reports bound to submissions, without a lifecycle, M6 S7), comments (decision 24 adds answers to open questions, M6 S5a), embeddings, runtime data.
 - **Sync and export:** linked Git sync, OKF restore, foreign OKF, the Web Modeler, `messages/`, `findings/` and `log.md` in the export.
 - **Platform and auth:** stdio MCP, MCP subscriptions, an authorization server or OAuth proxy in analyzr, Keycloak CIMD while experimental, Enterprise-Managed Authorization (ID-JAG), token exchange, DPoP/mTLS, WorkOS API keys, personal user tokens (`analyzr-cli` uses device flow), row-level security, a shared multi-tenant instance.
-- **Decisions:** deciding via MCP; beyond the owner's auto-accept rules (decision 19): a glossary, fixed mappings, rules that re-confirm after an endpoint change, narrowing a rule by procedure.
+- **Decisions:** deciding via MCP; beyond the owner's auto-accept rules (decision 19): a glossary, fixed mappings, rules that re-confirm after an endpoint change, narrowing a rule by procedure (decision 24 adds one narrowing: rule-tier call proposals of derived revisions by derived kind and converter, M6 §3.10).
 
 ## 12. Open questions for the owner
 

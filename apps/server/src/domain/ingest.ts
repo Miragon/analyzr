@@ -13,6 +13,7 @@ import { createHash } from 'node:crypto';
 import {
   newId,
   type DeclaredProcedure,
+  type ExtractWarning,
   type ModelId,
   type PrincipalId,
   type ProjectId,
@@ -49,6 +50,11 @@ export type IngestResult =
       outcome: 'created' | 'revised' | 'unchanged';
       model: ModelRecord;
       revision: RevisionRecord;
+      /**
+       * The extractor's warnings for `created` and `revised`, uncut (empty
+       * for `unchanged`: identical bytes are not extracted). Not stored.
+       */
+      warnings: ExtractWarning[];
     }
   | { outcome: 'failed'; error: DomainError };
 
@@ -205,7 +211,7 @@ async function storeFile(
   const previousFactsHash = previous?.factsHash ?? null;
   if (live && previous && previous.contentHash === f.contentHash) {
     return {
-      result: { outcome: 'unchanged', model: existing, revision: previous },
+      result: { outcome: 'unchanged', model: existing, revision: previous, warnings: [] },
       previousFactsHash,
     };
   }
@@ -220,7 +226,7 @@ async function storeFile(
       previousFactsHash,
     };
   }
-  const { facts, processes, messageFlows, factsVersion, engine } = extracted.value;
+  const { facts, processes, messageFlows, factsVersion, engine, warnings } = extracted.value;
   const outcome = live ? 'revised' : 'created';
   const name = modelName(extracted);
 
@@ -272,7 +278,7 @@ async function storeFile(
   const model = await tx.models.findByKey(projectId, f.key);
   const revision = await tx.revisions.findInProject(projectId, modelId, revisionId);
   if (!model || !revision) throw new Error(`ingest: ${f.key} vanished inside its transaction`);
-  return { result: { outcome, model, revision }, previousFactsHash };
+  return { result: { outcome, model, revision, warnings }, previousFactsHash };
 }
 
 /**

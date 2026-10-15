@@ -1,11 +1,11 @@
 # analyzr – Milestone M6 "Landscape integration and gap analysis"
 
-Status: proposed (2026-10-15, revised after review the same day); S0 (this concept) is up for the
-owner's review; owner decision 24 (§2) with item 2 open · Branch: `feat/integration-and-gaps` ·
+Status: in progress (2026-10-15); owner decision 24 (§2, HANDOFF §4); S0 (this concept, revised
+after review) and S1 done · Branch: `feat/integration-and-gaps` ·
 Spec: [CONCEPT.md](CONCEPT.md) §1–§7 · Previous: [M4-VALUE-CHAIN.md](M4-VALUE-CHAIN.md) · Paused:
 the process network map (decision 22, issue [#2](https://github.com/Miragon/analyzr/issues/2)),
-which keeps the name M5. M6 goes ahead of it; that amends decision 22's "next milestone" and is up
-for the owner's confirmation (§10.7).
+which keeps the name M5. M6 goes ahead of it; that amends decision 22's "next milestone" (decision
+24.6, confirmed 2026-10-15).
 
 M6 makes analyzr usable on customer landscapes that live in other tools. Part A builds the
 toolkit around analyzr (CLI, an import bundle, a second Claude Code plugin with interactive
@@ -78,8 +78,8 @@ S2b's impact counts the pairs to judge.
 
 ## 2. Owner decision 24 (2026-10-15)
 
-Proposed wording for HANDOFF §4 (added when the owner confirms this concept; with it HANDOFF §7
-"Next milestone" names M6 and keeps M5 paused, and CONCEPT §11 is amended as §7 says):
+Recorded in HANDOFF §4 on 2026-10-15 in short form; HANDOFF §7 names M6 and keeps M5 paused, and
+CONCEPT §11 notes what §7 "Deferrals" says. The full record:
 
 24. **Landscape integration and gap analysis (M6)** (2026-10-15), before the process network map
     (M5, paused); this amends decision 22's "next milestone" (§10.7). The wishes: „Brauchen einen
@@ -97,13 +97,15 @@ Proposed wording for HANDOFF §4 (added when the owner confirms this concept; wi
        Anfänge“ are S1, S3a and S3b (§8, about 6.5 days of agent work): import hygiene, the loss
        measurement and the integrate skill v0 for BPMN exports. The owner reviews them before the
        rest starts.
-    2. **Trust policy: open.** The proposal amends decision 9 (calls in engine-less, converted,
-       agent-uploaded or reconstructed models are only proposed) and extends decision 19 (rules
-       may accept such call proposals per derived kind and converter); it drew „warum? was meinst
-       du dazu?“. The agent's recommendation is in §3.10; **not decided**. Until the owner
-       decides, decision 9 stays as it is and the toolkit limits the risk on its side (§3.9:
-       specs from ad-hoc converters, reconstructions and interviews get no `calledElement`; the
-       consultant runs every import, §3.1).
+    2. **Trust policy: decided as recommended** („Ja, wie empfohlen“, after „warum? was meinst
+       du dazu?“ and the agent's explanation). It amends decision 9 (a unique static call in a
+       derived revision, §3.10, is proposed, tier `key`, 0.9) and extends decision 19 (rules may
+       accept such call proposals narrowed by derived kind and converter); revisions stored
+       before S2c keep their acceptances, listed once for a bulk revocation (option (a) of
+       §10.1). It ships as S2c; until then the toolkit limits the risk on its side (§3.9: specs
+       from ad-hoc converters, reconstructions and interviews get no `calledElement`; the
+       consultant runs every import, §3.1). The related question whether REST ingest and model
+       deletion need a human or a scope of their own stays open (§10.1).
     3. **Who answers gaps:** „Ich als berater, aber sollte auch in der UI gehen.“ The consultant
        (local mode's single human, decision 6) answers, and answering works in the web UI, not only
        through skills or the CLI (§4.5). It ships as S5a, live-run neutral, right after the
@@ -123,6 +125,13 @@ Proposed wording for HANDOFF §4 (added when the owner confirms this concept; wi
        wir reden dann irgendwann über alternativen.“
     6. **Process:** „Gehe Schritt für Schritt vor, das hier weiterzuentwickeln und
        weiterzutreiben.“ M6 ships in small slices (§8), each with the full gates.
+    7. **M6 before M5** („Ja, M6 zuerst“, 2026-10-15): amends decision 22's "next milestone";
+       M5 stays paused.
+    8. **Principle 7 counts `packages/*` only** („Ja, tools/integrate“): the toolkit's scripts
+       ship in the private workspace package `tools/integrate` (§3.7, S3b).
+    9. **Agent submission summaries are shown read-only** („Ja, nur lesend“) in „Offene Fragen“
+       and the model view (S4); this reverses the resolution of M3-RELATIONS-PROCEDURE.md
+       question 1.
 
 ## 3. Part A: Integration toolkit
 
@@ -327,7 +336,7 @@ The existing previews compute impact with pure code (`apps/server/src/domain/val
 | Need | Today (`apps/cli/src`) | M6 |
 |---|---|---|
 | Which files count | `.bpmn`, `.bpmn2`, `.bpmn20.xml` (`files.ts` `BPMN_FILE`); the web (`apps/web/src/lib/upload.ts` `BPMN_SUFFIXES`) and the server's key derivation (`domain/paths.ts`) also know `.xml`; the CLI skips hidden directories but not hidden files (`._x.bpmn`), the web skips both | S1: one shared rule in `@analyzr/contracts` |
-| Same key twice | the server refuses it within one request; across batches the second file silently revises the first | S1: refused locally before sending |
+| Same key twice | the server refuses it within one request; across batches the second file silently revises the first | S1: refused locally before sending (a plain `.xml` that loses its key to a `.bpmn…` file: skipped, "S1 as delivered") |
 | Extractor warnings | dropped | S1: in import and PUT results, printed |
 | What happened next | per-file outcome only | S1: tasks waiting in the project and the next agent step |
 | Models | no verb; REST has list, delete and requeue | S1: `analyzr models list\|delete\|requeue` |
@@ -502,7 +511,7 @@ is not reused in place.
   (no warnings) and import it with bpmn-js (no import warnings; a Playwright check like M4 S3's
   import harness for chains).
 
-### 3.10 Trust policy (open, the agent's recommendation)
+### 3.10 Trust policy (decision 24.2)
 
 **The problem.** Decision 9 accepts a static `calledElement` that matches exactly one process id
 at ingest, without review (`packages/relations/src/rules.ts` `callRules`, tier `rule`). That is
@@ -510,7 +519,7 @@ right for a call a human modelled in an executable Camunda model. It is wrong fo
 reconstructed from a picture or an interview, a converter guessed, or an agent uploaded: such a
 model creates accepted relations on upload that no human ever saw.
 
-**Recommendation.** A revision is **modelled** when its `engine` is `c7` or `c8`, its `uploader`
+**The rule** (recommended by the agent, agreed by the owner 2026-10-15). A revision is **modelled** when its `engine` is `c7` or `c8`, its `uploader`
 is `human` and its declared `derived.kind` is absent or `export`; otherwise **derived**. Every
 signal is computed or authenticated by the server; declarations can only lower trust. The server
 authenticates the credential, not the person using it: `uploader: human` means the owner key or
@@ -542,7 +551,8 @@ rationale naming the reason) instead of an acceptance; findings are unchanged. C
   agreed design names kind, tier, minimum confidence and optionally an agent or a model, and
   CONCEPT §11 defers further narrowing, so that extension is part of the owner's answer.
 
-Implemented as S2c only after the owner's OK; until then §3.9's renderer rule and the
+The owner agreed with option (a) for older revisions and with the decision-19 extension
+(decision 24.2). It ships as S2c; until then §3.9's renderer rule and the
 consultant-runs-the-import rule limit the risk.
 
 ### 3.11 `eval:descriptive`: measure the loss first
@@ -814,7 +824,7 @@ draft (after the owner's rated draft run, M4b) are later work.
 | Inventory-first import | coverage against the customer's catalog from day one, without stub models. Needs a boundary entity: with placeholders. |
 | Instruction-like content signal | foreign exports and transcripts widen the injection surface; a cheap deterministic backstop as an extractor warning and gap signal. With S4 or S7. |
 | Run size and cost estimate | claim sizes against the 100 KB and 96 KB (`CLAIM_PLACEMENT_MAX_BYTES`) budgets, documentation cut by `CLAIM_DOC_CHARS`, CONCEPT §7's cost per revision. Before the first paid customer run; the follow-up of S2b's impact gives the pair count. |
-| Reindex with judgement carry-over, then facts v2 | no reindex exists (`packages/bpmn-facts/src/version.ts` names one that was never built); `facts_hash` includes `FACTS_VERSION`, so any fact change re-judges every pair. Carry-over first, then one bump with descriptive facts (collapsed subprocesses, data objects, black-box participants, task-to-pool messages), systems and tool identities. Only if `eval:descriptive` shows a large loss. |
+| Reindex with judgement carry-over, then facts v2 | no reindex exists (`packages/bpmn-facts/src/version.ts` named one until M6 S1); `facts_hash` includes `FACTS_VERSION`, so any fact change re-judges every pair. Carry-over first, then one bump with descriptive facts (collapsed subprocesses, data objects, black-box participants, task-to-pool messages), systems and tool identities. Only if `eval:descriptive` shows a large loss. |
 | Placeholders (external parties, phantom processes) | lifts CONCEPT §11's deferral; the computed boundary signals of §4.3 come first. Owner decision. |
 | MCP `put_model` or model drafts as proposals | shell-less agents (Claude Desktop) could submit models; only after the trust decision. Owner choice between the two. |
 | Vision reconstruction | screenshots, PDFs, slides into a spec, `reconstructed`, one review per diagram. After the renderer and the trust decision. |
@@ -845,7 +855,7 @@ draft (after the owner's rated draft run, M4b) are later work.
 - **Deferrals (CONCEPT §11).** M6 lifts the deferral of "agent findings" in part (gap reports
   bound to submissions, without a lifecycle, S7) and adds answers to open questions (S5a), close
   to the deferred "comments"; the S2c recommendation narrows decision-19 rules by derived kind and
-  converter, which §11 also defers. CONCEPT §11 is amended on confirmation.
+  converter, which §11 also defers. CONCEPT §11 notes both since decision 24.
 - **Holdout hygiene.** No agent opens the holdout's `expected.yaml`, `README.md`, `spec/`,
   expected placements, recordings or report sections; tooling reports it in aggregate only.
 - **Privacy.** Customer exports and transcripts never enter the repository or the eval corpus.
@@ -1015,6 +1025,62 @@ before it is called done and records deviations here as "S<n> as delivered".
   - the client regenerated; MCP snapshots, `eval:candidates`, `eval:replay` and `eval:placements`
     unchanged; all gates green.
 
+**S1 as delivered** (2026-10-15, branch `feat/integration-and-gaps`; every gate green): every
+bullet above, with three deviations:
+
+- The next-step block after a text-mode `import` prints the `next:` lines only when something
+  waits, and each slash command only for the kind that waits; the spec names the step
+  unconditionally. The waiting line keeps the spec's wording (`1 relations tasks waiting`).
+- A model key goes to the first file with a `.bpmn`, `.bpmn2` or `.bpmn20.xml` suffix and only
+  then to a plain `.xml` (`modelKeyOwners` in `@analyzr/contracts/paths`, used by the CLI and
+  the web), not to the first file in path order: an export's `Order.xml` that may be no BPMN
+  sorts before `order.bpmn` and would keep the model out. The local refusal names the file that
+  gets the key (the server's wording plus the path: „another file of this import has model key
+  z (Z.bpmn)“ for `z.bpmn2`); a plain `.xml` that loses its key to a `.bpmn…` file is skipped
+  instead (below).
+- Beyond the extractor's 100 warnings the result lists the first 19 and the extractor's
+  `too-many-warnings` entry („N more warnings omitted“) last, instead of the first 20, so the
+  number it dropped reaches the user; `warningCount` stays ≤ 101 (`MAX_RESULT_WARNING_COUNT`,
+  now in the schema). The CLI prints `warnings: 100 (parse-warning 19, 81 more, 150 more warnings
+  omitted)`, `--verbose` the entry after „… 81 more not listed“; the web shows „100 Hinweise“ and
+  the entry („Weitere Hinweise ausgelassen“) after „… und 81 weitere“.
+
+**Taken by the implementing agent (the owner may overrule):** a plain `.xml` whose model key went
+to a `.bpmn`, `.bpmn2` or `.bpmn20.xml` file of the same import (a tool's sidecar `Prozess.xml`
+next to `Prozess.bpmn`) is skipped, not failed, so such an export imports in one go: it is never
+sent (only the server could tell whether it is BPMN, and if so it would revise the model), it is
+listed with the reason `key-taken` and the file that has the key (`keyTakenBy` in
+`@analyzr/contracts/paths`, used by the CLI and the web), and it never changes the exit code. The
+CLI prints `skipped   Prozess.xml  (same model key as Prozess.bpmn)`, the summary names the
+reasons (`, 2 skipped (1 not BPMN, 1 same model key)`; `, N skipped (not BPMN)` as before when all
+are no BPMN), `--json` carries `{path, reason: 'key-taken', takenBy}` under `skipped`, and the
+corpus JSON of `import` and `seed --json` stays byte-identical. The web lists the file as
+„gleicher Modellschlüssel wie Prozess.bpmn“ under „N Dateien übersprungen (kein BPMN, größer als
+5,0 MB oder gleicher Modellschlüssel wie eine BPMN-Datei)“. Unchanged: two `.bpmn…` files with
+one key, two plain `.xml` files with one key (neither has a `.bpmn…` owner) and a path without a
+valid key fail as before; the exit 1 for „nothing imported“ stays limited to an import whose files
+were all plain `.xml` that is no BPMN (a skipped sidecar always has its model sent next to it).
+
+Choices the spec left open: the CLI and the web sort an import by UTF-16 code units
+(`comparePaths` in `@analyzr/contracts/paths`; the web's `localeCompare` gave `a_b.bpmn` the key
+the CLI gave `a-b.bpmn`); `isHiddenPath` splits on `\` as well as `/`, as `modelKeyFromPath`
+does; a file above 5 MB that the CLI keeps local now names its derived `modelKey` (it was `null`;
+the server's wording for the same case); the CLI also lists each skipped file (`skipped   <path>
+(not BPMN)`) and `seed`'s short line gets the same „N skipped“ suffix; when every file picked up is
+a plain `.xml` that is no BPMN, nothing was imported: `import` prints the skipped files and exits 1
+(„no BPMN files below <dir>: N skipped (not BPMN)“, as for a folder without BPMN files, without
+the next-step block), and the web shows the warning toast „Keine BPMN-Dateien gefunden“ instead
+of „0 Dateien importiert“; a failed task listing (a token without `read`) is a note on stderr that
+leaves the exit code alone; `models requeue` exits 1 when a key has no live model; `models delete
+--json` prints `{deleted, models}`, and when a later DELETE fails `{deleted, models, failed: {key,
+error}}` with the models deleted before it, then exits 1; the web lists the files that failed
+before sending first and labels `multiple-event-definitions` „Mehrere Ereignisdefinitionen“.
+Beyond the spec: the bundle guard also pins `packages/contracts/src/paths.ts` as the only
+contracts module in the web bundle (entry chunk 201.2 KB gzip after the review fixes, ceiling
+240 KB), and the Playwright check ran with the whole suite (46 passed, before the review fixes)
+against a server started from source on a Testcontainers PostgreSQL. The bpmn-moddle message for a 400-character id that is no NCName has
+485 characters.
+
 **S2 "Provenance, manifest, dry run"** (after the owner's review of the „erste Anfänge“). S2a:
 §3.2–§3.4: typed provenance, the manifest (`sha256` optional, `source.scope`), key pinning,
 `external-id-moved` and `external-id-changed`, `GET /projects/{p}/external-ids?system=`; a
@@ -1110,7 +1176,8 @@ stage; OKF (deferred, decision 22).
 
 ## 10. Open questions for the owner
 
-1. **Trust policy (amends decisions 9 and 19).** Calls in models that are not modelled (engine
+1. **Trust policy (amends decisions 9 and 19). Decided 2026-10-15 as recommended, with (a)
+   (decision 24.2); only its last sentence stays open.** Calls in models that are not modelled (engine
    null, uploaded with an agent token, or declared converted, reconstructed or as-told) are
    proposed (tier `key`, 0.9) instead of accepted, and decision-19 rules may accept such
    rule-tier call proposals narrowed by derived kind and converter (§3.10). Recommendation: yes to
@@ -1123,7 +1190,7 @@ stage; OKF (deferred, decision 22).
    `analyzr:write` token? In local mode a human-only rule still lets the consultant's own
    processes act with the owner key. Recommendation: decide with the trust policy; until then the
    toolkit's tokens carry no write scope.
-2. **Agent summaries for reviewers.** Showing submission summaries in „Offene Fragen“ and the
+2. **Agent summaries for reviewers. Decided 2026-10-15: shown read-only (decision 24.9).** Showing submission summaries in „Offene Fragen“ and the
    model view reverses the resolution of [M3-RELATIONS-PROCEDURE.md](M3-RELATIONS-PROCEDURE.md)
    question 1 (2026-10-08: summaries stay REST-only). They are where agents report gaps today.
    Recommendation: show them, read-only.
@@ -1147,11 +1214,12 @@ stage; OKF (deferred, decision 22).
    dropped at its end; a project deletion route; or a purge use case as an explicit exception to
    principle 5. Recommendation: one database per engagement for now, a purge use case with server
    mode (R1).
-7. **M6 before M5.** Decision 22 makes the process network map the next milestone, and you
+7. **M6 before M5. Decided 2026-10-15: yes (decision 24.6).** Decision 22 makes the process network map the next milestone, and you
    paused it. This concept puts M6 ahead of it, but none of your words quoted in decision 24 says
    so. Please confirm the order; then decision 24 says "amends decision 22's 'next milestone'"
    and HANDOFF §7 "Next milestone" names M6.
-8. **Principle 7 and `tools/integrate`.** The toolkit's scripts (`inspect`, `normalize-bpmn`, the
+8. **Principle 7 and `tools/integrate`. Decided 2026-10-15: principle 7 counts `packages/*`
+   only (decision 24.7).** The toolkit's scripts (`inspect`, `normalize-bpmn`, the
    renderer, `transcript-prep`, the bundled CLI) are product logic shipped to consultants, in one
    private workspace package `tools/integrate` outside `packages/*`. M4 treated a sixth package
    in `packages/` as breaking principle 7. Reading proposed here: principle 7 counts `packages/*`

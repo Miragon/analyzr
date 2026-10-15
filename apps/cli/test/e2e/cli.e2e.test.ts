@@ -4,8 +4,10 @@
  * `analyzr mcp` spawned as a child process the way Claude Desktop starts it,
  * spoken to over stdio with the official SDK client (initialize, tools/list,
  * tools/call list_processes) in the 2025-11-25 and the 2026-07-28 revision,
- * `analyzr value-chain push|pull` with the golden dev chain, and `analyzr seed
- * --value-chains` (M4 S4).
+ * `analyzr value-chain push|pull` with the golden dev chain, `analyzr seed
+ * --value-chains` (M4 S4), and the import hygiene of M6 S1 (`.xml`, skipped
+ * plain XML and sidecars, extractor warnings, the waiting tasks) with
+ * `analyzr models list|requeue|delete`.
  */
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -148,7 +150,26 @@ describe('analyzr seed', () => {
     ]);
     expect(r.err).toBe('');
     expect(r.code).toBe(0);
-    const [result] = JSON.parse(r.out) as [{ token: { secret: string } }];
+    const [result] = JSON.parse(r.out) as [
+      {
+        token: { secret: string };
+        import: { files: Record<string, unknown>[]; counts: Record<string, number> };
+      },
+    ];
+    // M6 S1 keeps the seed JSON of the corpus byte-identical: no `skipped`, no `warnings`.
+    expect(Object.keys(result.import)).toEqual(['project', 'files', 'counts']);
+    expect(Object.keys(result.import.counts)).toEqual([
+      'created',
+      'revised',
+      'unchanged',
+      'failed',
+    ]);
+    expect(result.import.files).toHaveLength(3);
+    for (const f of result.import.files) {
+      expect(Object.keys(f)).toEqual(['path', 'modelKey', 'outcome', 'problem']);
+    }
+    expect(r.out).not.toContain('"skipped"');
+    expect(r.out).not.toContain('"warning');
     expect(result).toMatchObject({
       project: 'sample-run-1',
       landscape: 'sample',
@@ -255,6 +276,105 @@ describe('analyzr import', () => {
     expect((await analyzr(['import', 'changed', '-p', 'nordwind-handel'])).code).toBe(0);
     const restored = (await status()).projects.find((p) => p.key === 'nordwind-handel');
     expect(restored?.relations['accepted']).toBe(9);
+  });
+});
+
+describe('analyzr import and models (M6 S1)', () => {
+  const root = () => path.join(dir, 'm6-s1');
+  const sample = path.join(REPO_ROOT, 'eval/corpus/_sample/models');
+  // bpmn-moddle drops the second Task_A and warns; the file is still created.
+  const duplicate = [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" id="Definitions_1" targetNamespace="http://bpmn.io/schema/bpmn">',
+    '  <bpmn:process id="Process_Dup" isExecutable="false">',
+    '    <bpmn:task id="Task_A" name="Eins" />',
+    '    <bpmn:task id="Task_A" name="Zwei" />',
+    '  </bpmn:process>',
+    '</bpmn:definitions>',
+    '',
+  ].join('\n');
+
+  beforeAll(async () => {
+    await mkdir(path.join(root(), 'export'), { recursive: true });
+    await mkdir(path.join(root(), 'w'), { recursive: true });
+    await writeFile(
+      path.join(root(), 'auftrag.xml'),
+      await readFile(path.join(sample, 'vertrieb/auftragsabwicklung.bpmn')),
+    );
+    await writeFile(path.join(root(), 'export', 'meta.xml'), '<meta/>');
+    await writeFile(path.join(root(), 'w', 'dup.bpmn'), duplicate);
+    // A tool's sidecar next to the model: skipped for its key, never sent.
+    await writeFile(path.join(root(), 'w', 'dup.xml'), '<meta/>');
+    await writeFile(path.join(root(), '._dup.bpmn'), duplicate);
+  });
+
+  it('imports .xml, skips plain XML, a sidecar and hidden files, reports warnings and what waits', async () => {
+    const r = await analyzr(['import', 'm6-s1', '-p', 'm6-s1', '--create', '--verbose']);
+    expect(r.err).toBe('');
+    expect(r.code).toBe(0);
+    expect(r.out).toContain('  created   auftrag\n');
+    expect(r.out).toMatch(
+      / {2}created {3}w\/dup {2}warnings: 1 \(parse-warning 1\)\n {6}parse-warning: .*duplicate ID <Task_A>/,
+    );
+    expect(r.out).toContain('  skipped   w/dup.xml  (same model key as w/dup.bpmn)\n');
+    expect(r.out).toContain('  skipped   export/meta.xml  (not BPMN)\n');
+    expect(r.out).not.toContain('._dup');
+    expect(r.out).toContain(
+      'm6-s1: 2 files, 2 created, 0 revised, 0 unchanged, 0 failed, 2 skipped (1 not BPMN, 1 same model key)\n',
+    );
+    expect(r.out).toContain('m6-s1: 2 relations tasks waiting, placement task waiting: no\n');
+    expect(r.out).toContain('  /analyzr:relations m6-s1\n');
+
+    const again = await analyzr(['import', 'm6-s1', '-p', 'm6-s1', '--json']);
+    expect(again.code).toBe(0);
+    const summary = JSON.parse(again.out) as { files: { outcome: string }[]; skipped: unknown };
+    expect(summary.files.map((f) => f.outcome)).toEqual(['unchanged', 'unchanged']);
+    expect(summary.skipped).toEqual([
+      { path: 'w/dup.xml', reason: 'key-taken', takenBy: 'w/dup.bpmn' },
+      { path: 'export/meta.xml', reason: 'not-bpmn' },
+    ]);
+  });
+
+  it('lists, requeues and deletes models; an agent token cannot delete', async () => {
+    const listed = await analyzr(['models', 'list', '-p', 'm6-s1', '--json']);
+    expect(listed.code).toBe(0);
+    const models = JSON.parse(listed.out) as { key: string; stage: string }[];
+    expect(models.map((m) => [m.key, m.stage])).toEqual([
+      ['auftrag', 'waiting_for_agent'],
+      ['w/dup', 'waiting_for_agent'],
+    ]);
+
+    const requeued = await analyzr(['models', 'requeue', 'w/dup', '-p', 'm6-s1']);
+    expect(requeued.code).toBe(0);
+    expect(requeued.out).toContain('m6-s1: 0 queued, 1 open, 0 not found');
+
+    const token = await analyzr([
+      'token',
+      'create',
+      '-p',
+      'm6-s1',
+      '--scopes',
+      'read,propose,write',
+      '--json',
+    ]);
+    const { secret } = JSON.parse(token.out) as { secret: string };
+    const refused = await analyzr(['models', 'delete', 'w/dup', '-p', 'm6-s1', '--yes'], {
+      ANALYZR_TOKEN: secret,
+    });
+    expect(refused.code).toBe(1);
+    expect(refused.err).toContain('deleting models needs the owner key');
+
+    const dry = await analyzr(['models', 'delete', 'w/dup', '-p', 'm6-s1']);
+    expect(dry.code).toBe(1);
+    expect(dry.out).toContain('would delete 1 model from m6-s1:');
+    expect(dry.err).toContain('nothing deleted');
+
+    const deleted = await analyzr(['models', 'delete', 'w/dup', '-p', 'm6-s1', '--yes']);
+    expect(deleted.err).toBe('');
+    expect(deleted.code).toBe(0);
+    expect(deleted.out).toContain('deleted w/dup\n');
+    const after = await analyzr(['models', 'list', '-p', 'm6-s1']);
+    expect(after.out).toContain('m6-s1: 1 model\n');
   });
 });
 

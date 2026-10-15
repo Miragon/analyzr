@@ -210,6 +210,7 @@ export function extractFake(xml: string, modelKey: string): Extracted {
     processes,
     facts,
     messageFlows: [],
+    warnings: [],
   };
 }
 

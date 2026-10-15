@@ -8,6 +8,7 @@ import type {
   FindingList,
   ImportResult,
   ModelPage,
+  PutModelResult,
   RelationPage,
   RevisionFacts,
 } from '@analyzr/contracts';
@@ -124,5 +125,100 @@ describe('real @analyzr/bpmn-facts and @analyzr/relations on eval/corpus/_sample
     const result = (await res.json()) as ImportResult;
     expect(result.files.every((f) => f.outcome === 'unchanged')).toBe(true);
     expect(await relations()).toEqual(before);
+  });
+});
+
+describe('extractor warnings in import and PUT results (M6 S1)', () => {
+  const bpmn = (tasks: readonly string[]) =>
+    [
+      '<?xml version="1.0" encoding="UTF-8"?>',
+      '<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" id="Definitions_1" targetNamespace="http://bpmn.io/schema/bpmn">',
+      '  <bpmn:process id="Process_A" isExecutable="false">',
+      ...tasks.map((id, i) => `    <bpmn:task id="${id}" name="Aufgabe ${i + 1}" />`),
+      '  </bpmn:process>',
+      '</bpmn:definitions>',
+      '',
+    ].join('\n');
+  const clean = bpmn(['Task_A', 'Task_B']);
+  // bpmn-moddle drops the second element itself, so the extractor never sees a `duplicate-id`.
+  const duplicate = bpmn(['Task_A', 'Task_A']);
+  // A 400-character id that is no NCName: bpmn-moddle's message quotes it (about 490 characters).
+  const illegal = bpmn([`1${'a'.repeat(399)}`]);
+  const file = (path: string, xml: string) => ({ path, bytes: new TextEncoder().encode(xml) });
+
+  async function importOne(path: string, xml: string): Promise<ImportResult['files'][number]> {
+    const res = await t.asOwner('/api/v1/projects/warnings/imports', {
+      method: 'POST',
+      body: importForm([file(path, xml)]),
+    });
+    expect(res.status).toBe(200);
+    const { files: outcomes } = (await res.json()) as ImportResult;
+    expect(outcomes).toHaveLength(1);
+    return outcomes[0]!;
+  }
+
+  beforeAll(async () => {
+    await t.createProject('warnings');
+  });
+
+  it('import: a warning-free file answers exactly as before, a duplicate id in a revision warns', async () => {
+    const created = await importOne('w/dup.bpmn', clean);
+    expect(created).toEqual({
+      path: 'w/dup.bpmn',
+      modelKey: 'w/dup',
+      outcome: 'created',
+      problem: null,
+    });
+    expect(Object.keys(created)).toEqual(['path', 'modelKey', 'outcome', 'problem']);
+
+    const revised = await importOne('w/dup.bpmn', duplicate);
+    expect(revised).toMatchObject({ modelKey: 'w/dup', outcome: 'revised', problem: null });
+    expect(revised.warnings).toEqual([
+      { code: 'parse-warning', message: expect.stringMatching(/duplicate ID <Task_A>/) as unknown },
+    ]);
+    expect(revised.warningCount).toBe(1);
+
+    // Identical bytes are not extracted: no warnings on `unchanged`.
+    const unchanged = await importOne('w/dup.bpmn', duplicate);
+    expect(unchanged).toEqual({
+      path: 'w/dup.bpmn',
+      modelKey: 'w/dup',
+      outcome: 'unchanged',
+      problem: null,
+    });
+  });
+
+  it('import: a long bpmn-moddle message is cut to 300 characters ending in …', async () => {
+    const created = await importOne('w/illegal.bpmn', illegal);
+    expect(created).toMatchObject({ outcome: 'created', warningCount: 1 });
+    const [warning] = created.warnings ?? [];
+    expect(warning?.code).toBe('parse-warning');
+    expect(warning?.message).toHaveLength(300);
+    expect(warning?.message).toMatch(/^unparsable content <bpmn:task> .*illegal ID <1a+…$/);
+  });
+
+  it('PUT answers the same; a warning-free PUT has no warnings key', async () => {
+    const created = await t.putModel('warnings', 'p/dup', clean);
+    expect(created.status).toBe(201);
+    expect(Object.keys((await created.json()) as object)).toEqual(['outcome', 'model', 'revision']);
+
+    const revised = await t.putModel('warnings', 'p/dup', duplicate);
+    expect(revised.status).toBe(200);
+    const body = (await revised.json()) as PutModelResult;
+    expect(body.outcome).toBe('revised');
+    expect(body.warnings).toEqual([
+      { code: 'parse-warning', message: expect.stringMatching(/duplicate ID <Task_A>/) as unknown },
+    ]);
+    expect(body.warningCount).toBe(1);
+
+    const long = await t.putModel('warnings', 'p/illegal', illegal);
+    expect(long.status).toBe(201);
+    const cut = (await long.json()) as PutModelResult;
+    expect(cut.warningCount).toBe(1);
+    expect(cut.warnings?.[0]?.message).toHaveLength(300);
+    expect(cut.warnings?.[0]?.message.endsWith('…')).toBe(true);
+
+    const unchanged = (await (await t.putModel('warnings', 'p/dup', duplicate)).json()) as object;
+    expect(Object.keys(unchanged)).toEqual(['outcome', 'model', 'revision']);
   });
 });

@@ -1,5 +1,5 @@
 import { importModels } from '@analyzr/client';
-import type { ImportFileOutcome } from '@analyzr/client';
+import type { ExtractWarning, ImportFileOutcome } from '@analyzr/client';
 import { useQueryClient } from '@tanstack/react-query';
 import { cn } from 'cn';
 import {
@@ -32,10 +32,18 @@ import { MAX_IMPORT_FILES, MAX_MODEL_BYTES } from '@/lib/limits';
 import { formatBytes } from '@/lib/labels';
 import { keys } from '@/lib/queries';
 import {
+  BPMN_ACCEPT,
+  BPMN_SUFFIX_TEXT,
   entriesFromDataTransfer,
   entriesFromFileList,
   filesOf,
+  isSkippedXml,
   planUpload,
+  skippedReasonText,
+  warningCountText,
+  warningDisplay,
+  warningLabel,
+  type SkippedFile,
   type UploadEntry,
   type UploadPlan,
 } from '@/lib/upload';
@@ -52,23 +60,36 @@ const OUTCOMES: Record<
 
 interface UploadRun {
   outcomes: ImportFileOutcome[];
-  skipped: UploadPlan['skipped'];
+  skipped: SkippedFile[];
   done: boolean;
 }
 
-/** Sends the files batch by batch; a failing batch marks its files as failed and the rest go on. */
+interface ImportProgress {
+  outcomes: ImportFileOutcome[];
+  skipped: SkippedFile[];
+}
+
+/**
+ * Sends the files batch by batch; a failing batch marks its files as failed and the rest go on.
+ * Files that failed or were skipped before sending come first; a plain `.xml` that is no BPMN
+ * joins the skipped files.
+ */
 async function runImport(
   project: string,
   plan: UploadPlan,
-  onProgress: (outcomes: ImportFileOutcome[]) => void,
-): Promise<ImportFileOutcome[]> {
-  const outcomes: ImportFileOutcome[] = [];
+  onProgress: (progress: ImportProgress) => void,
+): Promise<ImportProgress> {
+  const outcomes: ImportFileOutcome[] = [...plan.failed];
+  const skipped: SkippedFile[] = [...plan.skipped];
   for (const batch of plan.batches) {
     try {
       const result = await unwrap(
         importModels({ client: api, path: { project }, body: { files: filesOf(batch) } }),
       );
-      outcomes.push(...result.files);
+      for (const file of result.files) {
+        if (isSkippedXml(file)) skipped.push({ path: file.path, reason: 'not-bpmn' });
+        else outcomes.push(file);
+      }
     } catch (error) {
       const detail = errorMessage(error);
       outcomes.push(
@@ -85,9 +106,47 @@ async function runImport(
         })),
       );
     }
-    onProgress([...outcomes]);
+    onProgress({ outcomes: [...outcomes], skipped: [...skipped] });
   }
-  return outcomes;
+  return { outcomes, skipped };
+}
+
+/**
+ * The extractor's warnings of one file: „3 Hinweise“, the entries in a disclosure (M6 S1).
+ * Beyond the extractor's 100, its own entry („Weitere Hinweise ausgelassen“) comes last.
+ */
+function WarningsDisclosure({
+  warnings,
+  count,
+}: {
+  warnings: readonly ExtractWarning[];
+  count: number;
+}) {
+  const shown = warningDisplay(warnings, count);
+  const entry = (w: ExtractWarning, key: number) => (
+    <li key={key} data-testid="import-warning" data-code={w.code}>
+      <span className="font-medium text-foreground">{warningLabel(w.code)}</span>
+      {w.elementId ? (
+        <>
+          {' '}
+          <code className="font-mono">{w.elementId}</code>
+        </>
+      ) : null}
+      <span lang="en" className="block break-words">
+        {w.message}
+      </span>
+    </li>
+  );
+  return (
+    <details data-testid="import-warnings" className="text-sm">
+      <summary className="cursor-pointer text-warning">{warningCountText(shown.count)}</summary>
+      <ul className="mt-2 flex flex-col gap-2 text-xs">
+        {shown.listed.map(entry)}
+        {shown.unlisted > 0 ? <li>… und {shown.unlisted} weitere</li> : null}
+        {shown.omitted ? entry(shown.omitted, shown.listed.length) : null}
+      </ul>
+    </details>
+  );
 }
 
 /**
@@ -114,26 +173,34 @@ export function UploadPanel({
   async function upload(entries: UploadEntry[]) {
     if (busy) return;
     const plan = planUpload(entries);
-    const total = plan.batches.reduce((n, b) => n + b.length, 0);
+    const total = plan.batches.reduce((n, b) => n + b.length, 0) + plan.failed.length;
     if (total === 0) {
       toast({
         tone: 'warning',
         title: 'Keine BPMN-Dateien gefunden',
-        description: 'Erlaubt sind .bpmn, .bpmn2 und .xml, je höchstens 5 MB.',
+        description: `Erlaubt sind ${BPMN_SUFFIX_TEXT}, je höchstens 5 MB.`,
       });
       setRun({ outcomes: [], skipped: plan.skipped, done: true });
       return;
     }
-    setRun({ outcomes: [], skipped: plan.skipped, done: false });
-    const outcomes = await runImport(project, plan, (partial) =>
-      setRun({ outcomes: partial, skipped: plan.skipped, done: false }),
+    setRun({ outcomes: plan.failed, skipped: plan.skipped, done: false });
+    const { outcomes, skipped } = await runImport(project, plan, (partial) =>
+      setRun({ ...partial, done: false }),
     );
-    setRun({ outcomes, skipped: plan.skipped, done: true });
+    setRun({ outcomes, skipped, done: true });
     // Models, landscape and the project list refresh in the background.
     void queryClient.invalidateQueries({ queryKey: keys.project(project) });
     void queryClient.invalidateQueries({ queryKey: keys.projects });
     const failed = outcomes.filter((o) => o.outcome === 'failed').length;
-    if (failed > 0) {
+    if (outcomes.length === 0) {
+      // Every file was a plain .xml that the server found to be no BPMN: nothing was imported.
+      toast({
+        tone: 'warning',
+        title: 'Keine BPMN-Dateien gefunden',
+        description:
+          'Die XML-Dateien enthalten kein BPMN-Modell; sie stehen unten als übersprungen.',
+      });
+    } else if (failed > 0) {
       toast({
         tone: 'danger',
         title: `${failed} von ${outcomes.length} Dateien nicht importiert`,
@@ -203,7 +270,7 @@ export function UploadPanel({
           ref={fileInput}
           type="file"
           multiple
-          accept=".bpmn,.bpmn2,.xml"
+          accept={BPMN_ACCEPT}
           className="sr-only"
           tabIndex={-1}
           aria-label="BPMN-Dateien auswählen"
@@ -270,6 +337,12 @@ export function UploadPanel({
                         </TableCell>
                         <TableCell className="whitespace-normal text-muted-foreground">
                           {o.problem ? (o.problem.detail ?? o.problem.title) : null}
+                          {o.warningCount ? (
+                            <WarningsDisclosure
+                              warnings={o.warnings ?? []}
+                              count={o.warningCount}
+                            />
+                          ) : null}
                         </TableCell>
                       </TableRow>
                     );
@@ -281,13 +354,13 @@ export function UploadPanel({
           {run.skipped.length > 0 ? (
             <details className="text-sm text-muted-foreground">
               <summary className="cursor-pointer">
-                {run.skipped.length} Dateien übersprungen (kein BPMN oder größer als{' '}
-                {formatBytes(MAX_MODEL_BYTES)})
+                {run.skipped.length} Dateien übersprungen (kein BPMN, größer als{' '}
+                {formatBytes(MAX_MODEL_BYTES)} oder gleicher Modellschlüssel wie eine BPMN-Datei)
               </summary>
               <ul className="mt-2 flex flex-col gap-1 font-mono text-xs">
                 {run.skipped.map((s) => (
                   <li key={s.path}>
-                    {s.path} – {s.reason === 'too-large' ? 'zu groß' : 'kein BPMN'}
+                    {s.path} – {skippedReasonText(s)}
                   </li>
                 ))}
               </ul>

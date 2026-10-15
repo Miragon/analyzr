@@ -1,11 +1,8 @@
 import { z } from 'zod';
 
-/**
- * Regex source of a model key: lowercase slug segments separated by `/`,
- * e.g. `finanzen/rechnungsstellung` (CONCEPT §2, eval/README.md). The key is
- * immutable and is the slugified file path below the import root.
- */
-export const MODEL_KEY_PATTERN = '[a-z0-9]+(?:-[a-z0-9]+)*(?:/[a-z0-9]+(?:-[a-z0-9]+)*)*';
+// The model key helpers live in the zod-free paths.ts (the web imports it at
+// runtime); they are exported from the package root through it, not from here.
+import { MODEL_KEY_MAX_LENGTH, MODEL_KEY_PATTERN, isModelKey } from './paths.ts';
 
 /** XML `NameStartChar` without `:` (BMP only), as regex class content. */
 const NCNAME_START =
@@ -21,14 +18,12 @@ const NCNAME_CHAR = `${NCNAME_START}\\-.0-9\\u00B7\\u0300-\\u036F\\u203F-\\u2040
  */
 export const ELEMENT_ID_PATTERN = `[${NCNAME_START}][${NCNAME_CHAR}]*`;
 
-export const MODEL_KEY_MAX_LENGTH = 200;
 export const ELEMENT_ID_MAX_LENGTH = 255;
 
 const MODEL_KEY_RE = new RegExp(`^${MODEL_KEY_PATTERN}$`);
 // XML NameChar includes combining marks (U+0300–U+036F) on purpose.
 // eslint-disable-next-line no-misleading-character-class
 const ELEMENT_ID_RE = new RegExp(`^${ELEMENT_ID_PATTERN}$`);
-// eslint-disable-next-line no-misleading-character-class
 const REF_RE = new RegExp(`^(${MODEL_KEY_PATTERN})#(${ELEMENT_ID_PATTERN})$`);
 
 export const ModelKey = z
@@ -66,11 +61,6 @@ export const Ref = z
       'Reference to a BPMN element: `<model_key>#<element_id>`, or `<model_key>#<process_id>` for a process.',
     example: 'vertrieb/auftragsabwicklung#Event_WareVersandbereit',
   }) as unknown as z.ZodType<Ref, Ref>;
-
-/** True if `value` is a well-formed model key. */
-export function isModelKey(value: string): boolean {
-  return value.length <= MODEL_KEY_MAX_LENGTH && MODEL_KEY_RE.test(value);
-}
 
 /** True if `value` is a well-formed element or process id (XML NCName, at most 255 characters). */
 export function isElementId(value: string): boolean {

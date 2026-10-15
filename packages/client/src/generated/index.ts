@@ -233,6 +233,7 @@ export type {
   EndpointState,
   Engine,
   EventDef,
+  ExtractWarning,
   Fact,
   FactAttrs,
   FactKind,

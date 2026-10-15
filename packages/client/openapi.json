@@ -1004,6 +1004,18 @@
           },
           "revision": {
             "$ref": "#/components/schemas/Revision"
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExtractWarning"
+            },
+            "maxItems": 20
+          },
+          "warningCount": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 101
           }
         },
         "required": [
@@ -1095,6 +1107,28 @@
         ],
         "additionalProperties": {},
         "description": "Origin of a revision."
+      },
+      "ExtractWarning": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "maxLength": 50
+          },
+          "message": {
+            "type": "string",
+            "maxLength": 300
+          },
+          "elementId": {
+            "type": "string",
+            "maxLength": 255
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "description": "A non-fatal observation of the fact extractor."
       },
       "BpmnXml": {
         "type": "string",
@@ -1216,6 +1250,18 @@
                 "type": "null"
               }
             ]
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExtractWarning"
+            },
+            "maxItems": 20
+          },
+          "warningCount": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 101
           }
         },
         "required": [

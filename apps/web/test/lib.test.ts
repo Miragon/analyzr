@@ -17,7 +17,21 @@ import {
   parseRelationFilters,
 } from '../src/lib/relation-filters';
 import { isProjectKey, slugify } from '../src/lib/slug';
-import { entriesFromFileList, filesOf, isBpmnPath, planUpload, stripRoot } from '../src/lib/upload';
+import { BPMN_FILE_SUFFIXES } from '@analyzr/contracts/paths';
+
+import {
+  BPMN_ACCEPT,
+  BPMN_SUFFIX_TEXT,
+  entriesFromFileList,
+  filesOf,
+  isSkippedXml,
+  planUpload,
+  skippedReasonText,
+  stripRoot,
+  warningCountText,
+  warningDisplay,
+  warningLabel,
+} from '../src/lib/upload';
 import { relation, sampleRelations } from './support/fixtures';
 
 describe('upload planning', () => {
@@ -34,9 +48,185 @@ describe('upload planning', () => {
     ]);
   });
 
-  it('accepts the BPMN endings the server strips', () => {
-    expect(['a.bpmn', 'a.BPMN', 'a.bpmn2', 'a.bpmn20.xml', 'a.xml'].every(isBpmnPath)).toBe(true);
-    expect(['a.yaml', 'a.md', 'a.bpmn.bak'].some(isBpmnPath)).toBe(false);
+  it('takes the BPMN endings of the shared file rule (M6 S1)', () => {
+    const entries = [
+      'a.bpmn',
+      'b.BPMN',
+      'c.bpmn2',
+      'd.bpmn20.xml',
+      'e.xml',
+      'f.yaml',
+      'g.bpmn.bak',
+    ];
+    const plan = planUpload(entries.map((p) => ({ path: p, file: file(p) })));
+    expect(plan.batches.flat().map((e) => e.path)).toEqual([
+      'a.bpmn',
+      'b.BPMN',
+      'c.bpmn2',
+      'd.bpmn20.xml',
+      'e.xml',
+    ]);
+    expect(plan.skipped).toEqual([
+      { path: 'f.yaml', reason: 'not-bpmn' },
+      { path: 'g.bpmn.bak', reason: 'not-bpmn' },
+    ]);
+    expect(plan.failed).toEqual([]);
+    // The picker and the text name every suffix of the rule.
+    expect(BPMN_ACCEPT.split(',').sort()).toEqual([...BPMN_FILE_SUFFIXES].sort());
+    expect(BPMN_SUFFIX_TEXT).toBe('.bpmn, .bpmn2, .bpmn20.xml und .xml');
+  });
+
+  it('drops hidden files silently, also macOS resource forks', () => {
+    const entries = [
+      '._auftrag.bpmn',
+      'vertrieb/._x.bpmn',
+      '.DS_Store',
+      '.git/config.xml',
+      'a.bpmn',
+    ];
+    const plan = planUpload(entries.map((p) => ({ path: p, file: file(p) })));
+    expect(plan.batches.flat().map((e) => e.path)).toEqual(['a.bpmn']);
+    expect(plan.skipped).toEqual([]);
+    expect(plan.failed).toEqual([]);
+  });
+
+  it('fails a file without a valid key, or with the key of an earlier file, before sending', () => {
+    const entries = ['---.bpmn', 'vertrieb/Auftrag.bpmn', 'vertrieb/auftrag.bpmn2', 'z.bpmn'];
+    // One file per batch: without the check the duplicate would go in a batch of its own.
+    const plan = planUpload(
+      entries.map((p) => ({ path: p, file: file(p) })),
+      { maxFiles: 1, maxBytes: 100, maxModelBytes: 100 },
+    );
+    expect(plan.batches.map((b) => b.map((e) => e.path))).toEqual([
+      ['vertrieb/Auftrag.bpmn'],
+      ['z.bpmn'],
+    ]);
+    expect(plan.failed).toEqual([
+      {
+        path: '---.bpmn',
+        modelKey: null,
+        outcome: 'failed',
+        problem: {
+          type: 'urn:analyzr:problem:validation-failed',
+          title: 'Validation failed',
+          status: 422,
+          code: 'validation-failed',
+          detail: 'the path gives no valid model key',
+        },
+      },
+      {
+        path: 'vertrieb/auftrag.bpmn2',
+        modelKey: 'vertrieb/auftrag',
+        outcome: 'failed',
+        problem: {
+          type: 'urn:analyzr:problem:validation-failed',
+          title: 'Validation failed',
+          status: 422,
+          code: 'validation-failed',
+          detail:
+            'another file of this import has model key vertrieb/auftrag (vertrieb/Auftrag.bpmn)',
+        },
+      },
+    ]);
+  });
+
+  it('gives a key to a .bpmn… file before a plain .xml, whichever sorts first', () => {
+    const entries = ['order-process.bpmn', 'Order_Process.xml', 'Order.xml', 'order.bpmn'];
+    const plan = planUpload(entries.map((p) => ({ path: p, file: file(p) })));
+    expect(plan.batches.flat().map((e) => e.path)).toEqual(['order-process.bpmn', 'order.bpmn']);
+    expect(plan.failed).toEqual([]);
+    expect(plan.skipped).toEqual([
+      { path: 'Order.xml', reason: 'key-taken', takenBy: 'order.bpmn' },
+      { path: 'Order_Process.xml', reason: 'key-taken', takenBy: 'order-process.bpmn' },
+    ]);
+  });
+
+  it('skips a sidecar .xml whose key a .bpmn file has; two plain .xml files stay duplicates', () => {
+    // As analyzr import (apps/cli/test/unit/import.test.ts): the sidecar is never sent.
+    const entries = ['Prozess.bpmn', 'Prozess.xml', 'Order.xml', 'order.xml', 'big.xml'];
+    const plan = planUpload(
+      entries.map((p) => ({ path: p, file: file(p, p === 'big.xml' ? 200 : 10) })),
+      { maxFiles: 50, maxBytes: 1000, maxModelBytes: 100 },
+    );
+    expect(plan.batches.flat().map((e) => e.path)).toEqual(['Order.xml', 'Prozess.bpmn']);
+    expect(plan.skipped).toEqual([
+      { path: 'Prozess.xml', reason: 'key-taken', takenBy: 'Prozess.bpmn' },
+      { path: 'big.xml', reason: 'too-large' },
+    ]);
+    expect(plan.failed.map((f) => [f.path, f.problem?.detail])).toEqual([
+      ['order.xml', 'another file of this import has model key order (Order.xml)'],
+    ]);
+    expect(plan.skipped.map(skippedReasonText)).toEqual([
+      'gleicher Modellschlüssel wie Prozess.bpmn',
+      'zu groß',
+    ]);
+    expect(skippedReasonText({ path: 'a.yaml', reason: 'not-bpmn' })).toBe('kein BPMN');
+  });
+
+  it('picks the same file for a key as analyzr import: code-point order, not the locale', () => {
+    // apps/cli/test/unit/import.test.ts pins the same winner for planImport.
+    const plan = planUpload(['a_b.bpmn', 'a-b.bpmn'].map((p) => ({ path: p, file: file(p) })));
+    expect(plan.batches.flat().map((e) => e.path)).toEqual(['a-b.bpmn']);
+    expect(plan.failed.map((f) => f.path)).toEqual(['a_b.bpmn']);
+  });
+
+  it('skips a plain .xml the server found to be no BPMN; other refusals stay failed', () => {
+    const refused = (path: string, reason: string) => ({
+      path,
+      modelKey: 'x',
+      outcome: 'failed' as const,
+      problem: {
+        type: 'urn:analyzr:problem:bpmn-invalid',
+        title: 'BPMN invalid',
+        status: 422,
+        code: 'bpmn-invalid' as const,
+        reason,
+      },
+    });
+    expect(isSkippedXml(refused('export/meta.xml', 'not-bpmn'))).toBe(true);
+    expect(isSkippedXml(refused('export/aris.xml', 'doctype-forbidden'))).toBe(false);
+    // A .bpmn that is no BPMN is a failed model, not an unrelated XML file.
+    expect(isSkippedXml(refused('a.bpmn', 'not-bpmn'))).toBe(false);
+    expect(isSkippedXml(refused('a.bpmn20.xml', 'not-bpmn'))).toBe(false);
+    expect(isSkippedXml({ path: 'a.xml', modelKey: 'a', outcome: 'created', problem: null })).toBe(
+      false,
+    );
+  });
+
+  it('labels the warning codes in German; an unknown code shows its code', () => {
+    expect(warningLabel('parse-warning')).toBe('Unbekannter oder fehlerhafter Inhalt');
+    expect(warningLabel('missing-id')).toBe('Element ohne ID übersprungen');
+    expect(warningLabel('invalid-id')).toBe('Ungültige ID: Element übersprungen');
+    expect(warningLabel('duplicate-id')).toBe('Doppelte ID: zweites Element übersprungen');
+    expect(warningLabel('call-without-target')).toBe('Aufruf ohne Ziel');
+    expect(warningLabel('message-flow-unresolved')).toBe(
+      'Nachrichtenfluss ohne gültiges Ende übersprungen',
+    );
+    for (const code of ['label-truncated', 'key-truncated', 'documentation-truncated']) {
+      expect(warningLabel(code)).toBe('Text gekürzt');
+    }
+    expect(warningLabel('too-many-warnings')).toBe('Weitere Hinweise ausgelassen');
+    expect(warningLabel('brand-new-code')).toBe('brand-new-code');
+    expect(warningLabel('toString')).toBe('toString');
+    expect(warningCountText(1)).toBe('1 Hinweis');
+    expect(warningCountText(3)).toBe('3 Hinweise');
+  });
+
+  it("shows the extractor's too-many-warnings entry after the unlisted warnings", () => {
+    const few = [{ code: 'parse-warning', message: 'a' }];
+    expect(warningDisplay(few, 3)).toEqual({ listed: few, count: 3, unlisted: 2 });
+    // Beyond 100 the server lists the first 19 and the extractor's own entry last.
+    const omitted = { code: 'too-many-warnings', message: '150 more warnings omitted' };
+    const capped = [
+      ...Array.from({ length: 19 }, (_, i) => ({ code: 'parse-warning', message: `w${i}` })),
+      omitted,
+    ];
+    expect(warningDisplay(capped, 101)).toEqual({
+      listed: capped.slice(0, 19),
+      omitted,
+      count: 100,
+      unlisted: 81,
+    });
   });
 
   it('skips non-BPMN, hidden and oversized files and splits by count and bytes', () => {
@@ -50,9 +240,11 @@ describe('upload planning', () => {
       { path: 'big.bpmn', file: file('big.bpmn', 200) },
     ];
     const plan = planUpload(entries, { maxFiles: 2, maxBytes: 100, maxModelBytes: 100 });
+    expect(plan.failed).toEqual([]);
+    // Code-point order (comparePaths), as the CLI: capitals first.
     expect(plan.skipped).toEqual([
-      { path: 'big.bpmn', reason: 'too-large' },
       { path: 'README.md', reason: 'not-bpmn' },
+      { path: 'big.bpmn', reason: 'too-large' },
     ]);
     expect(plan.batches.map((b) => b.map((e) => e.path))).toEqual([
       ['m/0.bpmn', 'm/1.bpmn'],

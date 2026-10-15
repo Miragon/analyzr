@@ -47,7 +47,7 @@ end to end](#verified-end-to-end) lists exactly what was run and what was not.
 | `plugins/analyzr`: Claude Code plugin `analyzr` (0.3.0, its own version since S5) with the generated skills `/analyzr:relations [project] [max-tasks]` and `/analyzr:placements [project] [max-tasks]` and no MCP server; `.claude-plugin/marketplace.json`: the repository as marketplace `analyzr` (`claude plugin install analyzr@analyzr`) | working; `claude plugin validate --strict` passes for both manifests (Claude Code 2.1.295 for 0.3.0); drift tests and the per-release sha256 table in `@analyzr/procedures`; not yet run with a model |
 | `examples/agents` (M3, placements since M4 S5): reference setups for Claude Code (interactive, headless `run-headless.sh [--skill placements]`), Claude Desktop (both bridge entries, German start prompts for relations, placements and drafting a chain) and Codex; documentation, not workspace packages, not in the image; no Agent SDK setup for now (owner decision 16, [HANDOFF.md](HANDOFF.md) §4) | checked without a model ([M3](#m3-2026-10-08)): shellcheck and dry runs of `run-headless.sh` against fakes (incl. failed batches, a reused log directory and a trailing slash in `ANALYZR_URL`), the Codex TOML parses; no setup has run a model yet |
 | M2 backend: analysis pipeline (claim/submit/release, lease, long-poll), claim input (with the M3 additions: message-flow ends, partner and process documentation, findings, and `judged`/`skip`), submissions, ad-hoc proposals, review (accept/reject/hold/correct, bulk, notes, timeline), model engine, relation provenance, answered findings hidden ([below](#analysis-pipeline-and-review-m2)); judge each pair once (`analyzr-relations@0.2.0`: the basis of agent judgements, the assignment at the claim, stored no-links, `Relation.noLinks`, `uncovered`; [below](#judge-each-pair-once)) | working over REST and MCP; real-Postgres integration tests incl. concurrent claims, lease expiry, cancellation, decision memory across re-uploads, the claim-input size and additions on both corpus landscapes, judge each pair once (`judge-once.test.ts`); MCP contract test with the SDK client; reviewed in the web UI ([Review in the web UI](#review-in-the-web-ui-m2)); end to end against the Docker stack with the simulation agent (HTTP and the bridge in the container; before 0.2.0) and in the browser (`e2e/pipeline.spec.ts`: review, re-upload, `suppressed` vs. `reopened`) |
-| `apps/cli`: `analyzr seed` (M3: `--project`, `--token-name`; M4 S4: `--value-chains`), `import`, `token create/list/revoke`, `status`, `health`, and `analyzr mcp` (stdio bridge for Claude Desktop) | working; unit tests, an e2e test against a real server, and a live check against the running Docker stack |
+| `apps/cli`: `analyzr seed` (M3: `--project`, `--token-name`; M4 S4: `--value-chains`), `import` (M6 S1: the shared file rule, keys derived before sending, skipped plain XML, extractor warnings, the waiting tasks and the next agent step), `models list/requeue/delete` (M6 S1), `token create/list/revoke`, `status`, `health`, and `analyzr mcp` (stdio bridge for Claude Desktop) | working; unit tests, an e2e test against a real server, and a live check against the running Docker stack |
 | `apps/agent-sim`: `analyzr-agent-sim`, the LLM-free simulation agent (M2 item 8): works the pipeline over MCP (HTTP or the `analyzr mcp` bridge) with the deterministic policy `sim-policy-1`, since M4 S5 both task kinds (`--kinds`, the placement policy `decidePlacements`), and records claim inputs and submissions in `eval/recordings` ([below](#simulation-agent-and-evalreplay-m2)) | working; unit tests (both policies, recorder lines of both kinds, CLI, the loop against an in-memory MCP server) and an end-to-end server test on both corpus landscapes with their golden chains (every task done, provenance, nothing decided, the committed recordings reproduced byte for byte, the holdout placement recording by digest) |
 | `apps/web`: projects (create), per project the tabs Modelle (engine, revision, stage), Prüfen (M2: inbox by stage, review queue, bulk accept per tier, held list), Wertschöpfungskette (M4 S3, [below](#value-chain-in-the-web-ui-m4)), Relationen (filters, rule vs. key tier, provenance), Befunde, Hochladen (files or a folder via the import endpoint) and Agent verbinden (token, Claude Code/Desktop/generic configurations, revoke); model view with bpmn-js that highlights relation endpoints and switches to the other model; review screen per relation (both models in bpmn-js, rationale, evidence, question, provenance, timeline; accept/reject/hold/correct with A/R/H/C, J/K through the queue); bulk accept that leaves generic or widely shared names, open agent questions and ambiguous call targets unchecked; Miragon design system | working; component tests (Testing Library), Playwright smoke, review and pipeline flows against a running server, the screenshots below |
 | `eval:candidates` | working; passes on `nordwind-handel` (dev) and `stadtwerke-auental` (holdout); report in `eval/reports/candidates.md` |
@@ -644,7 +644,8 @@ apps/cli/         @analyzr/cli     the `analyzr` command (commander)
 apps/agent-sim/   @analyzr/agent-sim  `analyzr-agent-sim`: LLM-free simulation agent over MCP (src/{policy,agent,connect,recorder,program}.ts)
 apps/demo/        @analyzr/demo    `analyzr-demo seed|serve|check`: the read-only demo's seed, supervisor and check (owner decision 20)
 apps/web/         @analyzr/web     React 19 + Vite + Tailwind v4 + shadcn + TanStack (src/{routes,components,lib,theme}, test/, e2e/)
-packages/contracts/  zod schemas, types, REST route configs, buildOpenApiDocument()
+packages/contracts/  zod schemas, types, REST route configs, buildOpenApiDocument(); src/paths.ts: the zod-free
+                     BPMN file rule and model key of a path (also `@analyzr/contracts/paths`, the web's runtime import)
 packages/client/     hey-api client generated from the contracts (src/generated is generated)
 packages/bpmn-facts/ fact extraction (CONCEPT §2)
 packages/relations/  rules, candidates, baseline-label/1, baseline-prefix/1 and the name-stem rule (placement.ts, M4)
@@ -1867,7 +1868,10 @@ token), `--owner-key-file` (`ANALYZR_OWNER_KEY_FILE`).
 | Command | Credential | |
 |---|---|---|
 | `analyzr seed [landscape…] [--corpus dir] [-p\|--project <key>] [--issue-tokens [--token-name <name>]] [--value-chains [--value-chains-dir <dir>]] [--verbose] [--json]` | owner key | one project per landscape of `eval/corpus` (default: every scored one, i.e. not starting with `_`; `_sample` seeds into `sample`), named after `landscape.yaml`; imports `models/`; safe to repeat (unchanged models stay unchanged). `--project` seeds exactly one named landscape into a project of that key, named `<landscape name> (<key>)` (a fresh project per live run; an existing project is refused with exit 1 before any import or token request); `--issue-tokens` creates a read+propose token per project (90 days), named `--token-name` (default `seed`; the name is the agent segment of `eval:live` recordings). `--value-chains` (M4 S4) also creates each landscape's golden value chain from `eval/value-chains/<landscape>/value-chain.vc.json` (or `--value-chains-dir`), after the import and before the token, without placements: a line `value chain: created r1` (`revived` for a deleted chain, `unchanged` when the head equals it, `exists r<n>, differs from the golden chain: left unchanged` for an edited chain, which is never overwritten, `no golden value chain` for `_sample`). Misuse (`--project` without exactly one landscape or with an invalid key, `--token-name` without `--issue-tokens`, `--value-chains-dir` without `--value-chains` or not a directory) is refused before any request. The JSON result names the `landscape` of each project and its `valueChain` (`{outcome, rev}`, `null` without the flag) |
-| `analyzr import <dir> --project <key> [--create [--name n]] [--json]` | agent token (`analyzr:write`) or owner key | every `.bpmn`/`.bpmn2`/`.bpmn20.xml` below `<dir>`, in requests of ≤ 50 files and ≤ 25 MB; the model key is the path below `<dir>`; per-file outcome; exit 1 if a file failed |
+| `analyzr import <dir> --project <key> [--create [--name n]] [--verbose] [--json]` | agent token (`analyzr:write`) or owner key | every file below `<dir>` the shared file rule picks up (M6 S1, `isImportPath` of `@analyzr/contracts/paths`, as the web upload: `.bpmn`, `.bpmn2`, `.bpmn20.xml`, `.xml`, case-insensitive; hidden files and directories, `node_modules` and symbolic links are skipped), in requests of ≤ 50 files and ≤ 25 MB, in code-point order (`comparePaths`, as the web); the model key is the path below `<dir>` (`modelKeyFromPath`, derived before sending: a path without a valid key, a key another file of the import gets, also in another request, and a file above 5 MB are reported `failed` locally in the server's wording and never sent; a key goes to the first `.bpmn…` file and only then to a plain `.xml`, `modelKeyOwners`, and the refusal names that file: `another file of this import has model key z (Z.bpmn)`); listed as `skipped` instead, outside `files` and `counts`, and never changing the exit code: a plain `.xml` whose key a `.bpmn…` file has (a tool's sidecar `Prozess.xml` next to `Prozess.bpmn`, `keyTakenBy`; never sent; reason `key-taken`, text `skipped   Prozess.xml  (same model key as Prozess.bpmn)`), while two `.bpmn…` files or two plain `.xml` files with one key stay `failed`, and a plain `.xml` the server refuses as no BPMN (422 `bpmn-invalid`, reason `not-bpmn`; text `skipped   meta.xml  (not BPMN)`); the summary names the reasons („N skipped (not BPMN)“ when all share one, „2 skipped (1 not BPMN, 1 same model key)“ otherwise); JSON: `skipped: [{path, reason, takenBy?}]`, only when non-empty; every other refusal (a DOCTYPE, …) stays `failed`; per-file outcome with the extractor's warnings by code (`warnings: 3 (invalid-id 2, parse-warning 1)`; beyond the extractor's 100 its own entry follows, `warnings: 100 (parse-warning 19, 81 more, 150 more warnings omitted)`; `--verbose` lists the entries, `--json` carries the result's `warnings` (≤ 20) and `warningCount`; warnings never change the exit code); in text mode it ends with the project's waiting work (`<project>: N relations tasks waiting, placement task waiting: yes\|no`, from `GET …/analyses?state=queued`, so any credential with `read` works; the project's state, not this import's effect) and, only when something waits, the next agent step (`/analyzr:relations <project>` when relations tasks wait, `/analyzr:placements <project>` when the placement task waits, the start prompts in `examples/agents`); exit 1 if a file failed, or if every file was a plain `.xml` that is no BPMN (nothing imported: „no BPMN files below <dir>: N skipped (not BPMN)“, no next-step block) |
+| `analyzr models list -p <key> [--stage <stage>] [--json]` (M6 S1) | agent token or owner key | every page of `GET …/models`: key, stage, head revision, engine, open items; `--stage` is checked before any request |
+| `analyzr models requeue -p <key> (<key>… \| --all) [--json]` (M6 S1) | owner key, or an agent token with `analyzr:write` | `POST …/analyses/requeue` with `{modelKeys}` (≤ 1,000, checked before any request) or `{all: true}`: `queued`, `open` (a task is already queued or claimed) or `not-found` per model; exit 1 if a key has no live model |
+| `analyzr models delete <key>… -p <key> [--yes] [--json]` (M6 S1) | owner key only (an agent token is refused before any request; the server's policy lets any `write` credential delete) | resolves the keys through `GET …/models` (deleting takes the `mdl_` id); an unknown key exits 1 before anything is deleted; without `--yes` it lists the models (key, stage, open items), says that partner relations turn `missing` and that uploading a key again revives its model, and exits 1 („nothing deleted“); with `--yes` `DELETE …/models/{model}` one by one (`--json`: `{deleted, models}`; when a DELETE fails, `{deleted, models, failed: {key, error}}` with the models deleted before it, then exit 1). The deletion's impact comes with M6 S2 |
 | `analyzr token create --project <key> [--name] [--scopes …] [--expires 90d] [--json]` | owner key | scopes `analyzr:read`, `analyzr:propose`, `analyzr:write` (also `read,propose`); expiry `Nd` or `Nw`, ≤ 365 days |
 | `analyzr token list` / `analyzr token revoke <id>` (`--project <key>`) | owner key | |
 | `analyzr status [--project <key>] [--json]` | agent token or owner key (optional) | health, caller, per project models by stage, relations by status, accepted relations with changed/missing endpoints, findings |
@@ -1897,7 +1901,7 @@ the server); after `pnpm build` the server serves it at http://127.0.0.1:7400.
 | `/projects/{key}/review/{relation}` | **Review screen** of one relation, also the relation detail and the `reviewUrl` of `human-decision-required` ([below](#review-in-the-web-ui-m2)) |
 | `/projects/{key}/relations` | **Relationen**: quick filters (all, accepted by rule, key-tier proposals, all proposals), filters status/tier/type/model in the URL (`?status=&tier=&type=&model=`), for owners also the preset „Automatisch angenommen“ and the filter `?auto=any|aar_…` (owner decision 19); type, from → to with element label, model key and process, tier, status, endpoint state, confidence, provenance (from `Relation.provenance`), details (refs, version, attributes); "Prüfen" opens the review screen, the crosshair the model view. |
 | `/projects/{key}/findings` | **Befunde** grouped by kind, each ref with a link into the model view |
-| `/projects/{key}/upload` | **Hochladen**: drag and drop files or a whole folder, or pick them; `POST …/imports` in batches of ≤ 50 files / 25 MB (models > 5 MB and non-BPMN files are skipped and listed); a dropped or picked folder is the import root, so `models/vertrieb/a.bpmn` becomes `vertrieb/a`, like `analyzr import models`; outcome per file |
+| `/projects/{key}/upload` | **Hochladen**: drag and drop files or a whole folder, or pick them; `POST …/imports` in batches of ≤ 50 files / 25 MB; the shared file rule of `@analyzr/contracts/paths` decides (M6 S1, as `analyzr import`: `.bpmn`, `.bpmn2`, `.bpmn20.xml`, `.xml`; the picker's `accept` and the text „Erlaubt sind …“ come from `BPMN_FILE_SUFFIXES`): hidden files are dropped silently; models > 5 MB, other files, a plain `.xml` whose key a `.bpmn…` file has (a tool's sidecar, never sent, `keyTakenBy`, as `analyzr import`) and a plain `.xml` the server refuses as no BPMN are skipped and listed under „N Dateien übersprungen (kein BPMN, größer als 5,0 MB oder gleicher Modellschlüssel wie eine BPMN-Datei)“ with the reason per file („kein BPMN“, „zu groß“, „gleicher Modellschlüssel wie Prozess.bpmn“); every model key is derived before sending, in code-point order as `analyzr import` (`comparePaths`, `modelKeyOwners`: a `.bpmn…` file gets a key before a plain `.xml`), so a path without a valid key or with the key another file gets (other than such a sidecar) fails without being sent, naming that file; when every file is a plain `.xml` that is no BPMN, the warning toast „Keine BPMN-Dateien gefunden“ replaces the success toast; a dropped or picked folder is the import root, so `models/vertrieb/a.bpmn` becomes `vertrieb/a`, like `analyzr import models`; outcome per file, with the extractor's warnings as „3 Hinweise“ in a disclosure (a German label per code, the element id and the English message; an unknown code shows the code; beyond the extractor's 100, „100 Hinweise“ and its `too-many-warnings` entry „Weitere Hinweise ausgelassen“ after „… und 81 weitere“) |
 | `/projects/{key}/agents` | **Agent verbinden**: create an agent token (scopes, expiry), secret shown once with a copy button, then ready-to-paste configurations: Claude Code (`claude mcp add --transport http …`), Claude Desktop (`analyzr mcp` from the checkout with Node 24, or `docker exec -i … analyzr-server-1 analyzr mcp`; the Node or Docker path you enter becomes `command`), any other MCP client (URL + bearer header, `.mcp.json`); list and revoke tokens |
 | `/projects/{key}/rules` | **Regeln** (owner decision 19, owners only; the tab is hidden for other roles): the system rule, the project's auto-accept rules, the create/edit dialog with the live preview, apply, revoke, revisions ([below](#auto-accept-rules-in-the-web-ui-owner-decision-19)) |
 | `/projects/{key}/value-chain` | **Wertschöpfungskette** (M4 S3, the tab counts open placement items): the chain on a full-viewport canvas, the side panel, edit mode; `?step=` selects a step, `?placement=plc_…` (the `reviewUrl` of placement writes) a placement and its step ([below](#value-chain-in-the-web-ui-m4)) |
@@ -1910,7 +1914,10 @@ How it talks to the server: only through `@analyzr/client` (generated from the c
 holds a token and survives server restarts. `unwrap()` turns problem+json into `ApiError`.
 `src/` imports only *types* from `@analyzr/contracts` (ESLint enforces it; the zod schemas would
 land in the bundle) and mirrors the few constants it needs in `src/lib/limits.ts`, which
-`test/limits.test.ts` compares with the contracts. The **engine** is `Model.engine` and the
+`test/limits.test.ts` compares with the contracts. The one runtime import is the zod-free subpath
+`@analyzr/contracts/paths` (M6 S1: the BPMN file rule and the model key of a path, in
+`src/lib/upload.ts`); ESLint allows that subpath and restricts every other, and the bundle guard
+pins `paths.ts` as the only contracts module in the bundle. The **engine** is `Model.engine` and the
 **provenance** is `Relation.provenance` (M2 API): the rule tier shows `analyzr-rules/1.0.0` and what
 matched, agent proposals the principal handle plus the declared procedure (`id@version`) and LLM
 model, human decisions the handle and the verdict; only a relation without provenance falls back
@@ -2327,7 +2334,11 @@ does not model.
 **Facts** (`packages/bpmn-facts`). `extractFacts(xml, {modelKey})` rejects hostile or broken
 input with a `BpmnInputError` (`doctype-forbidden`, `entity-forbidden`, `too-large`,
 `too-many-elements`, `not-xml`, `not-bpmn`, `invalid-model-key`; the server maps it to 422
-`bpmn-invalid`, 413 for `too-large`) and returns non-fatal `warnings` otherwise. It parses with
+`bpmn-invalid`, 413 for `too-large`) and returns non-fatal `warnings` otherwise (at most 100 plus
+`too-many-warnings`; M6 S1: the server passes them into the import and PUT results of `created`
+and `revised` files as `warnings` (the first 20, each message cut to 300 characters ending in `…`;
+beyond 100 the first 19 and the `too-many-warnings` entry) and `warningCount` (≤ 101), both absent
+without warnings; they are not stored). It parses with
 bpmn-moddle plus the camunda (C7) or the zeebe (C8) extension, chosen from
 `modeler:executionPlatform` or the declared namespace (the two extensions cannot be loaded
 together). Facts follow CONCEPT §2; `attrs` keys are declared in `FactAttrs` (`@analyzr/contracts`):
@@ -2614,7 +2625,11 @@ agent's recordings ([Recordings](#simulation-agent-and-evalreplay-m2)).
   filters, filters, details, action slot, provenance), `connect-agent.test.tsx` (token list and
   states, creation with the request body, secret shown once, exact Claude Code command, Claude
   Desktop node/Docker configurations, generic client, revocation after confirmation, problem
-  toast), `upload-panel.test.tsx` (folder paths, batches, per-file outcomes, skipped files),
+  toast), `upload-panel.test.tsx` (folder paths, batches, per-file outcomes, skipped files, the
+  picker's `accept` and „Erlaubt sind …“ from the file rule, warnings in a disclosure, a duplicate
+  key failed before sending, a sidecar `.xml` skipped („gleicher Modellschlüssel wie …“, the
+  heading naming every reason), a plain `.xml` that is no BPMN skipped, the warning toast when only
+  such files came, the extractor's `too-many-warnings` entry after „… und 81 weitere“),
   `api.test.ts` (session on 401, one session for parallel 401s, problems), `lib.test.ts` (upload
   planning, snippets, slugs, refs, filters, provenance fallback), `app.test.tsx` (routes rendered
   on the server, incl. the inbox and the review screen), `theme.test.ts` (token drift) and
@@ -2688,7 +2703,9 @@ agent's recordings ([Recordings](#simulation-agent-and-evalreplay-m2)).
 - `apps/web/e2e/smoke.spec.ts` (Playwright, Chromium): creates its own project `e2e-<time>`,
   imports `eval/corpus/_sample` and walks projects → relations (rule acceptance, key-tier quick
   filter) → model view (endpoint highlighted in the caller, switch to the called model), re-imports
-  the folder through the upload page (all `unchanged`), checks findings and creates a token. It
+  the folder through the upload page (all `unchanged`), uploads a file with a duplicate element id
+  and a plain XML (M6 S1: „1 Hinweis“ with the warning in its disclosure, the XML skipped),
+  checks findings and creates a token. It
   needs a running server with the built UI and skips itself otherwise, so it is not part of
   `pnpm test` or CI:
   ```sh
@@ -3029,6 +3046,32 @@ agent's recordings ([Recordings](#simulation-agent-and-evalreplay-m2)).
   per-agent revoke, the rules table's numbers; the what-if in recording order (a later competing
   call or step and the agent's later no-link or re-judgement do not undo an acceptance) and the
   holdout's threshold differencing.
+- M6 S1 "Import hygiene": `packages/contracts/test/paths.test.ts` (the moved key cases plus `.xml`,
+  `.BPMN`, `.bpmn20.xml`, hidden files, `isHiddenPath` apart from `bpmnSuffixOf`, `comparePaths`
+  apart from the locale, `modelKeyOwners` giving a key to a `.bpmn…` file before a plain `.xml`,
+  `keyTakenBy` naming that file only for a plain `.xml`)
+  and additions to `contracts.test.ts` (`ExtractWarning`, the optional result fields, `warningCount`
+  ≤ 101, OpenAPI); server: `domain-utils.test.ts` (`resultWarnings`: cap 20, the 300-character cut
+  with `…`, surrogate pairs, the `too-many-warnings` entry listed last) and `real-libraries.test.ts` (real libraries: a duplicate element id in a revision gives
+  `revised` with one `parse-warning`, a 400-character id that is no NCName a message cut to 300,
+  PUT the same, warning-free and `unchanged` results without the fields); CLI:
+  `test/unit/import.test.ts` (`.xml` picked up, hidden files and links skipped, keys derived before
+  sending with a duplicate across two batches never sent, `Order.xml` + `order.bpmn` (the `.xml`
+  skipped `key-taken`) and `a-b.bpmn` + `a_b.bpmn` with the web's winners, a sidecar
+  `Prozess.xml` next to `Prozess.bpmn` skipped `key-taken` with exit 0 and the model sent once,
+  two plain `.xml` with one key still failed, the summary naming one or both reasons, a
+  `not-bpmn` `.xml` skipped with exit 0, only such files with exit 1, and a `doctype-forbidden`
+  one failed with exit 1, warnings in text,
+  `--verbose` and JSON, also beyond 100, the waiting tasks paged past 200 and the next step only
+  for what waits), `test/unit/models.test.ts` (`models list|requeue|delete`: paging, stage check,
+  bodies, outcomes, an agent token refused for delete before any request, nothing deleted without
+  `--yes`, an unknown key before deleting, `--json` after a failed DELETE) and the e2e
+  `analyzr import and models (M6 S1)` (with a sidecar skipped) plus the pin that `seed --json` for
+  `_sample` keeps exactly `project`, `files`, `counts`; web: `lib.test.ts` (upload plan with `.xml`, hidden files, `not-bpmn`,
+  duplicate keys, a sidecar `.xml` skipped `key-taken`, the CLI's winners, the skip reasons in
+  German; the code labels, the warnings beyond 100),
+  `upload-panel.test.tsx` and `bundle.test.ts` (above), Playwright
+  `smoke.spec.ts` (the warnings display).
 
 ## CI
 

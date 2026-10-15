@@ -21,6 +21,7 @@ export const libraryAnalysis: AnalysisPort = {
           processes: result.processes,
           facts: result.facts,
           messageFlows: result.messageFlows,
+          warnings: result.warnings,
         },
       };
     } catch (err) {

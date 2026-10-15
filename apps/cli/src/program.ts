@@ -5,6 +5,7 @@ import { Command, CommanderError } from 'commander';
 import { healthCommand } from './commands/health.ts';
 import { importCommand } from './commands/import.ts';
 import { mcpCommand } from './commands/mcp.ts';
+import { modelsDeleteCommand, modelsListCommand, modelsRequeueCommand } from './commands/models.ts';
 import {
   rulesAddCommand,
   rulesApplyCommand,
@@ -31,6 +32,7 @@ import {
 } from './commands/value-chain.ts';
 import type { CredentialOptions } from './credentials.ts';
 import { CliError } from './errors.ts';
+import { BPMN_FILE_PATTERNS } from './files.ts';
 import { processIo, type CliIo } from './io.ts';
 import rootPackage from '../../../package.json' with { type: 'json' };
 
@@ -48,7 +50,7 @@ interface GlobalOptions {
 export function buildProgram(io: CliIo = processIo): Command {
   const program = new Command('analyzr')
     .description(
-      'analyzr command line: seed and import models, push and pull the value chain, manage agent tokens and auto-accept rules, bridge MCP over stdio',
+      'analyzr command line: seed, import, list, requeue and delete models, push and pull the value chain, manage agent tokens and auto-accept rules, bridge MCP over stdio',
     )
     .version(rootPackage.version, '-v, --version')
     .option('--url <url>', `analyzr server URL (env ANALYZR_URL, default ${DEFAULT_ANALYZR_URL})`)
@@ -87,15 +89,63 @@ export function buildProgram(io: CliIo = processIo): Command {
 
   program
     .command('import')
-    .description('import every BPMN file below <dir> into a project (model key = path)')
-    .argument('<dir>', 'directory with .bpmn files')
+    .description(
+      'import every BPMN file below <dir> into a project (model key = path); then says what waits for an agent',
+    )
+    .argument('<dir>', `directory with BPMN files (${BPMN_FILE_PATTERNS})`)
     .requiredOption('-p, --project <project>', 'project key or id')
     .option('--create', 'create the project if it does not exist (owner key)')
     .option('--name <name>', 'project name for --create (default: the key)')
+    .option('--verbose', 'list every extractor warning the server reports (up to 20 per file)')
     .option('--json', 'print JSON')
     .action(
-      (dir: string, opts: { project: string; create?: boolean; name?: string; json?: boolean }) =>
-        importCommand(io, dir, { ...globals(), ...opts }),
+      (
+        dir: string,
+        opts: {
+          project: string;
+          create?: boolean;
+          name?: string;
+          verbose?: boolean;
+          json?: boolean;
+        },
+      ) => importCommand(io, dir, { ...globals(), ...opts }),
+    );
+
+  const models = program
+    .command('models')
+    .description("list, requeue and delete a project's models");
+  models
+    .command('list')
+    .description('list the models: key, stage, head revision, engine, open items')
+    .requiredOption('-p, --project <project>', 'project key or id')
+    .option('--stage <stage>', 'only models in this pipeline stage, e.g. agent_failed')
+    .option('--json', 'print JSON')
+    .action((opts: { project: string; stage?: string; json?: boolean }) =>
+      modelsListCommand(io, { ...globals(), ...opts }),
+    );
+  models
+    .command('requeue')
+    .description(
+      'queue the relations task of models again, e.g. after a failed task (owner key or a token with analyzr:write)',
+    )
+    .argument('[key...]', 'model keys (at most 1000)')
+    .requiredOption('-p, --project <project>', 'project key or id')
+    .option('--all', 'every live model of the project')
+    .option('--json', 'print JSON')
+    .action((keys: string[], opts: { project: string; all?: boolean; json?: boolean }) =>
+      modelsRequeueCommand(io, keys, { ...globals(), ...opts }),
+    );
+  models
+    .command('delete')
+    .description(
+      'delete models (owner key): lists them without --yes; partner relations turn missing, uploading a key again revives its model',
+    )
+    .argument('<key...>', 'model keys')
+    .requiredOption('-p, --project <project>', 'project key or id')
+    .option('--yes', 'delete them')
+    .option('--json', 'print JSON')
+    .action((keys: string[], opts: { project: string; yes?: boolean; json?: boolean }) =>
+      modelsDeleteCommand(io, keys, { ...globals(), ...opts }),
     );
 
   const token = program.command('token').description('manage agent tokens (owner key)');

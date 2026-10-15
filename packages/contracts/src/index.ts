@@ -4,6 +4,7 @@
  * same name as its inferred type.
  */
 export * from './ids.ts';
+export * from './paths.ts';
 export * from './refs.ts';
 export * from './facts.ts';
 export * from './relations.ts';

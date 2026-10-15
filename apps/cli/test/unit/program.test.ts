@@ -20,9 +20,27 @@ describe('analyzr', () => {
   it('lists the commands in --help', async () => {
     const t = testIo();
     expect(await runCli(['--help'], t.io)).toBe(0);
-    for (const cmd of ['health', 'status', 'import', 'token', 'mcp', 'seed', 'value-chain']) {
+    for (const cmd of [
+      'health',
+      'status',
+      'import',
+      'models',
+      'token',
+      'mcp',
+      'seed',
+      'value-chain',
+    ]) {
       expect(t.out()).toContain(cmd);
     }
+    const models = testIo();
+    expect(await runCli(['models', '--help'], models.io)).toBe(0);
+    for (const cmd of ['list', 'requeue', 'delete']) expect(models.out()).toContain(cmd);
+    const imp = testIo();
+    expect(await runCli(['import', '--help'], imp.io)).toBe(0);
+    expect(imp.out().replace(/\s+/g, ' ')).toContain(
+      'directory with BPMN files (*.bpmn, *.bpmn2, *.bpmn20.xml, *.xml)',
+    );
+    expect(imp.out()).toContain('--verbose');
     const token = testIo();
     expect(await runCli(['token', '--help'], token.io)).toBe(0);
     for (const cmd of ['create', 'list', 'revoke']) expect(token.out()).toContain(cmd);

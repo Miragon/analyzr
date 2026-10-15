@@ -23,6 +23,7 @@ import type {
   DerivedRelation,
   Engine,
   EndpointState,
+  ExtractWarning,
   Fact,
   FactKind,
   Finding,
@@ -1157,6 +1158,12 @@ export interface Extracted {
   processes: ProcessInfo[];
   facts: Fact[];
   messageFlows: MessageFlowInfo[];
+  /**
+   * The extractor's non-fatal observations, in its order (at most 100 plus
+   * `too-many-warnings`; messages up to 1,000 characters). Not stored: the
+   * import and PUT results carry them, cut and capped (M6 S1).
+   */
+  warnings: ExtractWarning[];
 }
 
 /** Why a file was rejected (BpmnInputError codes of `@analyzr/bpmn-facts`). */

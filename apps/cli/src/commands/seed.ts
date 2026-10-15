@@ -22,7 +22,13 @@ import { call, callOrNull, callWithResponse, createApi, type Api } from '../api.
 import { ownerCredential, type CredentialOptions } from '../credentials.ts';
 import { ApiError, CliError } from '../errors.ts';
 import type { CliIo } from '../io.ts';
-import { ensureProject, formatImport, importDirectory, type ImportSummary } from './import.ts';
+import {
+  ensureProject,
+  formatImport,
+  importDirectory,
+  skippedSuffix,
+  type ImportSummary,
+} from './import.ts';
 import { DEFAULT_SCOPES, createToken, formatCreatedToken } from './token.ts';
 import { explain, headRev } from './value-chain.ts';
 
@@ -440,7 +446,7 @@ export async function seedCommand(
     else {
       const c = r.import.counts;
       io.stdout(
-        `  ${r.import.files.length} files: ${c.created} created, ${c.revised} revised, ${c.unchanged} unchanged, ${c.failed} failed\n`,
+        `  ${r.import.files.length} files: ${c.created} created, ${c.revised} revised, ${c.unchanged} unchanged, ${c.failed} failed${skippedSuffix(r.import)}\n`,
       );
     }
     io.stdout(`  ${r.models} models, relations: ${rel || 'none'}, ${r.findings} findings\n`);

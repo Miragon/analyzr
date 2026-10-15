@@ -2,8 +2,12 @@ import {
   MAX_IMPORT_BYTES,
   MAX_IMPORT_FILES,
   MAX_MODEL_BYTES,
+  MAX_RESULT_WARNINGS,
+  MAX_RESULT_WARNING_CHARS,
   createProblem,
   isModelKey,
+  modelKeyFromPath,
+  type ExtractWarning,
   type ImportFileOutcome,
   type ImportResult,
   type Model,
@@ -22,7 +26,6 @@ import type { Actor } from '../actor.ts';
 import { decodeCursor, toPage } from '../cursor.ts';
 import { DomainError } from '../errors.ts';
 import { deleteModel, ingest, type IngestDeps, type IngestFile } from '../ingest.ts';
-import { modelKeyFromPath } from '../paths.ts';
 import { policy } from '../policy.ts';
 import type { Tx } from '../ports.ts';
 import { toModel, toRevision } from '../views.ts';
@@ -43,6 +46,44 @@ export interface ModelXml {
   xml: string;
 }
 
+/** `text` cut to `max` UTF-16 code units, ending in `…`, without splitting a surrogate pair. */
+function cut(text: string, max: number): string {
+  if (text.length <= max) return text;
+  let end = max - 1;
+  const last = text.charCodeAt(end - 1);
+  if (last >= 0xd800 && last <= 0xdbff) end--;
+  return `${text.slice(0, end)}…`;
+}
+
+/**
+ * The extractor's warnings as an import or PUT result carries them (M6 S1):
+ * the first {@link MAX_RESULT_WARNINGS} in the extractor's order, each
+ * message cut to {@link MAX_RESULT_WARNING_CHARS} characters (bpmn-moddle
+ * messages embed line, column and nested errors), plus the full count.
+ * When the extractor ended with its `too-many-warnings` entry ("N more
+ * warnings omitted", after 100), that entry stays the last one listed (after
+ * the first 19), so the result still tells how many the extractor dropped.
+ * Nothing at all without warnings, so warning-free results keep their shape.
+ */
+export function resultWarnings(
+  warnings: readonly ExtractWarning[],
+): Pick<ImportFileOutcome, 'warnings' | 'warningCount'> {
+  if (warnings.length === 0) return {};
+  const last = warnings.at(-1);
+  const listed =
+    warnings.length > MAX_RESULT_WARNINGS && last?.code === 'too-many-warnings'
+      ? [...warnings.slice(0, MAX_RESULT_WARNINGS - 1), last]
+      : warnings.slice(0, MAX_RESULT_WARNINGS);
+  return {
+    warnings: listed.map((w) => ({
+      code: w.code.slice(0, 50),
+      message: cut(w.message, MAX_RESULT_WARNING_CHARS),
+      ...(w.elementId === undefined ? {} : { elementId: w.elementId.slice(0, 255) }),
+    })),
+    warningCount: warnings.length,
+  };
+}
+
 async function liveModel(
   tx: Tx,
   projectId: Parameters<Tx['models']['findInProject']>[0],
@@ -57,7 +98,8 @@ export function modelUseCases(deps: UseCaseDeps, ingestDeps: IngestDeps) {
   return {
     /**
      * `PUT …/models/by-key/{key}`: raw BPMN → `created` (new model),
-     * `revised` (new revision) or `unchanged` (same bytes as the head).
+     * `revised` (new revision, both with the extractor's warnings, see
+     * {@link resultWarnings}) or `unchanged` (same bytes as the head).
      *
      * @throws {DomainError} `validation-failed`, `payload-too-large`, `bpmn-invalid`, policy errors
      */
@@ -89,12 +131,15 @@ export function modelUseCases(deps: UseCaseDeps, ingestDeps: IngestDeps) {
         outcome: result.outcome,
         model: toModel(view),
         revision: toRevision(result.revision),
+        ...resultWarnings(result.warnings),
       };
     },
 
     /**
      * `POST …/imports`: up to 50 files, 25 MB in total; the model key is the
-     * slugified path. One outcome per file; failed files do not stop the others.
+     * slugified path (`modelKeyFromPath`; any file name is accepted). One
+     * outcome per file; failed files do not stop the others. `created` and
+     * `revised` files carry the extractor's warnings ({@link resultWarnings}).
      *
      * @throws {DomainError} `validation-failed` (no or too many files), `payload-too-large`, policy errors
      */
@@ -158,6 +203,7 @@ export function modelUseCases(deps: UseCaseDeps, ingestDeps: IngestDeps) {
           outcome.problem = createProblem(r.error.code, r.error.message, { ...r.error.extras });
         } else {
           outcome.outcome = r.outcome;
+          Object.assign(outcome, resultWarnings(r.warnings));
         }
       }
       return { files: outcomes };

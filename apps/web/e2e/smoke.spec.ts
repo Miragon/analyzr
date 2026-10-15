@@ -7,8 +7,9 @@ import { DEMO_SKIP, probeServer } from './server-mode';
 
 /**
  * Smoke test (M1): projects → relations → model view, against a running
- * server. It creates its own project from eval/corpus/_sample, so it never
- * touches existing data, and it skips itself when no server answers.
+ * server, and the upload (with the extractor warnings of M6 S1). It creates
+ * its own project from eval/corpus/_sample, so it never touches existing
+ * data, and it skips itself when no server answers.
  */
 
 const SAMPLE = join(import.meta.dirname, '../../../eval/corpus/_sample/models');
@@ -126,6 +127,41 @@ test('upload: a folder keeps its paths, so re-importing it changes nothing', asy
   await expect(page.locator('[data-testid=import-outcome][data-outcome=unchanged]')).toHaveCount(3);
   await expect(page.getByRole('link', { name: CALL_FROM })).toBeVisible();
   await expect(page.getByTestId('toast').filter({ hasText: '3 Dateien importiert' })).toBeVisible();
+});
+
+test('upload: extractor warnings per file in a disclosure, a plain XML skipped (M6 S1)', async ({
+  page,
+}) => {
+  // bpmn-moddle drops the second Task_A and warns; the model is still created.
+  const duplicate = [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" id="Definitions_1" targetNamespace="http://bpmn.io/schema/bpmn">',
+    '  <bpmn:process id="Process_Doppelt" isExecutable="false">',
+    '    <bpmn:task id="Task_A" name="Eins" />',
+    '    <bpmn:task id="Task_A" name="Zwei" />',
+    '  </bpmn:process>',
+    '</bpmn:definitions>',
+    '',
+  ].join('\n');
+  await page.goto(`/projects/${PROJECT}/upload`);
+  await page.getByTestId('file-input').setInputFiles([
+    { name: 'doppelt.bpmn', mimeType: 'application/xml', buffer: Buffer.from(duplicate) },
+    { name: 'meta.xml', mimeType: 'application/xml', buffer: Buffer.from('<meta/>') },
+  ]);
+  const row = page.locator('[data-testid=import-outcome][data-outcome=created]');
+  await expect(row).toHaveCount(1);
+  await expect(row).toContainText('doppelt');
+  const warnings = row.getByTestId('import-warnings');
+  await expect(warnings.locator('summary')).toHaveText('1 Hinweis');
+  await expect(warnings.getByTestId('import-warning')).toBeHidden();
+  await warnings.locator('summary').click();
+  const warning = warnings.getByTestId('import-warning');
+  await expect(warning).toBeVisible();
+  await expect(warning).toContainText('Unbekannter oder fehlerhafter Inhalt');
+  await expect(warning).toContainText('duplicate ID <Task_A>');
+  // The plain XML is no model: listed with the skipped files, not as a failure.
+  await expect(page.getByText('1 Dateien übersprungen', { exact: false })).toBeVisible();
+  await expect(page.getByTestId('toast').filter({ hasText: '1 Dateien importiert' })).toBeVisible();
 });
 
 test('findings and the connect page render for the project', async ({ page }) => {

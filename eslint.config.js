@@ -19,6 +19,25 @@ const CHAIN_CHUNK_PACKAGES = [
 const CHAIN_CHUNK_MESSAGE =
   'Only the lazy chain chunk (src/components/value-chain/canvas/) may import the value chain renderer, schema-model, diagram-js or zod (M4 §5).';
 
+/**
+ * The web imports types from the contracts, never their zod schemas; the one
+ * runtime import is the zod-free `@analyzr/contracts/paths` (M6 S1). `paths`
+ * entries match the bare specifier only, so a pattern restricts every other
+ * subpath.
+ */
+const CONTRACTS_MESSAGE =
+  'Import types from @analyzr/client; constants live in src/lib/limits.ts; the file rule comes from @analyzr/contracts/paths.';
+const CONTRACTS_RESTRICTION = {
+  paths: [{ name: '@analyzr/contracts', message: CONTRACTS_MESSAGE, allowTypeImports: true }],
+  patterns: [
+    {
+      group: ['@analyzr/contracts/*', '!@analyzr/contracts/paths'],
+      message: CONTRACTS_MESSAGE,
+      allowTypeImports: true,
+    },
+  ],
+};
+
 export default defineConfig(
   globalIgnores([
     '**/node_modules/',
@@ -92,7 +111,8 @@ export default defineConfig(
   },
   {
     // The bundle gets types from the contracts, never their zod schemas: use
-    // the generated @analyzr/client types (constants are mirrored in src/lib/limits.ts).
+    // the generated @analyzr/client types (constants are mirrored in src/lib/limits.ts);
+    // the zod-free @analyzr/contracts/paths is the one runtime import (M6 S1).
     // The value chain renderer, schema-model (with zod) and diagram-js belong to
     // the lazy chain chunk only (M4 §5): values from them are allowed in
     // src/components/value-chain/canvas/** alone (override below).
@@ -102,11 +122,7 @@ export default defineConfig(
         'error',
         {
           paths: [
-            {
-              name: '@analyzr/contracts',
-              message: 'Import types from @analyzr/client; constants live in src/lib/limits.ts.',
-              allowTypeImports: true,
-            },
+            ...CONTRACTS_RESTRICTION.paths,
             ...CHAIN_CHUNK_PACKAGES.map((name) => ({
               name,
               message: CHAIN_CHUNK_MESSAGE,
@@ -114,6 +130,7 @@ export default defineConfig(
             })),
           ],
           patterns: [
+            ...CONTRACTS_RESTRICTION.patterns,
             {
               group: ['diagram-js/*', '@miragon/value-chain-renderer/*'],
               message: CHAIN_CHUNK_MESSAGE,
@@ -128,18 +145,7 @@ export default defineConfig(
     // The lazy chain chunk: renderer, schema-model, diagram-js and zod are its own.
     files: ['apps/web/src/components/value-chain/canvas/**/*.{ts,tsx}'],
     rules: {
-      '@typescript-eslint/no-restricted-imports': [
-        'error',
-        {
-          paths: [
-            {
-              name: '@analyzr/contracts',
-              message: 'Import types from @analyzr/client; constants live in src/lib/limits.ts.',
-              allowTypeImports: true,
-            },
-          ],
-        },
-      ],
+      '@typescript-eslint/no-restricted-imports': ['error', CONTRACTS_RESTRICTION],
     },
   },
   {

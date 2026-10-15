@@ -371,8 +371,9 @@ run project before that: human decisions go into the claim input of the tasks st
   claims skip the task, so a batch can end with nothing pending while a model is still "agent
   working". Run one more batch after the lease end.
 - **Erneut einplanen** (the requeue) is in the web UI: the requeue route needs `analyzr:write` or
-  the owner, run tokens lack it, and the CLI has no requeue command. It cancels a task whose
-  lease expired and queues a new one.
+  the owner, run tokens lack it; with the owner key the CLI does the same: `analyzr models
+  requeue -p <project> <key>…` (M6 S1). It cancels a task whose lease expired and queues a new
+  one.
 - Do not revoke the run's token to free its tasks: revoking withdraws every proposal and no-link
   of the run and queues their models again, and going on needs a new token, that is another agent
   name and another recording.

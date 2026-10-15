@@ -6,7 +6,8 @@
   "description": "zod schemas, TypeScript types and the OpenAPI 3.1 document shared by server, client, CLI and web",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./paths": "./src/paths.ts"
   },
   "scripts": {
     "typecheck": "tsc",

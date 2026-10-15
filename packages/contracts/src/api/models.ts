@@ -104,12 +104,62 @@ export const RevisionFacts = z
   .meta({ id: 'RevisionFacts', description: 'Facts extracted from one revision.' });
 export type RevisionFacts = z.infer<typeof RevisionFacts>;
 
+/** At most this many extractor warnings are listed per file in an import or PUT result. */
+export const MAX_RESULT_WARNINGS = 20;
+/** A warning's message is cut to this many characters (ending in `…`) in a result. */
+export const MAX_RESULT_WARNING_CHARS = 300;
+/**
+ * Most warnings the extractor returns per file (`warningCount`): 100 and its
+ * own `too-many-warnings` entry ("N more warnings omitted").
+ */
+export const MAX_RESULT_WARNING_COUNT = 101;
+
+/**
+ * A non-fatal observation of the fact extractor (`@analyzr/bpmn-facts`):
+ * `parse-warning` (unknown or unparsable content, unresolved references,
+ * duplicate ids), `missing-id`, `invalid-id`, `duplicate-id` (element
+ * skipped), `label-truncated`, `key-truncated`, `documentation-truncated`,
+ * `call-without-target`, `multiple-event-definitions`,
+ * `message-flow-unresolved`, `too-many-warnings`. Not stored (M6 S1).
+ */
+export const ExtractWarning = z
+  .object({
+    code: z.string().max(50),
+    /** The extractor's English message, cut to 300 characters (ending in `…`). */
+    message: z.string().max(MAX_RESULT_WARNING_CHARS),
+    /** Element the warning is about, if any (not necessarily a valid element id). */
+    elementId: z.string().max(255).optional(),
+  })
+  .meta({ id: 'ExtractWarning', description: 'A non-fatal observation of the fact extractor.' });
+export type ExtractWarning = z.infer<typeof ExtractWarning>;
+
+/**
+ * The extractor's warnings of a `created` or `revised` file, present only
+ * when there is at least one (`unchanged` files are not extracted, `failed`
+ * ones carry the problem).
+ */
+const resultWarnings = {
+  /**
+   * At most {@link MAX_RESULT_WARNINGS}, in the extractor's order; when the
+   * extractor ended with `too-many-warnings`, that entry is the last one
+   * listed (after the first 19).
+   */
+  warnings: z.array(ExtractWarning).max(MAX_RESULT_WARNINGS).optional(),
+  /**
+   * Every warning the extractor returned (at most
+   * {@link MAX_RESULT_WARNING_COUNT}: 100 and its own `too-many-warnings`
+   * entry), also those beyond `warnings`.
+   */
+  warningCount: z.number().int().min(1).max(MAX_RESULT_WARNING_COUNT).optional(),
+};
+
 /** Outcome of `PUT …/models/by-key/{key}`: 201 `created`, 200 `revised` or `unchanged`. */
 export const PutModelResult = z
   .object({
     outcome: z.enum(['created', 'revised', 'unchanged']),
     model: Model,
     revision: Revision,
+    ...resultWarnings,
   })
   .meta({ id: 'PutModelResult', description: 'Result of uploading one BPMN file.' });
 export type PutModelResult = z.infer<typeof PutModelResult>;
@@ -127,6 +177,7 @@ export const ImportFileOutcome = z
     outcome: z.enum(['created', 'revised', 'unchanged', 'failed']),
     /** Set when `outcome` is `failed`. */
     problem: orNull(ApiProblem),
+    ...resultWarnings,
   })
   .meta({ id: 'ImportFileOutcome', description: 'Outcome of one file of an import.' });
 export type ImportFileOutcome = z.infer<typeof ImportFileOutcome>;

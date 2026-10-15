@@ -16,6 +16,8 @@ import { build, type Plugin, type UserConfig } from 'vite';
  *    schema-model in the web chunks.
  * 2. The entry chunk and its static imports hold none of them, nor the chain
  *    page, its components or the step view: those load with their routes.
+ *    Of `@analyzr/contracts`, only the zod-free `paths.ts` is in the bundle
+ *    (the upload's file rule, M6 S1).
  *    The entry stays under a gzip ceiling, so a page that slips into it shows.
  * 3. The main CSS has no `.vc-` rule (the renderer's CSS comes with the chunk).
  * 4. Budget: with the diagram-js (+ diagram-js-direct-editing) dependency
@@ -196,6 +198,11 @@ describe('web bundle (M4 §5 bundle guard)', { timeout: 120_000 }, () => {
     const main = reachable(chunks, entry?.fileName ?? '');
     const mainModules = chunks.filter((c) => main.has(c.fileName)).flatMap((c) => c.moduleIds);
     expect(mainModules.filter(isChainModule)).toEqual([]);
+    // M6 S1: the web's one runtime import from the contracts is the zod-free file rule.
+    const contracts = join(WEB, '../../packages/contracts') + sep;
+    expect(
+      [...new Set(ids.filter((id) => id.startsWith(contracts)))].map((id) => relative(WEB, id)),
+    ).toEqual([join('..', '..', 'packages', 'contracts', 'src', 'paths.ts')]);
     expect(chunks.some(isChainEntry)).toBe(true);
     // The chain page, its panels and the step view load with their routes, not with every page.
     expect(mainModules.filter(isChainPageModule).map((id) => relative(WEB, id))).toEqual([]);

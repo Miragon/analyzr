@@ -445,6 +445,8 @@ export type PutModelResult = {
   outcome: 'created' | 'revised' | 'unchanged';
   model: Model;
   revision: Revision;
+  warnings?: Array<ExtractWarning>;
+  warningCount?: number;
 };
 
 /**
@@ -475,6 +477,15 @@ export type RevisionSource = {
   kind: 'upload' | 'import' | 'seed';
   path?: string;
   [key: string]: unknown;
+};
+
+/**
+ * A non-fatal observation of the fact extractor.
+ */
+export type ExtractWarning = {
+  code: string;
+  message: string;
+  elementId?: string;
 };
 
 /**
@@ -517,6 +528,8 @@ export type ImportFileOutcome = {
   modelKey: ModelKey | null;
   outcome: 'created' | 'revised' | 'unchanged' | 'failed';
   problem: ApiProblem | null;
+  warnings?: Array<ExtractWarning>;
+  warningCount?: number;
 };
 
 export type ImportModelsBody = {

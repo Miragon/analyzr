@@ -7,7 +7,7 @@ import {
 } from '../../src/domain/agent-token-secret.ts';
 import { decodeCursor, encodeCursor, toPage } from '../../src/domain/cursor.ts';
 import { DomainError } from '../../src/domain/errors.ts';
-import { modelKeyFromPath } from '../../src/domain/paths.ts';
+import { resultWarnings } from '../../src/domain/use-cases/models.ts';
 import { createSessionCodec } from '../../src/auth/session.ts';
 
 describe('agent token secrets', () => {
@@ -31,18 +31,60 @@ describe('agent token secrets', () => {
   });
 });
 
-describe('modelKeyFromPath (CONCEPT §4: the key is the slugified path)', () => {
-  it.each([
-    ['finanzen/rechnungsstellung.bpmn', 'finanzen/rechnungsstellung'],
-    ['Vertrieb/Auftragsabwicklung.BPMN', 'vertrieb/auftragsabwicklung'],
-    ['Prüfung & Freigabe/Bestellung prüfen.bpmn', 'pruefung-freigabe/bestellung-pruefen'],
-    ['./a//b/../c.bpmn20.xml', 'a/b/c'],
-    ['windows\\path\\Model.xml', 'windows/path/model'],
-    ['Café crème.bpmn', 'cafe-creme'],
-    ['---.bpmn', null],
-    ['', null],
-  ])('%s → %s', (path, key) => {
-    expect(modelKeyFromPath(path)).toBe(key);
+// modelKeyFromPath moved to @analyzr/contracts (M6 S1): packages/contracts/test/paths.test.ts.
+
+describe('resultWarnings (M6 S1: extractor warnings in import and PUT results)', () => {
+  it('is empty without warnings, so the result keeps its shape', () => {
+    expect(resultWarnings([])).toEqual({});
+  });
+
+  it('keeps the first 20 in order, cuts messages to 300 characters with … and counts all', () => {
+    const many = Array.from({ length: 25 }, (_, i) => ({
+      code: 'parse-warning',
+      message: `warning ${i}`,
+      ...(i % 2 === 0 ? { elementId: `Task_${i}` } : {}),
+    }));
+    many[0] = { code: 'parse-warning', message: 'x'.repeat(490), elementId: 'Task_0' };
+    const r = resultWarnings(many);
+    expect(r.warningCount).toBe(25);
+    expect(r.warnings).toHaveLength(20);
+    expect(r.warnings?.[0]?.message).toHaveLength(300);
+    expect(r.warnings?.[0]?.message).toBe(`${'x'.repeat(299)}…`);
+    expect(r.warnings?.[1]).toEqual({ code: 'parse-warning', message: 'warning 1' });
+    expect(r.warnings?.[2]).toEqual({
+      code: 'parse-warning',
+      message: 'warning 2',
+      elementId: 'Task_2',
+    });
+    expect(r.warnings?.at(-1)?.message).toBe('warning 19');
+  });
+
+  it("keeps the extractor's too-many-warnings entry as the last one listed", () => {
+    // The extractor stops at 100 warnings and appends one `too-many-warnings` (101 in all).
+    const capped = [
+      ...Array.from({ length: 100 }, (_, i) => ({ code: 'parse-warning', message: `w${i}` })),
+      { code: 'too-many-warnings', message: '150 more warnings omitted' },
+    ];
+    const r = resultWarnings(capped);
+    expect(r.warningCount).toBe(101);
+    expect(r.warnings).toHaveLength(20);
+    expect(r.warnings?.slice(0, 19).map((w) => w.message)).toEqual(
+      Array.from({ length: 19 }, (_, i) => `w${i}`),
+    );
+    expect(r.warnings?.at(-1)).toEqual({
+      code: 'too-many-warnings',
+      message: '150 more warnings omitted',
+    });
+    // Only as the extractor's last entry; 20 or fewer are listed as they come.
+    const few = resultWarnings([{ code: 'too-many-warnings', message: 'x' }]);
+    expect(few.warnings).toEqual([{ code: 'too-many-warnings', message: 'x' }]);
+  });
+
+  it('never splits a surrogate pair and leaves a 300-character message whole', () => {
+    const exact = resultWarnings([{ code: 'c', message: 'y'.repeat(300) }]);
+    expect(exact.warnings?.[0]?.message).toBe('y'.repeat(300));
+    const emoji = resultWarnings([{ code: 'c', message: `${'y'.repeat(298)}😀😀` }]);
+    expect(emoji.warnings?.[0]?.message).toBe(`${'y'.repeat(298)}…`);
   });
 });
 

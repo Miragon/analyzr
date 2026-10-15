@@ -86,6 +86,10 @@ import {
   DEMO_WRITE_EXEMPT_OPERATIONS,
   Health,
   MAX_DEMO_LINK_LENGTH,
+  ExtractWarning,
+  ImportFileOutcome,
+  MAX_RESULT_WARNINGS,
+  MAX_RESULT_WARNING_COUNT,
 } from '../src/index.ts';
 
 describe('refs', () => {
@@ -1310,5 +1314,51 @@ describe('the placement pipeline kind (M4b)', () => {
       expect(schemas, name).toHaveProperty(name);
     }
     expect(JSON.stringify(schemas['UnplacedProcess'])).toContain('judged');
+  });
+});
+
+describe('extractor warnings in import and PUT results (M6 S1)', () => {
+  const file = { path: 'a.bpmn', modelKey: 'a', outcome: 'revised', problem: null };
+  const warning = { code: 'parse-warning', message: 'duplicate ID <Task_A>', elementId: 'Task_A' };
+
+  it('are optional, so warning-free results keep their shape', () => {
+    expect(ImportFileOutcome.parse(file)).toEqual(file);
+    expect(Object.keys(ImportFileOutcome.parse(file))).toEqual([
+      'path',
+      'modelKey',
+      'outcome',
+      'problem',
+    ]);
+  });
+
+  it(`carry at most ${MAX_RESULT_WARNINGS} entries of ≤ 300 characters and a count`, () => {
+    const many = Array.from({ length: MAX_RESULT_WARNINGS }, () => warning);
+    expect(
+      ImportFileOutcome.safeParse({ ...file, warnings: many, warningCount: 101 }).success,
+    ).toBe(true);
+    expect(
+      ImportFileOutcome.safeParse({ ...file, warnings: [...many, warning], warningCount: 101 })
+        .success,
+    ).toBe(false);
+    expect(ExtractWarning.safeParse({ code: 'x', message: 'm'.repeat(300) }).success).toBe(true);
+    expect(ExtractWarning.safeParse({ code: 'x', message: 'm'.repeat(301) }).success).toBe(false);
+    expect(ExtractWarning.safeParse({ code: 'c'.repeat(51), message: 'm' }).success).toBe(false);
+    expect(
+      ExtractWarning.safeParse({ code: 'x', message: 'm', elementId: 'e'.repeat(256) }).success,
+    ).toBe(false);
+    expect(ImportFileOutcome.safeParse({ ...file, warningCount: 0 }).success).toBe(false);
+    // The extractor returns at most 100 warnings and its own too-many-warnings entry.
+    expect(MAX_RESULT_WARNING_COUNT).toBe(101);
+    expect(ImportFileOutcome.safeParse({ ...file, warningCount: 102 }).success).toBe(false);
+  });
+
+  it('are described in the OpenAPI document', () => {
+    const schemas = buildOpenApiDocument().components?.schemas ?? {};
+    expect(schemas).toHaveProperty('ExtractWarning');
+    expect(JSON.stringify(schemas['ImportFileOutcome'])).toContain('warningCount');
+    expect(JSON.stringify(schemas['PutModelResult'])).toContain('warningCount');
+    expect(JSON.stringify(schemas['ImportFileOutcome'])).toContain(
+      '"warningCount":{"type":"integer","minimum":1,"maximum":101}',
+    );
   });
 });
