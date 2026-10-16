@@ -15,9 +15,12 @@ import { build, type Plugin, type UserConfig } from 'vite';
  * 1. One copy each of diagram-js, zod v4 (no zod v3), the renderer and
  *    schema-model in the web chunks.
  * 2. The entry chunk and its static imports hold none of them, nor the chain
- *    page, its components or the step view: those load with their routes.
- *    Of `@analyzr/contracts`, only the zod-free `paths.ts` is in the bundle
- *    (the upload's file rule, M6 S1).
+ *    page, its components or the step view: those load with their routes;
+ *    nor the open-questions page, its components and labels (M6 S4, the
+ *    tab's route chunk and the model view's lazy section).
+ *    Of `@analyzr/contracts`, only the zod-free `paths.ts` (the upload's file
+ *    rule, M6 S1) and `open-question-labels.ts` (M6 S4, in the lazy
+ *    open-questions chunks only) are in the bundle.
  *    The entry stays under a gzip ceiling, so a page that slips into it shows.
  * 3. The main CSS has no `.vc-` rule (the renderer's CSS comes with the chunk).
  * 4. Budget: with the diagram-js (+ diagram-js-direct-editing) dependency
@@ -40,6 +43,14 @@ const BUDGET = 40 * 1024;
  * The owner raised the ceiling to 240 KB that day („du kannst die Grenze dann
  * anheben jetzt schon“). Raise it on purpose, with the new measurement, when
  * the app shell grows; that is an owner decision, like the budget above.
+ * 207.5 KB after M6 S4 (2026-10-16): the entry's own code grew by under 1 KB
+ * (route, tab count, the model view's lazy import). The other ~6 KB is
+ * rolldown 1.2 splitting the entry: a new dynamic import whose chunk shares
+ * entry modules (plain-text, review, button) moves those modules into extra
+ * shared chunks, which gzip separately; either of S4's two lazy imports alone
+ * does it (201.5 KB in 2 chunks without both, 206.2 or 207.6 KB with one).
+ * Before the next lazy route, `build.rolldownOptions.output.codeSplitting`
+ * groups or a newer rolldown may win that back.
  */
 const ENTRY_CEILING = 240 * 1024;
 
@@ -181,6 +192,14 @@ const isChainPageModule = (id: string) =>
     join(WEB, 'src/components/value-chain') + sep,
   ].some((path) => id === path || id.startsWith(path));
 
+/** The open-questions page, its components and labels (M6 S4): a route chunk and a lazy section. */
+const isOpenQuestionsModule = (id: string) =>
+  [
+    join(WEB, 'src/routes/project-open-questions-page.tsx'),
+    join(WEB, 'src/components/open-questions') + sep,
+    join(WEB, 'src/lib/open-questions.ts'),
+  ].some((path) => id === path || id.startsWith(path));
+
 describe('web bundle (M4 §5 bundle guard)', { timeout: 120_000 }, () => {
   it('holds one diagram-js and one zod v4, keeps the chain code lazy and its CSS out of the main CSS', async () => {
     const { chunks, css } = await buildReport();
@@ -198,14 +217,30 @@ describe('web bundle (M4 §5 bundle guard)', { timeout: 120_000 }, () => {
     const main = reachable(chunks, entry?.fileName ?? '');
     const mainModules = chunks.filter((c) => main.has(c.fileName)).flatMap((c) => c.moduleIds);
     expect(mainModules.filter(isChainModule)).toEqual([]);
-    // M6 S1: the web's one runtime import from the contracts is the zod-free file rule.
+    // M6 S1 and S4: the web's runtime imports from the contracts are zod-free: the file
+    // rule (entry) and the open questions' labels (lazy chunks only).
     const contracts = join(WEB, '../../packages/contracts') + sep;
-    expect(
-      [...new Set(ids.filter((id) => id.startsWith(contracts)))].map((id) => relative(WEB, id)),
-    ).toEqual([join('..', '..', 'packages', 'contracts', 'src', 'paths.ts')]);
+    const contractsFile = (name: string) => join('..', '..', 'packages', 'contracts', 'src', name);
+    const fromContracts = (list: readonly string[]) =>
+      [...new Set(list.filter((id) => id.startsWith(contracts)))]
+        .map((id) => relative(WEB, id))
+        .sort();
+    expect(fromContracts(ids)).toEqual(
+      [contractsFile('open-question-labels.ts'), contractsFile('paths.ts')].sort(),
+    );
+    expect(fromContracts(mainModules)).toEqual([contractsFile('paths.ts')]);
     expect(chunks.some(isChainEntry)).toBe(true);
     // The chain page, its panels and the step view load with their routes, not with every page.
     expect(mainModules.filter(isChainPageModule).map((id) => relative(WEB, id))).toEqual([]);
+    // M6 S4: the tab „Offene Fragen“ and the model view's section load lazily as well.
+    expect(mainModules.filter(isOpenQuestionsModule).map((id) => relative(WEB, id))).toEqual([]);
+    expect(
+      chunks.some(
+        (c) =>
+          c.isDynamicEntry &&
+          (c.facadeModuleId ?? '').endsWith(`routes${sep}project-open-questions-page.tsx`),
+      ),
+    ).toBe(true);
     const entryGzip = chunks
       .filter((c) => main.has(c.fileName))
       .reduce((sum, c) => sum + gzipSync(c.code).length, 0);

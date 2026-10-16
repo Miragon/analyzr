@@ -1,4 +1,4 @@
-# analyzr – Handoff (status as of 2026-10-15)
+# analyzr – Handoff (status as of 2026-10-16)
 
 This file lets another person or AI agent continue analyzr without the original
 conversation. It records **where we stand, what the owner decided, what is open and what comes
@@ -73,8 +73,10 @@ and code are in English.
   links, answered by the consultant in the web UI too, and for interview skills (decision 24:
   M6 before M5, the trust policy, `tools/integrate`, summaries read-only). S0 (the concept), S1
   "Import hygiene", S3a `eval:descriptive` and S3b, the plugin `analyzr-integrate` v0, are done
-  (M6 §8 "S1 as delivered", "S3a as delivered", "S3b as delivered"); next is the owner's review
-  of these „erste Anfänge“, then S4 per M6 §8's order (§7 "M6").
+  (M6 §8 "S1 as delivered", "S3a as delivered", "S3b as delivered"), and **S4 „Offene Fragen“**
+  (2026-10-16: the open-questions read model over REST, the tab, the model view's section, the
+  Markdown and CSV export and `analyzr questions`; M6 §8 "S4 as delivered"); next is the owner's
+  review, then S5a per M6 §8's order (§7 "M6").
 
 ## 2. Read in this order
 
@@ -347,13 +349,13 @@ overall, the holdout aggregate only with „< 5“ and a secondary suppression o
 | `plugins/analyzr-integrate` | the second Claude Code plugin (M6 S3b, 0.1.0) for interactive, non-pipeline skills: `/analyzr-integrate:integrate-landscape <export> [--workspace <dir>]` turns a customer's BPMN 2.0 export into an import bundle `analyzr-import/1` and a German report in the consultant's workspace (keys pinned in `keymap.json`), never imports (the consultant does); reference notes per tool (unverified), the bundled scripts `inspect.mjs` and `normalize-bpmn.mjs` (generated) and their notices; a sha256 per plugin release in `tools/integrate/test/plugin.test.ts`; never loaded in live runs |
 | `tools/integrate` | `@analyzr/integrate` (M6 S3b, decision 24.8): the sources and tests of the integrate plugin's scripts (`inspect`, `normalize-bpmn` with `file`, `plan`, `bundle`, `inventory`), bundled by `pnpm --filter @analyzr/integrate generate` with a drift test; a synthetic Signavio-style export and its golden bundle, which the CLI and web tests import; imported by nothing in `apps/` or `packages/` |
 | `examples/agents` | reference setups: Claude Code (interactive and `run-headless.sh [--skill placements]`), Claude Desktop (configs + German start prompts for relations, placements and drafting a chain), Codex; documentation, not in the image |
-| `apps/server` | Hono server: domain (pure, dependency-cruiser enforced), Drizzle/PostgreSQL, REST `/api/v1`, MCP `/mcp` (stateless Streamable HTTP), local mode, agent tokens, pipeline, review; since M4 S1/S2 the value chain and placements (`src/domain/value-chain/`: storage, lifecycle, `prepareRevision`, rule proposals, findings; REST under `/value-chains`, six MCP tools; the web page since S3); since decision 19 the owner's auto-accept rules (`src/domain/auto-accept/`, seven owner-only routes and the ledger for every reviewer, no MCP) |
-| `apps/cli` | `analyzr health / status / import / seed [--project --issue-tokens --token-name --value-chains] / models list\|requeue\|delete / token create\|list\|revoke / value-chain push\|pull / rules list\|show\|add\|edit\|enable\|disable\|preview\|apply\|revoke / mcp` (stdio bridge) |
-| `apps/web` | projects, models, relations, findings, bpmn-js model view, upload, connect-an-agent, inbox, review screen; since M4 S3 the value chain page (`/projects/{key}/value-chain`: renderer viewer/modeler in a lazy chunk, placement review, save with dry run and conflict, drafts, link editing) and the step view; since decision 19 the tab „Regeln“ (auto-accept rules with live preview, apply, revoke) and the marks and filters of auto-accepted items in the review views |
+| `apps/server` | Hono server: domain (pure, dependency-cruiser enforced), Drizzle/PostgreSQL, REST `/api/v1`, MCP `/mcp` (stateless Streamable HTTP), local mode, agent tokens, pipeline, review; since M4 S1/S2 the value chain and placements (`src/domain/value-chain/`: storage, lifecycle, `prepareRevision`, rule proposals, findings; REST under `/value-chains`, six MCP tools; the web page since S3); since decision 19 the owner's auto-accept rules (`src/domain/auto-accept/`, seven owner-only routes and the ledger for every reviewer, no MCP); since M6 S4 the open questions (`src/domain/open-questions/`: one read model over findings, chain findings, holds, agents' questions, unsure verdicts, coded no-links, summaries and unjudged pairs plus the gap signals, computed on read; `GET …/open-questions` and `…/open-questions/export?format=markdown\|csv`, permission `read`; no MCP until S7) |
+| `apps/cli` | `analyzr health / status / import / seed [--project --issue-tokens --token-name --value-chains] / models list\|requeue\|delete / questions [--model --kind --source --ask-who --state --format text\|md\|csv\|json -o] / token create\|list\|revoke / value-chain push\|pull / rules list\|show\|add\|edit\|enable\|disable\|preview\|apply\|revoke / mcp` (stdio bridge) |
+| `apps/web` | projects, models, relations, findings, bpmn-js model view, upload, connect-an-agent, inbox, review screen; since M4 S3 the value chain page (`/projects/{key}/value-chain`: renderer viewer/modeler in a lazy chunk, placement review, save with dry run and conflict, drafts, link editing) and the step view; since decision 19 the tab „Regeln“ (auto-accept rules with live preview, apply, revoke) and the marks and filters of auto-accepted items in the review views; since M6 S4 the tab „Offene Fragen“ (every gap as a question, filters, Markdown and CSV export) and the model view's section of the same name |
 | `apps/agent-sim` | LLM-free reference agent that works the pipeline over MCP, both task kinds since M4 S5 |
 | `apps/demo` | `analyzr-demo seed\|serve\|check` (owner decision 20): seeds the read-only demo while its image is built, supervises PostgreSQL and the server in the container, checks a running demo from outside |
 | `eval/corpus` | test landscapes `nordwind-handel` (dev, 31 models, 17 C7/14 C8) and `stadtwerke-auental` (holdout, 26 models, 10 C7/16 C8) + `_sample`; every model deploys on Camunda 7.24.0 and 8.9.22 |
-| `eval/tools` | spec format, BPMN generator with DI, validator, deploy check (`engines.compose.yaml`), `eval:candidates`, `eval:replay`, `eval:live` and the live gate, `eval:placements` (M4 S4: the golden value chains, the rule tier and `baseline-prefix/1`), the „Auto-accept what-if“ of `eval:replay` (decision 19), `eval:descriptive` (M6 S3a: how much of the LLM-free relation finding survives descriptive, tool-style models; report only) |
+| `eval/tools` | spec format, BPMN generator with DI, validator, deploy check (`engines.compose.yaml`), `eval:candidates`, `eval:replay`, `eval:live` and the live gate, `eval:placements` (M4 S4: the golden value chains, the rule tier and `baseline-prefix/1`), the „Auto-accept what-if“ of `eval:replay` (decision 19), `eval:descriptive` (M6 S3a: how much of the LLM-free relation finding survives descriptive, tool-style models; report only; its model variants also as `@analyzr/eval-tools/descriptive`, on which the server's test checks the gap signals of M6 S4) |
 | `eval/recordings`, `eval/reports` | recorded submissions (today the sim agent under `analyzr-relations@0.2.0` and `analyzr-placements@0.1.0`; the owner's live runs go here too) and generated reports incl. both live gates, pairs judged twice and uncovered pairs |
 | `eval/value-chains` | golden value chains + expected placements for both landscapes (M4); `validate-value-chains.mjs` checks them with `@miragon/value-chain-schema-model` 0.3.0 from npm (pinned in `eval/tools`) and its built-in cross-check, run by `pnpm test` |
 | `docker/` | `compose.yaml` (project `analyzr`: PostgreSQL 17 on 127.0.0.1:55432, analyzr on 127.0.0.1:7400) and `Dockerfile`; the read-only demo (owner decision 20): `Dockerfile.demo` with its `.dockerignore`, `compose.demo.yaml` (project `analyzr-demo`, 127.0.0.1:7480), `fly.demo.toml` |
@@ -748,11 +750,19 @@ simulation agent, so the v1 limit is 40 models per project with a warning from 3
 and `normalize-bpmn`, the workspace with `keymap.json`, the bundle and the German report, run end
 to end against a scratch stack with the CLI and the web upload; its guard setup is not yet tried
 in a live Claude Code session, and its report does not yet warn above the 40-model limit). These
-three are the „erste Anfänge“ of decision 24.1. **Next:** the owner reviews them, ideally on a
-sandbox or anonymized export (M6 §10.4), and confirms the rest of the order, proposed as S4
-(„Offene Fragen“) → S5a (answers in the UI) → S2a/S2b (provenance, manifest, dry run) → S3c → S6
-(interviews), and after the live runs S5b and S7; S2c only with the owner's OK. Nothing of M6
-changes released procedures, claim inputs or the MCP surface before the owner's live runs.
+three are the „erste Anfänge“ of decision 24.1. **S4 „Offene Fragen“** (**done 2026-10-16**, with
+a review round's fixes; M6 §8 "S4 as delivered"): every source of M6 §4.1 and the gap signals as
+one list (`GET …/open-questions`, permission `read`), the Markdown and CSV export, the tab „Offene
+Fragen“ after „Befunde“, the model view's section and `analyzr questions`; on the seeded dev
+project 64 questions (14 findings, 44 chain findings, 6 black-box pools); `message-without-name`
+stays off (it duplicates `message-partner-missing`); deviations: `askWho.stepOwners` as a list,
+`unlocks` may be 0 with informational items last, the CSV without informational items, the
+export named after its filters; whole-project candidates (2.3 s at 310 models) are memoized per
+head facts; the ranking of chain findings is a question for the owner (§8). **Next:** the owner reviews S1–S4, ideally on a sandbox or anonymized export (M6
+§10.4), and confirms the rest of the order, proposed as S5a (answers in the UI) → S2a/S2b
+(provenance, manifest, dry run) → S3c → S6 (interviews), and after the live runs S5b and S7; S2c
+only with the owner's OK. Nothing of M6 changes released procedures, claim inputs or the MCP
+surface before the owner's live runs.
 
 ### Paused milestone: process network map, M5 (owner decisions 22 and 24)
 
@@ -826,6 +836,7 @@ Git/bpmiq.yml import, MCP App widget.
 | M6: sample exports | Sandbox instances or anonymized exports of ARIS, Signavio, ADONIS, Bizagi, Visio? | M6 §10.4 |
 | M6: answers re-queue | May S5b widen the relations judgement basis by human notes and queue tasks (after the live runs)? | M6 §10.5 |
 | M6: erasure | One database per customer engagement for now, a purge use case with server mode? | M6 §10.6 |
+| M6: chain findings in „Offene Fragen“ | Chain findings rank by `unlocks` like every other question, so on a freshly seeded project 44 of the 64 items are „Prozess ohne Schritt“ (32) and „Schritt ohne Prozess“ (12) until placements are accepted; the filter Quelle separates them. Keep, or rank them below the other questions (a change to the sort key only)? | M6 §8 "S4 as delivered" |
 
 ## 9. Working agreements and pitfalls
 

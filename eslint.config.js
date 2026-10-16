@@ -20,18 +20,23 @@ const CHAIN_CHUNK_MESSAGE =
   'Only the lazy chain chunk (src/components/value-chain/canvas/) may import the value chain renderer, schema-model, diagram-js or zod (M4 §5).';
 
 /**
- * The web imports types from the contracts, never their zod schemas; the one
- * runtime import is the zod-free `@analyzr/contracts/paths` (M6 S1). `paths`
- * entries match the bare specifier only, so a pattern restricts every other
- * subpath.
+ * The web imports types from the contracts, never their zod schemas; the
+ * runtime imports are the zod-free `@analyzr/contracts/paths` (M6 S1) and
+ * `@analyzr/contracts/open-question-labels` (M6 S4, lazy chunks only, which
+ * the bundle guard checks). `paths` entries match the bare specifier only, so
+ * a pattern restricts every other subpath.
  */
 const CONTRACTS_MESSAGE =
-  'Import types from @analyzr/client; constants live in src/lib/limits.ts; the file rule comes from @analyzr/contracts/paths.';
+  'Import types from @analyzr/client; constants live in src/lib/limits.ts; the file rule comes from @analyzr/contracts/paths, the open-question labels from @analyzr/contracts/open-question-labels.';
 const CONTRACTS_RESTRICTION = {
   paths: [{ name: '@analyzr/contracts', message: CONTRACTS_MESSAGE, allowTypeImports: true }],
   patterns: [
     {
-      group: ['@analyzr/contracts/*', '!@analyzr/contracts/paths'],
+      group: [
+        '@analyzr/contracts/*',
+        '!@analyzr/contracts/paths',
+        '!@analyzr/contracts/open-question-labels',
+      ],
       message: CONTRACTS_MESSAGE,
       allowTypeImports: true,
     },
@@ -112,7 +117,8 @@ export default defineConfig(
   {
     // The bundle gets types from the contracts, never their zod schemas: use
     // the generated @analyzr/client types (constants are mirrored in src/lib/limits.ts);
-    // the zod-free @analyzr/contracts/paths is the one runtime import (M6 S1).
+    // the zod-free @analyzr/contracts/paths (M6 S1) and …/open-question-labels (M6 S4)
+    // are the runtime imports.
     // The value chain renderer, schema-model (with zod) and diagram-js belong to
     // the lazy chain chunk only (M4 §5): values from them are allowed in
     // src/components/value-chain/canvas/** alone (override below).

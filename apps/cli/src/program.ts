@@ -6,6 +6,7 @@ import { healthCommand } from './commands/health.ts';
 import { importCommand } from './commands/import.ts';
 import { mcpCommand } from './commands/mcp.ts';
 import { modelsDeleteCommand, modelsListCommand, modelsRequeueCommand } from './commands/models.ts';
+import { questionsCommand } from './commands/questions.ts';
 import {
   rulesAddCommand,
   rulesApplyCommand,
@@ -50,7 +51,7 @@ interface GlobalOptions {
 export function buildProgram(io: CliIo = processIo): Command {
   const program = new Command('analyzr')
     .description(
-      'analyzr command line: seed, import, list, requeue and delete models, push and pull the value chain, manage agent tokens and auto-accept rules, bridge MCP over stdio',
+      'analyzr command line: seed, import, list, requeue and delete models, list and export open questions, push and pull the value chain, manage agent tokens and auto-accept rules, bridge MCP over stdio',
     )
     .version(rootPackage.version, '-v, --version')
     .option('--url <url>', `analyzr server URL (env ANALYZR_URL, default ${DEFAULT_ANALYZR_URL})`)
@@ -146,6 +147,38 @@ export function buildProgram(io: CliIo = processIo): Command {
     .option('--json', 'print JSON')
     .action((keys: string[], opts: { project: string; yes?: boolean; json?: boolean }) =>
       modelsDeleteCommand(io, keys, { ...globals(), ...opts }),
+    );
+
+  program
+    .command('questions')
+    .description(
+      'the open questions of a project, most open decisions first: a table, JSON, or the Markdown or CSV export (any credential)',
+    )
+    .requiredOption('-p, --project <project>', 'project key or id')
+    .option('--model <key>', 'only questions touching this model, or a model below this folder')
+    .option('--kind <kind>', 'only this kind, e.g. call-target-unknown or black-box-partner')
+    .option('--source <source>', 'only this source, e.g. finding, hold, agent-question or signal')
+    .option(
+      '--ask-who <name>',
+      'only questions whose contact hint names this lane, step owner or folder exactly',
+    )
+    .option('--state <state>', 'only open or only answered questions')
+    .option(
+      '--format <format>',
+      'text (a table, the default), md (the Markdown export), csv (the CSV export with empty answer columns) or json',
+    )
+    .option('-o, --output <file>', 'write to this file (default: stdout)')
+    .action(
+      (opts: {
+        project: string;
+        model?: string;
+        kind?: string;
+        source?: string;
+        askWho?: string;
+        state?: string;
+        format?: string;
+        output?: string;
+      }) => questionsCommand(io, { ...globals(), ...opts }),
     );
 
   const token = program.command('token').description('manage agent tokens (owner key)');

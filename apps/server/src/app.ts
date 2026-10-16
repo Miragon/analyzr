@@ -28,6 +28,7 @@ import { registerModelRoutes } from './http/routes/models.ts';
 import { registerPlacementRoutes } from './http/routes/placements.ts';
 import { mountNotImplementedRoutes } from './http/routes/not-implemented.ts';
 import { registerProjectRoutes } from './http/routes/projects.ts';
+import { registerOpenQuestionRoutes } from './http/routes/open-questions.ts';
 import { registerRelationRoutes } from './http/routes/relations.ts';
 import { registerReviewRoutes } from './http/routes/review.ts';
 import { registerSessionRoutes } from './http/routes/session.ts';
@@ -154,6 +155,7 @@ export function createAnalyzrApp(deps: AppDeps): AnalyzrApp {
   registerProjectRoutes(app, useCases);
   registerModelRoutes(app, useCases);
   registerRelationRoutes(app, useCases);
+  registerOpenQuestionRoutes(app, useCases);
   registerReviewRoutes(app, useCases);
   registerAnalysisRoutes(app, useCases);
   registerAgentTokenRoutes(app, useCases);

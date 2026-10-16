@@ -5,9 +5,10 @@
  * spoken to over stdio with the official SDK client (initialize, tools/list,
  * tools/call list_processes) in the 2025-11-25 and the 2026-07-28 revision,
  * `analyzr value-chain push|pull` with the golden dev chain, `analyzr seed
- * --value-chains` (M4 S4), and the import hygiene of M6 S1 (`.xml`, skipped
- * plain XML and sidecars, extractor warnings, the waiting tasks) with
- * `analyzr models list|requeue|delete`.
+ * --value-chains` (M4 S4), `analyzr questions` on the seeded chain project
+ * (M6 S4), and the import hygiene of M6 S1 (`.xml`, skipped plain XML and
+ * sidecars, extractor warnings, the waiting tasks) with `analyzr models
+ * list|requeue|delete`.
  */
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -247,6 +248,120 @@ describe('analyzr seed --value-chains', () => {
       outcome: 'open',
       taskId: expect.stringMatching(/^ana_/) as unknown,
     });
+  });
+});
+
+describe('analyzr questions (M6 S4)', () => {
+  // vc-seed as `seed --value-chains` left it: nordwind-handel, the golden chain, no agent yet.
+  const SEEDED = {
+    'process-without-step': 32,
+    'step-without-process': 12,
+    'message-partner-missing': 9,
+    'black-box-partner': 6,
+    'call-target-dynamic': 2,
+    'call-target-unknown': 2,
+    'duplicate-process-id': 1,
+  };
+
+  it('lists, filters and exports the open questions with a read-only token', async () => {
+    const token = await analyzr([
+      'token',
+      'create',
+      '-p',
+      'vc-seed',
+      '--name',
+      'questions-e2e',
+      '--scopes',
+      'analyzr:read',
+      '--json',
+    ]);
+    const reader = { ANALYZR_TOKEN: (JSON.parse(token.out) as { secret: string }).secret };
+
+    const listed = await analyzr(['questions', '-p', 'vc-seed', '--format', 'json'], reader);
+    expect(listed.err).toBe('');
+    expect(listed.code).toBe(0);
+    const items = JSON.parse(listed.out) as {
+      id: string;
+      kind: string;
+      unlocks: number;
+      modelKeys: string[];
+    }[];
+    const byKind: Record<string, number> = {};
+    for (const q of items) byKind[q.kind] = (byKind[q.kind] ?? 0) + 1;
+    expect(byKind).toEqual(SEEDED);
+    expect(new Set(items.map((q) => q.id)).size).toBe(64);
+    const unlocks = items.map((q) => q.unlocks);
+    expect(unlocks).toEqual([...unlocks].sort((a, b) => b - a));
+
+    const table = await analyzr(['questions', '-p', 'vc-seed'], reader);
+    expect(table.code).toBe(0);
+    expect(table.out).toContain(
+      'vc-seed: 64 open questions (process-without-step 32, step-without-process 12, message-partner-missing 9, black-box-partner 6, call-target-dynamic 2, call-target-unknown 2, duplicate-process-id 1)\n',
+    );
+    expect(table.out.split('\n')).toHaveLength(64 + 3);
+
+    const finanzen = await analyzr(
+      ['questions', '-p', 'vc-seed', '--model', 'finanzen', '--format', 'json'],
+      reader,
+    );
+    const inFinanzen = JSON.parse(finanzen.out) as { modelKeys: string[] }[];
+    expect(inFinanzen.length).toBeGreaterThan(0);
+    expect(inFinanzen.length).toBeLessThan(64);
+    for (const q of inFinanzen) {
+      expect(q.modelKeys.some((k) => k.startsWith('finanzen/'))).toBe(true);
+    }
+
+    // The CSV export, verbatim: byte order mark, the header, one row per question.
+    const csvFile = path.join(dir, 'offene-fragen.csv');
+    const csv = await analyzr(
+      ['questions', '-p', 'vc-seed', '--format', 'csv', '-o', csvFile],
+      reader,
+    );
+    expect(csv.err).toBe('');
+    expect(csv.code).toBe(0);
+    expect(csv.out).toBe(`wrote the open questions of vc-seed to ${csvFile}\n`);
+    const bytes = await readFile(csvFile);
+    expect([...bytes.subarray(0, 3)]).toEqual([0xef, 0xbb, 0xbf]);
+    const text = bytes.toString('utf8');
+    expect(text).toMatch(
+      /^\uFEFF"id";"Art";"Frage";"Ansprechpartner-Hinweis";"Antwort";"Antwortart"\r\n/,
+    );
+    expect(text.match(/\r\n"q-[0-9a-f]{16}";/g)).toHaveLength(64);
+    for (const q of items) expect(text).toContain(`"${q.id}";`);
+
+    // One sheet per contact hint: the folder `finanzen`, exactly.
+    const forFinanzen = await analyzr(
+      ['questions', '-p', 'vc-seed', '--ask-who', 'finanzen', '--format', 'csv'],
+      reader,
+    );
+    expect(forFinanzen.err).toBe('');
+    expect(forFinanzen.code).toBe(0);
+    const askedIds = [...forFinanzen.out.matchAll(/\r\n"(q-[0-9a-f]{16})";/g)].map((m) => m[1]);
+    const expectedIds = (
+      JSON.parse(
+        (
+          await analyzr(
+            ['questions', '-p', 'vc-seed', '--ask-who', 'finanzen', '--format', 'json'],
+            reader,
+          )
+        ).out,
+      ) as { id: string; askWho: { folder: string | null } }[]
+    ).map((q) => {
+      expect(q.askWho.folder).toBe('finanzen');
+      return q.id;
+    });
+    expect(expectedIds.length).toBeGreaterThan(0);
+    expect(askedIds).toEqual(expectedIds);
+
+    // The Markdown export of one kind: its filter line and one heading per question.
+    const md = await analyzr(
+      ['questions', '-p', 'vc-seed', '--kind', 'black-box-partner', '--format', 'md'],
+      reader,
+    );
+    expect(md.code).toBe(0);
+    expect(md.out).toMatch(/^# Offene Fragen: /);
+    expect(md.out).toContain('Filter: Art „Pool ohne Prozess“.');
+    expect(md.out.match(/^### \d+\. Pool ohne Prozess: /gm)).toHaveLength(6);
   });
 });
 

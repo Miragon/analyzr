@@ -6,7 +6,8 @@
   "description": "Spec format, BPMN generator and validator for the analyzr eval corpus; eval:candidates, eval:replay, eval:live, eval:placements and eval:descriptive",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./descriptive": "./src/descriptive.ts"
   },
   "engines": {
     "node": ">=24"

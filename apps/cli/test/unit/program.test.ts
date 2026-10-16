@@ -25,6 +25,7 @@ describe('analyzr', () => {
       'status',
       'import',
       'models',
+      'questions',
       'token',
       'mcp',
       'seed',

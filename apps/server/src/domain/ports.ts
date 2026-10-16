@@ -309,6 +309,23 @@ export interface ChainTaskDetail extends ChainTaskRecord, TaskLease {
 /** A task with its lease (CONCEPT §3 "Claim and lease"), by subject. */
 export type TaskDetail = ModelTaskDetail | ChainTaskDetail;
 
+/** A done `relations` task as open questions read it (M6 S4): no assignment, no lease. */
+export interface DoneModelTask {
+  id: AnalysisTaskId;
+  modelKey: string;
+  factsHash: string;
+  seq: number;
+}
+
+/** A done `placement` task as open questions read it (M6 S4): the processes its claim showed. */
+export interface DoneChainTask {
+  id: AnalysisTaskId;
+  valueChainKey: string;
+  seq: number;
+  /** The processes of its placement claim; `null` without one. */
+  processes: readonly string[] | null;
+}
+
 export interface TaskFilter {
   state?: TaskState | undefined;
   kind?: TaskKind | undefined;
@@ -676,6 +693,8 @@ export interface RevisionRepo {
   maxRev(projectId: ProjectId, modelId: ModelId): Promise<number>;
   /** `facts_hash` of the head revision of every live model, by model key. */
   headHashes(projectId: ProjectId): Promise<Map<string, string>>;
+  /** `facts_hash` and seq of the head revision of every live model, by model key. */
+  heads(projectId: ProjectId): Promise<Map<string, { factsHash: string; seq: number }>>;
   /**
    * `facts_hash` of the revision of each model that was its head at event
    * `seq` (the latest revision with a seq ≤ `seq`, unless the model was
@@ -772,6 +791,21 @@ export interface TaskRepo {
     filter: TaskFilter,
     page: { beforeSeq?: number | undefined; limit: number },
   ): Promise<TaskDetail[]>;
+  /**
+   * Per live model and facts hash the newest done `relations` task, newest
+   * first (open questions read the one on the head facts, M6 S4); one row per
+   * revision content, not per task, and without the assignment.
+   */
+  latestDoneByModelHash(projectId: ProjectId): Promise<DoneModelTask[]>;
+  /**
+   * The done `placement` tasks of a chain whose claim showed this revision,
+   * newest first (the batches of one placement run, M6 S4).
+   */
+  doneOnChainRevision(
+    projectId: ProjectId,
+    valueChainId: ValueChainId,
+    valueChainRevisionId: ValueChainRevisionId,
+  ): Promise<DoneChainTask[]>;
   /** Whether a claimed task of any kind has a lease that expired at the last attempt (see {@link failExpired}). */
   hasExpired(projectIds: readonly ProjectId[], now: Date, maxAttempts: number): Promise<boolean>;
   /**
@@ -829,6 +863,11 @@ export interface TaskRepo {
 export interface SubmissionRepo {
   insert(s: SubmissionRecord): Promise<void>;
   findByTask(projectId: ProjectId, taskId: AnalysisTaskId): Promise<StoredSubmission | null>;
+  /** The stored submissions of these tasks (at most one each), in no particular order. */
+  findByTasks(
+    projectId: ProjectId,
+    taskIds: readonly AnalysisTaskId[],
+  ): Promise<StoredSubmission[]>;
   /**
    * The analysed model (key) of every stored submission of a `relations`
    * task: the origin of its proposals.
@@ -1186,8 +1225,11 @@ export interface AnalysisPort {
   extract(xml: Uint8Array, modelKey: string): Promise<ExtractOutcome>;
   factsHash(facts: readonly Fact[]): string;
   runRules(projectFacts: ProjectFacts): RuleOutput;
-  /** Candidate pairs around one model, both directions (claim input, CONCEPT §3). */
-  candidates(projectFacts: ProjectFacts, focusModelKey: string): Candidate[];
+  /**
+   * Candidate pairs around one model, both directions (claim input, CONCEPT
+   * §3); without a focus model, every model's (the open-questions read model).
+   */
+  candidates(projectFacts: ProjectFacts, focusModelKey?: string): Candidate[];
   /** Validates proposed pairs against the head facts and computes their tier. */
   pairAssessor(projectFacts: ProjectFacts): (pair: PairQuery) => PairAssessment;
 }

@@ -120,6 +120,22 @@ describe('web app', () => {
     );
   });
 
+  it('routes the tab „Offene Fragen“ for every role, its filters in the URL (M6 S4)', async () => {
+    const viewer = new QueryClient();
+    viewer.setQueryData(projectQuery('demo').queryKey, {
+      id: 'prj_01TEST',
+      key: 'demo',
+      name: 'Demo',
+      role: 'viewer',
+      lastSeq: 1,
+      createdAt: '2026-10-07T09:00:00.000Z',
+    });
+    const html = await render('/projects/demo/open-questions?kind=held&model=finanzen', viewer);
+    expect(html).toContain('href="/projects/demo/open-questions"');
+    expect(html).toContain('>Offene Fragen<');
+    expect(html).not.toContain('Seite nicht gefunden');
+  });
+
   it('answers unknown paths with a German not-found page', async () => {
     const html = await render('/gibt-es-nicht');
     expect(html).toContain('Seite nicht gefunden');

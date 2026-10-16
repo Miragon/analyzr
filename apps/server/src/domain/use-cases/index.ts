@@ -11,6 +11,7 @@ import type { UseCaseDeps } from './deps.ts';
 import { identityUseCases } from './identity.ts';
 import { landscapeUseCases } from './landscape.ts';
 import { modelUseCases } from './models.ts';
+import { openQuestionUseCases } from './open-questions.ts';
 import { placementUseCases } from './placements.ts';
 import { projectUseCases } from './projects.ts';
 import { reviewUseCases } from './review.ts';
@@ -19,6 +20,7 @@ import { valueChainUseCases } from './value-chains.ts';
 export type { UseCaseDeps } from './deps.ts';
 export { EVENT_KINDS, USAGE_KINDS, type EventKind, type UsageKind } from './landscape.ts';
 export type { ModelXml, UploadFile } from './models.ts';
+export type { OpenQuestionExport } from './open-questions.ts';
 export type { RulePrecondition } from './auto-accept.ts';
 export type { ChainContent, ContentPrecondition } from './value-chains.ts';
 
@@ -43,6 +45,7 @@ export function createUseCases(deps: UseCaseDeps) {
     ...valueChainUseCases(chainDeps),
     ...placementUseCases(chainDeps),
     ...autoAcceptUseCases(deps),
+    ...openQuestionUseCases(deps),
   };
 }
 

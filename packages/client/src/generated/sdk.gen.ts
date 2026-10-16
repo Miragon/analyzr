@@ -57,6 +57,9 @@ import type {
   DeleteValueChainData,
   DeleteValueChainErrors,
   DeleteValueChainResponses,
+  ExportOpenQuestionsData,
+  ExportOpenQuestionsErrors,
+  ExportOpenQuestionsResponses,
   GetAnalysisSubmissionData,
   GetAnalysisSubmissionErrors,
   GetAnalysisSubmissionResponses,
@@ -138,6 +141,9 @@ import type {
   ListNoLinksData,
   ListNoLinksErrors,
   ListNoLinksResponses,
+  ListOpenQuestionsData,
+  ListOpenQuestionsErrors,
+  ListOpenQuestionsResponses,
   ListPlacementsData,
   ListPlacementsErrors,
   ListPlacementsResponses,
@@ -495,6 +501,40 @@ export const listNoLinks = <ThrowOnError extends boolean = false>(
   (options.client ?? client).get<ListNoLinksResponses, ListNoLinksErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/v1/projects/{project}/no-links',
+    ...options,
+  });
+
+/**
+ * Open questions: the gaps that block links and placements, from every source and the gap signals
+ *
+ * Computed on read, never stored (M6 §4.2): relation and value chain findings, holds (note, question, label), agents' questions on proposals waiting for review, current unsure placement verdicts, no-links coded `call-target` or `collaboration`, the summaries of current submissions and the pairs they left unjudged, and the gap signals over the head facts. Questions before informational items (`summary-note`, `descriptive-model`), each ordered by `unlocks` (descending), then subject, kind and id. `modelKey` matches a model or a folder (`finanzen` matches `finanzen/mahnwesen`); `askWho` matches a lane, one of the step owners or the folder exactly. Every item is `open` until answers exist (M6 S5a).
+ */
+export const listOpenQuestions = <ThrowOnError extends boolean = false>(
+  options: Options<ListOpenQuestionsData, ThrowOnError>,
+): RequestResult<ListOpenQuestionsResponses, ListOpenQuestionsErrors, ThrowOnError> =>
+  (options.client ?? client).get<ListOpenQuestionsResponses, ListOpenQuestionsErrors, ThrowOnError>(
+    {
+      security: [{ scheme: 'bearer', type: 'http' }],
+      url: '/api/v1/projects/{project}/open-questions',
+      ...options,
+    },
+  );
+
+/**
+ * The open questions as a Markdown or CSV download, with the filters of the list
+ *
+ * Every open question matching the filters, in list order, as an attachment. `markdown` (default): German headings, grouped by the contact hint (step owners, else folder, else lanes). `csv`: the questions without the informational items (`summary-note`, `descriptive-model`, which ask nothing), UTF-8 with a byte order mark, `;`-separated (what German spreadsheet programs open directly), CRLF, every field quoted, the columns `id`, `Art`, `Frage`, `Ansprechpartner-Hinweis`, `Antwort`, `Antwortart`; the last two are empty for the customer to fill in. A cell starting with `=`, `+`, `-`, `@`, a tab, a carriage return or their full-width forms (also after a run of `'`) gets a leading `'`, so spreadsheets never run it as a formula. The file name carries the filters (`offene-fragen-<project key>-<filters>.csv`).
+ */
+export const exportOpenQuestions = <ThrowOnError extends boolean = false>(
+  options: Options<ExportOpenQuestionsData, ThrowOnError>,
+): RequestResult<ExportOpenQuestionsResponses, ExportOpenQuestionsErrors, ThrowOnError> =>
+  (options.client ?? client).get<
+    ExportOpenQuestionsResponses,
+    ExportOpenQuestionsErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/projects/{project}/open-questions/export',
     ...options,
   });
 

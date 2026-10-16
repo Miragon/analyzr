@@ -198,7 +198,7 @@ export function placementViewContext(state: ChainState): PlacementViewContext {
  * placements against the head's steps and processes, plus the accepted
  * `call` relations for the "called from" hints.
  */
-async function chainFindings(
+export async function chainFindings(
   tx: Tx,
   state: ChainState,
   placements: readonly PlacementRecord[],

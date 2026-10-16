@@ -257,7 +257,15 @@ describe('project tabs and write pages', () => {
     const tabs = within(nav)
       .getAllByRole('link')
       .map((l) => l.textContent.replace(/\d+.*/, '').trim());
-    expect(tabs).toEqual(['Modelle', 'Prüfen', 'Wertschöpfungskette', 'Relationen', 'Befunde']);
+    // „Offene Fragen“ needs only read permission (M6 S4)
+    expect(tabs).toEqual([
+      'Modelle',
+      'Prüfen',
+      'Wertschöpfungskette',
+      'Relationen',
+      'Befunde',
+      'Offene Fragen',
+    ]);
   });
 
   it('shows an owner every tab outside the demo', async () => {
@@ -280,6 +288,7 @@ describe('project tabs and write pages', () => {
       'Wertschöpfungskette',
       'Relationen',
       'Befunde',
+      'Offene Fragen',
       'Hochladen',
     ]);
   });

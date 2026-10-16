@@ -74,6 +74,12 @@ import {
   ValueChainFindingList,
   ValueChainStepDetail,
 } from './placements.ts';
+import {
+  OPEN_QUESTION_CSV_COLUMNS,
+  OpenQuestionExportQuery,
+  OpenQuestionPage,
+  OpenQuestionQuery,
+} from './open-questions.ts';
 import { CreateProjectBody, Project, ProjectPage } from './projects.ts';
 import {
   FindingList,
@@ -541,6 +547,66 @@ export const apiRoutes = withDemoReadOnly({
       'A no-link on a pair that also has a relation shows there too (`Relation.noLinks`).',
     request: { params: projectParams, query: NoLinkQuery },
     responses: { 200: json(NoLinkList, 'No-links'), ...problems(...READ_PROBLEMS) },
+  },
+
+  listOpenQuestions: {
+    method: 'get',
+    path: `${API_PREFIX}/projects/{project}/open-questions`,
+    operationId: 'listOpenQuestions',
+    tags: ['open-questions'],
+    summary:
+      'Open questions: the gaps that block links and placements, from every source and the gap signals',
+    description:
+      'Computed on read, never stored (M6 §4.2): relation and value chain findings, holds (note, ' +
+      "question, label), agents' questions on proposals waiting for review, current unsure " +
+      'placement verdicts, no-links coded `call-target` or `collaboration`, the summaries of ' +
+      'current submissions and the pairs they left unjudged, and the gap signals over the head ' +
+      'facts. Questions before informational items (`summary-note`, `descriptive-model`), each ' +
+      'ordered by `unlocks` (descending), then subject, kind and id. `modelKey` matches a model ' +
+      'or a folder (`finanzen` matches `finanzen/mahnwesen`); `askWho` matches a lane, one of the ' +
+      'step owners or the folder exactly. Every item is `open` until answers exist (M6 S5a).',
+    request: { params: projectParams, query: OpenQuestionQuery },
+    responses: {
+      200: json(OpenQuestionPage, 'A page of open questions'),
+      ...problems(...READ_PROBLEMS),
+    },
+  },
+  exportOpenQuestions: {
+    method: 'get',
+    path: `${API_PREFIX}/projects/{project}/open-questions/export`,
+    operationId: 'exportOpenQuestions',
+    tags: ['open-questions'],
+    summary: 'The open questions as a Markdown or CSV download, with the filters of the list',
+    description:
+      'Every open question matching the filters, in list order, as an attachment. `markdown` ' +
+      '(default): German headings, grouped by the contact hint (step owners, else folder, else ' +
+      'lanes). `csv`: the questions without the informational items (`summary-note`, ' +
+      '`descriptive-model`, which ask nothing), UTF-8 with a byte order mark, `;`-separated (what ' +
+      'German spreadsheet programs open directly), CRLF, every field quoted, the columns ' +
+      `${OPEN_QUESTION_CSV_COLUMNS.map((c) => `\`${c}\``).join(', ')}; the last two are empty for ` +
+      'the customer to fill in. A cell starting with `=`, `+`, `-`, `@`, a tab, a carriage return ' +
+      "or their full-width forms (also after a run of `'`) gets a leading `'`, so spreadsheets " +
+      'never run it as a formula. The file name carries the filters (`offene-fragen-<project ' +
+      'key>-<filters>.csv`).',
+    request: { params: projectParams, query: OpenQuestionExportQuery },
+    responses: {
+      200: {
+        description: 'The export',
+        headers: z.object({
+          'Content-Disposition': z.string().meta({
+            description:
+              '`attachment; filename="offene-fragen-<project key>.md"` (or `.csv`); with filters, ' +
+              'their values as an ASCII slug before the extension, e.g. ' +
+              '`offene-fragen-p-finanzen-black-box-partner.csv`',
+          }),
+        }),
+        content: {
+          'text/markdown': { schema: z.string() },
+          'text/csv': { schema: z.string() },
+        },
+      },
+      ...problems(...READ_PROBLEMS),
+    },
   },
 
   getRelationAssertions: {

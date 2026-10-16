@@ -1336,6 +1336,130 @@ signal is checked on `nordwind-handel`; ids are stable across reads and change w
 the export round trips, the CSV with its empty answer columns; the tab and the model view section
 pass Playwright; the entry chunk stays under its ceiling.
 
+**S4 as delivered** (2026-10-16, branch `feat/integration-and-gaps`; every gate green, with a
+review round's fixes): the read model in `apps/server/src/domain/open-questions/` (`model.ts`:
+input, index, ids, `askWho`, `unlocks`, order; `sources.ts`: §4.1; `signals.ts`: §4.3;
+`read-model.ts`: list, filters, cursor pages; `export.ts`: Markdown, CSV and its parser, the file
+name), the use case `use-cases/open-questions.ts` (permission `read`, one read snapshot), the
+routes `GET /projects/{p}/open-questions` and `…/open-questions/export` (tag `open-questions`,
+`READ_PROBLEMS`), the zod-free labels `@analyzr/contracts/open-question-labels` (the server's
+export and the web read the same German labels), the tab „Offene Fragen“ after „Befunde“ with its
+count, the model view's section „Offene Fragen“ (both lazy chunks; the entry stays at 207.5 KB
+gzip, `apps/web/test/bundle.test.ts` says why it grew by 6 KB), and `analyzr questions` with
+`--model`, `--kind`, `--source`, `--ask-who`, `--state` and `--format text|md|csv|json`. Summaries
+are shown read-only (decision 24.9). Live-run neutral: `FindingKind`, claim inputs, MCP tools,
+prompts and snapshots, procedures, plugins, facts, stages, recordings and reports are unchanged.
+
+Counts. The seeded dev project (`nordwind-handel` with its golden chain, no agent yet) has 64
+items: 14 findings (`message-partner-missing` 9, `call-target-unknown` 2, `call-target-dynamic`
+2, `duplicate-process-id` 1), 44 chain findings (`process-without-step` 32,
+`step-without-process` 12) and 6 signals, all `black-box-partner`; without the chain, 20. After
+the simulation agent: 115 (22 `agent-question`, 3 `placement-unsure`, 32 `summary-note` for the
+31 models and the chain; 3 `message-partner-missing`, since the agent's links answer 6 findings,
+which are hidden as in „Befunde“); after two holds, a model change and a probe agent every
+source of §4.1 except the extractor warnings (S2) is there: 119 items (2 `held`, 19
+`agent-question`, 1 `external-partner` and 1 `call-target-unknown` from coded no-links, 1
+`unjudged`; `apps/server/test/integration/open-questions.test.ts` prints the counts). Shipped
+signals: `black-box-partner`, `unlabelled-boundary`, `undocumented-process`, `isolated-process`
+and `descriptive-model`; `message-without-name` stays off, `extractor-loss` comes with S2. The
+signals on the dev models and eval:descriptive's cumulative variants
+(`apps/server/test/unit/open-questions.test.ts`):
+
+| Variant | `black-box-partner` | `undocumented-process` | `isolated-process` | `descriptive-model` | `unlabelled-boundary` | `message-without-name` (off) |
+|---|---|---|---|---|---|---|
+| baseline | 6 | 0 | 0 | 0 | 0 | 0 |
+| engine-stripped | 6 | 0 | 0 | 0 | 0 | 0 |
+| descriptive | 6 | 0 | 0 | 31 | 0 | 0 |
+| pools | 50 | 0 | 0 | 31 | 0 | 0 |
+| tasks | 50 | 0 | 2 | 31 | 0 | 0 |
+| no-docs | 50 | 32 | 2 | 31 | 0 | 0 |
+
+`message-without-name` stays off (`SIGNALS_OFF`): a message endpoint without a name and without a
+message flow never pairs in the key tier, so the rule tier already reports it as `dangling-throw`
+or `unmatched-catch` („Eine Nachricht ohne Nachrichtennamen …“); on the descriptive variant all
+46 such endpoints were findings already and the other 19 nameless ones are message-flow ends. Its
+kind stays reserved. `unlabelled-boundary` does not fire on the corpus (its none events are
+labelled) and is checked on synthetic models.
+
+Scale. Whole-project candidates grow quadratically with the landscape: on 10 renamed copies of
+`nordwind-handel` (310 models, 3,830 facts, 43,876 candidates) `generateCandidates` takes about
+2.3 s (155 models 0.65 s, 31 models 30 ms), the read model itself 12 ms (200 items, 154 KB JSON
+per page); the loading is a constant ~20 queries. The use case therefore memoizes the candidates
+per project on the live models' `modelKey=facts_hash` (exact, since they are a pure function of
+the head facts; at most 8 projects per server), so only the first read after an ingest pays; the
+items themselves are computed per request (the tab's count, its pages, the model view and the
+export each read once). Done tasks load through two lean queries (per model and facts hash the
+newest done relations task; the chain's done placement tasks on its head revision), without the
+assignments. The value chain helpers still read the head facts three times per request (they are
+shared with the placement pipeline and stay as they are).
+
+Deviations from §4 and choices the spec left open:
+
+- **`askWho.stepOwners: string[]`** instead of `stepOwner: string | null` (§4.2): one entry per
+  org unit, sorted, so the `askWho` filter matches each of them, a name containing „, “ stays
+  unambiguous and no option exceeds the filter's 200 characters; the export and the web join them
+  for display only („Organisationseinheiten A, B“, also as the Markdown group).
+- **`unlocks` may be 0** (§4.2 says at least 1): an item that touches no open decision says „Keine
+  offene Entscheidung“, not „1 offene Entscheidung“. The list orders questions before the
+  informational items (`summary-note`, `descriptive-model`), each by `unlocks` descending, then
+  subject, kind and id (the cursor carries that position). A model's informational items count
+  the open decisions at every element and process of the model (§4.2's "sum over its endpoints",
+  each pair once), the chain's summary its open processes and the proposed or held placements on
+  live steps.
+- **The CSV leaves the informational items out**: they ask nothing, so the sheet the customer
+  fills in (and S5a reads back) holds questions only; the Markdown keeps them, marked „Zur
+  Information, keine Antwort nötig“. The tab's count is the API's `total` for `state=open` and
+  still includes them.
+- **The export's file name carries the filters** as an ASCII slug
+  (`offene-fragen-<project>-finanzen-black-box-partner.csv`, at most 80 characters of filters),
+  so one export per department or folder says which it is.
+- **`message-partner-missing`** is labelled „Nachrichten- oder Signalpartner fehlt“: the rule tier
+  raises `dangling-throw` and `unmatched-catch` for signal endpoints too, and a signal finding asks
+  „Wer fängt das Signal, das … wirft?“ (or „Wer wirft …“).
+- **`black-box-partner`** places a message-flow end in its process when the facts name it, also
+  without a fact of its own: lane members, enclosing (collapsed or expanded) subprocesses,
+  boundary hosts, data stores' readers and writers; `isolated-process` uses the same map. Facts v1
+  cannot tell a pool without a process from a collapsed subprocess or an intermediate none event
+  outside every lane, so the question names the end („Ist „X“ in … ein externer Partner, …? „X“
+  gehört zu keinem Prozess des Modells, ist also vermutlich ein Pool ohne Prozess.“) rather than
+  calling it a pool outright.
+- **Holds and agents' questions** are listed only where a decision can still reach them: a
+  placement on the live generation of its step, a relation or placement whose ends are in the
+  head facts (not `missing`). An agent's question counts only on a proposal newer than the latest
+  decision in force: a question asked before a rejection that another agent's proposal reopened
+  is answered by that rejection.
+- **Placement summaries per batch**: a placement run comes in batches of at most 50 processes,
+  each its own task, so the chain shows the summary of every done placement task on its head
+  revision until newer tasks claimed every process it claimed (`currentPlacementBatches`); per
+  live model, the newest done relations task on its head facts, as specified.
+- **Lanes inside subprocesses**: an element inside an embedded subprocess has the lanes of the
+  nearest enclosing subprocess in a named lane (a lane lists the subprocess, not its elements).
+- **No-link codes** are read from a `Map`, so an agent's reason starting `constructor:` or
+  `__proto__:` is no code.
+- **The tab filters in the browser**: it loads every item once (pages of 200) and filters with the
+  server's rules, so the filters react at once and each option shows its count under the other
+  filters (`e2e/open-questions.spec.ts` compares every filter with the API); an option lists only
+  values that have items, or the one set in the URL, which hides „Nachricht ohne Namen“ and
+  „Beantwortet“ for now. The exports send the same filters to the export route. The tab's count is
+  one request per project page (`limit=1`, its `total`); the server still computes the whole list
+  for it, with the candidates memoized (above).
+- **Accessibility in the tab**: the count is announced (`aria-live`), the reset buttons hand the
+  focus to the first filter, a link names the item's subject (`aria-describedby`), the source
+  label shows only where the badge and the verbatim intro do not say it already.
+
+**Taken by the implementing agent (the owner may overrule):** chain findings rank like every other
+question, by `unlocks`. On a freshly seeded project 44 of the 64 items are `process-without-step`
+(32) and `step-without-process` (12), correctly so while nothing is placed; they shrink as
+placements are accepted, and the filter Quelle (`source=value-chain-finding`) separates them. If
+they should rank below the other questions, that is a change to the sort key only.
+
+Verified (2026-10-16, after the review round): every gate (AGENTS.md, plus `pnpm
+eval:descriptive`; `eval/reports` unchanged), Playwright `e2e/open-questions.spec.ts` (6 passed)
+and the whole suite against a server run from source on a scratch PostgreSQL, and `demo.spec.ts`
+(14 passed, the new nordwind-handel walk included) against a scratch demo image
+([DEVELOPMENT.md](DEVELOPMENT.md) "M6 S4 (2026-10-16)"). Not checked: other browsers than
+Chromium, screen readers.
+
 **S5a "Answers recorded"** (live-run neutral; may land before the live runs). Scope: §4.5 S5a:
 „Beantworten“ in the tab and the model view, the answer routes, `analyzr questions answer`, the
 CSV round trip, `open_question_answer`, the personal-data warning. Does not touch: claim input

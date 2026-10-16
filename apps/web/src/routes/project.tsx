@@ -8,7 +8,13 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ApiError, errorMessage } from '@/lib/api';
 import { useProjectPermissions } from '@/lib/permissions';
-import { landscapeQuery, modelsQuery, projectQuery, valueChainQuery } from '@/lib/queries';
+import {
+  landscapeQuery,
+  modelsQuery,
+  openQuestionCountQuery,
+  projectQuery,
+  valueChainQuery,
+} from '@/lib/queries';
 import { isReviewItem } from '@/lib/review';
 import { openPlacementCount } from '@/lib/value-chain';
 
@@ -33,6 +39,7 @@ function TabLink({
     | '/projects/$project/value-chain'
     | '/projects/$project/relations'
     | '/projects/$project/findings'
+    | '/projects/$project/open-questions'
     | '/projects/$project/upload'
     | '/projects/$project/agents'
     | '/projects/$project/rules';
@@ -68,6 +75,7 @@ function ProjectLayout() {
   const landscape = useQuery(landscapeQuery(project));
   // 404 while the project has no chain: then the tab shows no count.
   const chain = useQuery(valueChainQuery(project));
+  const openQuestions = useQuery(openQuestionCountQuery(project));
   const can = useProjectPermissions(project);
   const notFound = info.error instanceof ApiError && info.error.status === 404;
 
@@ -133,6 +141,9 @@ function ProjectLayout() {
             </TabLink>
             <TabLink to="/projects/$project/findings" count={landscape.data?.findings.length}>
               Befunde
+            </TabLink>
+            <TabLink to="/projects/$project/open-questions" count={openQuestions.data} hint="offen">
+              Offene Fragen
             </TabLink>
             {/* Write tabs only for whoever may use them (never on the read-only demo). */}
             {can.canWrite ? <TabLink to="/projects/$project/upload">Hochladen</TabLink> : null}

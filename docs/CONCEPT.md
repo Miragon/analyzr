@@ -245,6 +245,7 @@ Rejected relations are exported on purpose, so offline agents do not propose the
 | `/projects/{p}/imports` | POST ≤ 50 files, outcome per file (with the extractor's warnings, as PUT) |
 | `/projects/{p}/landscape`, `…/relations[/{rel}]` | GET; POST to propose or add a manual relation |
 | `…/no-links` (`?modelKey=`) | GET: agents' live, current no-links, also on pairs without a relation |
+| `…/open-questions` (`?modelKey=&kind=&source=&askWho=&state=`, cursor pages), `…/open-questions/export?format=markdown\|csv` (same filters) (M6 S4) | GET (permission `read`): the open-questions read model, computed on read and never stored (M6 §4.2); the export as an attachment named after the filters |
 | `…/relations/{rel}/decision` (`accept`, `reject`, `hold`), `…/decisions` | POST; bulk needs ids, versions and `expectedCount` |
 | `/projects/{p}/value-chains[/{key}]`, `…/{key}/content` (`If-Match: "r<rev>"`, `If-None-Match: *`, `?dryRun=true`), `…/revisions[/{rev}/content]`, `…/steps/{id}`, `…/findings`, `…/unplaced-processes` (M4) | GET, POST, PUT, DELETE (writes: humans only) |
 | `…/value-chains/{key}/placements[/{plc}]`, `…/{plc}/decision`, `…/placements/decisions`, `…/{plc}/notes`, `…/{plc}/assertions`, `…/{plc}/proposal` (M4) | GET; POST to propose or add a manual placement; decisions, bulk and notes by humans; DELETE own proposal |

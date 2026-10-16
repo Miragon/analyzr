@@ -16,6 +16,7 @@ import {
   listAutoAccepted,
   listModels,
   listNoLinks,
+  listOpenQuestions,
   listPlacements,
   listProjects,
   listUnplacedProcesses,
@@ -34,6 +35,7 @@ import type {
   Landscape,
   Model,
   NoLink,
+  OpenQuestion,
   Placement,
   PlacementAssertion,
   Project,
@@ -89,6 +91,11 @@ export const keys = {
     ['project', project, 'auto-accept', 'apply-dry-run', ruleId, revision] as const,
   autoAcceptRevokeDryRun: (project: string, selection: AutoAcceptRevocationBody) =>
     ['project', project, 'auto-accept', 'revoke-dry-run', selection] as const,
+  // Open questions (M6 S4): computed on read by the server, so under the project as well.
+  openQuestionCount: (project: string) => ['project', project, 'open-questions', 'count'] as const,
+  openQuestions: (project: string) => ['project', project, 'open-questions', 'all'] as const,
+  modelOpenQuestions: (project: string, modelKey: string) =>
+    ['project', project, 'open-questions', 'model', modelKey] as const,
   // Revisions are immutable: keyed by revision id, cached for good.
   facts: (revisionId: string) => ['revision', revisionId, 'facts'] as const,
   content: (revisionId: string) => ['revision', revisionId, 'content'] as const,
@@ -379,4 +386,57 @@ export const autoAcceptRevokeDryRunQuery = (project: string, selection: AutoAcce
       ),
     staleTime: 0,
     gcTime: 0,
+  });
+
+// ------------------------------------------------------------ open questions (M6 S4)
+
+/** How many questions are open (the tab's count): one item, the page's `total`. */
+export const openQuestionCountQuery = (project: string) =>
+  queryOptions({
+    queryKey: keys.openQuestionCount(project),
+    queryFn: async (): Promise<number> =>
+      (
+        await unwrap(
+          listOpenQuestions({ client: api, path: { project }, query: { state: 'open', limit: 1 } }),
+        )
+      ).total,
+  });
+
+/**
+ * Every open question, in the server's order (`unlocks` descending); the tab
+ * filters them itself with the server's rules, so its filters are instant
+ * and its options can count.
+ */
+export const openQuestionsQuery = (project: string) =>
+  queryOptions({
+    queryKey: keys.openQuestions(project),
+    queryFn: (): Promise<OpenQuestion[]> =>
+      allPages((cursor) =>
+        unwrap(
+          listOpenQuestions({
+            client: api,
+            path: { project },
+            query: { limit: MAX_PAGE_LIMIT, cursor },
+          }),
+        ),
+      ),
+  });
+
+/**
+ * The questions touching a model or a model below it as a folder (the
+ * server's `modelKey` filter); the model view keeps those of the model itself.
+ */
+export const modelOpenQuestionsQuery = (project: string, modelKey: string) =>
+  queryOptions({
+    queryKey: keys.modelOpenQuestions(project, modelKey),
+    queryFn: (): Promise<OpenQuestion[]> =>
+      allPages((cursor) =>
+        unwrap(
+          listOpenQuestions({
+            client: api,
+            path: { project },
+            query: { modelKey, limit: MAX_PAGE_LIMIT, cursor },
+          }),
+        ),
+      ),
   });

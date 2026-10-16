@@ -20,7 +20,8 @@ import { probeServer } from './server-mode';
  * on a CSP violation and on any write action shown (by its text or its test
  * id). The review shows the simulation agent's proposals, questions,
  * no-links (tab „Kein Zusammenhang“) and placement proposals (owner decision
- * 20(4)). The banner links the operator's „Impressum“ and „Datenschutz“ (from
+ * 20(4)) and, for the dev landscape, the open questions with their export and
+ * the model view's section (M6 S4). The banner links the operator's „Impressum“ and „Datenschutz“ (from
  * `/health`) at every width, phone included, in one line of the height of
  * `--analyzr-banner-h`; that test runs last, so a demo without the optional links
  * fails it alone. Skips itself unless the server reports `demo: "readonly"`.
@@ -233,6 +234,29 @@ for (const project of PROJECTS) {
     }
   });
 }
+
+// M6 S4: read permission, so the demo shows them; the walk checks the dev landscape only
+// (the holdout's questions stay unread, as its other details).
+test('nordwind-handel: the open questions read, exported and in the model view', async ({
+  page,
+}) => {
+  await page.goto('/projects/nordwind-handel/open-questions');
+  const items = page.getByTestId('open-question');
+  await expect(items.first()).toBeVisible();
+  await expect(page.getByTestId('open-questions-count')).toContainText('Fragen');
+  await noWriteActions(page);
+  await shot(page, '08-open-questions');
+  const [download] = await Promise.all([
+    page.waitForEvent('download'),
+    page.getByRole('button', { name: 'Als CSV exportieren' }).click(),
+  ]);
+  expect(download.suggestedFilename()).toBe('offene-fragen-nordwind-handel.csv');
+  await page.goto('/projects/nordwind-handel');
+  await page.getByTestId('model-row').first().getByRole('link').first().click();
+  const section = page.getByTestId('model-open-questions');
+  await expect(section.getByRole('heading', { name: /^Offene Fragen \(\d+\)$/ })).toBeVisible();
+  await noWriteActions(page);
+});
 
 test('the API refuses writes and MCP from the browser context too', async ({ request }) => {
   const write = await request.post('/api/v1/projects', { data: { key: 'x', name: 'x' } });

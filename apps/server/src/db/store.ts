@@ -52,6 +52,8 @@ import type {
   AgentTokenRecord,
   AutoAcceptRuleHead,
   ChainTaskRecord,
+  DoneChainTask,
+  DoneModelTask,
   EventRecord,
   HeadFact,
   HeadFactFilter,
@@ -546,6 +548,41 @@ function repos(db: Conn): Tx {
       .sort((a, b) => byCodePoint(a.modelKey, b.modelKey) || compareFacts(a, b));
   }
 
+  /** The stored submissions of these tasks, with the submitting principal's handle. */
+  async function storedSubmissions(
+    projectId: ProjectId,
+    taskIds: readonly AnalysisTaskId[],
+  ): Promise<StoredSubmission[]> {
+    if (taskIds.length === 0) return [];
+    const rows = await db
+      .select({ sub: s.analysisSubmission, handle: s.principal.handle })
+      .from(s.analysisSubmission)
+      .innerJoin(s.principal, eq(s.principal.id, s.analysisSubmission.principalId))
+      .where(
+        and(
+          eq(s.analysisSubmission.projectId, projectId),
+          inArray(s.analysisSubmission.taskId, [...new Set(taskIds)]),
+        ),
+      );
+    return rows.map(
+      (r) =>
+        ({
+          id: r.sub.id as SubmissionId,
+          projectId: r.sub.projectId as ProjectId,
+          taskId: r.sub.taskId as AnalysisTaskId,
+          clientSubmissionId: r.sub.clientSubmissionId,
+          principalId: r.sub.principalId as PrincipalId,
+          clientId: r.sub.clientId,
+          declared: r.sub.declared,
+          payload: r.sub.payload,
+          result: r.sub.result,
+          seq: r.sub.seq,
+          handle: r.handle,
+          createdAt: r.sub.createdAt,
+        }) satisfies StoredSubmission,
+    );
+  }
+
   const claimer = alias(s.principal, 'claimer');
 
   /** Tasks with model or chain key, lease holder handle and client submission id. */
@@ -964,6 +1001,18 @@ function repos(db: Conn): Tx {
           .where(and(eq(s.model.projectId, projectId), isNull(s.model.deletedSeq)));
         return new Map(rows.map((r) => [r.key, r.factsHash]));
       },
+      async heads(projectId) {
+        const rows = await db
+          .select({
+            key: s.model.key,
+            factsHash: s.modelRevision.factsHash,
+            seq: s.modelRevision.seq,
+          })
+          .from(s.model)
+          .innerJoin(s.modelRevision, liveHead)
+          .where(and(eq(s.model.projectId, projectId), isNull(s.model.deletedSeq)));
+        return new Map(rows.map((r) => [r.key, { factsHash: r.factsHash, seq: r.seq }]));
+      },
       async hashesAt(projectId, modelKeys, seq) {
         if (modelKeys.length === 0) return new Map();
         // The latest revision up to `seq`, unless a deletion followed it by
@@ -1225,6 +1274,72 @@ function repos(db: Conn): Tx {
           { order: 'seq-desc', limit: page.limit },
         );
       },
+      async latestDoneByModelHash(projectId) {
+        const t = s.analysisTask;
+        const rows = await db
+          .selectDistinctOn([t.modelId, t.factsHash], {
+            id: t.id,
+            modelKey: s.model.key,
+            factsHash: t.factsHash,
+            seq: t.seq,
+          })
+          .from(t)
+          .innerJoin(s.model, and(eq(s.model.projectId, t.projectId), eq(s.model.id, t.modelId)))
+          .where(
+            and(
+              eq(t.projectId, projectId),
+              eq(t.kind, 'relations'),
+              eq(t.state, 'done'),
+              isNull(s.model.deletedSeq),
+            ),
+          )
+          .orderBy(t.modelId, t.factsHash, desc(t.seq));
+        return rows
+          .flatMap((r): DoneModelTask[] =>
+            r.factsHash === null
+              ? []
+              : [
+                  {
+                    id: r.id as AnalysisTaskId,
+                    modelKey: r.modelKey,
+                    factsHash: r.factsHash,
+                    seq: r.seq,
+                  },
+                ],
+          )
+          .sort((a, b) => b.seq - a.seq);
+      },
+      async doneOnChainRevision(projectId, valueChainId, valueChainRevisionId) {
+        const t = s.analysisTask;
+        const rows = await db
+          .select({
+            id: t.id,
+            valueChainKey: s.valueChain.key,
+            seq: t.seq,
+            claim: t.placementClaim,
+          })
+          .from(t)
+          .innerJoin(
+            s.valueChain,
+            and(eq(s.valueChain.projectId, t.projectId), eq(s.valueChain.id, t.valueChainId)),
+          )
+          .where(
+            and(
+              eq(t.projectId, projectId),
+              eq(t.valueChainId, valueChainId),
+              eq(t.valueChainRevisionId, valueChainRevisionId),
+              eq(t.kind, 'placement'),
+              eq(t.state, 'done'),
+            ),
+          )
+          .orderBy(desc(t.seq));
+        return rows.map((r): DoneChainTask => ({
+          id: r.id as AnalysisTaskId,
+          valueChainKey: r.valueChainKey,
+          seq: r.seq,
+          processes: r.claim ? r.claim.processes.map((p) => p.process) : null,
+        }));
+      },
       async hasExpired(projectIds, now, maxAttempts) {
         if (projectIds.length === 0) return false;
         const rows = await db
@@ -1400,33 +1515,10 @@ function repos(db: Conn): Tx {
         await db.insert(s.analysisSubmission).values(r);
       },
       async findByTask(projectId, taskId) {
-        const rows = await db
-          .select({ sub: s.analysisSubmission, handle: s.principal.handle })
-          .from(s.analysisSubmission)
-          .innerJoin(s.principal, eq(s.principal.id, s.analysisSubmission.principalId))
-          .where(
-            and(
-              eq(s.analysisSubmission.projectId, projectId),
-              eq(s.analysisSubmission.taskId, taskId),
-            ),
-          );
-        const r = rows[0];
-        if (!r) return null;
-        return {
-          id: r.sub.id as SubmissionId,
-          projectId: r.sub.projectId as ProjectId,
-          taskId: r.sub.taskId as AnalysisTaskId,
-          clientSubmissionId: r.sub.clientSubmissionId,
-          principalId: r.sub.principalId as PrincipalId,
-          clientId: r.sub.clientId,
-          declared: r.sub.declared,
-          payload: r.sub.payload,
-          result: r.sub.result,
-          seq: r.sub.seq,
-          handle: r.handle,
-          createdAt: r.sub.createdAt,
-        } satisfies StoredSubmission;
+        const [found] = await storedSubmissions(projectId, [taskId]);
+        return found ?? null;
       },
+      findByTasks: storedSubmissions,
       async originModels(projectId) {
         const rows = await db
           .select({ id: s.analysisSubmission.id, key: s.model.key })

@@ -724,6 +724,120 @@ export type NoLink = {
 };
 
 /**
+ * A page of open questions.
+ */
+export type OpenQuestionPage = {
+  items: Array<OpenQuestion>;
+  nextCursor: Cursor | null;
+  total: number;
+};
+
+/**
+ * A gap in the landscape, as a question.
+ */
+export type OpenQuestion = {
+  id: OpenQuestionId;
+  kind: OpenQuestionKind;
+  source: OpenQuestionSource;
+  subject: OpenQuestionSubject;
+  subjectLabel: string;
+  modelKeys: Array<ModelKey>;
+  text: string;
+  context: string | null;
+  label: string | null;
+  askWho: OpenQuestionAskWho;
+  unlocks: number;
+  refs: Array<Ref>;
+  raisedBy: OpenQuestionRaisedBy;
+  state: OpenQuestionState;
+};
+
+/**
+ * Id of an open question: `q-` + 16 hex characters.
+ */
+export type OpenQuestionId = string;
+
+/**
+ * Kind of an open question.
+ */
+export type OpenQuestionKind =
+  | 'call-target-unknown'
+  | 'call-target-dynamic'
+  | 'duplicate-process-id'
+  | 'message-partner-missing'
+  | 'held'
+  | 'agent-question'
+  | 'placement-unsure'
+  | 'process-without-step'
+  | 'step-without-process'
+  | 'unresolved-link'
+  | 'external-partner'
+  | 'summary-note'
+  | 'unjudged'
+  | 'black-box-partner'
+  | 'unlabelled-boundary'
+  | 'message-without-name'
+  | 'undocumented-process'
+  | 'isolated-process'
+  | 'descriptive-model';
+
+/**
+ * Source of an open question.
+ */
+export type OpenQuestionSource =
+  | 'finding'
+  | 'value-chain-finding'
+  | 'hold'
+  | 'agent-question'
+  | 'unsure'
+  | 'no-link'
+  | 'summary'
+  | 'unjudged'
+  | 'signal';
+
+/**
+ * What an open question is about.
+ */
+export type OpenQuestionSubject = {
+  type: OpenQuestionSubjectType;
+  id: string;
+};
+
+/**
+ * Type of the subject of an open question.
+ */
+export type OpenQuestionSubjectType =
+  'ref' | 'process' | 'model' | 'relation' | 'placement' | 'step' | 'value-chain';
+
+/**
+ * Hints at whom to ask; never an assignee.
+ */
+export type OpenQuestionAskWho = {
+  lanes: Array<string>;
+  stepOwners: Array<string>;
+  folder: string | null;
+};
+
+/**
+ * Who raised an open question, and when.
+ */
+export type OpenQuestionRaisedBy = {
+  sourceKind: SourceKind;
+  handle: string | null;
+  seq: number;
+};
+
+/**
+ * State of an open question.
+ */
+export type OpenQuestionState = 'open' | 'answered';
+
+/**
+ * Format of the open-questions export.
+ */
+export type OpenQuestionExportFormat = 'markdown' | 'csv';
+
+/**
  * The history of a relation, oldest first.
  */
 export type RelationAssertionList = {
@@ -3562,6 +3676,137 @@ export type ListNoLinksResponses = {
 };
 
 export type ListNoLinksResponse = ListNoLinksResponses[keyof ListNoLinksResponses];
+
+export type ListOpenQuestionsData = {
+  body?: never;
+  path: {
+    /**
+     * Project id (`prj_…`) or project key.
+     */
+    project: string;
+  };
+  query?: {
+    /**
+     * Immutable model key: lowercase slug segments separated by `/`.
+     */
+    modelKey?: ModelKey;
+    /**
+     * Kind of an open question.
+     */
+    kind?: OpenQuestionKind;
+    /**
+     * Source of an open question.
+     */
+    source?: OpenQuestionSource;
+    askWho?: string;
+    /**
+     * State of an open question.
+     */
+    state?: OpenQuestionState;
+    /**
+     * Opaque pagination cursor.
+     */
+    cursor?: Cursor;
+    limit?: number;
+  };
+  url: '/api/v1/projects/{project}/open-questions';
+};
+
+export type ListOpenQuestionsErrors = {
+  /**
+   * Problem: `unauthorized`
+   */
+  401: ApiProblem;
+  /**
+   * Problem: `insufficient-scope`
+   */
+  403: ApiProblem;
+  /**
+   * Problem: `not-found`
+   */
+  404: ApiProblem;
+  /**
+   * Problem: `validation-failed`
+   */
+  422: ApiProblem;
+};
+
+export type ListOpenQuestionsError = ListOpenQuestionsErrors[keyof ListOpenQuestionsErrors];
+
+export type ListOpenQuestionsResponses = {
+  /**
+   * A page of open questions
+   */
+  200: OpenQuestionPage;
+};
+
+export type ListOpenQuestionsResponse =
+  ListOpenQuestionsResponses[keyof ListOpenQuestionsResponses];
+
+export type ExportOpenQuestionsData = {
+  body?: never;
+  path: {
+    /**
+     * Project id (`prj_…`) or project key.
+     */
+    project: string;
+  };
+  query?: {
+    /**
+     * Immutable model key: lowercase slug segments separated by `/`.
+     */
+    modelKey?: ModelKey;
+    /**
+     * Kind of an open question.
+     */
+    kind?: OpenQuestionKind;
+    /**
+     * Source of an open question.
+     */
+    source?: OpenQuestionSource;
+    askWho?: string;
+    /**
+     * State of an open question.
+     */
+    state?: OpenQuestionState;
+    /**
+     * Format of the open-questions export.
+     */
+    format?: OpenQuestionExportFormat;
+  };
+  url: '/api/v1/projects/{project}/open-questions/export';
+};
+
+export type ExportOpenQuestionsErrors = {
+  /**
+   * Problem: `unauthorized`
+   */
+  401: ApiProblem;
+  /**
+   * Problem: `insufficient-scope`
+   */
+  403: ApiProblem;
+  /**
+   * Problem: `not-found`
+   */
+  404: ApiProblem;
+  /**
+   * Problem: `validation-failed`
+   */
+  422: ApiProblem;
+};
+
+export type ExportOpenQuestionsError = ExportOpenQuestionsErrors[keyof ExportOpenQuestionsErrors];
+
+export type ExportOpenQuestionsResponses = {
+  /**
+   * The export
+   */
+  200: string;
+};
+
+export type ExportOpenQuestionsResponse =
+  ExportOpenQuestionsResponses[keyof ExportOpenQuestionsResponses];
 
 export type GetRelationAssertionsData = {
   body?: never;

@@ -361,7 +361,7 @@ export function fakeAnalysis(): AnalysisPort & { extractCalls: number } {
     },
     factsHash: fakeFactsHash,
     runRules: fakeRules,
-    candidates: (projectFacts: ProjectFacts, focusModelKey: string) =>
+    candidates: (projectFacts: ProjectFacts, focusModelKey?: string) =>
       generateCandidates(projectFacts, focusModelKey),
     pairAssessor: (projectFacts: ProjectFacts) => createPairAssessor(projectFacts),
   };

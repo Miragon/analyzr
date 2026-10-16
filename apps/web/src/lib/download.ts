@@ -4,7 +4,15 @@
  * navigates to the blob URL for the download).
  */
 export function downloadText(filename: string, text: string, type: string): void {
-  const url = URL.createObjectURL(new Blob([text], { type }));
+  downloadBlob(filename, new Blob([text], { type }));
+}
+
+/**
+ * Hands a blob to the browser as a file download, byte for byte (a server
+ * download such as the open-questions CSV keeps its byte order mark).
+ */
+export function downloadBlob(filename: string, blob: Blob): void {
+  const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
   anchor.href = url;
   anchor.download = filename;

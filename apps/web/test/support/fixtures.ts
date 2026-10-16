@@ -5,6 +5,7 @@ import type {
   AutoAcceptRule,
   Fact,
   Model,
+  OpenQuestion,
   Placement,
   PlacementAssertion,
   PlacementSummary,
@@ -494,6 +495,30 @@ export function autoAcceptPreview(overrides: Partial<AutoAcceptPreview> = {}): A
       { principalId: 'prn_01AGENT', handle: 'agent:claude code', tokenId: null, revoked: false },
     ],
     llmModels: ['claude-sonnet-5-5'],
+    ...overrides,
+  };
+}
+
+// ------------------------------------------------------------ open questions (M6 S4)
+
+/** An open question; a rule finding on `a/order#Call_1` unless overridden. */
+export function openQuestion(
+  overrides: Partial<OpenQuestion> & Pick<OpenQuestion, 'id'>,
+): OpenQuestion {
+  return {
+    kind: 'call-target-unknown',
+    source: 'finding',
+    subject: { type: 'ref', id: 'a/order#Call_1' },
+    subjectLabel: '„Zahlung abwickeln“',
+    modelKeys: ['a/order'],
+    text: 'Welchen Prozess ruft „Zahlung abwickeln“ auf? Kein Prozess hat die ID „Pay“.',
+    context: null,
+    label: null,
+    askWho: { lanes: [], stepOwners: [], folder: 'a' },
+    unlocks: 1,
+    refs: ['a/order#Call_1'],
+    raisedBy: { sourceKind: 'rule', handle: null, seq: 3 },
+    state: 'open',
     ...overrides,
   };
 }

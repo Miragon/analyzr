@@ -1820,6 +1820,259 @@
         ],
         "description": "An agent judgement that a typed pair is unrelated."
       },
+      "OpenQuestionPage": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OpenQuestion"
+            }
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Cursor"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor",
+          "total"
+        ],
+        "description": "A page of open questions."
+      },
+      "OpenQuestion": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/OpenQuestionId"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/OpenQuestionKind"
+          },
+          "source": {
+            "$ref": "#/components/schemas/OpenQuestionSource"
+          },
+          "subject": {
+            "$ref": "#/components/schemas/OpenQuestionSubject"
+          },
+          "subjectLabel": {
+            "type": "string"
+          },
+          "modelKeys": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ModelKey"
+            }
+          },
+          "text": {
+            "type": "string"
+          },
+          "context": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "label": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "askWho": {
+            "$ref": "#/components/schemas/OpenQuestionAskWho"
+          },
+          "unlocks": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "refs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Ref"
+            }
+          },
+          "raisedBy": {
+            "$ref": "#/components/schemas/OpenQuestionRaisedBy"
+          },
+          "state": {
+            "$ref": "#/components/schemas/OpenQuestionState"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "source",
+          "subject",
+          "subjectLabel",
+          "modelKeys",
+          "text",
+          "context",
+          "label",
+          "askWho",
+          "unlocks",
+          "refs",
+          "raisedBy",
+          "state"
+        ],
+        "description": "A gap in the landscape, as a question."
+      },
+      "OpenQuestionId": {
+        "type": "string",
+        "pattern": "^q-[0-9a-f]{16}$",
+        "description": "Id of an open question: `q-` + 16 hex characters.",
+        "example": "q-3f2a9c41d07be815"
+      },
+      "OpenQuestionKind": {
+        "type": "string",
+        "enum": [
+          "call-target-unknown",
+          "call-target-dynamic",
+          "duplicate-process-id",
+          "message-partner-missing",
+          "held",
+          "agent-question",
+          "placement-unsure",
+          "process-without-step",
+          "step-without-process",
+          "unresolved-link",
+          "external-partner",
+          "summary-note",
+          "unjudged",
+          "black-box-partner",
+          "unlabelled-boundary",
+          "message-without-name",
+          "undocumented-process",
+          "isolated-process",
+          "descriptive-model"
+        ],
+        "description": "Kind of an open question."
+      },
+      "OpenQuestionSource": {
+        "type": "string",
+        "enum": [
+          "finding",
+          "value-chain-finding",
+          "hold",
+          "agent-question",
+          "unsure",
+          "no-link",
+          "summary",
+          "unjudged",
+          "signal"
+        ],
+        "description": "Source of an open question."
+      },
+      "OpenQuestionSubject": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/OpenQuestionSubjectType"
+          },
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "id"
+        ],
+        "description": "What an open question is about."
+      },
+      "OpenQuestionSubjectType": {
+        "type": "string",
+        "enum": [
+          "ref",
+          "process",
+          "model",
+          "relation",
+          "placement",
+          "step",
+          "value-chain"
+        ],
+        "description": "Type of the subject of an open question."
+      },
+      "OpenQuestionAskWho": {
+        "type": "object",
+        "properties": {
+          "lanes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "stepOwners": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "folder": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "lanes",
+          "stepOwners",
+          "folder"
+        ],
+        "description": "Hints at whom to ask; never an assignee."
+      },
+      "OpenQuestionRaisedBy": {
+        "type": "object",
+        "properties": {
+          "sourceKind": {
+            "$ref": "#/components/schemas/SourceKind"
+          },
+          "handle": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "seq": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "sourceKind",
+          "handle",
+          "seq"
+        ],
+        "description": "Who raised an open question, and when."
+      },
+      "OpenQuestionState": {
+        "type": "string",
+        "enum": [
+          "open",
+          "answered"
+        ],
+        "description": "State of an open question."
+      },
+      "OpenQuestionExportFormat": {
+        "type": "string",
+        "enum": [
+          "markdown",
+          "csv"
+        ],
+        "default": "markdown",
+        "description": "Format of the open-questions export."
+      },
       "RelationAssertionList": {
         "type": "object",
         "properties": {
@@ -10364,6 +10617,298 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/NoLinkList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem: `unauthorized`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem: `insufficient-scope`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem: `not-found`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Problem: `validation-failed`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project}/open-questions": {
+      "get": {
+        "operationId": "listOpenQuestions",
+        "tags": [
+          "open-questions"
+        ],
+        "summary": "Open questions: the gaps that block links and placements, from every source and the gap signals",
+        "description": "Computed on read, never stored (M6 §4.2): relation and value chain findings, holds (note, question, label), agents' questions on proposals waiting for review, current unsure placement verdicts, no-links coded `call-target` or `collaboration`, the summaries of current submissions and the pairs they left unjudged, and the gap signals over the head facts. Questions before informational items (`summary-note`, `descriptive-model`), each ordered by `unlocks` (descending), then subject, kind and id. `modelKey` matches a model or a folder (`finanzen` matches `finanzen/mahnwesen`); `askWho` matches a lane, one of the step owners or the folder exactly. Every item is `open` until answers exist (M6 S5a).",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": "^(?:prj_[0-7][0-9A-HJKMNP-TV-Z]{25}|[a-z0-9]+(?:-[a-z0-9]+)*)$",
+              "description": "Project id (`prj_…`) or project key.",
+              "example": "nordwind-handel"
+            },
+            "required": true,
+            "description": "Project id (`prj_…`) or project key.",
+            "name": "project",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/ModelKey"
+            },
+            "required": false,
+            "description": "Immutable model key: lowercase slug segments separated by `/`.",
+            "name": "modelKey",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/OpenQuestionKind"
+            },
+            "required": false,
+            "description": "Kind of an open question.",
+            "name": "kind",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/OpenQuestionSource"
+            },
+            "required": false,
+            "description": "Source of an open question.",
+            "name": "source",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            },
+            "required": false,
+            "name": "askWho",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/OpenQuestionState"
+            },
+            "required": false,
+            "description": "State of an open question.",
+            "name": "state",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/Cursor"
+            },
+            "required": false,
+            "description": "Opaque pagination cursor.",
+            "name": "cursor",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 50
+            },
+            "required": false,
+            "name": "limit",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of open questions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpenQuestionPage"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem: `unauthorized`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem: `insufficient-scope`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem: `not-found`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Problem: `validation-failed`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project}/open-questions/export": {
+      "get": {
+        "operationId": "exportOpenQuestions",
+        "tags": [
+          "open-questions"
+        ],
+        "summary": "The open questions as a Markdown or CSV download, with the filters of the list",
+        "description": "Every open question matching the filters, in list order, as an attachment. `markdown` (default): German headings, grouped by the contact hint (step owners, else folder, else lanes). `csv`: the questions without the informational items (`summary-note`, `descriptive-model`, which ask nothing), UTF-8 with a byte order mark, `;`-separated (what German spreadsheet programs open directly), CRLF, every field quoted, the columns `id`, `Art`, `Frage`, `Ansprechpartner-Hinweis`, `Antwort`, `Antwortart`; the last two are empty for the customer to fill in. A cell starting with `=`, `+`, `-`, `@`, a tab, a carriage return or their full-width forms (also after a run of `'`) gets a leading `'`, so spreadsheets never run it as a formula. The file name carries the filters (`offene-fragen-<project key>-<filters>.csv`).",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": "^(?:prj_[0-7][0-9A-HJKMNP-TV-Z]{25}|[a-z0-9]+(?:-[a-z0-9]+)*)$",
+              "description": "Project id (`prj_…`) or project key.",
+              "example": "nordwind-handel"
+            },
+            "required": true,
+            "description": "Project id (`prj_…`) or project key.",
+            "name": "project",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/ModelKey"
+            },
+            "required": false,
+            "description": "Immutable model key: lowercase slug segments separated by `/`.",
+            "name": "modelKey",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/OpenQuestionKind"
+            },
+            "required": false,
+            "description": "Kind of an open question.",
+            "name": "kind",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/OpenQuestionSource"
+            },
+            "required": false,
+            "description": "Source of an open question.",
+            "name": "source",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            },
+            "required": false,
+            "name": "askWho",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/OpenQuestionState"
+            },
+            "required": false,
+            "description": "State of an open question.",
+            "name": "state",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/OpenQuestionExportFormat"
+            },
+            "required": false,
+            "description": "Format of the open-questions export.",
+            "name": "format",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The export",
+            "headers": {
+              "Content-Disposition": {
+                "schema": {
+                  "type": "string",
+                  "description": "`attachment; filename=\"offene-fragen-<project key>.md\"` (or `.csv`); with filters, their values as an ASCII slug before the extension, e.g. `offene-fragen-p-finanzen-black-box-partner.csv`"
+                },
+                "required": true,
+                "description": "`attachment; filename=\"offene-fragen-<project key>.md\"` (or `.csv`); with filters, their values as an ASCII slug before the extension, e.g. `offene-fragen-p-finanzen-black-box-partner.csv`"
+              }
+            },
+            "content": {
+              "text/markdown": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "text/csv": {
+                "schema": {
+                  "type": "string"
                 }
               }
             }

@@ -2,10 +2,13 @@
  * Constants of `@analyzr/contracts` the UI needs at runtime. The web imports
  * only types from the contracts package (its zod schemas would end up in the
  * bundle); `test/limits.test.ts` keeps these copies equal to the originals.
- * The one exception is the zod-free subpath `@analyzr/contracts/paths` (the
+ * The exceptions are two zod-free subpaths: `@analyzr/contracts/paths` (the
  * BPMN file rule and the model key of a path, M6 S1), which `lib/upload.ts`
- * imports at runtime; ESLint allows that subpath and no other, and the bundle
- * guard (`test/bundle.test.ts`) keeps zod out of the entry chunk.
+ * imports at runtime, and `@analyzr/contracts/open-question-labels` (the
+ * open questions' German labels, M6 S4), which `lib/open-questions.ts` imports
+ * in the lazy open-questions chunks; ESLint allows those subpaths and no
+ * other, and the bundle guard (`test/bundle.test.ts`) keeps zod out of the
+ * entry chunk and the labels out of it as well.
  */
 
 /** RFC 9457 `type` prefix of every analyzr problem. */

@@ -6,7 +6,9 @@
 // placements.ts, descriptive.ts. Only light modules are exported here: none
 // of them loads the corpus toolchain (bpmn-moddle, bpmnlint), so `loadPlacementRun`
 // (placements-load.ts, which extracts the corpus facts) is imported from its
-// module inside eval/tools.
+// module inside eval/tools. eval:descriptive's model variants, which load the
+// toolchain, have a subpath of their own, `@analyzr/eval-tools/descriptive`
+// (the server's open-questions test checks the gap signals on them, M6 S4).
 export {
   DEFAULT_ANALYZR_URL,
   LiveSourceError,

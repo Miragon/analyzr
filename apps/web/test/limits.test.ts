@@ -110,5 +110,21 @@ describe('constants copied from @analyzr/contracts', () => {
     expect(Object.keys(auto.LEDGER_STATES).sort()).toEqual(
       [...contracts.AutoAcceptLedgerState.options].sort(),
     );
+    // open questions (M6 S4): every kind, source and state, each in its filter order once
+    const oq = await import('../src/lib/open-questions');
+    const kinds = [...contracts.OpenQuestionKind.options].sort();
+    expect(Object.keys(oq.OPEN_QUESTION_KINDS).sort()).toEqual(kinds);
+    expect([...oq.OPEN_QUESTION_KIND_ORDER].sort()).toEqual(kinds);
+    const sources = [...contracts.OpenQuestionSource.options].sort();
+    expect(Object.keys(oq.OPEN_QUESTION_SOURCES).sort()).toEqual(sources);
+    expect([...oq.OPEN_QUESTION_SOURCE_ORDER].sort()).toEqual(sources);
+    const states = [...contracts.OpenQuestionState.options].sort();
+    expect(Object.keys(oq.OPEN_QUESTION_STATES).sort()).toEqual(states);
+    expect([...oq.OPEN_QUESTION_STATE_ORDER].sort()).toEqual(states);
+    // the verbatim sources each name who said the text
+    for (const source of ['hold', 'agent-question', 'unsure', 'no-link', 'summary'] as const) {
+      expect(oq.isVerbatim({ source })).toBe(true);
+      expect(oq.VERBATIM_INTRO[source]).toMatch(/^[A-ZÄÖÜ]/);
+    }
   });
 });

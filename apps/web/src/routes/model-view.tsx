@@ -33,6 +33,8 @@ import { useProjectFacts } from '@/lib/use-project-facts';
 import { rootRoute } from './root';
 
 const BpmnCanvas = lazy(() => import('@/components/bpmn-canvas'));
+/** The section „Offene Fragen“ (M6 S4), loaded with the panel, never with the entry. */
+const ModelQuestions = lazy(() => import('@/components/open-questions/model-questions'));
 
 interface ModelViewSearch {
   /** Selected relation (`rel_…`): its endpoints are highlighted. */
@@ -343,9 +345,9 @@ function ModelView() {
         ) : null}
       </header>
 
-      {/* right: relations and findings of this model */}
+      {/* right: relations, findings and open questions of this model */}
       <aside
-        aria-label="Relationen und Befunde dieses Modells"
+        aria-label="Relationen, Befunde und offene Fragen dieses Modells"
         className="absolute top-4 right-4 bottom-32 z-30 flex w-[380px] max-w-[calc(100vw-32px)] flex-col overflow-hidden rounded-xl border bg-card/95 shadow-md backdrop-blur-sm"
       >
         <div className="flex items-center gap-2 border-b px-3 py-2.5">
@@ -404,6 +406,14 @@ function ModelView() {
                   />
                 ))}
               </ul>
+            </>
+          ) : null}
+          {model ? (
+            <>
+              <Separator className="my-2" />
+              <Suspense fallback={<Skeleton className="mx-2 h-16" />}>
+                <ModelQuestions project={project} modelKey={modelKey} resolve={resolve} />
+              </Suspense>
             </>
           ) : null}
         </div>
