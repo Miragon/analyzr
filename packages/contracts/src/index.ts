@@ -18,6 +18,7 @@ export * from './api/session.ts';
 export * from './api/health.ts';
 export * from './api/projects.ts';
 export * from './api/amendment-core.ts';
+export * from './api/import-manifest.ts';
 export * from './api/models.ts';
 export * from './api/relations.ts';
 export * from './api/landscape.ts';

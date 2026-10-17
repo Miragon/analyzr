@@ -8,17 +8,28 @@ import {
   type Project,
 } from '@analyzr/client';
 import {
+  IMPORT_MANIFEST_FILE,
   MAX_PAGE_LIMIT,
   bpmnSuffixOf,
+  modelKeyFromPath,
   type ExtractWarning,
   type ImportFileOutcome,
+  type ImportWarning,
 } from '@analyzr/contracts';
 
 import { call, callOrNull, createApi, type Api } from '../api.ts';
 import { anyCredential, ownerCredential, type CredentialOptions } from '../credentials.ts';
 import { CliError } from '../errors.ts';
-import { BPMN_FILE_PATTERNS, findBpmnFiles, planImport, type SkippedFile } from '../files.ts';
+import {
+  BPMN_FILE_PATTERNS,
+  findBpmnFiles,
+  planImport,
+  type BpmnFile,
+  type ImportPlan,
+  type SkippedFile,
+} from '../files.ts';
 import type { CliIo } from '../io.ts';
+import { manifestSubset, nestedManifests, readManifest, type LoadedManifest } from '../manifest.ts';
 
 export interface ImportSummary {
   project: string;
@@ -26,6 +37,29 @@ export interface ImportSummary {
   counts: Record<ImportFileOutcome['outcome'], number>;
   /** Present only when a file was skipped (M6 S1); such files are not in `files` or `counts`. */
   skipped?: SkippedFile[];
+  /** Present only when the import root holds `analyzr-import.json` (M6 S2a). */
+  manifest?: ManifestSummary;
+}
+
+/** What the import read from the bundle's manifest (M6 S2a). */
+export interface ManifestSummary {
+  /** The source system it declares. */
+  system: string;
+  /** BPMN files picked up that the manifest lists (their keys pinned, their provenance sent). */
+  listed: number;
+  /** Listed files that became a new revision (`created`, `revised`): their provenance was stored. */
+  stored: number;
+  /**
+   * Listed files that were `unchanged`: identical bytes keep the provenance
+   * analyzr already has (M6 §3.3); `provenance-kept` says where it differs.
+   */
+  kept: number;
+  /** BPMN files picked up that the manifest does not list: their keys come from their paths. */
+  unlisted: string[];
+  /** Files the manifest lists that are not below the import root. */
+  missing: string[];
+  /** The bundle's process map (path below the import root): never sent with the models. */
+  valueChain?: string;
 }
 
 /**
@@ -42,34 +76,89 @@ function isSkippedXml(f: ImportFileOutcome): boolean {
   );
 }
 
+/** An import read and planned locally, before anything is sent (M6 S2a). */
+export interface PreparedImport {
+  /** Every BPMN file picked up below the import root. */
+  found: BpmnFile[];
+  /** `analyzr-import.json` at the import root, checked; `null` without one. */
+  manifest: LoadedManifest | null;
+  plan: ImportPlan;
+}
+
 /**
- * Uploads every BPMN file below `dir` to `POST /projects/{project}/imports`
- * in batches (≤ 50 files, ≤ 25 MB each). Each model key is derived before
- * sending, as the server derives it from the path below `dir`: a file
- * without a valid key, with a key another file gets (see `planImport`) or
- * above 5 MB is reported failed locally and never sent. Listed under
- * `skipped` instead: a plain `.xml` whose key a `.bpmn…` file has (never
- * sent), and a plain `.xml` the server finds to be no BPMN.
+ * Reads and plans the import of `dir` without sending anything: the BPMN
+ * files below it, `analyzr-import.json` at its root (checked), and the plan
+ * with each file's key: the key the manifest pins (M6 S2a), else the path
+ * below `dir` (see `planImport`). Runs before `--create` creates the
+ * project, so a refusal leaves nothing behind.
+ *
+ * @throws {CliError} without BPMN files, for an invalid manifest, or when
+ *   `dir` has no manifest while folders below it do (bundles in subfolders:
+ *   each key would start with the bundle folder's name)
  */
-export async function importDirectory(
-  api: Api,
-  project: string,
-  dir: string,
-): Promise<ImportSummary> {
+export async function prepareImport(dir: string): Promise<PreparedImport> {
   const found = await findBpmnFiles(dir);
   if (found.length === 0) throw new CliError(`no BPMN files (${BPMN_FILE_PATTERNS}) below ${dir}`);
-  const plan = planImport(found);
+  const manifest = await readManifest(dir);
+  if (manifest === null) {
+    const nested = await nestedManifests(dir);
+    const [first] = nested;
+    if (first !== undefined) {
+      const more =
+        nested.length > 1
+          ? ` and ${nested.length - 1} more ${nested.length === 2 ? 'folder' : 'folders'}`
+          : '';
+      throw new CliError(
+        `found ${IMPORT_MANIFEST_FILE} in ${first}/${more}: import ${nested.length > 1 ? 'each bundle folder by itself' : 'that folder'} (otherwise every key would start with the folder name); nothing imported`,
+      );
+    }
+  }
+  const plan = planImport(
+    found,
+    manifest === null
+      ? modelKeyFromPath
+      : (p) => manifest.byPath.get(p)?.key ?? modelKeyFromPath(p),
+  );
+  return { found, manifest, plan };
+}
 
+/**
+ * Uploads a prepared import to `POST /projects/{project}/imports` in batches
+ * (≤ 50 files, ≤ 25 MB each). A file without a valid key, with a key another
+ * file gets (see `planImport`) or above 5 MB is reported failed locally and
+ * never sent. Listed under `skipped` instead: a plain `.xml` whose key a
+ * `.bpmn…` file has (never sent), and a plain `.xml` the server finds to be
+ * no BPMN. With a manifest each batch sends the manifest's subset for its
+ * files as the part `manifest`.
+ */
+export async function sendImport(
+  api: Api,
+  project: string,
+  prepared: PreparedImport,
+): Promise<ImportSummary> {
+  const { found, manifest, plan } = prepared;
   const files: ImportFileOutcome[] = [...plan.failed];
   const skipped: SkippedFile[] = [...plan.skipped];
   for (const group of plan.batches) {
+    const subset =
+      manifest === null
+        ? null
+        : manifestSubset(
+            manifest,
+            group.map((f) => f.path),
+          );
     const result = await call(
       api,
       `import into ${project}`,
       importModels({
         client: api.client,
         path: { project },
-        body: { files: group.map((f) => new File([f.bytes], f.path)) },
+        body: {
+          files: group.map((f) => new File([f.bytes], f.path)),
+          ...(subset !== null && subset.files.length > 0
+            ? { manifest: JSON.stringify(subset) }
+            : {}),
+        },
       }),
     );
     // The generated client types typed ids (`mam_…` of `amendments`) as plain strings.
@@ -80,7 +169,86 @@ export async function importDirectory(
   }
   const counts = { created: 0, revised: 0, unchanged: 0, failed: 0 };
   for (const f of files) counts[f.outcome]++;
-  return { project, files, counts, ...(skipped.length > 0 ? { skipped } : {}) };
+  let manifestSummary: ManifestSummary | undefined;
+  if (manifest !== null) {
+    const picked = new Set(found.map((f) => f.path));
+    const listedFiles = files.filter((f) => manifest.byPath.has(f.path));
+    manifestSummary = {
+      system: manifest.manifest.source.system,
+      listed: found.filter((f) => manifest.byPath.has(f.path)).length,
+      stored: listedFiles.filter((f) => f.outcome === 'created' || f.outcome === 'revised').length,
+      kept: listedFiles.filter((f) => f.outcome === 'unchanged').length,
+      unlisted: found.filter((f) => !manifest.byPath.has(f.path)).map((f) => f.path),
+      missing: manifest.manifest.files.filter((f) => !picked.has(f.path)).map((f) => f.path),
+      ...(manifest.manifest.valueChain ? { valueChain: manifest.manifest.valueChain.path } : {}),
+    };
+  }
+  return {
+    project,
+    files,
+    counts,
+    ...(skipped.length > 0 ? { skipped } : {}),
+    ...(manifestSummary ? { manifest: manifestSummary } : {}),
+  };
+}
+
+/**
+ * Uploads every BPMN file below `dir` ({@link prepareImport}, then
+ * {@link sendImport}).
+ *
+ * @throws {CliError} for an invalid manifest, before anything is sent
+ */
+export async function importDirectory(
+  api: Api,
+  project: string,
+  dir: string,
+): Promise<ImportSummary> {
+  return sendImport(api, project, await prepareImport(dir));
+}
+
+/** The import warnings of a summary by code, most frequent first: `external-id-moved 2, …`. */
+export function importWarningCounts(summary: ImportSummary): { total: number; text: string } {
+  const byCode = new Map<ImportWarning['code'], number>();
+  for (const f of summary.files) {
+    for (const w of f.importWarnings ?? []) byCode.set(w.code, (byCode.get(w.code) ?? 0) + 1);
+  }
+  const total = [...byCode.values()].reduce((a, b) => a + b, 0);
+  const text = [...byCode]
+    .sort(([a, m], [b, n]) => n - m || (a < b ? -1 : a > b ? 1 : 0))
+    .map(([code, n]) => `${code} ${n}`)
+    .join(', ');
+  return { total, text };
+}
+
+/**
+ * `provenance stored for 6` or `provenance stored for 0; 6 unchanged keep
+ * what analyzr had`: what became of the declared provenance (identical bytes
+ * keep their first revision's, M6 §3.3).
+ */
+function provenanceText(m: ManifestSummary): string {
+  const kept =
+    m.kept > 0 ? `; ${m.kept} unchanged keep${m.kept === 1 ? 's' : ''} what analyzr had` : '';
+  return `provenance stored for ${m.stored}${kept}`;
+}
+
+/** The lines about the manifest: what it declares, files it does not list, files it names that are missing. */
+function manifestLines(m: ManifestSummary): string[] {
+  const lines = [
+    `manifest: ${IMPORT_MANIFEST_FILE} (${m.system}), ${m.listed} of ${m.listed + m.unlisted.length} files listed: keys pinned, ${provenanceText(m)}`,
+  ];
+  const sample = (paths: readonly string[]) =>
+    `${paths.slice(0, 5).join(', ')}${paths.length > 5 ? `, … ${paths.length - 5} more` : ''}`;
+  if (m.unlisted.length > 0) {
+    lines.push(
+      `manifest: ${m.unlisted.length === 1 ? '1 file is' : `${m.unlisted.length} files are`} not listed, keys from the path, no provenance: ${sample(m.unlisted)}`,
+    );
+  }
+  if (m.missing.length > 0) {
+    lines.push(
+      `manifest: lists ${m.missing.length === 1 ? '1 file' : `${m.missing.length} files`} not below the folder: ${sample(m.missing)}`,
+    );
+  }
+  return lines;
 }
 
 /** A file's warnings as the result lists them, split for display. */
@@ -189,7 +357,7 @@ function skippedWhy(s: SkippedFile): string {
  * also lists every warning entry the result carries (≤ 20 per file).
  */
 export function formatImport(summary: ImportSummary, opts: { verbose?: boolean } = {}): string {
-  const lines: string[] = [];
+  const lines: string[] = summary.manifest ? manifestLines(summary.manifest) : [];
   for (const f of summary.files) {
     const name = f.modelKey ?? f.path;
     const why = f.problem
@@ -202,6 +370,8 @@ export function formatImport(summary: ImportSummary, opts: { verbose?: boolean }
     lines.push(
       `  ${f.outcome.padEnd(9)} ${name}${why}${warned}${amended === null ? '' : `  amendments: ${amended}`}`,
     );
+    // Against the manifest or the landscape (M6 S2a): always listed, the file was imported.
+    for (const w of f.importWarnings ?? []) lines.push(`      ${w.code}: ${w.message}`);
     if (opts.verbose && count > 0) {
       const shown = warningDisplay(warnings, count);
       for (const w of shown.listed) {
@@ -217,6 +387,12 @@ export function formatImport(summary: ImportSummary, opts: { verbose?: boolean }
   lines.push(
     `${summary.project}: ${summary.files.length} files, ${c.created} created, ${c.revised} revised, ${c.unchanged} unchanged, ${c.failed} failed${skippedSuffix(summary)}`,
   );
+  const imported = importWarningCounts(summary);
+  if (imported.total > 0) {
+    lines.push(
+      `${summary.project}: ${imported.total === 1 ? '1 import warning' : `${imported.total} import warnings`} (${imported.text}); the files were imported`,
+    );
+  }
   // Amendments the new bytes no longer fit stay live and become open questions.
   const conflicts = summary.files.reduce((n, f) => n + (f.amendments?.conflicts.count ?? 0), 0);
   if (conflicts > 0) {
@@ -273,16 +449,57 @@ export async function waitingTasks(api: Api, project: string): Promise<WaitingTa
 }
 
 /**
- * The next-step block after a text-mode import: the waiting tasks in the
- * spec's wording (`relations tasks` also for one), then the agent step only
- * when something waits, each slash command only for its kind.
+ * The next step for the identity warnings of an import (M6 §3.4), one line
+ * each, or none: after `external-id-moved` the same tool model may be in the
+ * landscape twice; after `external-id-changed` a key may hold models of two
+ * systems.
  */
-export function formatNextSteps(project: string, waiting: WaitingTasks): string {
+export function identitySteps(summary: ImportSummary): string[] {
+  const p = summary.project;
+  const lines: string[] = [];
+  const moved = summary.files.filter((f) =>
+    (f.importWarnings ?? []).some((w) => w.code === 'external-id-moved'),
+  );
+  const [first] = [...moved.filter((f) => f.outcome === 'created'), ...moved];
+  if (first) {
+    lines.push(
+      `next: same model twice? delete the extra key (analyzr models delete -p ${p} ${first.modelKey ?? '<key>'}) and re-import with the key pinned (keymap.json; analyzr models external-ids -p ${p} lists analyzr's keys)`,
+    );
+  }
+  const changed = summary.files
+    .flatMap((f) => f.importWarnings ?? [])
+    .find((w) => w.code === 'external-id-changed');
+  if (changed?.previous && changed.system) {
+    const { system, previous } = changed;
+    lines.push(
+      system === previous.system
+        ? `next: different models? re-import the earlier ${system} export and pin this file to another key (keymap.json)`
+        : `next: different models? re-import the ${previous.system} bundle and give the ${system} bundle a key prefix (${system}/…)`,
+    );
+  }
+  return lines;
+}
+
+/**
+ * The next-step block after a text-mode import: the waiting tasks in the
+ * spec's wording (`relations tasks` also for one), the step the identity
+ * warnings call for ({@link identitySteps}), then the agent step only when
+ * something waits (`then:` after an identity step), each slash command only
+ * for its kind.
+ */
+export function formatNextSteps(
+  project: string,
+  waiting: WaitingTasks,
+  identity: readonly string[] = [],
+): string {
   const lines = [
     `${project}: ${waiting.relations} relations tasks waiting, placement task waiting: ${waiting.placement ? 'yes' : 'no'}`,
+    ...identity,
   ];
   if (waiting.relations > 0 || waiting.placement) {
-    lines.push('next: let an agent work them, e.g. in Claude Code with the plugin analyzr:');
+    lines.push(
+      `${identity.length > 0 ? 'then' : 'next'}: let an agent work them, e.g. in Claude Code with the plugin analyzr:`,
+    );
     if (waiting.relations > 0) lines.push(`  /analyzr:relations ${project}`);
     if (waiting.placement) lines.push(`  /analyzr:placements ${project}`);
     lines.push(
@@ -323,27 +540,44 @@ export interface ImportOptions extends CredentialOptions {
 
 /**
  * `analyzr import <dir> --project <key> [--create [--name <name>]] [--verbose] [--json]`.
- * Text mode ends with the tasks waiting in the project and the next agent
- * step; `--json` prints the summary only. Warnings and skipped files never
- * change the exit code. Exit 1 if a file failed, or if every file was a plain
+ * Reads `analyzr-import.json` at `<dir>` when there is one (M6 S2a: pinned
+ * keys, declared provenance, import warnings). Text mode ends with the
+ * bundle's value chain to push, the tasks waiting in the project and the
+ * next agent step; `--json` prints the summary only. Warnings (also import
+ * warnings) and skipped files never change the exit code. Exit 1 if a file failed, or if every file was a plain
  * `.xml` that is no BPMN (nothing imported; as a folder without BPMN files).
  */
 export async function importCommand(io: CliIo, dir: string, opts: ImportOptions): Promise<void> {
+  // Read and check everything locally first: a refused manifest creates no project.
+  const prepared = await prepareImport(path.resolve(io.cwd, dir));
   const credential = opts.create ? await ownerCredential(io, opts) : await anyCredential(io, opts);
   const api = createApi(io, opts.url, credential);
   if (opts.create) {
     const { created } = await ensureProject(api, opts.project, opts.name ?? opts.project);
     if (created && !opts.json) io.stdout(`created project ${opts.project}\n`);
   }
-  const summary = await importDirectory(api, opts.project, path.resolve(io.cwd, dir));
+  const summary = await sendImport(api, opts.project, prepared);
   // Every file picked up was a plain `.xml` that is no BPMN: nothing was imported. A file
   // skipped for its key never gets here alone: the `.bpmn…` file that has the key was sent.
   const nothing = summary.files.length === 0;
   if (opts.json) io.stdout(`${JSON.stringify(summary, null, 2)}\n`);
   else io.stdout(formatImport(summary, { verbose: opts.verbose === true }));
+  if (!opts.json && summary.manifest?.valueChain !== undefined) {
+    // Never sent with the models (M6 §3.2): the human pushes the chain, after a dry run.
+    const chain = path.resolve(io.cwd, dir, summary.manifest.valueChain);
+    io.stdout(
+      `value chain: the bundle has ${summary.manifest.valueChain}; push it with analyzr value-chain push ${JSON.stringify(chain)} -p ${opts.project} --dry-run, then without --dry-run (owner key)\n`,
+    );
+  }
   if (!opts.json && !nothing) {
     try {
-      io.stdout(formatNextSteps(opts.project, await waitingTasks(api, opts.project)));
+      io.stdout(
+        formatNextSteps(
+          opts.project,
+          await waitingTasks(api, opts.project),
+          identitySteps(summary),
+        ),
+      );
     } catch (err) {
       // The import is done; the block is information only.
       io.stderr(

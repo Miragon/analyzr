@@ -4,10 +4,16 @@
  * what it asks about (§4.2, S5c-1). Their own kinds, never `FindingKind`
  * (frozen for the live runs). Each was checked on
  * `nordwind-handel` and its descriptive variants (`eval:descriptive`) before
- * it shipped; `extractor-loss` comes with S2, which stores the extractor's
- * warnings. Pure.
+ * it shipped; `extractor-loss` (S2a) reads the head revision's stored
+ * extractor warnings and was checked on synthetic fixtures, since no corpus
+ * model draws a warning. Pure.
  */
-import { parseRef, type Fact, type OpenQuestionKind } from '@analyzr/contracts';
+import {
+  parseRef,
+  type ExtractWarning,
+  type Fact,
+  type OpenQuestionKind,
+} from '@analyzr/contracts';
 import { quoteDe } from '@analyzr/relations';
 
 import { isAssigned } from '../judgements.ts';
@@ -21,6 +27,7 @@ export const GAP_SIGNALS = [
   'undocumented-process',
   'isolated-process',
   'descriptive-model',
+  'extractor-loss',
 ] as const satisfies readonly OpenQuestionKind[];
 export type GapSignal = (typeof GAP_SIGNALS)[number];
 
@@ -348,6 +355,166 @@ function descriptiveModels(ix: OpenQuestionIndex): Draft[] {
   return out;
 }
 
+/** Most lost elements an `extractor-loss` question lists by name. */
+export const MAX_LISTED_LOSSES = 10;
+
+/**
+ * Local names of BPMN DI and DD elements (diagram, shapes, edges, bounds,
+ * waypoints): a dropped one loses layout, no model content. Matched by local
+ * name, since bpmn-moddle names an element with the file's own prefix
+ * (`bpmndi:`, `omgdc:`, …).
+ */
+const LAYOUT_ELEMENTS = new Set([
+  'BPMNDiagram',
+  'BPMNPlane',
+  'BPMNShape',
+  'BPMNEdge',
+  'BPMNLabel',
+  'BPMNLabelStyle',
+  'Bounds',
+  'Font',
+  'Point',
+  'waypoint',
+]);
+
+/** Containers whose loss takes their content along: `process` and the sub-processes. */
+const CONTAINERS: Readonly<Record<string, string>> = {
+  process: 'Prozess',
+  subProcess: 'Teilprozess',
+  adHocSubProcess: 'Teilprozess',
+  transaction: 'Teilprozess',
+};
+
+/** A lost element as {@link describeLoss} reads it: its text, and whether its content went with it. */
+export interface Loss {
+  text: string;
+  /** A process or sub-process dropped with everything in it. */
+  container: boolean;
+}
+
+/**
+ * What a stored extractor warning says was lost (M6 §4.3 `extractor-loss`),
+ * in German, or `null` when it lost no model element: the codes `missing-id`,
+ * `invalid-id` and `duplicate-id` (the extractor skipped the element), and a
+ * `parse-warning` about unparsable content, a duplicate or an illegal id
+ * (bpmn-moddle dropped the element: a second one with the same id arrives
+ * only as „duplicate ID <…>“, a non-NCName id as „illegal ID <…>“; a
+ * message cut to 300 characters keeps the id's beginning). A dropped diagram
+ * element (`bpmndi:BPMNShape` …) loses layout only, and an element of a
+ * namespace bpmn-moddle does not know („unrecognized element“, a vendor's
+ * extension) no BPMN content: neither counts. A dropped process or
+ * sub-process is named as such, with its content. Line and column are left
+ * out, so the same loss reads the same after an amendment elsewhere in the
+ * file.
+ */
+export function describeLoss(
+  w: Pick<ExtractWarning, 'code' | 'message' | 'elementId'>,
+): Loss | null {
+  const element = (text: string): Loss => ({ text, container: false });
+  switch (w.code) {
+    case 'missing-id': {
+      const type = /^<([^>]+)>/.exec(w.message)?.[1];
+      return element(type === undefined ? 'ein Element ohne ID' : `ein Element ohne ID (${type})`);
+    }
+    case 'invalid-id': {
+      const id = /id ("(?:[^"\\]|\\.)*")/.exec(w.message)?.[1];
+      let shown: string | undefined;
+      try {
+        shown = id === undefined ? undefined : (JSON.parse(id) as string);
+      } catch {
+        shown = undefined;
+      }
+      return element(
+        shown === undefined ? 'ein Element mit ungültiger ID' : `ungültige ID ${quoteDe(shown)}`,
+      );
+    }
+    case 'duplicate-id':
+      return element(`doppelte ID ${quoteDe(w.elementId ?? '?')}`);
+    case 'parse-warning': {
+      const content = /unparsable content <([^>]*)>/.exec(w.message)?.[1];
+      const local = content?.slice(content.indexOf(':') + 1);
+      if (local !== undefined && LAYOUT_ELEMENTS.has(local)) return null;
+      if (/unrecognized element </.test(w.message)) return null;
+      const container = local === undefined ? undefined : CONTAINERS[local];
+      // Unterminated when the message was cut inside the id: the id ends in „…“.
+      const duplicate = /duplicate ID <([^>]*)/.exec(w.message)?.[1];
+      if (duplicate !== undefined) {
+        return container === undefined
+          ? element(`doppelte ID ${quoteDe(duplicate)}`)
+          : {
+              text: `${container} mit doppelter ID ${quoteDe(duplicate)} (samt Inhalt)`,
+              container: true,
+            };
+      }
+      const illegal = /illegal ID <([^>]*)/.exec(w.message)?.[1];
+      if (illegal !== undefined) {
+        return container === undefined
+          ? element(`ungültige ID ${quoteDe(illegal)}`)
+          : {
+              text: `${container} mit ungültiger ID ${quoteDe(illegal)} (samt Inhalt)`,
+              container: true,
+            };
+      }
+      if (content === undefined) return null;
+      return container === undefined
+        ? element(`nicht lesbares Element ${quoteDe(content)}`)
+        : {
+            text: `nicht lesbarer ${container} ${quoteDe(content)} (samt Inhalt)`,
+            container: true,
+          };
+    }
+    default:
+      return null;
+  }
+}
+
+/**
+ * `extractor-loss` (M6 S2a): the head revision's stored extractor warnings
+ * say elements were skipped on import ({@link describeLoss}), so whatever
+ * was modelled there is missing from facts, relations and questions. One
+ * question per model, listing the losses; versioned by them, not by the
+ * model's `facts_hash`. The count reads „mindestens“ when it may be short:
+ * the extractor stopped listing (`too-many-warnings`, after 100) or a
+ * process went with its content. Revisions stored before S2a carry no
+ * warnings.
+ */
+function extractorLosses(ix: OpenQuestionIndex): Draft[] {
+  const out: Draft[] = [];
+  for (const [modelKey, head] of [...ix.input.models].sort(([a], [b]) => byCodePoint(a, b))) {
+    const warnings = head.extractWarnings ?? [];
+    const losses = warnings.flatMap((w) => {
+      const loss = describeLoss(w);
+      return loss === null ? [] : [loss];
+    });
+    if (losses.length === 0) continue;
+    const texts = losses.map((l) => l.text);
+    const atLeast =
+      warnings.at(-1)?.code === 'too-many-warnings' || losses.some((l) => l.container);
+    const name = ix.modelName(modelKey);
+    const listed = texts.slice(0, MAX_LISTED_LOSSES).join('; ');
+    const more =
+      texts.length > MAX_LISTED_LOSSES ? ` und ${texts.length - MAX_LISTED_LOSSES} weitere` : '';
+    const count = texts.length === 1 ? 'ein Element' : `${texts.length} Elemente`;
+    out.push({
+      kind: 'extractor-loss',
+      source: 'signal',
+      subject: { type: 'model', id: modelKey },
+      subjectLabel: name,
+      version: `loss=${[...texts].sort(byCodePoint).join('|')}`,
+      modelKeys: [modelKey],
+      text:
+        `Welche Elemente von ${name} sind beim Import verloren gegangen? analyzr hat ` +
+        `${atLeast ? 'mindestens ' : ''}${count} übersprungen: ` +
+        `${listed}${more}. Was dort modelliert ist, fehlt der Analyse. Korrigiere das Modell im ` +
+        'Quellsystem (oder lass den Export mit normalize-bpmn normalisieren) und importiere es erneut.',
+      refs: [],
+      raisedBy: rule(ix, modelKey),
+      anchors: { models: [modelKey] },
+    });
+  }
+  return out;
+}
+
 const SIGNALS: Readonly<Record<GapSignal, (ix: OpenQuestionIndex) => Draft[]>> = {
   'black-box-partner': blackBoxPartners,
   'unlabelled-boundary': unlabelledBoundaries,
@@ -355,6 +522,7 @@ const SIGNALS: Readonly<Record<GapSignal, (ix: OpenQuestionIndex) => Draft[]>> =
   'undocumented-process': undocumentedProcesses,
   'isolated-process': isolatedProcesses,
   'descriptive-model': descriptiveModels,
+  'extractor-loss': extractorLosses,
 };
 
 /** The drafts of the given signals, in {@link GAP_SIGNALS} order. */

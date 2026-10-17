@@ -39,6 +39,7 @@ import {
   SourceKind,
   Tier,
   type DeclaredProcedure,
+  type ExtractWarning,
   type FactAttrs,
   type MessageFlowInfo,
   type ProcessInfo,
@@ -301,6 +302,12 @@ export const modelRevision = pgTable(
     processes: jsonb().$type<ProcessInfo[]>().notNull(),
     messageFlows: jsonb().$type<MessageFlowInfo[]>().notNull(),
     source: jsonb().$type<RevisionSource>().notNull(),
+    /**
+     * The extractor's warnings for these bytes, written at insert (M6 S2a;
+     * messages cut to 300 characters); `[]` for none, null for revisions
+     * stored before (migration 0017).
+     */
+    extractWarnings: jsonb().$type<ExtractWarning[]>(),
     principalId: text()
       .notNull()
       .references(() => principal.id),

@@ -19,6 +19,10 @@
  *   `{deleted, models, failed: {key, error}}` with the models already
  *   deleted before it exits 1. The deletion's impact on relations and
  *   placements comes with M6 S2.
+ * - **external-ids** (any credential, M6 S2a, §3.4) lists the source-system
+ *   identity of every live model whose uploaded head declares one
+ *   (`GET …/external-ids`, optionally one `--system`): key, tool id and tool
+ *   folder, from which a lost workspace's `keymap.json` is rebuilt.
  * - **pull** (any credential) writes a live model's BPMN bytes verbatim
  *   (`GET …/revisions/{revision}/content`, read as bytes, so a byte order
  *   mark and line endings stay): the head, which is the amended revision
@@ -34,6 +38,7 @@ import path from 'node:path';
 import {
   deleteModel,
   getRevisionContent,
+  listExternalIds,
   listModels,
   listRevisions,
   requeueAnalyses,
@@ -41,7 +46,13 @@ import {
   type RequeueResult,
   type Revision,
 } from '@analyzr/client';
-import { MAX_PAGE_LIMIT, ModelStage, isModelKey } from '@analyzr/contracts';
+import {
+  MAX_PAGE_LIMIT,
+  ModelStage,
+  SourceSystem,
+  isModelKey,
+  type ExternalIdList,
+} from '@analyzr/contracts';
 
 import { call, createApi, type Api } from '../api.ts';
 import {
@@ -140,6 +151,68 @@ export async function modelsListCommand(
   io.stdout(
     [...formatModels(models), `${where}: ${plural(models.length, 'model')}`, ''].join('\n'),
   );
+}
+
+/**
+ * The identities as text: one line per model (key, tool id or `-`, tool
+ * folder), columns aligned, a count per system, and one line per tool id
+ * several keys carry (after `external-id-moved`: one tool model in the
+ * landscape twice, which a key map rebuilt from the list cannot hold).
+ */
+export function formatExternalIds(list: ExternalIdList, project: string, system?: string): string {
+  const where = system === undefined ? project : `${project} (system ${system})`;
+  if (list.items.length === 0) return `no models with a declared source system in ${where}\n`;
+  const keyWidth = Math.max(...list.items.map((i) => i.key.length));
+  const idWidth = Math.max(...list.items.map((i) => (i.externalId ?? '-').length));
+  const systems = new Map<string, number>();
+  for (const i of list.items) systems.set(i.system, (systems.get(i.system) ?? 0) + 1);
+  const lines = list.items.map(
+    (i) =>
+      `  ${i.key.padEnd(keyWidth)}  ${(i.externalId ?? '-').padEnd(idWidth)}  ${i.externalPath ?? '-'}` +
+      (system === undefined ? `  (${i.system})` : ''),
+  );
+  lines.push(
+    `${where}: ${[...systems].map(([s, n]) => `${plural(n, 'model')} from ${s}`).join(', ')}`,
+  );
+  const holders = new Map<string, { system: string; id: string; keys: string[] }>();
+  for (const i of list.items) {
+    if (i.externalId === null) continue;
+    const id = `${i.system}\0${i.externalId}`;
+    const entry = holders.get(id) ?? { system: i.system, id: i.externalId, keys: [] };
+    entry.keys.push(i.key);
+    holders.set(id, entry);
+  }
+  for (const { system: s, id, keys } of holders.values()) {
+    if (keys.length < 2) continue;
+    lines.push(
+      `${s} id ${id} on ${keys.length} keys: ${keys.join(', ')} (one model twice? analyzr models delete -p ${project} <key>)`,
+    );
+  }
+  return `${lines.join('\n')}\n`;
+}
+
+/** `analyzr models external-ids -p <project> [--system <system>] [--json]` (M6 S2a). */
+export async function modelsExternalIdsCommand(
+  io: CliIo,
+  opts: ModelsOptions & { system?: string },
+): Promise<void> {
+  if (opts.system !== undefined && !SourceSystem.safeParse(opts.system).success) {
+    throw new CliError(
+      `not a source system: ${JSON.stringify(opts.system)} (a lowercase slug such as signavio or aris)`,
+    );
+  }
+  const api = createApi(io, opts.url, await anyCredential(io, opts));
+  const list = await call(
+    api,
+    `list the external ids of ${opts.project}`,
+    listExternalIds({
+      client: api.client,
+      path: { project: opts.project },
+      query: opts.system === undefined ? {} : { system: opts.system },
+    }),
+  );
+  if (opts.json) io.stdout(`${JSON.stringify(list, null, 2)}\n`);
+  else io.stdout(formatExternalIds(list, opts.project, opts.system));
 }
 
 /** `analyzr models requeue -p <project> (<key>… | --all) [--json]`. */

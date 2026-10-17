@@ -7,6 +7,14 @@ import { ModelKey } from '../refs.ts';
 import { orNull } from '../zod-utils.ts';
 import { AmendmentCounts, AmendmentPlanEntry, RevisionUpstream } from './amendment-core.ts';
 import { Sha256Hex, Timestamp, pageOf } from './common.ts';
+import {
+  ExportedAt,
+  ImportWarning,
+  ManifestDerived,
+  ManifestImporter,
+  ManifestLoss,
+  SourceSystem,
+} from './import-manifest.ts';
 
 /**
  * Pipeline stage of a model (CONCEPT §3, view `model_pipeline`):
@@ -63,8 +71,13 @@ export type ModelPage = z.infer<typeof ModelPage>;
  * Where a revision's bytes came from: an upload, an import or a seed (the
  * *uploaded* bytes), or `amendment` (M6 S5c-2, decision 25): bytes analyzr
  * computed from the uploaded revision `upstream` by the amendments its plan
- * marks `applied` (an *amended* revision). A `looseObject` over the stored
- * jsonb: fields it does not declare pass through.
+ * marks `applied` (an *amended* revision). Since M6 S2a an uploaded revision
+ * also carries its typed provenance (§3.3): `uploader` and `manifestSha256`
+ * set by the server, the rest declared by the import's manifest
+ * (`analyzr-import/1`) and stored as declared. An amended revision keeps no
+ * manifest fields of its own: readers follow `upstream` to the uploaded
+ * revision. Provenance stays out of facts and `facts_hash`. A `looseObject`
+ * over the stored jsonb: fields it does not declare pass through.
  */
 export const RevisionSource = z
   .looseObject({
@@ -74,9 +87,29 @@ export const RevisionSource = z
     /**
      * The credential kind of the request that wrote the revision (M6 §3.3):
      * `human` for the owner key or the web session, `agent` for an agent
-     * token; a credential kind, not a person. Set on amended revisions.
+     * token; a credential kind, not a person. Set on every revision written
+     * since M6 S2a (on amended revisions since S5c-2).
      */
     uploader: z.enum(['human', 'agent']).optional(),
+    /** SHA-256 of the manifest the server received with the file (the batch's subset; server). */
+    manifestSha256: Sha256Hex.optional(),
+    /** The source system the manifest declares, e.g. `signavio`. */
+    system: SourceSystem.optional(),
+    systemVersion: orNull(z.string()).optional(),
+    exportedAt: orNull(ExportedAt).optional(),
+    importer: orNull(ManifestImporter).optional(),
+    /** Tool folders the partial export covered (absent: the whole system). */
+    scope: z.array(z.string()).optional(),
+    /** The tool's model id (declared, opaque). */
+    externalId: z.string().optional(),
+    /** Folder and name in the tool (declared, not checked). */
+    externalPath: z.string().optional(),
+    /** A link into the source tool (declared, http(s) only). */
+    url: z.string().optional(),
+    /** How the file was derived (declared). */
+    derived: ManifestDerived.optional(),
+    /** What a conversion dropped (declared, counts only). */
+    losses: z.array(ManifestLoss).optional(),
     /** An amended revision: the uploaded revision it is computed from. */
     upstream: RevisionUpstream.optional(),
     /**
@@ -141,7 +174,10 @@ export const MAX_RESULT_WARNING_COUNT = 101;
  * duplicate ids), `missing-id`, `invalid-id`, `duplicate-id` (element
  * skipped), `label-truncated`, `key-truncated`, `documentation-truncated`,
  * `call-without-target`, `multiple-event-definitions`,
- * `message-flow-unresolved`, `too-many-warnings`. Not stored (M6 S1).
+ * `message-flow-unresolved`, `too-many-warnings`. Since M6 S2a every
+ * revision stores its warnings (`model_revision.extract_warnings`, messages
+ * cut as here; revisions stored before stay without), which the open
+ * question `extractor-loss` reads.
  */
 export const ExtractWarning = z
   .object({
@@ -185,6 +221,16 @@ const resultAmendments = {
 };
 
 /**
+ * Warnings about the file against its manifest or the landscape (M6 S2a,
+ * §3.2, §3.4: `manifest-sha-mismatch`, `external-id-moved`,
+ * `external-id-changed`), present only when there is one, so results
+ * without a manifest keep their shape. The file was imported all the same.
+ */
+const resultImportWarnings = {
+  importWarnings: z.array(ImportWarning).max(3).optional(),
+};
+
+/**
  * Outcome of `PUT …/models/by-key/{key}`: 201 `created`, 200 `revised` or
  * `unchanged`. `revision` is the model's head afterwards: for a model whose
  * live amendments apply to the new bytes the amended revision, whose
@@ -199,6 +245,7 @@ export const PutModelResult = z
     uploadedRevisionId: RevisionId.optional(),
     ...resultWarnings,
     ...resultAmendments,
+    ...resultImportWarnings,
   })
   .meta({ id: 'PutModelResult', description: 'Result of uploading one BPMN file.' });
 export type PutModelResult = z.infer<typeof PutModelResult>;
@@ -211,13 +258,17 @@ export const MAX_IMPORT_BYTES = 25 * 1024 * 1024;
 export const ImportFileOutcome = z
   .object({
     path: z.string(),
-    /** Derived from the path; `null` if the path cannot be slugified. */
+    /**
+     * The key the manifest pins (M6 S2a), else derived from the path; `null`
+     * if the path cannot be slugified.
+     */
     modelKey: orNull(ModelKey),
     outcome: z.enum(['created', 'revised', 'unchanged', 'failed']),
     /** Set when `outcome` is `failed`. */
     problem: orNull(ApiProblem),
     ...resultWarnings,
     ...resultAmendments,
+    ...resultImportWarnings,
   })
   .meta({ id: 'ImportFileOutcome', description: 'Outcome of one file of an import.' });
 export type ImportFileOutcome = z.infer<typeof ImportFileOutcome>;

@@ -16,6 +16,7 @@ import {
   type AmendmentExportFormat,
   type AmendmentFilter,
   type ModelAmendment,
+  type RevisionSource,
 } from '@analyzr/contracts';
 import { quoteDe } from '@analyzr/relations';
 
@@ -28,10 +29,38 @@ export interface ChangeListTarget {
   process: { name: string; modelKey: string; modelName: string | null } | null;
 }
 
+/**
+ * Where a model lives in its source tool, as its uploaded revision declares
+ * it (M6 S2a, §3.3: the manifest's system, tool folder and link).
+ */
+export interface ChangeListOrigin {
+  system: string | null;
+  externalPath: string | null;
+  /** An http(s) link into the source tool. */
+  url: string | null;
+}
+
+/** The origin of a model from its uploaded revision's `source`; `null` without a declared system or folder. */
+export function originOf(source: RevisionSource | undefined): ChangeListOrigin | null {
+  if (!source || (source.system === undefined && source.externalPath === undefined)) return null;
+  const url = source.url !== undefined && /^https?:\/\//i.test(source.url) ? source.url : null;
+  return { system: source.system ?? null, externalPath: source.externalPath ?? null, url };
+}
+
+/** A link destination safe in Markdown: spaces, angle brackets and parentheses percent-encoded. */
+function markdownUrl(url: string): string {
+  return url.replace(
+    /[\s<>()]/g,
+    (c) => `%${c.charCodeAt(0).toString(16).toUpperCase().padStart(2, '0')}`,
+  );
+}
+
 /** One amendment with what the change list says about its element. */
 export interface ChangeListEntry {
   amendment: ModelAmendment;
   modelName: string | null;
+  /** Where the model lives in its source tool (M6 S2a), when its uploaded revision declares it. */
+  origin?: ChangeListOrigin;
   /** „Prozess „Auftragsabwicklung““ or „Pool „Kunde““; `null` for a message or signal. */
   place: string | null;
   /** The lanes the element lies in. */
@@ -167,6 +196,15 @@ export function renderChangeListMarkdown(
       : `\`${modelKey}\``;
     const deleted = first?.amendment.modelDeleted ? ` – ${AMENDMENT_MODEL_DELETED_LABEL}` : '';
     lines.push('', `## ${name}${deleted}`);
+    const origin = first?.origin;
+    if (origin) {
+      const where = [
+        origin.externalPath === null ? null : escapeMarkdown(origin.externalPath),
+        origin.url === null ? null : `[Im Quellsystem öffnen](${markdownUrl(origin.url)})`,
+      ].filter((p) => p !== null);
+      const system = origin.system === null ? '' : ` (${escapeMarkdown(origin.system)})`;
+      if (where.length > 0) lines.push('', `Im Quellsystem${system}: ${where.join(' · ')}`);
+    }
     const open = list.filter((e) => toCarryOver(e.amendment));
     const done = list.filter((e) => !toCarryOver(e.amendment));
     for (const [section, note, items] of [

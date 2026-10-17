@@ -24,7 +24,7 @@ analyzr is a headless store for process landscapes. It holds BPMN models, the fa
 | Principal | `prn_`: a user `(iss, sub)` or a service `(iss, client_id)`; an agent token (`agt_`, §6) is a service with `iss = urn:analyzr:agent-token` |
 | Membership | role `viewer`, `editor` or `owner` |
 | Model | `mdl_` with an immutable `key` such as `billing/dunning` |
-| Revision | `rev_`, holding immutable bytes: an *uploaded* revision (the bytes as they came, from an upload, an import or a seed) or, since owner decision 25, an *amended* revision (`source.kind = 'amendment'`), computed from an uploaded revision (`source.upstream`) by the live model amendments its plan marks applied |
+| Revision | `rev_`, holding immutable bytes: an *uploaded* revision (the bytes as they came, from an upload, an import or a seed) or, since owner decision 25, an *amended* revision (`source.kind = 'amendment'`), computed from an uploaded revision (`source.upstream`) by the live model amendments its plan marks applied; since M6 S2a an uploaded revision's `source` carries typed provenance (the credential kind `uploader`, and from an import bundle's manifest the declared system, tool id, tool folder, link, derivation and losses), never part of facts or `facts_hash`; for an amended head its readers follow `source.upstream` |
 | Model amendment (owner decision 25, M6 S5c-2) | `mam_`, append-only: one field of one element (`call-target`, `message-name`, `event-name`, `process-documentation`) with the value before and after, set by a human; ends with a withdrawal row (`withdrawn` or `superseded`); at most one live per model, element and op |
 | Fact | `(revision, kind, element_id)` |
 | Relation | `rel_`, plus the natural key `(type, from_ref, to_ref)` |
@@ -83,9 +83,13 @@ membership(project_id, principal_id, role)    invitation(id, project_id, email_n
 agent_token(id, project_id, principal_id, name, prefix, secret_hash unique, scopes, expires_at,
          revoked_at, created_by, last_used_at)
 model(id, project_id, key, name, head_revision_id, deleted_seq, unique(project_id, key))
-model_revision(id, project_id, model_id, rev, xml, content_hash, facts_hash, facts_version, source jsonb, principal_id, seq,
+model_revision(id, project_id, model_id, rev, xml, content_hash, facts_hash, facts_version, source jsonb,
+         extract_warnings jsonb null, principal_id, seq,
          unique(project_id, model_id, id))   -- xml: the uploaded bytes, or bytes computed from an uploaded
-                                             -- revision by amendments (M6 S5c-2); the unique since 0015
+                                             -- revision by amendments (M6 S5c-2); the unique since 0015;
+                                             -- source: since M6 S2a the uploaded revision's typed provenance
+                                             -- (uploader, manifestSha256, the manifest's declared fields);
+                                             -- extract_warnings: since M6 S2a (0017), null before
 fact(revision_id, project_id, kind, element_id, process_id, scope, event_def, label, key_raw, key_norm,
      fingerprint, attrs jsonb, pk(revision_id, kind, element_id))
 relation(id, project_id, type, from_ref, to_ref, status, endpoint_state, tier, confidence, version,
@@ -238,7 +242,7 @@ The stage shows in `GET /projects/{p}/models?stage=` and MCP `list_processes`; h
 
 Git only wins in rows a read-only export covers too. **Decision: hybrid, but asymmetric.** Postgres is canonical for everything computed or decided; BPMN bytes are canonical at their origin (the uploaded revision for uploads, kept as it came; a linked repo, later, mirrored with `source={repo,commit,path}` and closed to UI upload). Since owner decision 25 a model's head may be an amended revision computed from its uploaded revision by analyzr's amendments (M6 §4.8 c): its bytes are analyzr's, derived again from the uploaded bytes whenever the amendments or the upload change, and downloadable next to the original (`getRevisionContent` of either).
 
-**Import.** Every adapter yields `{path, bytes, sha256, source}` for `ingest(projectId, files, actor)`; the model key is the slugified path (`modelKeyFromPath`, with the BPMN file rule `.bpmn`, `.bpmn2`, `.bpmn20.xml`, `.xml` in `@analyzr/contracts`, shared by the server, the CLI and the web since M6 S1). Upload/`PUT`, the web upload and `analyzr import <dir>` ship in v1 (the CLI derives every key before sending and refuses a key twice across its batches; extractor warnings come back in the results, not stored), a one-shot bpmiq.yml import (vendored MIT `content.ts`) in R2, the import bundle with a manifest is proposed for M6 S2, linked sync and OKF restore later.
+**Import.** Every adapter yields `{path, bytes, sha256, source}` for `ingest(projectId, files, actor)`; the model key is the slugified path (`modelKeyFromPath`, with the BPMN file rule `.bpmn`, `.bpmn2`, `.bpmn20.xml`, `.xml` in `@analyzr/contracts`, shared by the server, the CLI and the web since M6 S1). Upload/`PUT`, the web upload and `analyzr import <dir>` ship in v1 (the CLI derives every key before sending and refuses a key twice across its batches; extractor warnings come back in the results, and since M6 S2a each revision stores them), a one-shot bpmiq.yml import (vendored MIT `content.ts`) in R2, linked sync and OKF restore later. Since M6 S2a an import bundle's manifest `analyzr-import.json` (`analyzr-import/1`, the multipart part `manifest`, or the header `Analyzr-Manifest` of a PUT) pins keys and declares provenance, stored on the uploaded revision and never in facts; `GET …/external-ids` lists each live model's identity in its source system (M6 §3.2–§3.4).
 
 **OKF projection (R1, minimal).** Each project head exports as one OKF 0.2 bundle. Leases, memberships and agent tokens are never exported.
 
@@ -270,8 +274,9 @@ Rejected relations are exported on purpose, so offline agents do not propose the
 | `/projects[/{p}]`, `…/members` (users, and services as `(iss, client_id)`), `…/invitations` | CRUD (create: any user; other writes: owner) |
 | `/projects/{p}/agent-tokens[/{t}]` | GET, POST (secret shown once), DELETE |
 | `/projects/{p}/models?stage=`, `…/models/{m}[/revisions/{r}/(content\|facts)]` | GET, DELETE |
-| `/projects/{p}/models/by-key/{key}` | PUT raw BPMN → 201 new model, 200 new revision, 200 `unchanged`; a new model or revision carries the extractor's `warnings` (≤ 20) and `warningCount` when there are any; for a model with live amendments (M6 S5c-2) also `amendments: {applied, inSource, conflicts}` (counts and ≤ 20 ids) and, when an amended head was written on top, `uploadedRevisionId` (`revision` is the final head) |
-| `/projects/{p}/imports` | POST ≤ 50 files, outcome per file (with the extractor's warnings and the amendments, as PUT) |
+| `/projects/{p}/models/by-key/{key}` | PUT raw BPMN → 201 new model, 200 new revision, 200 `unchanged`; a new model or revision carries the extractor's `warnings` (≤ 20) and `warningCount` when there are any; for a model with live amendments (M6 S5c-2) also `amendments: {applied, inSource, conflicts}` (counts and ≤ 20 ids) and, when an amended head was written on top, `uploadedRevisionId` (`revision` is the final head); since M6 S2a the optional header `Analyzr-Manifest` (base64url of a one-file `analyzr-import/1` manifest) declares the file's provenance, `importWarnings` (`manifest-sha-mismatch`, `external-id-moved`, `external-id-changed`, `provenance-kept`) come back when there are any, and an invalid manifest is 422 `validation-failed` (`invalid-manifest`) |
+| `/projects/{p}/imports` | POST ≤ 50 files, outcome per file (with the extractor's warnings, the amendments and the import warnings, as PUT); since M6 S2a the optional part `manifest` (`analyzr-import.json`) pins the keys and declares the provenance of the files it lists |
+| `/projects/{p}/external-ids?system=` (M6 S2a) | GET (permission `read`): each live model's identity in its source system (key, system, tool id, tool folder) as its uploaded revision declared it, to rebuild a lost key map (M6 §3.4) |
 | `…/models/{m}/elements/{elementId}/amendable` (M6 S5c-2) | GET (permission `read`, `ETag: "r<headRev>"`): the fields of the element an amendment can set, their values, why not, suggestions and history (M6 §4.8 c) |
 | `…/models/{m}/amendments?dryRun=` (M6 S5c-2) | POST (permissions `review` and `write`, humans only; `If-Match: "r<headRev>"` required, 428/412): up to 20 amendments of one model; an amended head computed from the uploaded revision, with the effect at the element and the cost (pairs to re-judge, a claimed task) |
 | `…/amendments` (`?modelKey=&state=`), `…/amendments/export?format=markdown\|csv&since=` (M6 S5c-2) | GET (permission `read`): every amendment with its state; the change list for the source tool, grouped per model, what to carry over first |

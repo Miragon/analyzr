@@ -110,6 +110,10 @@ const KIND_STYLES: Record<OpenQuestionKind, Style> = {
     tone: 'warning',
     hint: 'Eine Ergänzung aus analyzr passt nicht mehr zum Modell aus dem Quellsystem.',
   },
+  'extractor-loss': {
+    tone: 'warning',
+    hint: 'Beim Import wurden Elemente übersprungen, etwa wegen doppelter oder ungültiger IDs.',
+  },
 };
 
 /**
@@ -150,6 +154,7 @@ export const OPEN_QUESTION_KIND_ORDER: readonly OpenQuestionKind[] = [
   'descriptive-model',
   'summary-note',
   'amendment-conflict',
+  'extractor-loss',
 ];
 
 /** Tone and hint of each source; the label is the server's. */

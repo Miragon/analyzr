@@ -166,4 +166,18 @@ describe('the order of an import and who gets a key (M6 S1)', () => {
     });
     expect(root.keyTakenBy).toBe(keyTakenBy);
   });
+
+  it('take the keys a manifest pins (M6 S2a), else the path’s', () => {
+    const pins = new Map([
+      ['Export/Auftrag (neu).bpmn', 'vertrieb/auftrag'],
+      ['Export/Auftrag.xml', 'vertrieb/auftrag'],
+    ]);
+    const keyOf = (p: string) => pins.get(p) ?? modelKeyFromPath(p);
+    const paths = ['Export/Auftrag (neu).bpmn', 'Export/Auftrag.xml', 'vertrieb/auftrag.bpmn'];
+    const owners = modelKeyOwners(paths, keyOf);
+    expect(Object.fromEntries(owners)).toEqual({ 'vertrieb/auftrag': 'Export/Auftrag (neu).bpmn' });
+    // The pinned sidecar loses its key to the BPMN file; the path-keyed file is a duplicate.
+    expect(keyTakenBy('Export/Auftrag.xml', owners, keyOf)).toBe('Export/Auftrag (neu).bpmn');
+    expect(keyTakenBy('Export/Auftrag.xml', owners)).toBeNull();
+  });
 });

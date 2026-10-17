@@ -41,6 +41,20 @@ export interface BpmnFile {
  * @throws {CliError} if `dir` is not a directory
  */
 export async function findBpmnFiles(dir: string): Promise<BpmnFile[]> {
+  const found = (await walkFiles(dir, isImportPath)).sort(comparePaths);
+  return Promise.all(
+    found.map(async (p) => ({ path: p, bytes: new Uint8Array(await readFile(path.join(dir, p))) })),
+  );
+}
+
+/**
+ * The paths below `dir` (`/`-separated) of the regular files `accept` takes,
+ * in directory order; hidden files and directories, `node_modules` and
+ * symbolic links are skipped.
+ *
+ * @throws {CliError} if `dir` is not a directory
+ */
+export async function walkFiles(dir: string, accept: (rel: string) => boolean): Promise<string[]> {
   const info = await stat(dir).catch(() => null);
   if (!info?.isDirectory()) throw new CliError(`${dir} is not a directory`);
 
@@ -51,16 +65,13 @@ export async function findBpmnFiles(dir: string): Promise<BpmnFile[]> {
       const child = rel === '' ? e.name : `${rel}/${e.name}`;
       if (e.isDirectory()) {
         if (!e.name.startsWith('.') && !SKIPPED_DIRS.has(e.name)) await walk(child);
-      } else if (e.isFile() && isImportPath(child)) {
+      } else if (e.isFile() && accept(child)) {
         found.push(child);
       }
     }
   }
   await walk('');
-  found.sort(comparePaths);
-  return Promise.all(
-    found.map(async (p) => ({ path: p, bytes: new Uint8Array(await readFile(path.join(dir, p))) })),
-  );
+  return found;
 }
 
 /**
@@ -121,18 +132,24 @@ export interface ImportPlan {
  * that may be no BPMN never keeps a model out. A plain `.xml` whose key a
  * `.bpmn…` file got is skipped (`key-taken`, `keyTakenBy`); every other
  * duplicate fails, naming the file that gets the key. Checks in the server's
- * order: key, duplicate key, size.
+ * order: key, duplicate key, size. `keyOf` gives a file's key: by default
+ * the path's, with an import manifest the key it pins and else the path's
+ * (M6 S2a), as the server derives it.
  */
-export function planImport(files: readonly BpmnFile[]): ImportPlan {
+export function planImport(
+  files: readonly BpmnFile[],
+  keyOf: (path: string) => string | null = modelKeyFromPath,
+): ImportPlan {
   const failed: ImportFileOutcome[] = [];
   const skipped: SkippedFile[] = [];
   const send: BpmnFile[] = [];
   const owners = modelKeyOwners(
     files.filter((f) => f.bytes.byteLength <= MAX_MODEL_BYTES).map((f) => f.path),
+    keyOf,
   );
   const sent = new Set<string>();
   for (const f of files) {
-    const key = modelKeyFromPath(f.path);
+    const key = keyOf(f.path);
     const fail = (code: 'validation-failed' | 'payload-too-large', detail: string) =>
       failed.push({
         path: f.path,
@@ -141,7 +158,7 @@ export function planImport(files: readonly BpmnFile[]): ImportPlan {
         problem: createProblem(code, detail),
       });
     const owner = key === null ? undefined : owners.get(key);
-    const takenBy = keyTakenBy(f.path, owners);
+    const takenBy = keyTakenBy(f.path, owners, keyOf);
     if (!key) fail('validation-failed', 'the path gives no valid model key');
     else if (takenBy !== null) skipped.push({ path: f.path, reason: 'key-taken', takenBy });
     else if (owner !== undefined && (owner !== f.path || sent.has(key))) {

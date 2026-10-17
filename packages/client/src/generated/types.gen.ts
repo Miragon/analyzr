@@ -449,6 +449,7 @@ export type PutModelResult = {
   warnings?: Array<ExtractWarning>;
   warningCount?: number;
   amendments?: AmendmentCounts;
+  importWarnings?: Array<ImportWarning>;
 };
 
 /**
@@ -479,10 +480,67 @@ export type RevisionSource = {
   kind: 'upload' | 'import' | 'seed' | 'amendment';
   path?: string;
   uploader?: 'human' | 'agent';
+  manifestSha256?: Sha256Hex;
+  system?: SourceSystem;
+  systemVersion?: string | null;
+  exportedAt?: ExportedAt | null;
+  importer?: ManifestImporter | null;
+  scope?: Array<string>;
+  externalId?: string;
+  externalPath?: string;
+  url?: string;
+  derived?: ManifestDerived;
+  losses?: Array<ManifestLoss>;
   upstream?: RevisionUpstream;
   amendments?: Array<AmendmentPlanEntry>;
   [key: string]: unknown;
 };
+
+/**
+ * Source system of a bundle: a lowercase slug such as `signavio` or `aris`.
+ */
+export type SourceSystem = string;
+
+/**
+ * ISO 8601 date-time of the export (declared).
+ */
+export type ExportedAt = string;
+
+/**
+ * The program that wrote a bundle (declared).
+ */
+export type ManifestImporter = {
+  name: string;
+  version: string;
+};
+
+/**
+ * How a file was derived (declared).
+ */
+export type ManifestDerived = {
+  kind: DerivedKind;
+  converter?: string | null;
+  llmModel?: string | null;
+  from?: Array<string>;
+};
+
+/**
+ * How a file was derived (declared).
+ */
+export type DerivedKind = 'export' | 'converted' | 'reconstructed' | 'as-told';
+
+/**
+ * What a conversion dropped, counted (declared).
+ */
+export type ManifestLoss = {
+  code: LossCode;
+  count: number;
+};
+
+/**
+ * What a conversion dropped: element-dropped, attribute-dropped, link-unresolved, layout-generated, layout-missing, id-rewritten, text-truncated, or a newer converter's code (a lowercase slug, stored as declared).
+ */
+export type LossCode = string;
 
 /**
  * The uploaded revision an amended revision is computed from.
@@ -552,6 +610,34 @@ export type AmendmentCounts = {
 };
 
 /**
+ * A warning about a file against its manifest or the landscape; it was imported.
+ */
+export type ImportWarning = {
+  code: ImportWarningCode;
+  message: string;
+  system?: SourceSystem;
+  externalId?: string;
+  otherKeys?: Array<ModelKey>;
+  previous?: ExternalIdentity;
+  manifestSha256?: Sha256Hex;
+  fileSha256?: Sha256Hex;
+};
+
+/**
+ * Kind of an import warning.
+ */
+export type ImportWarningCode =
+  'manifest-sha-mismatch' | 'external-id-moved' | 'external-id-changed' | 'provenance-kept';
+
+/**
+ * A model's identity in its source system.
+ */
+export type ExternalIdentity = {
+  system: SourceSystem;
+  externalId: string;
+};
+
+/**
  * BPMN 2.0 XML document (UTF-8).
  */
 export type BpmnXml = string;
@@ -594,6 +680,7 @@ export type ImportFileOutcome = {
   warnings?: Array<ExtractWarning>;
   warningCount?: number;
   amendments?: AmendmentCounts;
+  importWarnings?: Array<ImportWarning>;
 };
 
 export type ImportModelsBody = {
@@ -601,6 +688,27 @@ export type ImportModelsBody = {
    * BPMN files; each part’s filename is its path below the import root.
    */
   files: Array<Blob | File>;
+  /**
+   * JSON of an `analyzr-import/1` manifest (`analyzr-import.json`) for these files.
+   */
+  manifest?: string;
+};
+
+/**
+ * The live models with a declared source system.
+ */
+export type ExternalIdList = {
+  items: Array<ExternalIdEntry>;
+};
+
+/**
+ * A live model's identity in its source system.
+ */
+export type ExternalIdEntry = {
+  key: ModelKey;
+  system: SourceSystem;
+  externalId: string | null;
+  externalPath: string | null;
 };
 
 /**
@@ -1110,7 +1218,8 @@ export type OpenQuestionKind =
   | 'undocumented-process'
   | 'isolated-process'
   | 'descriptive-model'
-  | 'amendment-conflict';
+  | 'amendment-conflict'
+  | 'extractor-loss';
 
 /**
  * Source of an open question.
@@ -3790,6 +3899,12 @@ export type GetModelResponse = GetModelResponses[keyof GetModelResponses];
 
 export type PutModelByKeyData = {
   body: BpmnXml;
+  headers?: {
+    /**
+     * base64url of the UTF-8 JSON of a one-file `analyzr-import/1` manifest
+     */
+    'analyzr-manifest'?: string;
+  };
   path: {
     /**
      * Project id (`prj_…`) or project key.
@@ -4048,6 +4163,53 @@ export type ImportModelsResponses = {
 };
 
 export type ImportModelsResponse = ImportModelsResponses[keyof ImportModelsResponses];
+
+export type ListExternalIdsData = {
+  body?: never;
+  path: {
+    /**
+     * Project id (`prj_…`) or project key.
+     */
+    project: string;
+  };
+  query?: {
+    /**
+     * Source system of a bundle: a lowercase slug such as `signavio` or `aris`.
+     */
+    system?: SourceSystem;
+  };
+  url: '/api/v1/projects/{project}/external-ids';
+};
+
+export type ListExternalIdsErrors = {
+  /**
+   * Problem: `unauthorized`
+   */
+  401: ApiProblem;
+  /**
+   * Problem: `insufficient-scope`
+   */
+  403: ApiProblem;
+  /**
+   * Problem: `not-found`
+   */
+  404: ApiProblem;
+  /**
+   * Problem: `validation-failed`
+   */
+  422: ApiProblem;
+};
+
+export type ListExternalIdsError = ListExternalIdsErrors[keyof ListExternalIdsErrors];
+
+export type ListExternalIdsResponses = {
+  /**
+   * The identities
+   */
+  200: ExternalIdList;
+};
+
+export type ListExternalIdsResponse = ListExternalIdsResponses[keyof ListExternalIdsResponses];
 
 export type GetAmendableData = {
   body?: never;

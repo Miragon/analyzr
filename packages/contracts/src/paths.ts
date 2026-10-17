@@ -100,16 +100,21 @@ export function comparePaths(a: string, b: string): number {
  * never takes a key from a BPMN-suffixed file, whichever sorts first
  * (`Order.xml` before `order.bpmn`). The CLI and the web pass the paths that may
  * be sent (no hidden file, at most 5 MB); a path without a valid key is left out.
+ * `keyOf` gives a path's key: by default {@link modelKeyFromPath}, with an
+ * import manifest the key it pins (M6 S2a) and else the path's.
  *
  * @returns model key → path of the file that gets it
  */
-export function modelKeyOwners(paths: Iterable<string>): Map<string, string> {
+export function modelKeyOwners(
+  paths: Iterable<string>,
+  keyOf: (path: string) => string | null = modelKeyFromPath,
+): Map<string, string> {
   const sorted = [...paths].sort(comparePaths);
   const owners = new Map<string, string>();
   for (const plainXml of [false, true]) {
     for (const path of sorted) {
       if ((bpmnSuffixOf(path) === '.xml') !== plainXml) continue;
-      const key = modelKeyFromPath(path);
+      const key = keyOf(path);
       if (key !== null && !owners.has(key)) owners.set(key, path);
     }
   }
@@ -122,11 +127,16 @@ export function modelKeyOwners(paths: Iterable<string>): Map<string, string> {
  * `Prozess.xml` next to `Prozess.bpmn`. The CLI and the web skip such a file
  * (`key-taken`, naming this file) and never send it. `null` for every other
  * path: a BPMN-suffixed file, a plain `.xml` that has its key, and one whose
- * key another plain `.xml` has (a duplicate, which stays failed).
+ * key another plain `.xml` has (a duplicate, which stays failed). `keyOf` as
+ * for {@link modelKeyOwners}.
  */
-export function keyTakenBy(path: string, owners: ReadonlyMap<string, string>): string | null {
+export function keyTakenBy(
+  path: string,
+  owners: ReadonlyMap<string, string>,
+  keyOf: (path: string) => string | null = modelKeyFromPath,
+): string | null {
   if (bpmnSuffixOf(path) !== '.xml') return null;
-  const key = modelKeyFromPath(path);
+  const key = keyOf(path);
   const owner = key === null ? undefined : owners.get(key);
   return owner !== undefined && bpmnSuffixOf(owner) !== '.xml' ? owner : null;
 }

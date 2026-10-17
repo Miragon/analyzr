@@ -40,6 +40,7 @@ export const OPEN_QUESTION_KIND_LABELS: Readonly<Record<OpenQuestionKind, string
   'isolated-process': 'Prozess ohne Verbindung',
   'descriptive-model': 'Beschreibendes Modell',
   'amendment-conflict': 'Ergänzung nicht mehr anwendbar',
+  'extractor-loss': 'Elemente beim Import verloren',
 };
 
 /** German label of each source. */

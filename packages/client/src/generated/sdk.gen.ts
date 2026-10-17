@@ -153,6 +153,9 @@ import type {
   ListAutoAcceptRulesData,
   ListAutoAcceptRulesErrors,
   ListAutoAcceptRulesResponses,
+  ListExternalIdsData,
+  ListExternalIdsErrors,
+  ListExternalIdsResponses,
   ListFindingsData,
   ListFindingsErrors,
   ListFindingsResponses,
@@ -383,6 +386,8 @@ export const getModel = <ThrowOnError extends boolean = false>(
 
 /**
  * Upload raw BPMN: 201 new model, 200 new revision or unchanged
+ *
+ * The optional header `Analyzr-Manifest` declares the file's provenance (M6 §3.2, §3.3): the base64url of the UTF-8 JSON of an `analyzr-import/1` manifest that lists exactly this file (its `key`, if given, equal to `{key}`). The declared fields are stored on the uploaded revision; a checksum mismatch or a known tool id are `importWarnings`, the file is stored all the same. Identical bytes stay `unchanged` and keep the first revision's provenance (`provenance-kept` when the manifest declares another place in the source tool).
  */
 export const putModelByKey = <ThrowOnError extends boolean = false>(
   options: Options<PutModelByKeyData, ThrowOnError>,
@@ -438,7 +443,9 @@ export const getRevisionFacts = <ThrowOnError extends boolean = false>(
   });
 
 /**
- * Import up to 50 BPMN files; the model key is the slugified path
+ * Import up to 50 BPMN files; the model key is the pinned or the slugified path
+ *
+ * An optional part `manifest` holds the JSON of an `analyzr-import/1` manifest (M6 §3.2; the CLI sends each batch's subset): a listed file gets the key it pins (else its path decides) and the declared provenance on its uploaded revision. A checksum mismatch, a tool id another live key already has (`external-id-moved`) and a tool id that differs from the one on the key's head (`external-id-changed`) are `importWarnings`, and so is an unchanged file whose manifest entry declares another place in the source tool than analyzr keeps (`provenance-kept`); the file is imported all the same. An invalid manifest refuses the request (422 `validation-failed`, reason `invalid-manifest`).
  */
 export const importModels = <ThrowOnError extends boolean = false>(
   options: Options<ImportModelsData, ThrowOnError>,
@@ -452,6 +459,20 @@ export const importModels = <ThrowOnError extends boolean = false>(
       'Content-Type': null,
       ...options.headers,
     },
+  });
+
+/**
+ * The source-system identity of every live model (to rebuild a key map)
+ *
+ * M6 §3.4: per live model whose head declares a source system, its key, the system, the tool id (`null` when the manifest named none) and the tool folder, as the uploaded revision declared them (an amended head is followed to its uploaded revision), sorted by key; `system` keeps one system. The integrate skill rebuilds a lost workspace's `keymap.json` from it.
+ */
+export const listExternalIds = <ThrowOnError extends boolean = false>(
+  options: Options<ListExternalIdsData, ThrowOnError>,
+): RequestResult<ListExternalIdsResponses, ListExternalIdsErrors, ThrowOnError> =>
+  (options.client ?? client).get<ListExternalIdsResponses, ListExternalIdsErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/projects/{project}/external-ids',
+    ...options,
   });
 
 /**

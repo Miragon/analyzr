@@ -15,7 +15,9 @@
  * S5c-2: amended and uploaded revisions, re-imports with a conflict and
  * „Meine Ergänzung behalten“, the change list, withdrawals), and the import hygiene of M6 S1 (`.xml`,
  * skipped plain XML and sidecars, extractor warnings, the waiting tasks) with
- * `analyzr models list|requeue|delete`.
+ * `analyzr models list|requeue|delete`, and the manifest of M6 S2a (the
+ * integrate plugin's golden bundle under its pinned keys, `analyzr models
+ * external-ids`, unchanged bytes, the import warnings).
  */
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -1489,6 +1491,109 @@ describe('analyzr import and models (M6 S1)', () => {
     expect(deleted.out).toContain('deleted w/dup\n');
     const after = await analyzr(['models', 'list', '-p', 'm6-s1']);
     expect(after.out).toContain('m6-s1: 1 model\n');
+  });
+});
+
+describe('analyzr import with the manifest and models external-ids (M6 S2a)', () => {
+  const bundle = path.join(REPO_ROOT, 'tools/integrate/test/fixtures/signavio/bundle');
+  interface ManifestFile {
+    path: string;
+    key: string;
+    externalId?: string;
+    externalPath: string;
+  }
+  let manifest: { files: ManifestFile[] };
+
+  beforeAll(async () => {
+    manifest = JSON.parse(await readFile(path.join(bundle, 'analyzr-import.json'), 'utf8')) as {
+      files: ManifestFile[];
+    };
+  });
+
+  it("imports the integrate plugin's golden bundle under its pinned keys, with its provenance", async () => {
+    const r = await analyzr(['import', bundle, '-p', 'm6-s2a', '--create']);
+    expect(r.err).toBe('');
+    expect(r.code).toBe(0);
+    expect(r.out).toContain(
+      'manifest: analyzr-import.json (signavio), 6 of 6 files listed: keys pinned, provenance stored for 6\n',
+    );
+    expect(r.out).toContain('m6-s2a: 6 files, 6 created, 0 revised, 0 unchanged, 0 failed\n');
+    expect(r.out).not.toContain('import warning');
+  });
+
+  it('rebuilds the key map the bundle was written with from analyzr models external-ids', async () => {
+    const r = await analyzr([
+      'models',
+      'external-ids',
+      '-p',
+      'm6-s2a',
+      '--system',
+      'signavio',
+      '--json',
+    ]);
+    expect(r.code).toBe(0);
+    const { items } = JSON.parse(r.out) as {
+      items: { key: string; externalId: string | null; externalPath: string | null }[];
+    };
+    expect(
+      items.map(({ key, externalId, externalPath }) => ({ key, externalId, externalPath })),
+    ).toEqual(
+      manifest.files.map((f) => ({
+        key: f.key,
+        externalId: f.externalId ?? null,
+        externalPath: f.externalPath,
+      })),
+    );
+    const text = await analyzr(['models', 'external-ids', '-p', 'm6-s2a']);
+    expect(text.out).toContain('m6-s2a: 6 models from signavio\n');
+  });
+
+  it('keeps the bytes unchanged, and warns when a tool id moves to another key', async () => {
+    const again = await analyzr(['import', bundle, '-p', 'm6-s2a', '--json']);
+    expect(again.code).toBe(0);
+    const summary = JSON.parse(again.out) as {
+      files: { outcome: string; importWarnings?: unknown }[];
+      manifest: { stored: number; kept: number };
+    };
+    expect(summary.files.every((f) => f.outcome === 'unchanged' && !f.importWarnings)).toBe(true);
+    expect(summary.manifest).toMatchObject({ stored: 0, kept: 6 });
+
+    // A re-export where the tool moved "Versand" to another folder, and a converter that
+    // forgot the pinned key: the file lands on a new key, whose tool id another key holds.
+    const moved = path.join(dir, 'm6-s2a-moved');
+    await mkdir(path.join(moved, 'versand'), { recursive: true });
+    const versand = manifest.files.find((f) => f.key === 'logistik/versand');
+    if (!versand) throw new Error('no logistik/versand in the golden bundle');
+    await writeFile(
+      path.join(moved, 'versand/versand.bpmn'),
+      (await readFile(path.join(bundle, versand.path), 'utf8')).replace(
+        '</bpmn:definitions>',
+        '<!-- 2 --></bpmn:definitions>',
+      ),
+    );
+    await writeFile(
+      path.join(moved, 'analyzr-import.json'),
+      JSON.stringify({
+        format: 'analyzr-import/1',
+        source: { system: 'signavio' },
+        files: [
+          { path: 'versand/versand.bpmn', externalId: versand.externalId, sha256: '0'.repeat(64) },
+        ],
+      }),
+    );
+    const r = await analyzr(['import', moved, '-p', 'm6-s2a']);
+    expect(r.code).toBe(0);
+    expect(r.out).toContain('  created   versand/versand\n');
+    expect(r.out).toContain(
+      `      external-id-moved: signavio id ${versand.externalId ?? ''} already belongs to logistik/versand: two models now carry it (moved or renamed in the tool?)\n`,
+    );
+    expect(r.out).toContain(
+      'next: same model twice? delete the extra key (analyzr models delete -p m6-s2a versand/versand) and re-import with the key pinned',
+    );
+    expect(r.out).toMatch(/ {6}manifest-sha-mismatch: the file's sha256 [0-9a-f]{12}… differs/);
+    expect(r.out).toContain(
+      'm6-s2a: 2 import warnings (external-id-moved 1, manifest-sha-mismatch 1); the files were imported\n',
+    );
   });
 });
 

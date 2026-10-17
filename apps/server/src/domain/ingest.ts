@@ -56,6 +56,7 @@ import type {
 import { recomputeProject } from './recompute.ts';
 import { queuePlacementTasks } from './value-chain/queue.ts';
 import { syncValueChainAfterModels } from './value-chain/sync.ts';
+import { storedWarnings } from './warnings.ts';
 
 export interface IngestFile {
   /** Model key, already validated. */
@@ -74,7 +75,8 @@ export type IngestResult =
       uploadedRevision?: RevisionRecord;
       /**
        * The extractor's warnings for `created` and `revised`, uncut (empty
-       * for `unchanged`: identical bytes are not extracted). Not stored.
+       * for `unchanged`: identical bytes are not extracted). Each revision
+       * stores them cut (M6 S2a, `storedWarnings`).
        */
       warnings: ExtractWarning[];
       /** The model's live amendments on the head (M6 S5c-2); absent for a model without any. */
@@ -343,6 +345,7 @@ export async function storeHead(
     processes,
     messageFlows,
     source: head.source,
+    extractWarnings: storedWarnings(head.extracted.warnings),
     principalId: actor.principalId,
     seq,
   });

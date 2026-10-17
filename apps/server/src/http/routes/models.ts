@@ -1,5 +1,11 @@
 import { createRoute } from '@hono/zod-openapi';
-import { MAX_IMPORT_BYTES, MAX_IMPORT_FILES, MAX_MODEL_BYTES, apiRoutes } from '@analyzr/contracts';
+import {
+  MAX_IMPORT_BYTES,
+  MAX_IMPORT_FILES,
+  MAX_MANIFEST_BYTES,
+  MAX_MODEL_BYTES,
+  apiRoutes,
+} from '@analyzr/contracts';
 import { bodyLimit } from 'hono/body-limit';
 
 import { DomainError } from '../../domain/errors.ts';
@@ -28,12 +34,67 @@ function mediaType(header: string | undefined): string {
  */
 const putModelRoute = createRoute({
   ...apiRoutes.putModelByKey,
-  request: { params: apiRoutes.putModelByKey.request.params },
+  request: {
+    params: apiRoutes.putModelByKey.request.params,
+    headers: apiRoutes.putModelByKey.request.headers,
+  },
 });
 const importModelsRoute = createRoute({
   ...apiRoutes.importModels,
   request: { params: apiRoutes.importModels.request.params },
 });
+
+const BASE64URL = /^[A-Za-z0-9_-]*={0,2}$/;
+
+/**
+ * The bytes of the `Analyzr-Manifest` header of a PUT (M6 S2a): base64url
+ * (the standard alphabet is read too) of the manifest's UTF-8 JSON.
+ *
+ * @throws {DomainError} `validation-failed` with `reason: 'invalid-manifest'`
+ */
+function manifestHeaderBytes(header: string): Uint8Array {
+  const value = header.trim();
+  if (!BASE64URL.test(value.replaceAll('+', '-').replaceAll('/', '_'))) {
+    throw new DomainError(
+      'validation-failed',
+      'invalid manifest: the Analyzr-Manifest header is no base64url',
+      { reason: 'invalid-manifest' },
+    );
+  }
+  return new Uint8Array(Buffer.from(value, 'base64url'));
+}
+
+/**
+ * The bytes of an import's `manifest` part (M6 S2a), a text field or a
+ * file; `undefined` without one.
+ *
+ * @throws {DomainError} `validation-failed` for several manifest parts or one too large
+ */
+async function manifestPartBytes(
+  part: string | File | (string | File)[] | undefined,
+): Promise<Uint8Array | undefined> {
+  if (part === undefined) return undefined;
+  if (Array.isArray(part)) {
+    if (part.length !== 1 || part[0] === undefined) {
+      throw new DomainError('validation-failed', 'at most one `manifest` part per import', {
+        reason: 'invalid-manifest',
+      });
+    }
+    return manifestPartBytes(part[0]);
+  }
+  const bytes =
+    typeof part === 'string'
+      ? new TextEncoder().encode(part)
+      : new Uint8Array(await part.arrayBuffer());
+  if (bytes.byteLength > MAX_MANIFEST_BYTES) {
+    throw new DomainError(
+      'validation-failed',
+      `invalid manifest: at most ${MAX_MANIFEST_BYTES} bytes`,
+      { reason: 'invalid-manifest' },
+    );
+  }
+  return bytes;
+}
 
 /** Models, revisions, upload and import (CONCEPT §5). */
 export function registerModelRoutes(app: App, useCases: UseCases): void {
@@ -82,8 +143,16 @@ export function registerModelRoutes(app: App, useCases: UseCases): void {
         'send the BPMN as application/xml or text/xml',
       );
     }
+    const header = c.req.valid('header')['analyzr-manifest'];
+    const manifest = header === undefined ? undefined : manifestHeaderBytes(header);
     const bytes = new Uint8Array(await c.req.arrayBuffer());
-    const result = await useCases.putModel(actor, project, key, bytes);
+    const result = await useCases.putModel(
+      actor,
+      project,
+      key,
+      bytes,
+      manifest === undefined ? {} : { manifest },
+    );
     return c.json(result, result.outcome === 'created' ? 201 : 200);
   });
 
@@ -131,6 +200,18 @@ export function registerModelRoutes(app: App, useCases: UseCases): void {
       }
       files.push({ path: part.name, bytes: new Uint8Array(await part.arrayBuffer()) });
     }
-    return c.json(await useCases.importFiles(actor, project, files), 200);
+    const manifest = await manifestPartBytes(form['manifest']);
+    return c.json(
+      await useCases.importFiles(actor, project, files, manifest === undefined ? {} : { manifest }),
+      200,
+    );
+  });
+
+  app.openapi(createRoute(apiRoutes.listExternalIds), async (c) => {
+    const { project } = c.req.valid('param');
+    return c.json(
+      await useCases.listExternalIds(requireActor(c), project, c.req.valid('query')),
+      200,
+    );
   });
 }

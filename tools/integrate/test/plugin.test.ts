@@ -19,6 +19,9 @@ const PLUGIN = path.join(REPO_ROOT, 'plugins/analyzr-integrate');
  */
 const RELEASES: Readonly<Record<string, string>> = {
   '0.1.0': 'f62276c71310cc67fa017f594bf85ea47f8adf0cb26fd91f0edf6ef55dd8b821',
+  // M6 S2a: the skill says that `analyzr import` reads the manifest now, that the web does not
+  // yet (no provenance), and labels the import warnings; no script changed.
+  '0.1.1': 'af55bbe2f25172df4ef18b419f6be6df018504719b68e43cd320e97ae7015ef1',
 };
 
 async function pluginFiles(): Promise<string[]> {

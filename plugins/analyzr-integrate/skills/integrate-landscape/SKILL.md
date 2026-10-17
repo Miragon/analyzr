@@ -102,7 +102,8 @@ this analyzr and no other. `keymap.json` belongs to the scripts: change it only 
    Record the URL as `analyzrUrl`.
 4. The import path, in this order: `$ANALYZR_CLI` if set (check with `printenv ANALYZR_CLI`);
    else, if the consultant names an analyzr checkout, `pnpm -C <absolute checkout path>
-   analyzr` (check that `<checkout>/apps/cli/src/main.ts` exists); else the web („Hochladen“).
+   analyzr` (check that `<checkout>/apps/cli/src/main.ts` exists); else the web („Hochladen“),
+   which does not read `analyzr-import.json` yet (same keys, but no provenance; step 4).
    Record it as `cli` and write `analyzr-workspace.json`.
 5. On first use, offer the guard setup at the end of this file.
 6. If the export does not lie below `<workspace>/exports/`, go on with step 1 and propose its
@@ -258,8 +259,10 @@ not excluded, normalized, at its key's path (`<key>.bpmn`), `analyzr-import.json
 `inventory.json`. On stdout: `counts`, loss totals, `totals`, `calls`, the files with changes
 or notes, `failed`, `skipped` (no BPMN 2.0), `excluded`, `absent` and `coverage`. Exit 1 with
 `failed` entries means: those files could not be taken over; the bundle holds every other
-file and can be imported. analyzr reads the manifest from a later version on (M6 S2); today's
-import already gets the same keys from the paths.
+file and can be imported. `analyzr import` reads `analyzr-import.json`: keys pinned, the
+provenance stored for new and changed models, import warnings. „Hochladen“ in the web does not
+read it yet: the same keys from the paths, but no provenance, and identical bytes imported later
+keep that (analyzr keeps a revision's first provenance). So prefer the CLI for a bundle.
 
 Per file, the details file has: `kind`, `encoding`, `compact` (written without indentation to
 stay under analyzr's 5 MB), `idRewrites` (`from` → `to` with `reason` `unsafe`, `duplicate` or
@@ -320,7 +323,13 @@ count, naming `analyzr-import.json` and the details file for the full lists.
    Element übersprungen“, `call-without-target` „Aufruf ohne Ziel“,
    `multiple-event-definitions` „Mehrere Ereignisdefinitionen“, `message-flow-unresolved`
    „Nachrichtenfluss ohne gültiges Ende übersprungen“, the `*-truncated` codes „Text gekürzt“,
-   `too-many-warnings` „Weitere Hinweise ausgelassen“. Only the codes that occurred.
+   `too-many-warnings` „Weitere Hinweise ausgelassen“. Only the codes that occurred. The
+   import warnings, listed under their file: `external-id-moved` „Werkzeug-ID gehört schon zu
+   <Schlüssel>: Modell jetzt doppelt“ (the CLI's `next:` line says what to do),
+   `external-id-changed` „Schlüssel trug die ID eines anderen Modells oder Systems“ (stop and ask
+   the consultant; for a second system propose a key prefix such as `aris/…`),
+   `manifest-sha-mismatch` „Datei weicht vom Bündel ab“, `provenance-kept` „Unverändert:
+   analyzr behält die bisherige Herkunft“.
 8. **„Abdeckung“** (with a catalog): „Modelle für <matched> von <items> Prozessen im Katalog
    sicher zugeordnet, <proposed> vorgeschlagen“, the list „Zuordnung vorgeschlagen“ for the
    consultant to confirm, and „Bitte nachliefern: …“ (`missing`). A confirmed proposal: write
@@ -337,9 +346,10 @@ count, naming `analyzr-import.json` and the details file for the full lists.
     (`--create` is harmless when the project exists). The import and `--create` need
     analyzr's owner key: with analyzr from the checkout the CLI finds it itself; with analyzr in
     Docker, `ANALYZR_OWNER_KEY_FILE` must point at a copy of the container's key (analyzr's
-    `docs/DEVELOPMENT.md`, „The `analyzr` CLI“), otherwise use the web. The web path: „Öffne
-    <analyzrUrl>, leg das Projekt <project> an („Neues Projekt“), öffne „Hochladen“ und zieh
-    den Ordner `bundles/<…>` hinein (oder wähl ihn aus); der Ordnername selbst zählt nicht.“
+    `docs/DEVELOPMENT.md`, „The `analyzr` CLI“), otherwise use the web. The web path, „ohne
+    Herkunftsangaben“ (step 4; prefer the command): „Öffne <analyzrUrl>, leg das Projekt
+    <project> an („Neues Projekt“), öffne „Hochladen“ und zieh den Ordner `bundles/<…>` hinein
+    (oder wähl ihn aus); der Ordnername selbst zählt nicht.“
     Then the next steps: the relations run (`/analyzr:relations <project>` with an agent
     token, the start prompts of analyzr's `examples/agents`).
 

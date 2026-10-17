@@ -60,6 +60,12 @@ import { Me } from './auth.ts';
 import { CreateSessionBody, MAX_SESSION_BODY_BYTES, SESSION_COOKIE } from './session.ts';
 import { API_PREFIX, PageQuery, ProjectParam } from './common.ts';
 import { Health } from './health.ts';
+import {
+  ExternalIdList,
+  ExternalIdQuery,
+  IMPORT_MANIFEST_FORMAT,
+  MAX_MANIFEST_HEADER_CHARS,
+} from './import-manifest.ts';
 import { Landscape } from './landscape.ts';
 import {
   ImportResult,
@@ -443,8 +449,25 @@ export const apiRoutes = withDemoReadOnly({
     operationId: 'putModelByKey',
     tags: ['models'],
     summary: 'Upload raw BPMN: 201 new model, 200 new revision or unchanged',
+    description:
+      "The optional header `Analyzr-Manifest` declares the file's provenance (M6 §3.2, §3.3): " +
+      `the base64url of the UTF-8 JSON of an \`${IMPORT_MANIFEST_FORMAT}\` manifest that lists ` +
+      'exactly this file (its `key`, if given, equal to `{key}`). The declared fields are stored ' +
+      'on the uploaded revision; a checksum mismatch or a known tool id are `importWarnings`, ' +
+      'the file is stored all the same. Identical bytes stay `unchanged` and keep the first ' +
+      "revision's provenance (`provenance-kept` when the manifest declares another place in " +
+      'the source tool).',
     request: {
       params: projectParams.extend({ key: ModelKey }),
+      headers: z.object({
+        'analyzr-manifest': z
+          .string()
+          .max(MAX_MANIFEST_HEADER_CHARS)
+          .optional()
+          .meta({
+            description: `base64url of the UTF-8 JSON of a one-file \`${IMPORT_MANIFEST_FORMAT}\` manifest`,
+          }),
+      }),
       body: {
         required: true,
         content: { 'application/xml': { schema: BpmnXml }, 'text/xml': { schema: BpmnXml } },
@@ -498,7 +521,17 @@ export const apiRoutes = withDemoReadOnly({
     path: `${API_PREFIX}/projects/{project}/imports`,
     operationId: 'importModels',
     tags: ['models'],
-    summary: 'Import up to 50 BPMN files; the model key is the slugified path',
+    summary: 'Import up to 50 BPMN files; the model key is the pinned or the slugified path',
+    description:
+      `An optional part \`manifest\` holds the JSON of an \`${IMPORT_MANIFEST_FORMAT}\` manifest ` +
+      "(M6 §3.2; the CLI sends each batch's subset): a listed file gets the key it pins " +
+      '(else its path decides) and the declared provenance on its uploaded revision. A ' +
+      'checksum mismatch, a tool id another live key already has (`external-id-moved`) and a ' +
+      "tool id that differs from the one on the key's head (`external-id-changed`) are " +
+      '`importWarnings`, and so is an unchanged file whose manifest entry declares another ' +
+      'place in the source tool than analyzr keeps (`provenance-kept`); the file is imported ' +
+      'all the same. An invalid manifest refuses the request (422 `validation-failed`, reason ' +
+      '`invalid-manifest`).',
     request: {
       params: projectParams,
       body: {
@@ -513,6 +546,12 @@ export const apiRoutes = withDemoReadOnly({
                   .meta({
                     description:
                       'BPMN files; each part’s filename is its path below the import root.',
+                  }),
+                manifest: z
+                  .string()
+                  .optional()
+                  .meta({
+                    description: `JSON of an \`${IMPORT_MANIFEST_FORMAT}\` manifest (\`analyzr-import.json\`) for these files.`,
                   }),
               })
               .meta({ id: 'ImportModelsBody' }),
@@ -529,6 +568,25 @@ export const apiRoutes = withDemoReadOnly({
         'unsupported-media-type',
         'validation-failed',
       ),
+    },
+  },
+
+  listExternalIds: {
+    method: 'get',
+    path: `${API_PREFIX}/projects/{project}/external-ids`,
+    operationId: 'listExternalIds',
+    tags: ['models'],
+    summary: 'The source-system identity of every live model (to rebuild a key map)',
+    description:
+      'M6 §3.4: per live model whose head declares a source system, its key, the system, the ' +
+      'tool id (`null` when the manifest named none) and the tool folder, as the uploaded ' +
+      'revision declared them (an amended head is followed to its uploaded revision), sorted by ' +
+      "key; `system` keeps one system. The integrate skill rebuilds a lost workspace's " +
+      '`keymap.json` from it.',
+    request: { params: projectParams, query: ExternalIdQuery },
+    responses: {
+      200: json(ExternalIdList, 'The identities'),
+      ...problems(...READ_PROBLEMS),
     },
   },
 

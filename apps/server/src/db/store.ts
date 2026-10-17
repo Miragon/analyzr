@@ -669,6 +669,7 @@ function repos(db: Conn): Tx {
       .sort((a, b) => byCodePoint(a.processRef, b.processRef));
   }
 
+  const uploadedRevision = alias(s.modelRevision, 'uploaded_revision');
   const noLinkFrom = alias(s.model, 'no_link_from_model');
   const noLinkFromHead = alias(s.modelRevision, 'no_link_from_head');
   const noLinkTo = alias(s.model, 'no_link_to_model');
@@ -1019,6 +1020,71 @@ function repos(db: Conn): Tx {
             ),
           );
         return rows.map((r) => r.contentHash);
+      },
+      async uploadedSources(projectId) {
+        // An amended head's provenance lives on its uploaded revision (`source.upstream`).
+        const rows = await db
+          .select({
+            key: s.model.key,
+            modelId: s.model.id,
+            head: s.modelRevision.source,
+            uploaded: uploadedRevision.source,
+          })
+          .from(s.model)
+          .innerJoin(s.modelRevision, liveHead)
+          .leftJoin(
+            uploadedRevision,
+            and(
+              eq(uploadedRevision.projectId, s.modelRevision.projectId),
+              eq(uploadedRevision.modelId, s.modelRevision.modelId),
+              sql`${uploadedRevision.id} = ${s.modelRevision.source}->'upstream'->>'revisionId'`,
+            ),
+          )
+          .where(and(eq(s.model.projectId, projectId), isNull(s.model.deletedSeq)));
+        const sources = new Map(rows.map((r) => [r.key, r.uploaded ?? r.head]));
+        // Stored without a manifest: the newest revision a manifest declared keeps the
+        // identity (an upload without one never erases it).
+        const undeclared = rows
+          .filter((r) => (r.uploaded ?? r.head).system === undefined)
+          .map((r) => r.modelId);
+        if (undeclared.length === 0) return sources;
+        const declared = await db
+          .selectDistinctOn([s.modelRevision.modelId], {
+            key: s.model.key,
+            source: s.modelRevision.source,
+          })
+          .from(s.modelRevision)
+          .innerJoin(
+            s.model,
+            and(
+              eq(s.model.projectId, s.modelRevision.projectId),
+              eq(s.model.id, s.modelRevision.modelId),
+            ),
+          )
+          .where(
+            and(
+              eq(s.modelRevision.projectId, projectId),
+              inArray(s.modelRevision.modelId, undeclared),
+              sql`${s.modelRevision.source}->>'system' is not null`,
+            ),
+          )
+          .orderBy(s.modelRevision.modelId, desc(s.modelRevision.rev));
+        for (const d of declared) sources.set(d.key, d.source);
+        return sources;
+      },
+      async headWarnings(projectId) {
+        const rows = await db
+          .select({ key: s.model.key, warnings: s.modelRevision.extractWarnings })
+          .from(s.model)
+          .innerJoin(s.modelRevision, liveHead)
+          .where(
+            and(
+              eq(s.model.projectId, projectId),
+              isNull(s.model.deletedSeq),
+              sql`jsonb_array_length(coalesce(${s.modelRevision.extractWarnings}, '[]'::jsonb)) > 0`,
+            ),
+          );
+        return new Map(rows.map((r) => [r.key, r.warnings ?? []]));
       },
       async headHashes(projectId) {
         const rows = await db

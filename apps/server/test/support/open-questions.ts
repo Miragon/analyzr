@@ -19,6 +19,7 @@ import { generateCandidates, runRules } from '@analyzr/relations';
 import { visibleFindings } from '../../src/domain/findings.ts';
 import type { ModelHead, OpenQuestionInput } from '../../src/domain/open-questions/model.ts';
 import type { RelationRecord, StoredAssertion } from '../../src/domain/ports.ts';
+import { storedWarnings } from '../../src/domain/warnings.ts';
 
 export const PROJECT: ProjectId = `prj_${'0'.repeat(26)}`;
 export const RULES = `prn_${'0'.repeat(22)}RULE` as PrincipalId;
@@ -82,6 +83,8 @@ export async function libraryInput(
       engine: r.engine,
       factsHash: factsHash(r.facts),
       seq: i + 1,
+      // As the store reads it (M6 S2a): the head's warnings, when it has any.
+      ...(r.warnings.length > 0 ? { extractWarnings: storedWarnings(r.warnings) } : {}),
     });
   }
   const projectFacts: ProjectFacts = { models };

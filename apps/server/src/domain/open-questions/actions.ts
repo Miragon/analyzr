@@ -790,6 +790,9 @@ function kindActions(item: OpenQuestion, ix: OpenQuestionIndex): OpenQuestionAct
     case 'summary-note':
     case 'descriptive-model':
       return [];
+    // The fix is a new export: the note (primary) keeps what the customer says.
+    case 'extractor-loss':
+      return [];
   }
 }
 

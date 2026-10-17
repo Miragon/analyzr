@@ -13,6 +13,7 @@ import { importCommand } from './commands/import.ts';
 import { mcpCommand } from './commands/mcp.ts';
 import {
   modelsDeleteCommand,
+  modelsExternalIdsCommand,
   modelsListCommand,
   modelsPullCommand,
   modelsRequeueCommand,
@@ -109,7 +110,7 @@ export function buildProgram(io: CliIo = processIo): Command {
   program
     .command('import')
     .description(
-      'import every BPMN file below <dir> into a project (model key = path); then says what waits for an agent',
+      'import every BPMN file below <dir> into a project (model key: the one analyzr-import.json pins, else the path); then says what waits for an agent',
     )
     .argument('<dir>', `directory with BPMN files (${BPMN_FILE_PATTERNS})`)
     .requiredOption('-p, --project <project>', 'project key or id')
@@ -156,7 +157,9 @@ export function buildProgram(io: CliIo = processIo): Command {
 
   const models = program
     .command('models')
-    .description("list, requeue, delete, amend and pull a project's models");
+    .description(
+      "list, requeue, delete, amend and pull a project's models, and their source-system ids",
+    );
   models
     .command('list')
     .description('list the models: key, stage, head revision, engine, open items')
@@ -189,6 +192,17 @@ export function buildProgram(io: CliIo = processIo): Command {
     .option('--json', 'print JSON')
     .action((keys: string[], opts: { project: string; yes?: boolean; json?: boolean }) =>
       modelsDeleteCommand(io, keys, { ...globals(), ...opts }),
+    );
+  models
+    .command('external-ids')
+    .description(
+      "list each live model's identity in its source system (key, tool id, tool folder) as the import's manifest declared it, to rebuild a key map (any credential)",
+    )
+    .requiredOption('-p, --project <project>', 'project key or id')
+    .option('--system <system>', 'only this source system, e.g. signavio')
+    .option('--json', 'print JSON')
+    .action((opts: { project: string; system?: string; json?: boolean }) =>
+      modelsExternalIdsCommand(io, { ...globals(), ...opts }),
     );
   amendFlags(
     models

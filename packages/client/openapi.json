@@ -1022,6 +1022,13 @@
           },
           "amendments": {
             "$ref": "#/components/schemas/AmendmentCounts"
+          },
+          "importWarnings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ImportWarning"
+            },
+            "maxItems": 3
           }
         },
         "required": [
@@ -1115,6 +1122,66 @@
               "agent"
             ]
           },
+          "manifestSha256": {
+            "$ref": "#/components/schemas/Sha256Hex"
+          },
+          "system": {
+            "$ref": "#/components/schemas/SourceSystem"
+          },
+          "systemVersion": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "exportedAt": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExportedAt"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "importer": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ManifestImporter"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "scope": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "externalId": {
+            "type": "string"
+          },
+          "externalPath": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "derived": {
+            "$ref": "#/components/schemas/ManifestDerived"
+          },
+          "losses": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ManifestLoss"
+            }
+          },
           "upstream": {
             "$ref": "#/components/schemas/RevisionUpstream"
           },
@@ -1130,6 +1197,114 @@
         ],
         "additionalProperties": {},
         "description": "Origin of a revision."
+      },
+      "SourceSystem": {
+        "type": "string",
+        "maxLength": 64,
+        "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+        "description": "Source system of a bundle: a lowercase slug such as `signavio` or `aris`.",
+        "example": "signavio"
+      },
+      "ExportedAt": {
+        "type": "string",
+        "maxLength": 40,
+        "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(?::\\d{2}(?:\\.\\d{1,9})?)?(?:Z|[+-]\\d{2}:\\d{2})$",
+        "description": "ISO 8601 date-time of the export (declared)."
+      },
+      "ManifestImporter": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "version": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 50
+          }
+        },
+        "required": [
+          "name",
+          "version"
+        ],
+        "description": "The program that wrote a bundle (declared)."
+      },
+      "ManifestDerived": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/DerivedKind"
+          },
+          "converter": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "llmModel": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "from": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9._:-]{1,64}$"
+            },
+            "maxItems": 100
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "description": "How a file was derived (declared)."
+      },
+      "DerivedKind": {
+        "type": "string",
+        "enum": [
+          "export",
+          "converted",
+          "reconstructed",
+          "as-told"
+        ],
+        "description": "How a file was derived (declared)."
+      },
+      "ManifestLoss": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "$ref": "#/components/schemas/LossCode"
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000000000
+          }
+        },
+        "required": [
+          "code",
+          "count"
+        ],
+        "description": "What a conversion dropped, counted (declared)."
+      },
+      "LossCode": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9-]{0,49}$",
+        "description": "What a conversion dropped: element-dropped, attribute-dropped, link-unresolved, layout-generated, layout-missing, id-rewritten, text-truncated, or a newer converter's code (a lowercase slug, stored as declared)."
       },
       "RevisionUpstream": {
         "type": "object",
@@ -1306,6 +1481,71 @@
         ],
         "description": "What became of a model's live amendments."
       },
+      "ImportWarning": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "$ref": "#/components/schemas/ImportWarningCode"
+          },
+          "message": {
+            "type": "string",
+            "maxLength": 500
+          },
+          "system": {
+            "$ref": "#/components/schemas/SourceSystem"
+          },
+          "externalId": {
+            "type": "string"
+          },
+          "otherKeys": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ModelKey"
+            },
+            "maxItems": 20
+          },
+          "previous": {
+            "$ref": "#/components/schemas/ExternalIdentity"
+          },
+          "manifestSha256": {
+            "$ref": "#/components/schemas/Sha256Hex"
+          },
+          "fileSha256": {
+            "$ref": "#/components/schemas/Sha256Hex"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "description": "A warning about a file against its manifest or the landscape; it was imported."
+      },
+      "ImportWarningCode": {
+        "type": "string",
+        "enum": [
+          "manifest-sha-mismatch",
+          "external-id-moved",
+          "external-id-changed",
+          "provenance-kept"
+        ],
+        "description": "Kind of an import warning."
+      },
+      "ExternalIdentity": {
+        "type": "object",
+        "properties": {
+          "system": {
+            "$ref": "#/components/schemas/SourceSystem"
+          },
+          "externalId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "system",
+          "externalId"
+        ],
+        "description": "A model's identity in its source system."
+      },
       "BpmnXml": {
         "type": "string",
         "description": "BPMN 2.0 XML document (UTF-8)."
@@ -1441,6 +1681,13 @@
           },
           "amendments": {
             "$ref": "#/components/schemas/AmendmentCounts"
+          },
+          "importWarnings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ImportWarning"
+            },
+            "maxItems": 3
           }
         },
         "required": [
@@ -1462,11 +1709,60 @@
             },
             "minItems": 1,
             "description": "BPMN files; each part’s filename is its path below the import root."
+          },
+          "manifest": {
+            "type": "string",
+            "description": "JSON of an `analyzr-import/1` manifest (`analyzr-import.json`) for these files."
           }
         },
         "required": [
           "files"
         ]
+      },
+      "ExternalIdList": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExternalIdEntry"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "description": "The live models with a declared source system."
+      },
+      "ExternalIdEntry": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "$ref": "#/components/schemas/ModelKey"
+          },
+          "system": {
+            "$ref": "#/components/schemas/SourceSystem"
+          },
+          "externalId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "externalPath": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "key",
+          "system",
+          "externalId",
+          "externalPath"
+        ],
+        "description": "A live model's identity in its source system."
       },
       "AmendableElement": {
         "type": "object",
@@ -2964,7 +3260,8 @@
           "undocumented-process",
           "isolated-process",
           "descriptive-model",
-          "amendment-conflict"
+          "amendment-conflict",
+          "extractor-loss"
         ],
         "description": "Kind of an open question."
       },
@@ -11471,6 +11768,7 @@
           "models"
         ],
         "summary": "Upload raw BPMN: 201 new model, 200 new revision or unchanged",
+        "description": "The optional header `Analyzr-Manifest` declares the file's provenance (M6 §3.2, §3.3): the base64url of the UTF-8 JSON of an `analyzr-import/1` manifest that lists exactly this file (its `key`, if given, equal to `{key}`). The declared fields are stored on the uploaded revision; a checksum mismatch or a known tool id are `importWarnings`, the file is stored all the same. Identical bytes stay `unchanged` and keep the first revision's provenance (`provenance-kept` when the manifest declares another place in the source tool).",
         "parameters": [
           {
             "schema": {
@@ -11494,6 +11792,17 @@
             "description": "Immutable model key: lowercase slug segments separated by `/`.",
             "name": "key",
             "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 8192,
+              "description": "base64url of the UTF-8 JSON of a one-file `analyzr-import/1` manifest"
+            },
+            "required": false,
+            "description": "base64url of the UTF-8 JSON of a one-file `analyzr-import/1` manifest",
+            "name": "analyzr-manifest",
+            "in": "header"
           }
         ],
         "requestBody": {
@@ -11897,7 +12206,8 @@
         "tags": [
           "models"
         ],
-        "summary": "Import up to 50 BPMN files; the model key is the slugified path",
+        "summary": "Import up to 50 BPMN files; the model key is the pinned or the slugified path",
+        "description": "An optional part `manifest` holds the JSON of an `analyzr-import/1` manifest (M6 §3.2; the CLI sends each batch's subset): a listed file gets the key it pins (else its path decides) and the declared provenance on its uploaded revision. A checksum mismatch, a tool id another live key already has (`external-id-moved`) and a tool id that differs from the one on the key's head (`external-id-changed`) are `importWarnings`, and so is an unchanged file whose manifest entry declares another place in the source tool than analyzr keeps (`provenance-kept`); the file is imported all the same. An invalid manifest refuses the request (422 `validation-failed`, reason `invalid-manifest`).",
         "parameters": [
           {
             "schema": {
@@ -11977,6 +12287,93 @@
           },
           "415": {
             "description": "Problem: `unsupported-media-type`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Problem: `validation-failed`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project}/external-ids": {
+      "get": {
+        "operationId": "listExternalIds",
+        "tags": [
+          "models"
+        ],
+        "summary": "The source-system identity of every live model (to rebuild a key map)",
+        "description": "M6 §3.4: per live model whose head declares a source system, its key, the system, the tool id (`null` when the manifest named none) and the tool folder, as the uploaded revision declared them (an amended head is followed to its uploaded revision), sorted by key; `system` keeps one system. The integrate skill rebuilds a lost workspace's `keymap.json` from it.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": "^(?:prj_[0-7][0-9A-HJKMNP-TV-Z]{25}|[a-z0-9]+(?:-[a-z0-9]+)*)$",
+              "description": "Project id (`prj_…`) or project key.",
+              "example": "nordwind-handel"
+            },
+            "required": true,
+            "description": "Project id (`prj_…`) or project key.",
+            "name": "project",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/SourceSystem"
+            },
+            "required": false,
+            "description": "Source system of a bundle: a lowercase slug such as `signavio` or `aris`.",
+            "name": "system",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The identities",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExternalIdList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem: `unauthorized`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem: `insufficient-scope`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem: `not-found`",
             "content": {
               "application/problem+json": {
                 "schema": {

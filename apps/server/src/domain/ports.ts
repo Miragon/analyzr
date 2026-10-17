@@ -143,6 +143,8 @@ export interface NewRevision extends Omit<RevisionRecord, 'createdAt'> {
   xml: Uint8Array;
   processes: ProcessInfo[];
   messageFlows: MessageFlowInfo[];
+  /** The extractor's warnings for these bytes, as stored (M6 S2a: messages cut, `[]` for none). */
+  extractWarnings: ExtractWarning[];
 }
 
 /** Facts of one revision, as stored. */
@@ -714,6 +716,22 @@ export interface RevisionRepo {
    * may bring back as a revert; it does not count.
    */
   amendedContentHashes(projectId: ProjectId, modelId: ModelId): Promise<string[]>;
+  /**
+   * The `source` each live model's provenance is read from (M6 S2a, §3.3,
+   * §3.4), by model key: its uploaded head's (the head's own, or for an
+   * amended head, `source.kind` `amendment`, its uploaded revision's,
+   * `source.upstream`), or, when that was stored without a manifest (no
+   * `system`), the newest revision of the model a manifest declared, so an
+   * upload without a manifest never erases a declared identity. A model no
+   * manifest ever declared keeps its head's undeclared source.
+   */
+  uploadedSources(projectId: ProjectId): Promise<Map<string, RevisionSource>>;
+  /**
+   * The stored extractor warnings of every live model's head revision that
+   * has at least one (M6 S2a); heads stored before S2a (null) and without
+   * warnings are missing. By model key.
+   */
+  headWarnings(projectId: ProjectId): Promise<Map<string, ExtractWarning[]>>;
   /** `facts_hash` of the head revision of every live model, by model key. */
   headHashes(projectId: ProjectId): Promise<Map<string, string>>;
   /** `facts_hash` and seq of the head revision of every live model, by model key. */
@@ -1341,8 +1359,9 @@ export interface Extracted {
   messageFlows: MessageFlowInfo[];
   /**
    * The extractor's non-fatal observations, in its order (at most 100 plus
-   * `too-many-warnings`; messages up to 1,000 characters). Not stored: the
-   * import and PUT results carry them, cut and capped (M6 S1).
+   * `too-many-warnings`; messages up to 1,000 characters). The import and
+   * PUT results carry them cut and capped (M6 S1); each revision stores them
+   * cut (M6 S2a, `extract_warnings`).
    */
   warnings: ExtractWarning[];
 }

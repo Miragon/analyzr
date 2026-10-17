@@ -13,6 +13,7 @@ import type {
   Landscape,
   Model,
   ModelPage,
+  OpenQuestionPage,
   Project,
   PutModelResult,
   Relation,
@@ -21,6 +22,7 @@ import type {
   RevisionPage,
 } from '@analyzr/contracts';
 import type { RuleResult } from '@analyzr/relations';
+import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { libraryAnalysis } from '../../src/analysis.ts';
@@ -125,6 +127,22 @@ describe.each(['nordwind-handel', 'stadtwerke-auental'])('import of %s', (landsc
     const models = await allModels(landscape);
     expect(models.map((m) => m.key)).toEqual(files.map((f) => f.key));
     expect(models.every((m) => m.headRev === 1 && m.stage === 'waiting_for_agent')).toBe(true);
+  });
+
+  // M6 S2a: every revision stores its extractor warnings; no corpus model draws one, so
+  // `extractor-loss` never fires on the corpus (counts only, also for the holdout).
+  it('stores [] as every revision’s extractor warnings and raises no extractor-loss', async () => {
+    const rows = await database.db.execute<{ n: string; empty: string }>(sql`
+      select count(*) as n, count(*) filter (where r.extract_warnings = '[]'::jsonb) as empty
+      from model_revision r join project p on p.id = r.project_id where p.key = ${landscape}`);
+    expect(rows.rows[0]).toEqual({
+      n: String(expected.counts.models),
+      empty: String(expected.counts.models),
+    });
+    const page = await json<OpenQuestionPage>(
+      `/api/v1/projects/${landscape}/open-questions?kind=extractor-loss&limit=200`,
+    );
+    expect(page.items.length).toBe(0);
   });
 
   it('stores the facts the extractor gives (counts of eval:candidates)', async () => {

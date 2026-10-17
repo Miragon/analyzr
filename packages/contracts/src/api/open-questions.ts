@@ -44,7 +44,11 @@ import { MAX_VALUE_CHAIN_ID_CHARS } from './value-chains.ts';
  * - `message-without-name`: a message endpoint without a message name and without a message flow, not already a `message-partner-missing` finding (off in S4: it duplicated that finding on every model checked; the kind stays reserved);
  * - `undocumented-process`: a process without documentation;
  * - `isolated-process`: a process without any relation, `rule`, `key` or `lexical` candidate or message flow to another process;
- * - `descriptive-model`: no engine and no executable process (informational).
+ * - `descriptive-model`: no engine and no executable process (informational);
+ * - `extractor-loss` (M6 S2a): the head revision's stored extractor warnings say that elements
+ *   were skipped on import (`missing-id`, `invalid-id`, `duplicate-id`, or a `parse-warning`
+ *   about unparsable content, a duplicate or an illegal id); revisions stored before S2a carry
+ *   no warnings and never raise it.
  *
  * Model amendments (M6 §4.8 c, S5c-2):
  * - `amendment-conflict`: a live amendment the head's uploaded revision no longer fits
@@ -73,6 +77,7 @@ export const OpenQuestionKind = z
     'isolated-process',
     'descriptive-model',
     'amendment-conflict',
+    'extractor-loss',
   ])
   .meta({ id: 'OpenQuestionKind', description: 'Kind of an open question.' });
 export type OpenQuestionKind = z.infer<typeof OpenQuestionKind>;

@@ -3,10 +3,10 @@ import {
   MAX_IMPORT_FILES,
   MAX_MODEL_BYTES,
   MAX_RESULT_WARNINGS,
-  MAX_RESULT_WARNING_CHARS,
   createProblem,
   isModelKey,
   modelKeyFromPath,
+  type ExternalIdList,
   type ExtractWarning,
   type ImportFileOutcome,
   type ImportResult,
@@ -14,6 +14,7 @@ import {
   type ModelId,
   type ModelPage,
   type ModelStage,
+  type ManifestFile,
   type PageQuery,
   type PutModelResult,
   type RevisionFacts,
@@ -25,10 +26,20 @@ import {
 import type { Actor } from '../actor.ts';
 import { decodeCursor, toPage } from '../cursor.ts';
 import { DomainError } from '../errors.ts';
-import { deleteModel, ingest, type IngestDeps, type IngestFile } from '../ingest.ts';
+import { contentHash, deleteModel, ingest, type IngestDeps, type IngestFile } from '../ingest.ts';
 import { policy } from '../policy.ts';
+import {
+  externalIdEntries,
+  identityWarnings,
+  parseManifest,
+  shaMismatch,
+  uploadedSource,
+  type IdentityCandidate,
+  type ReceivedManifest,
+} from '../provenance.ts';
 import type { Tx } from '../ports.ts';
 import { toModel, toRevision } from '../views.ts';
+import { cutWarning } from '../warnings.ts';
 import type { UseCaseDeps } from './deps.ts';
 
 export interface UploadFile {
@@ -46,19 +57,10 @@ export interface ModelXml {
   xml: string;
 }
 
-/** `text` cut to `max` UTF-16 code units, ending in `…`, without splitting a surrogate pair. */
-function cut(text: string, max: number): string {
-  if (text.length <= max) return text;
-  let end = max - 1;
-  const last = text.charCodeAt(end - 1);
-  if (last >= 0xd800 && last <= 0xdbff) end--;
-  return `${text.slice(0, end)}…`;
-}
-
 /**
  * The extractor's warnings as an import or PUT result carries them (M6 S1):
  * the first {@link MAX_RESULT_WARNINGS} in the extractor's order, each
- * message cut to {@link MAX_RESULT_WARNING_CHARS} characters (bpmn-moddle
+ * message cut to `MAX_RESULT_WARNING_CHARS` characters (bpmn-moddle
  * messages embed line, column and nested errors), plus the full count.
  * When the extractor ended with its `too-many-warnings` entry ("N more
  * warnings omitted", after 100), that entry stays the last one listed (after
@@ -74,14 +76,7 @@ export function resultWarnings(
     warnings.length > MAX_RESULT_WARNINGS && last?.code === 'too-many-warnings'
       ? [...warnings.slice(0, MAX_RESULT_WARNINGS - 1), last]
       : warnings.slice(0, MAX_RESULT_WARNINGS);
-  return {
-    warnings: listed.map((w) => ({
-      code: w.code.slice(0, 50),
-      message: cut(w.message, MAX_RESULT_WARNING_CHARS),
-      ...(w.elementId === undefined ? {} : { elementId: w.elementId.slice(0, 255) }),
-    })),
-    warningCount: warnings.length,
-  };
+  return { warnings: listed.map(cutWarning), warningCount: warnings.length };
 }
 
 async function liveModel(
@@ -94,6 +89,47 @@ async function liveModel(
   return model;
 }
 
+/**
+ * The one file a PUT's manifest lists (M6 S2a): exactly one entry, whose
+ * pinned key, if any, is the key of the PUT.
+ *
+ * @throws {DomainError} `validation-failed` with `reason: 'invalid-manifest'`
+ */
+function onlyEntry(received: ReceivedManifest, key: string): ManifestFile {
+  const [entry, ...rest] = received.manifest.files;
+  if (!entry || rest.length > 0) {
+    throw new DomainError(
+      'validation-failed',
+      'invalid manifest: the manifest of a PUT lists exactly one file',
+      { reason: 'invalid-manifest' },
+    );
+  }
+  if (entry.key !== undefined && entry.key !== key) {
+    throw new DomainError(
+      'validation-failed',
+      `invalid manifest: it pins the key ${entry.key}, not ${key}`,
+      { reason: 'invalid-manifest' },
+    );
+  }
+  return entry;
+}
+
+/**
+ * The live models' provenance sources before an import (M6 §3.4,
+ * `uploadedSources`), for the identity warnings and `provenance-kept`;
+ * checks `write` as the import will.
+ */
+async function uploadedHeads(
+  deps: UseCaseDeps,
+  actor: Actor,
+  projectRef: string,
+): Promise<Map<string, RevisionSource>> {
+  return deps.store.read(async (tx) => {
+    const { project } = await policy.require(tx, actor, 'write', projectRef);
+    return tx.revisions.uploadedSources(project.id);
+  });
+}
+
 export function modelUseCases(deps: UseCaseDeps, ingestDeps: IngestDeps) {
   return {
     /**
@@ -103,15 +139,18 @@ export function modelUseCases(deps: UseCaseDeps, ingestDeps: IngestDeps) {
      * uploaded revision or an amended revision). For a model with live
      * amendments (M6 S5c-2) `revision` is the final head and the result
      * carries `amendments` (and `uploadedRevisionId` when the head is amended).
+     * An optional one-file manifest (M6 S2a, the header `Analyzr-Manifest`)
+     * declares the provenance of the uploaded revision; its warnings are
+     * `importWarnings`.
      *
-     * @throws {DomainError} `validation-failed`, `payload-too-large`, `bpmn-invalid`, policy errors
+     * @throws {DomainError} `validation-failed` (also `invalid-manifest`), `payload-too-large`, `bpmn-invalid`, policy errors
      */
     async putModel(
       actor: Actor,
       projectRef: string,
       key: string,
       bytes: Uint8Array,
-      source: RevisionSource = { kind: 'upload' },
+      options: { manifest?: Uint8Array } = {},
     ): Promise<PutModelResult> {
       if (!isModelKey(key)) {
         throw new DomainError('validation-failed', `invalid model key: ${JSON.stringify(key)}`);
@@ -122,6 +161,16 @@ export function modelUseCases(deps: UseCaseDeps, ingestDeps: IngestDeps) {
           `a model may have at most ${MAX_MODEL_BYTES} bytes`,
         );
       }
+      const received = options.manifest === undefined ? undefined : parseManifest(options.manifest);
+      const entry = received ? onlyEntry(received, key) : undefined;
+      const source = uploadedSource(
+        actor,
+        { kind: 'upload', ...(entry ? { path: entry.path } : {}) },
+        received,
+        entry,
+      );
+      // The live models' provenance before the PUT, only when the manifest lists the file.
+      const heads = entry ? await uploadedHeads(deps, actor, projectRef) : null;
       const { project, results } = await ingest(ingestDeps, actor, projectRef, [
         { key, bytes, source },
       ]);
@@ -130,6 +179,11 @@ export function modelUseCases(deps: UseCaseDeps, ingestDeps: IngestDeps) {
       if (result.outcome === 'failed') throw result.error;
       const view = await deps.store.read((tx) => tx.models.view(project.id, result.model.id));
       if (!view) throw new Error(`model ${key} not found after ingest`);
+      const stored = result.outcome !== 'unchanged';
+      const warnings = [
+        shaMismatch(entry, contentHash(bytes)),
+        ...(heads ? (identityWarnings([{ key, source, stored }], heads)[0] ?? []) : []),
+      ].filter((w) => w !== null);
       return {
         outcome: result.outcome,
         model: toModel(view),
@@ -137,22 +191,27 @@ export function modelUseCases(deps: UseCaseDeps, ingestDeps: IngestDeps) {
         ...(result.uploadedRevision ? { uploadedRevisionId: result.uploadedRevision.id } : {}),
         ...resultWarnings(result.warnings),
         ...(result.amendments ? { amendments: result.amendments } : {}),
+        ...(warnings.length > 0 ? { importWarnings: warnings } : {}),
       };
     },
 
     /**
      * `POST …/imports`: up to 50 files, 25 MB in total; the model key is the
-     * slugified path (`modelKeyFromPath`; any file name is accepted). One
-     * outcome per file; failed files do not stop the others. `created` and
-     * `revised` files carry the extractor's warnings ({@link resultWarnings}).
+     * key the manifest pins (M6 S2a), else the slugified path
+     * (`modelKeyFromPath`; any file name is accepted). One outcome per file;
+     * failed files do not stop the others. `created` and `revised` files
+     * carry the extractor's warnings ({@link resultWarnings}). A file the
+     * manifest lists gets its declared provenance on its uploaded revision,
+     * and its warnings against the manifest and the landscape as
+     * `importWarnings` (a checksum mismatch also on a failed file).
      *
-     * @throws {DomainError} `validation-failed` (no or too many files), `payload-too-large`, policy errors
+     * @throws {DomainError} `validation-failed` (no or too many files, `invalid-manifest`), `payload-too-large`, policy errors
      */
     async importFiles(
       actor: Actor,
       projectRef: string,
       files: readonly UploadFile[],
-      sourceKind: RevisionSource['kind'] = 'import',
+      options: { manifest?: Uint8Array } = {},
     ): Promise<ImportResult> {
       if (files.length === 0) throw new DomainError('validation-failed', 'no files');
       if (files.length > MAX_IMPORT_FILES) {
@@ -165,12 +224,14 @@ export function modelUseCases(deps: UseCaseDeps, ingestDeps: IngestDeps) {
           `an import may have at most ${MAX_IMPORT_BYTES} bytes`,
         );
       }
+      const received = options.manifest === undefined ? undefined : parseManifest(options.manifest);
 
       const outcomes: ImportFileOutcome[] = [];
-      const accepted: { index: number; file: IngestFile }[] = [];
+      const accepted: { index: number; entry: ManifestFile | undefined; file: IngestFile }[] = [];
       const seen = new Set<string>();
       for (const [index, f] of files.entries()) {
-        const key = modelKeyFromPath(f.path);
+        const entry = received?.byPath.get(f.path);
+        const key = entry?.key ?? modelKeyFromPath(f.path);
         const fail = (code: 'validation-failed' | 'payload-too-large', detail: string) =>
           outcomes.push({
             path: f.path,
@@ -188,17 +249,27 @@ export function modelUseCases(deps: UseCaseDeps, ingestDeps: IngestDeps) {
           outcomes.push({ path: f.path, modelKey: key, outcome: 'unchanged', problem: null });
           accepted.push({
             index,
-            file: { key, bytes: f.bytes, source: { kind: sourceKind, path: f.path } },
+            entry,
+            file: {
+              key,
+              bytes: f.bytes,
+              source: uploadedSource(actor, { kind: 'import', path: f.path }, received, entry),
+            },
           });
         }
       }
 
+      // The live models' provenance before the import, only when the manifest lists a file.
+      const heads = accepted.some((a) => a.entry !== undefined)
+        ? await uploadedHeads(deps, actor, projectRef)
+        : null;
       const { results } = await ingest(
         ingestDeps,
         actor,
         projectRef,
         accepted.map((a) => a.file),
       );
+      const candidates: { at: number; candidate: IdentityCandidate }[] = [];
       for (const [i, a] of accepted.entries()) {
         const r = results[i];
         const outcome = outcomes[a.index];
@@ -211,9 +282,50 @@ export function modelUseCases(deps: UseCaseDeps, ingestDeps: IngestDeps) {
           Object.assign(outcome, resultWarnings(r.warnings));
           // Only for a model with live amendments (M6 S5c-2): other results keep their shape.
           if (r.amendments) outcome.amendments = r.amendments;
+          candidates.push({
+            at: a.index,
+            candidate: {
+              key: a.file.key,
+              source: a.file.source,
+              stored: r.outcome !== 'unchanged',
+            },
+          });
+        }
+        const mismatch = shaMismatch(a.entry, contentHash(a.file.bytes));
+        if (mismatch) outcome.importWarnings = [mismatch];
+      }
+      if (heads) {
+        const warned = identityWarnings(
+          candidates.map((c) => c.candidate),
+          heads,
+        );
+        for (const [i, c] of candidates.entries()) {
+          const outcome = outcomes[c.at];
+          const list = warned[i] ?? [];
+          if (outcome && list.length > 0) {
+            outcome.importWarnings = [...(outcome.importWarnings ?? []), ...list];
+          }
         }
       }
       return { files: outcomes };
+    },
+
+    /**
+     * `GET …/external-ids?system=` (M6 §3.4): the source-system identity of
+     * every live model whose uploaded head declares a system, for rebuilding
+     * a key map.
+     */
+    async listExternalIds(
+      actor: Actor,
+      projectRef: string,
+      query: { system?: string | undefined },
+    ): Promise<ExternalIdList> {
+      return deps.store.read(async (tx) => {
+        const { project } = await policy.require(tx, actor, 'read', projectRef);
+        return {
+          items: externalIdEntries(await tx.revisions.uploadedSources(project.id), query.system),
+        };
+      });
     },
 
     /** @throws {DomainError} `not-found`, policy errors */

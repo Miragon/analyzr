@@ -164,7 +164,28 @@ function manual(n: number, from: Ref, to: Ref, status: RelationRecord['status'] 
 
 describe('the actions of every kind', () => {
   it('offers each kind its actions, at most one primary, every question a note', async () => {
-    const input = await synthetic(EXTRA);
+    const base = await synthetic(EXTRA);
+    // S2a: a head whose stored extractor warnings name a lost element (extractor-loss).
+    const input = {
+      ...base,
+      models: new Map(
+        [...base.models].map(([key, head]) => [
+          key,
+          key === 'archiv/plain'
+            ? {
+                ...head,
+                extractWarnings: [
+                  {
+                    code: 'duplicate-id',
+                    message: 'a second task with id T skipped',
+                    elementId: 'T',
+                  },
+                ],
+              }
+            : head,
+        ]),
+      ),
+    };
     const { index, items } = buildOpenQuestions(input);
     for (const q of items) expect(OpenQuestion.parse(q)).toEqual(q);
     const at = (kind: string, subject: string, source?: string) => {
@@ -346,6 +367,8 @@ describe('the actions of every kind', () => {
       },
     ]);
     expect(lines(at('isolated-process', N))).toEqual([LINK, OUTSIDE_MARK, NOTE]);
+    // S2a: a lost element is fixed by a new export; the note is the only action.
+    expect(lines(at('extractor-loss', 'archiv/plain'))).toEqual(['note* Notiz hinzufügen']);
     // Informational items: none.
     for (const q of items.filter(
       (x) => x.kind === 'summary-note' || x.kind === 'descriptive-model',

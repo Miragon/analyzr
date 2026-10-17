@@ -297,16 +297,19 @@ export async function loadOpenQuestionInput(
   const procedure = deps.expectedProcedure();
   const projectFacts = await tx.facts.headProjectFacts(projectId);
   const revisionHeads = await tx.revisions.heads(projectId);
+  const warnings = await tx.revisions.headWarnings(projectId);
   const models = new Map<string, ModelHead>();
   for (const m of await tx.models.list(projectId, { limit: ALL })) {
     const head = revisionHeads.get(m.key);
     if (!head) continue;
+    const extractWarnings = warnings.get(m.key);
     models.set(m.key, {
       modelId: m.id,
       name: m.name,
       engine: m.engine,
       factsHash: head.factsHash,
       seq: head.seq,
+      ...(extractWarnings === undefined ? {} : { extractWarnings }),
     });
   }
   const relations = (await tx.relations.all(projectId)).filter((r) => r.status !== 'obsolete');

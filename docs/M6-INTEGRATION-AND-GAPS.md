@@ -1,9 +1,10 @@
 # analyzr – Milestone M6 "Landscape integration and gap analysis"
 
 Status: in progress (2026-10-15); owner decisions 24 and 25 (§2, HANDOFF §4); S0 (this concept,
-revised after review), S1, S3a, S3b, S4, S5a, S5c-1 and S5c-2 (answering by action and model
-amendments, decision 25, §4.8) done, the „erste Anfänge“ await the owner's review; next S2a/S2b,
-then S2c, S3c and S6 (§8 "Order since decision 25") · Branch:
+revised after review), S1, S3a, S3b, S4, S5a, S5c-1, S5c-2 (answering by action and model
+amendments, decision 25, §4.8) and S2a (provenance, manifest, stable identity; its web parts wait
+for the UI simplification, §8 "S2a as delivered") done, the „erste Anfänge“ await the owner's
+review; next S2b, then S2c, S3c and S6 (§8 "Order since decision 25") · Branch:
 `feat/integration-and-gaps` ·
 Spec: [CONCEPT.md](CONCEPT.md) §1–§7 · Previous: [M4-VALUE-CHAIN.md](M4-VALUE-CHAIN.md) · Paused:
 the process network map (decision 22, issue [#2](https://github.com/Miragon/analyzr/issues/2)),
@@ -295,7 +296,8 @@ skill produces it; no M6 slice does.
 
 `losses` counts what a conversion dropped (`element-dropped`, `attribute-dropped`,
 `link-unresolved` for a tool link to a model not in the export or a call the renderer did not
-write, `layout-generated`, `id-rewritten`, `text-truncated`), at most 20 entries, counts only. The
+write, `layout-generated`, `id-rewritten`, `text-truncated`; S3b adds `layout-missing`, and a newer
+converter's code, any lowercase slug, is stored as declared), at most 20 entries, counts only. The
 schema lives in `@analyzr/contracts` (`ImportManifest`), so the CLI, the web and the server
 validate it the same way. The CLI sends each batch's subset of the manifest as an extra multipart
 part `manifest`; the web does the same when a dropped folder holds `analyzr-import.json`. The
@@ -336,7 +338,10 @@ so provenance never triggers re-judging.
 
 If the owner amends decision 9 (§3.10), declared values can only lower trust, never raise it.
 Identical bytes stay `unchanged` and keep the first revision's provenance (append-only); a
-correction needs new bytes. An amended revision keeps no manifest fields of its own: readers of
+correction needs new bytes, and the import says so with the warning `provenance-kept` when the
+manifest declares another place in the tool (S2a; a folder move keeps a Signavio export's bytes,
+§10.10). A revision stored without a manifest declares nothing: readers then take the newest
+revision a manifest declared (S2a), so such an upload never erases a declared identity. An amended revision keeps no manifest fields of its own: readers of
 provenance (the „Herkunft“ panel, `external-ids`, the trust class of S2c) follow `upstream` to
 the uploaded revision, so S2a extends the uploaded revisions only. Its own `uploader` and
 `principal_id` are those of the request that caused it (the human for an amendment write or a
@@ -359,7 +364,8 @@ fixes a landscape's keys for good, and three rules hold from the first customer 
    (§3.7), so a folder move in the tool keeps the key. analyzr is the record (decision 7): if the
    workspace is lost or a colleague does the re-export, the skill rebuilds `keymap.json` from
    `GET /projects/{p}/external-ids?system=<s>` (S2a: key, `externalId` and `externalPath` of each
-   live model's head revision).
+   live model's head revision, read from its uploaded revision, or from the newest revision a
+   manifest declared when the head came without one).
 2. **Element ids come from tool ids, never regenerated.** A converter derives every id from the
    source object's id (`<Type>_<NCName-safe source id>`, a prefix for ids starting with a digit,
    a deterministic suffix on collisions, ≤ 255 characters, `packages/contracts/src/refs.ts`). A
@@ -524,7 +530,11 @@ import with `--create --name …`.
    `keymap.json`. On a re-import the skill lists new, moved and absent keys from `keymap.json`
    (from S2b also from the dry run) and asks before it changes the map. It asks „Vollständiger
    Export oder Ausschnitt?“ and records a partial export's tool folders as `source.scope` and in
-   `keymap.json`. A missing or stale `keymap.json` is rebuilt from analyzr (§3.4, from S2a).
+   `keymap.json`. A missing or stale `keymap.json` is rebuilt from analyzr (§3.4, from S2a; the
+   skill's part in the plugin's next version): a tool id several keys carry (after
+   `external-id-moved`, one tool model twice) keeps the older key, the other entries get
+   `externalId: null` and go to the consultant; the key rule is inferred from the (`externalPath`,
+   key) pairs and confirmed by the consultant.
 4. **Emit the bundle** (§3.2) under `bundles/`, every file at its pinned key's path; the
    inventory, if any, gives the coverage line and the request list.
 5. **Preview** (from S2b): `analyzr import <bundle> -p <project> --dry-run`, with `--token` if
@@ -799,7 +809,7 @@ head facts:
 | `undocumented-process` | a process fact without documentation | what does it do? (agents' main evidence for placements) |
 | `isolated-process` | no relation in any status and no `rule`, `key` or `lexical` candidate | how does it connect to the rest? |
 | `descriptive-model` | `engine` null and every process non-executable | informational: the rule tier finds little here |
-| `extractor-loss` (S2) | the revision's stored extractor warnings (S2) with the codes `missing-id`, `invalid-id` or `duplicate-id`, or a `parse-warning` whose message matches `unparsable content\|duplicate ID\|illegal ID` (bpmn-moddle drops a second element with the same id and reports it only as a `parse-warning`, „duplicate ID <…>“; a non-NCName id arrives as „illegal ID <…>“ followed by `missing-id`) | which elements were lost on import? |
+| `extractor-loss` (S2) | the revision's stored extractor warnings (S2) with the codes `missing-id`, `invalid-id` or `duplicate-id`, or a `parse-warning` whose message matches `unparsable content\|duplicate ID\|illegal ID` (bpmn-moddle drops a second element with the same id and reports it only as a `parse-warning`, „duplicate ID <…>“; a non-NCName id arrives as „illegal ID <…>“ followed by `missing-id`); not a dropped diagram element (`BPMNShape` …, layout only) or an element of a namespace bpmn-moddle does not know („unrecognized element“, a vendor's extension) | which elements were lost on import? |
 
 Every signal is validated on `nordwind-handel` (dev) in tests before it ships; noisy ones stay
 off. `extractor-loss` is validated on synthetic fixtures, since every corpus model extracts
@@ -1667,6 +1677,12 @@ provenance follows `source.upstream`, S2b's `importImpact` plans amendments, S2c
 reads the amended calls; §3.3, §3.10, "S2" below). The owner answered §10.9 on 2026-10-17
 (decision 25.1–25.4), so S5c-2 follows S5c-1 directly.
 
+**After S2a** (2026-10-17): the owner asked to simplify the UI from the users' needs („Denke aber
+bitte auch noch daran, die UI etwas zu vereinfachen. Denke aus User Need Sicht. Wirkt alles
+inzwischen etwas überladen“). The UI simplification ([UX-SIMPLIFICATION.md](UX-SIMPLIFICATION.md),
+written by a separate run) therefore comes next and takes S2a's web parts; then S2b → S2c → S3c →
+S6, and after the owner's live runs S5b, S7 and facts v2.
+
 About seven weeks of agent work, plus the owner's runs; S5c adds about 12.5 days. Every slice runs
 all gates (AGENTS.md) before it is called done and records deviations here as "S<n> as
 delivered".
@@ -1880,6 +1896,209 @@ fixtures (duplicate and illegal ids, unknown elements) and never on the corpus; 
 golden digest is unchanged after the refactor; the dry run's impact equals what the real import
 then does (property test over seeded imports, growing with the follow-up); `analyzr import
 --dry-run` and the deletion impact in `models delete` print it; corpus behaviour unchanged.
+
+**S2a as delivered** (2026-10-17, branch `feat/integration-and-gaps`; every gate green): the
+server, contracts, client and CLI parts of S2a. The web parts of S2a („Herkunft“ in the model view,
+badges in the models table, reading `analyzr-import.json` from a dropped folder) are deferred to
+the UI simplification slice ([UX-SIMPLIFICATION.md](UX-SIMPLIFICATION.md), written by a separate
+run), which the owner asked for with S2a („die UI etwas zu vereinfachen … Wirkt alles inzwischen
+etwas überladen“), so that they are built into the simplified UI instead of onto today's; until then „Hochladen“ imports a bundle
+folder without its manifest, under the path keys, which equal the pinned keys for every bundle the
+integrate skill writes (§3.2), and without declared provenance. Delivered:
+
+- **Contracts** (`packages/contracts/src/api/import-manifest.ts`): `ImportManifest`
+  (`analyzr-import/1`: `source` with the required `system`, a lowercase slug as in
+  `keymap.json`, `systemVersion`, `exportedAt`, `importer`, `scope`; per file `path`, `key`,
+  `externalId`, `externalPath`, `url` (http(s), no credentials), `derived` (`export`,
+  `converted`, `reconstructed` with a required `llmModel`, `as-told` with opaque `from` ids),
+  `losses` (≤ 20, the codes of §3.2 plus S3b's `layout-missing`, and any newer converter's code,
+  a lowercase slug stored as declared) and `sha256`; `valueChain`, `inventory`; unique paths and
+  pinned keys; unknown fields dropped; identity fields without control characters or lone
+  surrogates, the informational `systemVersion`, `externalPath`, `converter` and `llmModel`
+  tidied instead, `tidyDeclared`), `ImportWarning` (`manifest-sha-mismatch`, `external-id-moved`,
+  `external-id-changed`, `provenance-kept`, with an English message and the identities or
+  checksums), `ExternalIdList`; `RevisionSource` gains the typed fields of §3.3 (`uploader`,
+  `manifestSha256`, `system`, `systemVersion`, `exportedAt`, `importer`, `scope`, `externalId`,
+  `externalPath`, `url`, `derived`, `losses`); `ImportFileOutcome` and `PutModelResult` gain
+  `importWarnings`, present only when there is one, so results without a manifest keep their
+  shape; `OpenQuestionKind` gains `extractor-loss` („Elemente beim Import verloren“). Routes:
+  the part `manifest` of `POST …/imports`, the header `Analyzr-Manifest` of `PUT
+  …/models/by-key/{key}`, `GET …/external-ids?system=` (permission `read`). The client is
+  regenerated.
+- **Server.** `apps/server/src/domain/provenance.ts` (pure): the manifest parsed and checked, the
+  `source` of an uploaded revision, the identity warnings, the `external-ids` list. A listed
+  file gets its pinned key and its declared provenance on the uploaded revision; an amended
+  revision keeps none of its own, and every reader (`external-ids`, the identity warnings, the
+  change list) takes the provenance from the uploaded revision through `source.upstream`
+  (`RevisionRepo.uploadedSources`), or, when that revision came without a manifest (a web
+  upload, a PUT without the header), from the newest revision a manifest declared. `model_revision.extract_warnings` (migration 0017, generated):
+  every revision written since stores the extractor's warnings at insert (every entry, each cut to
+  300 characters as in the results; `[]` for none); older rows stay null. The gap signal
+  `extractor-loss` (§4.3) reads the head revision's stored warnings. The change list's Markdown
+  names per model where it lives in the source tool („Im Quellsystem (signavio): <tool folder> ·
+  Im Quellsystem öffnen“, §4.8 c "Exports"), from the uploaded revision.
+- **CLI.** `analyzr import <dir>` reads `analyzr-import.json` at `<dir>`, checks it before
+  sending anything, also before `--create` creates the project (an invalid manifest exits 1,
+  nothing imported, naming the manifest's importer as a hint that a newer converter may need a
+  newer analyzr), refuses a folder without a manifest whose subfolders hold one (`found
+  analyzr-import.json in 2026-10-14-signavio/: import that folder …`: the bundles of a
+  workspace's `bundles/` would otherwise get keys starting with their folder names), plans with
+  the pinned keys (also the local duplicate check), sends each batch the manifest's subset for its
+  files, prints `manifest: analyzr-import.json (signavio), 6 of 6 files listed: keys pinned,
+  provenance stored for 6` (`provenance stored for 0; 6 unchanged keep what analyzr had` for
+  identical bytes), the files the manifest does not list and the ones it names that are missing,
+  each file's import warnings (`      external-id-moved: …`, always, not only with `--verbose`),
+  `<project>: N import warnings (…); the files were imported` and, after `external-id-moved` or
+  `external-id-changed`, one `next:` line each before the agent step (`next: same model twice?
+  delete the extra key (analyzr models delete -p <p> <key>) and re-import with the key pinned
+  …`, `next: different models? re-import the signavio bundle and give the aris bundle a key
+  prefix (aris/…)`; the agent line then starts with `then:`), and a hint to push the bundle's
+  value chain (`analyzr value-chain push … --dry-run`); `--json` gains `manifest` (only with a
+  manifest: `system`, `listed`, `stored`, `kept`, `unlisted`, `missing`, `valueChain`); warnings
+  never change the exit code. `analyzr models external-ids -p <project> [--system <s>] [--json]`
+  (any credential); its text names every tool id several keys carry (`signavio id sid-… on 2
+  keys: …`).
+- **Plugin `analyzr-integrate` 0.1.1** (text only, no script changed, so `normalize-bpmn` stays
+  0.1.0 and its golden bundle unchanged): the skill says that `analyzr import` reads the manifest
+  now and that „Hochladen“ does not yet (same keys, no provenance; the CLI preferred, the web path
+  marked „ohne Herkunftsangaben“), and labels the import warnings in German (on
+  `external-id-changed` it stops and asks, §3.4).
+- **Live-run neutral**: provenance stays out of facts and `facts_hash`; no change to the
+  extractor or `FACTS_VERSION`, the rule tier, claim input formats, submission validation,
+  procedures, the pipeline plugin `analyzr`, MCP tools, prompts and snapshots (`RevisionSource`, `ImportWarning` and
+  `OpenQuestionKind` appear in no MCP output schema, checked against
+  `apps/server/test/integration/__snapshots__/mcp-tools.json`), recordings or reports;
+  `claim-golden.test.ts` green; the corpus JSON of `import` and `seed --json` unchanged (no
+  manifest, no warning). What changes for every ingest: an uploaded revision's `source` carries
+  `uploader`, and its row the stored warnings.
+
+Choices the spec left open (the owner may overrule):
+
+- **PUT carries provenance in a header**: `Analyzr-Manifest`, the base64url of the UTF-8 JSON of
+  a manifest that lists exactly this file (its `key`, if given, equal to the PUT's key; its
+  `path` becomes `source.path`). §3.3 names PUT but no transport; a header keeps the raw-XML body
+  and the one manifest schema.
+- **An invalid manifest refuses the request** (422 `validation-failed`, reason
+  `invalid-manifest`) instead of being ignored: the first import fixes the keys for good (§3.4),
+  and an ignored manifest would fix path keys the consultant did not confirm. Two `manifest`
+  parts are refused too.
+- **`manifestSha256` is the SHA-256 of the manifest bytes the server received** (the batch's
+  subset, compact JSON from the CLI), set only on files the manifest lists. A text part's line
+  breaks may arrive as CRLF (multipart rules), which is why the CLI sends compact JSON.
+- **A file the manifest does not list** keeps its path key and gets no declared provenance
+  (`kind`, `path`, `uploader` only); the CLI names such files. A manifest entry without a file is
+  ignored by the server and named by the CLI.
+- **`uploader` on every uploaded revision**, not only with a manifest (§3.3: set by the server at
+  ingest), so S2c can classify revisions stored from now on.
+- **The identity warnings** compare with the live heads before the request (deleted models do not
+  count) and with earlier files of the same request that became heads; they are computed for
+  `created`, `revised` and `unchanged` files (an unchanged file keeps its first provenance, the
+  warning says what the manifest declares now); `external-id-changed` also fires when only the
+  system differs; a head or file without both a system and a tool id raises neither (the as-told
+  case of §3.4). `manifest-sha-mismatch` is also listed on a file that then failed. Their
+  messages say the consequence (`… already belongs to vertrieb/angebot: two models now carry it
+  (moved or renamed in the tool?)`, `this file (aris id …) revised vertrieb/auftrag, which held
+  signavio id …`).
+- **`provenance-kept`** (an addition after the review): an `unchanged` file the manifest lists
+  whose declared system, tool id, tool folder or link differs from the provenance analyzr keeps,
+  or for which analyzr keeps none (stored without a manifest), gets this warning (§3.3: identical
+  bytes keep their first provenance). The common case is a folder moved in the tool, which leaves
+  a Signavio export's bytes as they were: until the owner decides §10.10, `external-ids` and the
+  change list keep the old tool folder, and the warning says so. Never next to
+  `external-id-changed`.
+- **An upload without a manifest keeps a declared identity** (an addition after the review): the
+  readers fall back to the newest revision a manifest declared, so a later „Hochladen“ of a
+  re-export (the web sends no manifest until its S2a part) or a PUT without the header does not
+  drop a model from `external-ids` or from the identity warnings' protection. Known interim gap:
+  a bundle imported first through the web records no identity at all, and importing the same
+  bytes again with the CLI cannot add it (`provenance-kept` says so); the skill therefore prefers
+  the CLI for a bundle (plugin 0.1.1).
+- **Informational declared fields are tidied, identity fields refused** (an addition after the
+  review): `systemVersion`, `externalPath`, `derived.converter` and `derived.llmModel` accept any
+  string within their length; analyzr stores them with lone surrogates replaced by U+FFFD, control
+  characters by spaces, trimmed, and an empty one as absent (the integrate plugin 0.1.0 writes an
+  export's `exporterVersion=""` as `systemVersion: ""`). `path`, `externalId`, `scope`, the
+  importer and the link refuse control characters and lone surrogates (PostgreSQL's jsonb holds
+  neither U+0000 nor a lone surrogate, so they answered 500 for the whole request before), and the
+  link refuses a user name or password (it would be stored for good).
+- **`extract_warnings` is not exposed on `Revision`**: it is read by `extractor-loss`, whose
+  question lists the losses; the revisions list stays small.
+- **`extractor-loss`** is one question per model (subject `model`), listing up to 10 losses in
+  German („doppelte ID „Task_A““, „ungültige ID „4711““, „nicht lesbares Element
+  „bpmn:unknownThing““, „ein Element ohne ID (bpmn:Task)“, „Prozess mit ungültiger ID „4711“
+  (samt Inhalt)“; an id cut with the stored message ends in „…“); a dropped diagram element
+  (`bpmndi:BPMNShape`, matched by local name since the prefix is the file's) and an element of a
+  namespace bpmn-moddle does not know („unrecognized element“, a vendor's extension) do not
+  count; the count reads „mindestens“ when the extractor stopped listing (`too-many-warnings`) or
+  a process went with its content; it is versioned by the losses without
+  line and column, so an amendment elsewhere keeps its id; its only action is the note (the fix
+  is a new export, the question says so); an amended head is read by its own stored warnings,
+  which carry the codes of its uploaded revision (an amendment adds no warning code, §4.8 c).
+- **`GET …/external-ids`** is one unpaged list sorted by key; `system` is optional; a model whose
+  manifest named no tool id is listed with `externalId: null` (the key map identifies it by its
+  tool path), so the rebuilt key map has every entry.
+- **The change list's CSV is unchanged**; only the Markdown names the tool folder and the link.
+
+Left for S2b: `importImpact`, the dry runs (`POST …/imports?dryRun=true`, `PUT …?dryRun=true`,
+`analyzr import --dry-run`), the deletion impact in `models delete`, and the absent keys of
+§3.5, which respect `source.scope` (stored on each revision since S2a). Left for the plugin's
+next version, with S2b's dry run: the skill's rebuild of a lost `keymap.json` from `analyzr
+models external-ids` (§3.7 step 3, with the rule for a tool id several keys carry) and the
+pre-approved `--dry-run`; plugin 0.1.1 changes only the skill text (above). Left for the plugin's
+next version as well: `normalize-bpmn` writing `null` for an empty or blank `exporterVersion`
+(analyzr already stores it as absent).
+Left for the UI simplification slice ([UX-SIMPLIFICATION.md](UX-SIMPLIFICATION.md)): S2a's web
+parts, that is „Herkunft“ in the model view, the badges in the models table and the manifest of a
+dropped folder in „Hochladen“.
+
+Tests: server unit tests (`provenance.test.ts`: the golden manifest of `tools/integrate`, also
+with a byte order mark, every refusal (also a NUL or a lone surrogate in an identity field or the
+link, credentials in the link, a blank `llmModel`), a newer converter's loss code and an empty or
+odd informational field accepted and stored tidied, the source fields, the warnings in each case
+including earlier files of one request, `provenance-kept` and a stored file without a manifest
+that keeps the key's identity, the `external-ids` list, `extractor-loss` on synthetic fixtures
+with duplicate and illegal ids and an unknown element and its stable id, without a duplicated
+diagram shape or a vendor element, with a process lost with its content, an id cut with its
+message and „mindestens“ after 100 warnings, the change list's origin line;
+`open-question-actions.test.ts`: the note as its only action); real-PostgreSQL tests
+(`provenance.test.ts`: the golden bundle imported with its manifest, its provenance on every
+uploaded revision and the key map rebuilt from `external-ids` equal to the one the bundle was
+written with; pinned keys, a checksum mismatch, `external-id-moved`, `external-id-changed`
+(also across systems), the as-told case, an invalid manifest, a manifest with a NUL, a lone
+surrogate or credentials refused with 422 and none of the request's files imported, an empty
+`systemVersion` and odd tool folder stored tidied with the scope; PUT with `Analyzr-Manifest`
+round-tripping and refusing a foreign key, several files, bad base64url and a lone surrogate;
+identical bytes keeping their first provenance, with `provenance-kept` after a folder move and
+silence for the same manifest; a web-style upload without a manifest keeping the identity in
+`external-ids` and for `external-id-moved`; an amended head following `source.upstream` before
+and after a re-import, also in the change list's Markdown; `extract_warnings` written at insert
+and `extractor-loss` dropping after a clean export; migration 0017 on a database with a revision
+leaves it null; `corpus.test.ts`: every corpus revision stores `[]` and no `extractor-loss` item
+exists on either landscape, counts only); CLI unit tests (`manifest.test.ts`: also an empty
+`systemVersion`, the stored and kept counts, no project created with `--create` for an invalid
+manifest, the importer named in a refusal, bundles in subfolders refused, the `next:` lines, a
+tool id on two keys) and an e2e section (the golden bundle under its pinned keys, `models
+external-ids` equal to the key map, unchanged bytes, a moved tool id with a checksum mismatch and
+its `next:` line).
+
+Verified (2026-10-17, after the review round, and again by a separate gate pass on the final
+tree, which changed no code): every gate (`pnpm format:check`, `pnpm -r typecheck`, `pnpm -r
+lint` with dependency-cruiser: no violations, 144 modules, 734 dependencies; `pnpm -r test` with
+Testcontainers: server 1,572 tests in 75 files, web 432, CLI 248 plus 7 skipped (the live
+project), bpmn-facts 199, contracts 156, integrate 145, eval/tools 108, relations 85, agent-sim
+57, procedures 37, demo 27, notices 9, client 4; `pnpm eval:candidates`, `pnpm eval:replay`,
+`pnpm eval:placements`, `pnpm eval:descriptive`); `git diff --stat eval/reports` empty; the MCP
+snapshots unchanged (none of `uploader`, `manifestSha256`, `importWarnings`, `extractor-loss` or
+`provenance-kept` in `mcp-tools.json`); no diff under `apps/server/src/mcp`,
+`packages/bpmn-facts`, `packages/relations`, `packages/procedures` or `plugins/analyzr`;
+`claim-golden.test.ts` and `corpus.test.ts` green; the client regenerated with `pnpm --filter
+@analyzr/client generate` ([DEVELOPMENT.md](DEVELOPMENT.md) "M6 S2a (2026-10-17)"). Not checked:
+the web in a browser (S2a adds only the new kind's label and hint there; no Playwright run), a
+real tool export with a manifest (only the integrate plugin's synthetic golden bundle; HANDOFF §8
+"M6: sample exports"), the plugin 0.1.1 in a live Claude Code session, a scratch Docker stack
+(the CLI e2e tests ran against a server started from source on Testcontainers' PostgreSQL),
+migration 0017 on the owner's stacks (not touched; the test runs it on a database that holds a
+revision), the CI run (next push).
 
 **S3 "Toolkit".** S3a (part of the „erste Anfänge“): §3.11, report committed, CI drift check,
 and the `get_landscape` size per model of the seeded `nordwind-handel` with the v1 limit in §6.
@@ -2814,6 +3033,20 @@ write-back or sync to the source tools (decision 7).
       model itself is fixed in the tool. Recommendation: (b) now and (a) as a follow-up once a
       real or sandbox export confirms the shape (§10.4), so the operation is not built on an
       unverified assumption.
+
+10. **Provenance of unchanged bytes (amends §3.3, raised by the S2a review).** Identical bytes
+    stay `unchanged` and keep their first revision's provenance (§3.3, append-only). A folder
+    moved in the tool leaves a Signavio export's bytes as they were, so after such a re-export
+    `external-ids` and the change list keep the old tool folder, and a bundle imported first
+    through the web (no manifest until the web's S2a part) can never get its identity recorded
+    by importing the same bytes again with the CLI. S2a says so (`provenance-kept`, „provenance
+    stored for 0; 6 unchanged keep what analyzr had“) and the skill prefers the CLI, but does not
+    fix it. Proposal: record each import's declared identity per model in an append-only row
+    (model, seq: system, tool id, tool folder, link), written also for unchanged files whose
+    declaration differs; `external-ids`, the change list, „Herkunft“ and the identity warnings
+    read the newest row, the revision keeps its first provenance, and nothing re-queues (facts
+    and `facts_hash` stay untouched). Recommendation: yes, with S2b, before the first customer
+    re-export.
 
 HANDOFF §8 "First users" is answered in part: the consultant works with the CLI and the skills
 (24.1), and answering also works in the web UI (24.3), by action since decision 25. Manifest upload and preview in the web

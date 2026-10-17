@@ -120,6 +120,13 @@
       "when": 1792258359034,
       "tag": "0016_model_amendment_triggers",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1792269868907,
+      "tag": "0017_revision_extract_warnings",
+      "breakpoints": true
     }
   ]
 }

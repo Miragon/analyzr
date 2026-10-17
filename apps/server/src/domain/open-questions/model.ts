@@ -14,6 +14,7 @@ import {
   type AmendmentPlanEntry,
   type Candidate,
   type Engine,
+  type ExtractWarning,
   type Fact,
   type Finding,
   type ModelAmendmentId,
@@ -58,6 +59,11 @@ export interface ModelHead {
   factsHash: string;
   /** Seq of the head revision's ingest. */
   seq: number;
+  /**
+   * The head revision's stored extractor warnings (M6 S2a), when it has
+   * any; absent for none and for revisions stored before S2a.
+   */
+  extractWarnings?: readonly ExtractWarning[];
 }
 
 /** An agent's current `unsure` verdict on an open process (its input unchanged since). */
