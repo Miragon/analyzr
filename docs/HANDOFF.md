@@ -290,6 +290,29 @@ and code are in English.
     about, not overwritten („Nicht überschreiben“); 25.4 Signavio's linked diagrams get a link
     from the model view now and a conversion operation after a real export („Erst verknüpfen,
     Umbau später“).
+26. **UI simplification** (2026-10-18; details, measurements and the plan in
+    `docs/UX-SIMPLIFICATION.md`). The owner, after M6 S5c: „Denke aber bitte auch noch daran, die
+    UI etwas zu vereinfachen. Denke aus User Need Sicht. Wirkt alles inzwischen etwas überladen“.
+    After a user-need audit the owner answered four questions, each with the recommended option
+    (UX-SIMPLIFICATION.md §5.4 Q1–Q5, Q10–Q12): (1) **navigation** „4 Tabs (Empfohlen)“: „Übersicht“
+    with „Als Nächstes“, „Relationen“ (today's „Prüfen“ and „Relationen“ in one tab with views),
+    „Wertschöpfungskette“, „Offene Fragen“; „Hochladen“ a button; „Agent verbinden“ and
+    „Annahmeregeln“ in an owner menu; the tab „Befunde“ and the model view's „Befunde“ section go
+    (the list stays behind a link); the agents' no-links behind a foot link in „Relationen“ (answers
+    HANDOFF §8 "Demo: no-links in the review"); every URL stays. (2) **„Offene Fragen“ shows „Zu
+    klären“** („Ja, nur „Zu klären““): the badge counts it, summaries sit in a closed „Zur
+    Information“, the agents' questions show on their proposals, and the customer export carries
+    only the questions to clarify by default („Auch Fragen der Agenten“ as an option). (3) **Decide
+    where the diagrams are** („Dort, wo die Diagramme sind“): holds and agent questions are decided
+    on the review screen or the chain, reached from „Offene Fragen“ with „Jetzt entscheiden“ and
+    back; one entry „Ziel wählen …“ with the checkbox „Im Modell eintragen“ chooses between a link
+    and an amendment. (4) **Order** („Erste Welle, dann Walkthrough“): UX2a → UX1 → UX2b (about 8
+    agent days), then the owner walks five tasks and decides the rest of UX3–UX9; the upload and
+    provenance slices UX7/UX8 (S2a's web parts) come before S2b and S2c. It amends decision 19's
+    tab name „Regeln“ (now „Annahmeregeln“ in the owner menu), decision 24.9's place of the
+    summaries (still shown read-only, in a closed group), decision 25's inline „decide“ panel, and
+    CONCEPT §3's inbox as a tab of its own; agents, facts, procedures, claim inputs and MCP are
+    untouched (live-run neutral).
 
 **Taken during decision 20 by the implementing agent (the owner may overrule; details in
 DEVELOPMENT.md "Demo deployment (Fly.io)"):** the seed is made **while the image is built** and
@@ -958,7 +981,6 @@ Git/bpmiq.yml import, MCP App widget.
 | Auto-accept: results | Submission and ad-hoc results report the status before rules ran (an agent's `proposed` may already be accepted; `get_relations` shows the truth). Keeps recordings comparable and agents uninformed. Keep? | Decision 19 |
 | Auto-accept: marks for editors | Editors see which acceptances a rule made (the ledger names rule, revision, agent and confidence, never the criteria); only owners see the rules, apply and revoke. Keep, or show the marks to viewers too? | Decision 19 review |
 | Auto-accept: take-over | A rule whose author lost the owner role matches nothing until an owner saves it; saving it, also unchanged, makes that owner its author (its later acceptances are recorded under them). Keep, or add an explicit „Übernehmen“ action? | Decision 19 review |
-| Demo: no-links in the review | Decision 20(4) asks the review to show no-links; the simulation agent's are all on pairs without a relation, where no „Einwand“ can appear. The review round added the inbox tab „Kein Zusammenhang“ (`GET …/no-links`, read-only, every role and mode, model and stage filters). Keep it there, move it (e.g. per model in the model view), or also want example disagreements („Einwand“ on proposals, which needs a second agent's verdict on judged pairs and so conflicts with decision 17)? | Owner decision 20, review round |
 | M6: address form | „Sie“ in interview guides for customers, „du“ elsewhere? | M6 §10.3 |
 | M6: sample exports | Sandbox instances or anonymized exports of ARIS, Signavio, ADONIS, Bizagi, Visio? | M6 §10.4 |
 | M6: answers re-queue | May S5b widen the relations judgement basis by human notes and queue tasks (after the live runs), and from S7 on also by subject notes and outside marks? | M6 §10.5 |
