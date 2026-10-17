@@ -1908,6 +1908,12 @@
           },
           "state": {
             "$ref": "#/components/schemas/OpenQuestionState"
+          },
+          "answers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OpenQuestionAnswer"
+            }
           }
         },
         "required": [
@@ -1924,7 +1930,8 @@
           "unlocks",
           "refs",
           "raisedBy",
-          "state"
+          "state",
+          "answers"
         ],
         "description": "A gap in the landscape, as a question."
       },
@@ -2064,6 +2071,113 @@
         ],
         "description": "State of an open question."
       },
+      "OpenQuestionAnswer": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/OpenQuestionAnswerId"
+          },
+          "questionId": {
+            "$ref": "#/components/schemas/OpenQuestionId"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/OpenQuestionAnswerKind"
+          },
+          "target": {
+            "$ref": "#/components/schemas/OpenQuestionAnswerTarget"
+          },
+          "text": {
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OpenQuestionAnswerNote"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "by": {
+            "type": "string"
+          },
+          "sourceKind": {
+            "type": "string",
+            "enum": [
+              "human"
+            ]
+          },
+          "seq": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "at": {
+            "$ref": "#/components/schemas/Timestamp"
+          }
+        },
+        "required": [
+          "id",
+          "questionId",
+          "kind",
+          "target",
+          "text",
+          "note",
+          "by",
+          "sourceKind",
+          "seq",
+          "at"
+        ],
+        "description": "An answer to an open question."
+      },
+      "OpenQuestionAnswerId": {
+        "type": "string",
+        "pattern": "^oqa_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "description": "Answer to an open question (`oqa_` + ULID).",
+        "example": "oqa_01J9Z3N4X5Q6R7S8T9V0W1X2Y3"
+      },
+      "OpenQuestionAnswerKind": {
+        "type": "string",
+        "enum": [
+          "answer",
+          "outside-landscape",
+          "will-be-modelled"
+        ],
+        "description": "Kind of an answer to an open question."
+      },
+      "OpenQuestionAnswerTarget": {
+        "type": "string",
+        "enum": [
+          "relation-note",
+          "placement-note",
+          "answer"
+        ],
+        "description": "Where an answer's text is stored."
+      },
+      "OpenQuestionAnswerNote": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "relation",
+              "placement"
+            ]
+          },
+          "subjectId": {
+            "type": "string"
+          },
+          "assertionId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "subjectId",
+          "assertionId"
+        ],
+        "description": "The note an answer was recorded as."
+      },
       "OpenQuestionExportFormat": {
         "type": "string",
         "enum": [
@@ -2072,6 +2186,229 @@
         ],
         "default": "markdown",
         "description": "Format of the open-questions export."
+      },
+      "AnswerOpenQuestionResult": {
+        "type": "object",
+        "properties": {
+          "result": {
+            "type": "string",
+            "enum": [
+              "recorded",
+              "unchanged"
+            ]
+          },
+          "answer": {
+            "$ref": "#/components/schemas/OpenQuestionAnswer"
+          },
+          "question": {
+            "$ref": "#/components/schemas/OpenQuestion"
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PersonalDataWarning"
+            }
+          }
+        },
+        "required": [
+          "result",
+          "answer",
+          "question",
+          "warnings"
+        ],
+        "description": "The answer and the answered question."
+      },
+      "PersonalDataWarning": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "email",
+              "phone",
+              "iban"
+            ]
+          },
+          "start": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "end": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "kind",
+          "start",
+          "end"
+        ],
+        "description": "Probable personal data in a text (e-mail, phone, IBAN); a warning, never a block."
+      },
+      "AnswerOpenQuestionBody": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "kind": {
+            "$ref": "#/components/schemas/OpenQuestionAnswerKind"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "description": "An answer to an open question."
+      },
+      "AnswerSheetResult": {
+        "type": "object",
+        "properties": {
+          "dryRun": {
+            "type": "boolean"
+          },
+          "counts": {
+            "type": "object",
+            "properties": {
+              "recorded": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "unchanged": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "unknown": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "invalid": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "ignored": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "recorded",
+              "unchanged",
+              "unknown",
+              "invalid",
+              "ignored"
+            ]
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AnswerSheetRowResult"
+            }
+          }
+        },
+        "required": [
+          "dryRun",
+          "counts",
+          "rows"
+        ],
+        "description": "What a filled-in sheet stored or would store."
+      },
+      "AnswerSheetRowResult": {
+        "type": "object",
+        "properties": {
+          "row": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "id": {
+            "type": "string"
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/AnswerSheetOutcome"
+          },
+          "reason": {
+            "$ref": "#/components/schemas/AnswerSheetReason"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/OpenQuestionAnswerKind"
+          },
+          "target": {
+            "$ref": "#/components/schemas/OpenQuestionAnswerTarget"
+          },
+          "answer": {
+            "$ref": "#/components/schemas/OpenQuestionAnswer"
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PersonalDataWarning"
+            }
+          }
+        },
+        "required": [
+          "row",
+          "id",
+          "outcome",
+          "warnings"
+        ],
+        "description": "One sheet row's outcome."
+      },
+      "AnswerSheetOutcome": {
+        "type": "string",
+        "enum": [
+          "recorded",
+          "unchanged",
+          "unknown",
+          "invalid"
+        ],
+        "description": "What became of a sheet row."
+      },
+      "AnswerSheetReason": {
+        "type": "string",
+        "enum": [
+          "too-long",
+          "control-characters",
+          "unknown-kind",
+          "duplicate-id"
+        ],
+        "description": "Why a sheet row cannot be stored."
+      },
+      "AnswerSheetBody": {
+        "type": "object",
+        "properties": {
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AnswerSheetRowInput"
+            },
+            "maxItems": 5000
+          }
+        },
+        "required": [
+          "rows"
+        ],
+        "description": "The rows of a filled-in answer sheet."
+      },
+      "AnswerSheetRowInput": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "default": ""
+          }
+        },
+        "required": [
+          "id",
+          "text"
+        ],
+        "description": "One row of a filled-in answer sheet."
       },
       "RelationAssertionList": {
         "type": "object",
@@ -10671,7 +11008,7 @@
           "open-questions"
         ],
         "summary": "Open questions: the gaps that block links and placements, from every source and the gap signals",
-        "description": "Computed on read, never stored (M6 §4.2): relation and value chain findings, holds (note, question, label), agents' questions on proposals waiting for review, current unsure placement verdicts, no-links coded `call-target` or `collaboration`, the summaries of current submissions and the pairs they left unjudged, and the gap signals over the head facts. Questions before informational items (`summary-note`, `descriptive-model`), each ordered by `unlocks` (descending), then subject, kind and id. `modelKey` matches a model or a folder (`finanzen` matches `finanzen/mahnwesen`); `askWho` matches a lane, one of the step owners or the folder exactly. Every item is `open` until answers exist (M6 S5a).",
+        "description": "Computed on read, never stored (M6 §4.2): relation and value chain findings, holds (note, question, label), agents' questions on proposals waiting for review, current unsure placement verdicts, no-links coded `call-target` or `collaboration`, the summaries of current submissions and the pairs they left unjudged, and the gap signals over the head facts. Questions first, then the value chain findings (`process-without-step`, `step-without-process`, `unresolved-link`), then informational items (`summary-note`, `descriptive-model`), each group ordered by `unlocks` (descending), then subject, kind and id. `modelKey` matches a model or a folder (`finanzen` matches `finanzen/mahnwesen`); `askWho` matches a lane, one of the step owners or the folder exactly. An item is `answered` while an answer for its id exists (M6 S5a), with its `answers`; `state` filters by it.",
         "parameters": [
           {
             "schema": {
@@ -10815,7 +11152,7 @@
           "open-questions"
         ],
         "summary": "The open questions as a Markdown or CSV download, with the filters of the list",
-        "description": "Every open question matching the filters, in list order, as an attachment. `markdown` (default): German headings, grouped by the contact hint (step owners, else folder, else lanes). `csv`: the questions without the informational items (`summary-note`, `descriptive-model`, which ask nothing), UTF-8 with a byte order mark, `;`-separated (what German spreadsheet programs open directly), CRLF, every field quoted, the columns `id`, `Art`, `Frage`, `Ansprechpartner-Hinweis`, `Antwort`, `Antwortart`; the last two are empty for the customer to fill in. A cell starting with `=`, `+`, `-`, `@`, a tab, a carriage return or their full-width forms (also after a run of `'`) gets a leading `'`, so spreadsheets never run it as a formula. The file name carries the filters (`offene-fragen-<project key>-<filters>.csv`).",
+        "description": "Every open question matching the filters, in list order, as an attachment. `markdown` (default): German headings, grouped by the contact hint (step owners, else folder, else lanes). `csv`: the questions without the informational items (`summary-note`, `descriptive-model`, which ask nothing), UTF-8 with a byte order mark, `;`-separated (what German spreadsheet programs open directly), CRLF, every field quoted, the columns `id`, `Art`, `Frage`, `Ansprechpartner-Hinweis`, `Antwort`, `Antwortart`; the last two are empty for the customer to fill in, or hold an answered item's latest answer and its kind (M6 S5a; read back, it is `unchanged`); the Markdown lists every answer. A cell starting with `=`, `+`, `-`, `@`, a tab, a carriage return or their full-width forms (also after a run of `'`) gets a leading `'`, so spreadsheets never run it as a formula. The file name carries the filters (`offene-fragen-<project key>-<filters>.csv`).",
         "parameters": [
           {
             "schema": {
@@ -10935,6 +11272,223 @@
           },
           "404": {
             "description": "Problem: `not-found`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Problem: `validation-failed`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project}/open-questions/{question}/answers": {
+      "post": {
+        "operationId": "answerOpenQuestion",
+        "tags": [
+          "open-questions"
+        ],
+        "summary": "Answer an open question (humans only)",
+        "description": "Records the answer (M6 §4.5 S5a) in the append-only `open_question_answer`; the item is `answered` while an answer for its id exists. Where the text lands: on a relation (held, or proposed with an agent's question) a human note through the note use case, so the next claim of either model shows it (a hold stays until a human decides it); on a placement a human note through the placement note use case (on an agent's question the process becomes due, nothing is queued; a held placement keeps homing its process, so it is not due until a human decides the hold); anything else stays with the answer (shown and exported, it reaches no agent before M6 S7). A note holds the text only, not the kind. An answer identical to the id's latest answer (kind and text) answers 200 `unchanged` and writes nothing. The text is compared and stored with LF line breaks and in Unicode NFC, trimmed; it has at most 2000 characters; a deterministic check for e-mail addresses, phone numbers and IBANs returns `warnings` and never blocks. Owner or editor on an interactive client: agent tokens get 403 `human-decision-required` with `reviewUrl`. An id that names no current open question (its source changed, which changes the id) is 404 `not-found`.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": "^(?:prj_[0-7][0-9A-HJKMNP-TV-Z]{25}|[a-z0-9]+(?:-[a-z0-9]+)*)$",
+              "description": "Project id (`prj_…`) or project key.",
+              "example": "nordwind-handel"
+            },
+            "required": true,
+            "description": "Project id (`prj_…`) or project key.",
+            "name": "project",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/OpenQuestionId"
+            },
+            "required": true,
+            "description": "Id of an open question: `q-` + 16 hex characters.",
+            "name": "question",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnswerOpenQuestionBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "An identical answer was recorded earlier",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnswerOpenQuestionResult"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "The answer was recorded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnswerOpenQuestionResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem: `unauthorized`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem: `insufficient-scope`, `human-decision-required`, `forbidden`, `demo-readonly`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem: `not-found`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Problem: `validation-failed`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project}/open-questions/answers": {
+      "post": {
+        "operationId": "answerOpenQuestions",
+        "tags": [
+          "open-questions"
+        ],
+        "summary": "Record the answers of a filled-in sheet (`?dryRun=true` first; humans only)",
+        "description": "The rows of the CSV the export wrote (`id`, `Antwort`, `Antwortart`; `readAnswerSheet` in `@analyzr/contracts/open-question-csv` reads them), each answered as by `answerOpenQuestion`, all in one transaction. Rows with an empty answer are ignored (counted only); an id that names no current open question (also one whose source changed since the export) is listed `unknown` and never stored; a row with a text over 2000 characters, control characters, an unknown `Antwortart` or an id an earlier row answers is listed `invalid` and never stored; an answer identical to the item's latest one (kind and text; with an empty `Antwortart` the same text, whatever its kind) is `unchanged`. `row` is the position in `rows`. `dryRun=true` lists the same and stores nothing. At most 5000 rows and 4194304 bytes per call (413 `payload-too-large` above).",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": "^(?:prj_[0-7][0-9A-HJKMNP-TV-Z]{25}|[a-z0-9]+(?:-[a-z0-9]+)*)$",
+              "description": "Project id (`prj_…`) or project key.",
+              "example": "nordwind-handel"
+            },
+            "required": true,
+            "description": "Project id (`prj_…`) or project key.",
+            "name": "project",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ]
+            },
+            "required": false,
+            "name": "dryRun",
+            "in": "query"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnswerSheetBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "What the sheet stored or would store",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnswerSheetResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem: `unauthorized`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem: `insufficient-scope`, `human-decision-required`, `forbidden`, `demo-readonly`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem: `not-found`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Problem: `payload-too-large`",
             "content": {
               "application/problem+json": {
                 "schema": {

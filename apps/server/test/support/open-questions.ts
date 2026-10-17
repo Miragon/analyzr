@@ -129,5 +129,6 @@ export async function libraryInput(
     candidates: generateCandidates(projectFacts),
     chain: null,
     submissions: [],
+    answers: [],
   };
 }

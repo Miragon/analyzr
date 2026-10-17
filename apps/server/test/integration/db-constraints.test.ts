@@ -495,7 +495,8 @@ describe('value chain and placements (migrations 0006, 0007)', () => {
       /placement_assertion is append-only: UPDATE/,
     ],
     ['DELETE FROM placement_assertion', /placement_assertion is append-only: DELETE/],
-    ['TRUNCATE placement_assertion', /placement_assertion is append-only: TRUNCATE/],
+    // CASCADE: without it, the foreign keys of open_question_answer (M6 S5a) refuse first.
+    ['TRUNCATE placement_assertion CASCADE', /placement_assertion is append-only: TRUNCATE/],
   ])('%s fails', async (statement, message) => {
     expect(await failure(sql.raw(statement))).toMatch(message);
   });

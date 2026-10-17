@@ -6,6 +6,7 @@ import type {
   Fact,
   Model,
   OpenQuestion,
+  OpenQuestionAnswer,
   Placement,
   PlacementAssertion,
   PlacementSummary,
@@ -501,6 +502,24 @@ export function autoAcceptPreview(overrides: Partial<AutoAcceptPreview> = {}): A
 
 // ------------------------------------------------------------ open questions (M6 S4)
 
+/** A recorded answer (M6 S5a): the owner's text on the question itself unless overridden. */
+export function openQuestionAnswer(
+  overrides: Partial<OpenQuestionAnswer> & Pick<OpenQuestionAnswer, 'questionId'>,
+): OpenQuestionAnswer {
+  return {
+    id: 'oqa_01ANSWER',
+    kind: 'answer',
+    target: 'answer',
+    text: 'Das Ziel ist der Zahlungsdienst des Partners.',
+    note: null,
+    by: 'owner',
+    sourceKind: 'human',
+    seq: 20,
+    at: '2026-10-16T10:00:00.000Z',
+    ...overrides,
+  };
+}
+
 /** An open question; a rule finding on `a/order#Call_1` unless overridden. */
 export function openQuestion(
   overrides: Partial<OpenQuestion> & Pick<OpenQuestion, 'id'>,
@@ -519,6 +538,7 @@ export function openQuestion(
     refs: ['a/order#Call_1'],
     raisedBy: { sourceKind: 'rule', handle: null, seq: 3 },
     state: 'open',
+    answers: [],
     ...overrides,
   };
 }

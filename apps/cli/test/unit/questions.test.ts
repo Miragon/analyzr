@@ -57,6 +57,7 @@ function question(n: number, extra: Partial<OpenQuestion> = {}): OpenQuestion {
     refs: ['finanzen/gutschrift#Call_Brief'],
     raisedBy: { sourceKind: 'rule', handle: null, seq: 3 },
     state: 'open',
+    answers: [],
     ...extra,
   };
 }

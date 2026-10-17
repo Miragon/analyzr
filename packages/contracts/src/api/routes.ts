@@ -75,9 +75,18 @@ import {
   ValueChainStepDetail,
 } from './placements.ts';
 import {
+  AnswerOpenQuestionBody,
+  AnswerOpenQuestionResult,
+  AnswerSheetBody,
+  AnswerSheetQuery,
+  AnswerSheetResult,
+  MAX_ANSWER_CHARS,
+  MAX_ANSWER_SHEET_BODY_BYTES,
+  MAX_ANSWER_SHEET_ROWS,
   OPEN_QUESTION_CSV_COLUMNS,
   OpenQuestionExportQuery,
   OpenQuestionPage,
+  OpenQuestionParam,
   OpenQuestionQuery,
 } from './open-questions.ts';
 import { CreateProjectBody, Project, ProjectPage } from './projects.ts';
@@ -148,6 +157,7 @@ const stepParams = chainParams.extend({ elementId: z.string().min(1).max(128) })
 const placementParams = chainParams.extend({ placement: PlacementId });
 const projectAnalysisParams = ProjectParam.extend({ analysis: AnalysisTaskId });
 const autoAcceptRuleParams = ProjectParam.extend({ rule: AutoAcceptRuleId });
+const openQuestionParams = ProjectParam.extend(OpenQuestionParam.shape);
 
 function jsonBody<T extends z.ZodType>(schema: T) {
   return { required: true, content: { [JSON_TYPE]: { schema } } };
@@ -561,10 +571,13 @@ export const apiRoutes = withDemoReadOnly({
       "question, label), agents' questions on proposals waiting for review, current unsure " +
       'placement verdicts, no-links coded `call-target` or `collaboration`, the summaries of ' +
       'current submissions and the pairs they left unjudged, and the gap signals over the head ' +
-      'facts. Questions before informational items (`summary-note`, `descriptive-model`), each ' +
-      'ordered by `unlocks` (descending), then subject, kind and id. `modelKey` matches a model ' +
+      'facts. Questions first, then the value chain findings (`process-without-step`, ' +
+      '`step-without-process`, `unresolved-link`), then informational items (`summary-note`, ' +
+      '`descriptive-model`), each group ordered by `unlocks` (descending), then subject, kind ' +
+      'and id. `modelKey` matches a model ' +
       'or a folder (`finanzen` matches `finanzen/mahnwesen`); `askWho` matches a lane, one of the ' +
-      'step owners or the folder exactly. Every item is `open` until answers exist (M6 S5a).',
+      'step owners or the folder exactly. An item is `answered` while an answer for its id ' +
+      'exists (M6 S5a), with its `answers`; `state` filters by it.',
     request: { params: projectParams, query: OpenQuestionQuery },
     responses: {
       200: json(OpenQuestionPage, 'A page of open questions'),
@@ -584,7 +597,9 @@ export const apiRoutes = withDemoReadOnly({
       '`descriptive-model`, which ask nothing), UTF-8 with a byte order mark, `;`-separated (what ' +
       'German spreadsheet programs open directly), CRLF, every field quoted, the columns ' +
       `${OPEN_QUESTION_CSV_COLUMNS.map((c) => `\`${c}\``).join(', ')}; the last two are empty for ` +
-      'the customer to fill in. A cell starting with `=`, `+`, `-`, `@`, a tab, a carriage return ' +
+      "the customer to fill in, or hold an answered item's latest answer and its kind (M6 S5a; " +
+      'read back, it is `unchanged`); the Markdown lists every answer. A cell starting with `=`, ' +
+      '`+`, `-`, `@`, a tab, a carriage return ' +
       "or their full-width forms (also after a run of `'`) gets a leading `'`, so spreadsheets " +
       'never run it as a formula. The file name carries the filters (`offene-fragen-<project ' +
       'key>-<filters>.csv`).',
@@ -606,6 +621,66 @@ export const apiRoutes = withDemoReadOnly({
         },
       },
       ...problems(...READ_PROBLEMS),
+    },
+  },
+
+  answerOpenQuestion: {
+    method: 'post',
+    path: `${API_PREFIX}/projects/{project}/open-questions/{question}/answers`,
+    operationId: 'answerOpenQuestion',
+    tags: ['open-questions'],
+    summary: 'Answer an open question (humans only)',
+    description:
+      'Records the answer (M6 §4.5 S5a) in the append-only `open_question_answer`; the item is ' +
+      '`answered` while an answer for its id exists. Where the text lands: on a relation (held, ' +
+      "or proposed with an agent's question) a human note through the note use case, so the " +
+      'next claim of either model shows it (a hold stays until a human decides it); on a ' +
+      "placement a human note through the placement note use case (on an agent's question the " +
+      'process becomes due, nothing is queued; a held placement keeps homing its process, so ' +
+      'it is not due until a human decides the hold); anything else stays with the answer ' +
+      '(shown and exported, it reaches no agent before M6 S7). A note holds the text only, ' +
+      "not the kind. An answer identical to the id's latest answer (kind and text) answers " +
+      '200 `unchanged` and writes nothing. The text is compared and stored with LF line breaks ' +
+      `and in Unicode NFC, trimmed; it has at most ${MAX_ANSWER_CHARS} characters; a ` +
+      'deterministic check for e-mail ' +
+      'addresses, phone numbers and IBANs returns `warnings` and never blocks. Owner or editor ' +
+      'on an interactive client: agent tokens get 403 `human-decision-required` with ' +
+      '`reviewUrl`. An id that names no current open question (its source changed, which ' +
+      'changes the id) is 404 `not-found`.',
+    request: { params: openQuestionParams, body: jsonBody(AnswerOpenQuestionBody) },
+    responses: {
+      200: json(AnswerOpenQuestionResult, 'An identical answer was recorded earlier'),
+      201: json(AnswerOpenQuestionResult, 'The answer was recorded'),
+      ...problems(...READ_PROBLEMS, 'human-decision-required', 'forbidden'),
+    },
+  },
+  answerOpenQuestions: {
+    method: 'post',
+    path: `${API_PREFIX}/projects/{project}/open-questions/answers`,
+    operationId: 'answerOpenQuestions',
+    tags: ['open-questions'],
+    summary: 'Record the answers of a filled-in sheet (`?dryRun=true` first; humans only)',
+    description:
+      'The rows of the CSV the export wrote (`id`, `Antwort`, `Antwortart`; ' +
+      '`readAnswerSheet` in `@analyzr/contracts/open-question-csv` reads them), each answered ' +
+      'as by `answerOpenQuestion`, all in one transaction. Rows with an empty answer are ' +
+      'ignored (counted only); an id that names no current open question (also one whose ' +
+      'source changed since the export) is listed `unknown` and never stored; a row with a ' +
+      `text over ${MAX_ANSWER_CHARS} characters, control characters, an unknown ` +
+      '`Antwortart` or an id an earlier row answers is listed `invalid` and never stored; an ' +
+      "answer identical to the item's latest one (kind and text; with an empty `Antwortart` " +
+      'the same text, whatever its kind) is `unchanged`. `row` is the position in `rows`. ' +
+      '`dryRun=true` lists the same and ' +
+      `stores nothing. At most ${MAX_ANSWER_SHEET_ROWS} rows and ` +
+      `${MAX_ANSWER_SHEET_BODY_BYTES} bytes per call (413 \`payload-too-large\` above).`,
+    request: {
+      params: projectParams,
+      query: AnswerSheetQuery,
+      body: jsonBody(AnswerSheetBody),
+    },
+    responses: {
+      200: json(AnswerSheetResult, 'What the sheet stored or would store'),
+      ...problems(...READ_PROBLEMS, 'human-decision-required', 'forbidden', 'payload-too-large'),
     },
   },
 

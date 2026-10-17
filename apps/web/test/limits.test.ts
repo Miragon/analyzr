@@ -19,6 +19,12 @@ describe('constants copied from @analyzr/contracts', () => {
     expect(limits.MAX_BULK_DECISIONS).toBe(contracts.MAX_BULK_DECISIONS);
   });
 
+  it('match the answer limits (M6 S5a)', () => {
+    expect(limits.MAX_ANSWER_CHARS).toBe(contracts.MAX_ANSWER_CHARS);
+    expect(limits.MAX_ANSWER_SHEET_ROWS).toBe(contracts.MAX_ANSWER_SHEET_ROWS);
+    expect(limits.MAX_ANSWER_SHEET_BODY_BYTES).toBe(contracts.MAX_ANSWER_SHEET_BODY_BYTES);
+  });
+
   it('match the value chain constants (M4)', () => {
     expect(limits.MAX_RATIONALE_CHARS).toBe(contracts.MAX_RATIONALE_CHARS);
     expect(limits.VALUE_CHAIN_KEY).toBe(contracts.VALUE_CHAIN_KEY);
@@ -121,6 +127,21 @@ describe('constants copied from @analyzr/contracts', () => {
     const states = [...contracts.OpenQuestionState.options].sort();
     expect(Object.keys(oq.OPEN_QUESTION_STATES).sort()).toEqual(states);
     expect([...oq.OPEN_QUESTION_STATE_ORDER].sort()).toEqual(states);
+    // answers (M6 S5a): every kind, target and sheet reason has its German text
+    const answers = await import('../src/lib/open-question-answers');
+    expect([...answers.ANSWER_KIND_ORDER]).toEqual([...contracts.OpenQuestionAnswerKind.options]);
+    expect(Object.keys(answers.ANSWER_KIND_LABELS).sort()).toEqual(
+      [...contracts.OpenQuestionAnswerKind.options].sort(),
+    );
+    expect(Object.keys(answers.ANSWER_KIND_HINTS).sort()).toEqual(
+      [...contracts.OpenQuestionAnswerKind.options].sort(),
+    );
+    expect(Object.keys(answers.ANSWER_TARGET_LABELS).sort()).toEqual(
+      [...contracts.OpenQuestionAnswerTarget.options].sort(),
+    );
+    expect(Object.keys(answers.SHEET_REASON_TEXTS).sort()).toEqual(
+      [...contracts.AnswerSheetReason.options].sort(),
+    );
     // the verbatim sources each name who said the text
     for (const source of ['hold', 'agent-question', 'unsure', 'no-link', 'summary'] as const) {
       expect(oq.isVerbatim({ source })).toBe(true);

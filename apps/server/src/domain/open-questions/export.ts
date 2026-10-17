@@ -1,28 +1,33 @@
 /**
  * The export of open questions (M6 §4.4): Markdown for reading and
  * interviews, grouped by the contact hint, and a CSV the customer fills in
- * and S5a reads back. German headings and labels. Pure.
- *
- * CSV choices: UTF-8 with a byte order mark (without it, Excel reads UTF-8 as
- * the ANSI code page and breaks every umlaut), `;` as separator (the list
- * separator of German Excel, so a double click opens columns, not one line),
- * CRLF and every field quoted (RFC 4180). A cell that a spreadsheet would
- * run as a formula (it starts with `=`, `+`, `-`, `@`, a tab, a carriage
- * return or their full-width forms) gets a leading `'` (OWASP "CSV
- * injection"); so that reading back is exact, a cell that starts with `'`
- * before such a character gets one more. {@link parseOpenQuestionsCsv}
- * undoes both.
+ * and S5a reads back. German headings and labels. Pure. The CSV's cell
+ * protection and its parser are shared with the clients that read a filled
+ * sheet back (`@analyzr/contracts/open-question-csv`).
  */
 import {
+  CSV_BOM,
+  CSV_SEPARATOR,
+  OPEN_QUESTION_ANSWER_KIND_LABELS,
   OPEN_QUESTION_CSV_COLUMNS,
   OPEN_QUESTION_KIND_LABELS,
   OPEN_QUESTION_SOURCE_LABELS,
   isInformationalKind,
+  protectCell,
   type OpenQuestion,
   type OpenQuestionAskWho,
   type OpenQuestionExportFormat,
   type OpenQuestionFilter,
   type OpenQuestionSource,
+} from '@analyzr/contracts';
+
+export {
+  CSV_BOM,
+  CSV_SEPARATOR,
+  CsvError,
+  parseOpenQuestionsCsv,
+  protectCell,
+  unprotectCell,
 } from '@analyzr/contracts';
 
 /** Sources whose text is a human's or agent's, verbatim (the export names the subject next to it). */
@@ -144,7 +149,7 @@ export function renderOpenQuestionsMarkdown(
     `Projekt \`${header.projectKey}\`, Stand Ereignis ${header.seq}: ` +
       `${items.length === 1 ? 'eine offene Frage' : `${items.length} offene Fragen`}, ` +
       'nach Ansprechpartner-Hinweis gruppiert und je Gruppe nach der Zahl offener Entscheidungen ' +
-      'geordnet, Hinweise zur Information zuletzt.',
+      'geordnet, Befunde der Wertschöpfungskette danach, Hinweise zur Information zuletzt.',
   ];
   const filter = filterText(header.filter);
   if (filter !== null) lines.push('', `Filter: ${filter}.`);
@@ -164,6 +169,12 @@ export function renderOpenQuestionsMarkdown(
       if (q.context !== null) lines.push(`- Notiz: ${escapeMarkdown(q.context)}`);
       if (q.label !== null) lines.push(`- Vormerkung: ${escapeMarkdown(q.label)}`);
       if (isInformationalKind(q.kind)) lines.push('- Zur Information, keine Antwort nötig');
+      for (const a of q.answers) {
+        lines.push(
+          `- Antwort (${OPEN_QUESTION_ANSWER_KIND_LABELS[a.kind]}, ${escapeMarkdown(a.by)}, ` +
+            `Ereignis ${a.seq}): ${escapeMarkdown(a.text)}`,
+        );
+      }
       lines.push(
         `- Kennung: \`${q.id}\``,
         `- Quelle: ${OPEN_QUESTION_SOURCE_LABELS[q.source]}` +
@@ -184,25 +195,6 @@ export function renderOpenQuestionsMarkdown(
 
 // ----------------------------------------------------------------------- CSV
 
-/** The byte order mark the CSV starts with (UTF-8 for Excel). */
-export const CSV_BOM = '\uFEFF';
-/** The CSV separator: German Excel's list separator. */
-export const CSV_SEPARATOR = ';';
-
-/** Formula triggers of spreadsheets, also their full-width forms, after any `'`. */
-const FORMULA = /^'*[=+\-@\t\r＝＋－＠]/;
-const PROTECTED = /^'+[=+\-@\t\r＝＋－＠]/;
-
-/** A cell no spreadsheet runs as a formula (a leading `'`); {@link unprotectCell} undoes it. */
-export function protectCell(value: string): string {
-  return FORMULA.test(value) ? `'${value}` : value;
-}
-
-/** Undoes {@link protectCell}. */
-export function unprotectCell(value: string): string {
-  return PROTECTED.test(value) ? value.slice(1) : value;
-}
-
 const quoteCell = (value: string): string => `"${protectCell(value).replaceAll('"', '""')}"`;
 
 /** The `Frage` cell: the text, and for verbatim texts what they are about. */
@@ -212,23 +204,29 @@ function questionCell(q: OpenQuestion): string {
 
 /**
  * The CSV export: {@link OPEN_QUESTION_CSV_COLUMNS}, one row per question in
- * list order, `Antwort` and `Antwortart` empty. Informational items
- * (`summary-note`, `descriptive-model`) ask nothing, so the sheet the
- * customer fills in leaves them out (the Markdown and the list keep them).
+ * list order, `Antwort` and `Antwortart` empty for the customer to fill in,
+ * or, for an answered item, its latest answer (so a sheet read back again
+ * records nothing twice: the identical answer is `unchanged`).
+ * Informational items (`summary-note`, `descriptive-model`) ask nothing, so
+ * the sheet the customer fills in leaves them out (the Markdown and the list
+ * keep them).
  */
 export function renderOpenQuestionsCsv(items: readonly OpenQuestion[]): string {
   const rows: string[][] = [
     [...OPEN_QUESTION_CSV_COLUMNS],
     ...items
       .filter((q) => !isInformationalKind(q.kind))
-      .map((q) => [
-        q.id,
-        OPEN_QUESTION_KIND_LABELS[q.kind],
-        questionCell(q),
-        askWhoText(q.askWho),
-        '',
-        '',
-      ]),
+      .map((q) => {
+        const latest = q.answers.at(-1);
+        return [
+          q.id,
+          OPEN_QUESTION_KIND_LABELS[q.kind],
+          questionCell(q),
+          askWhoText(q.askWho),
+          latest?.text ?? '',
+          latest ? OPEN_QUESTION_ANSWER_KIND_LABELS[latest.kind] : '',
+        ];
+      }),
   ];
   return `${CSV_BOM}${rows.map((r) => r.map(quoteCell).join(CSV_SEPARATOR)).join('\r\n')}\r\n`;
 }
@@ -276,79 +274,4 @@ export function exportFilename(
   const filters = parts.join('-').slice(0, MAX_FILTER_SLUG).replace(/-+$/, '');
   const base = `offene-fragen-${slug(projectKey) || 'projekt'}${filters === '' ? '' : `-${filters}`}`;
   return `${base}.${format === 'csv' ? 'csv' : 'md'}`;
-}
-
-/** A CSV the parser could not read. */
-export class CsvError extends Error {
-  override readonly name = 'CsvError';
-}
-
-/**
- * Reads a CSV as the export writes it, and as spreadsheets save it again:
- * an optional byte order mark, `;`, `,` or tab as separator (the one the
- * header line uses most), CRLF or LF, quoted or bare fields (RFC 4180), the
- * formula protection undone. Rows of only empty cells are dropped.
- *
- * @returns the header and the rows, as written
- * @throws {CsvError} on an unterminated quoted field or text after a closing quote
- */
-export function parseOpenQuestionsCsv(text: string): { header: string[]; rows: string[][] } {
-  const body = text.startsWith(CSV_BOM) ? text.slice(1) : text;
-  const firstLine = body.split(/\r?\n/, 1)[0] ?? '';
-  const unquoted = firstLine.replace(/"[^"]*"/g, '');
-  const separator = [';', ',', '\t'].reduce((best, s) =>
-    unquoted.split(s).length > unquoted.split(best).length ? s : best,
-  );
-  const rows: string[][] = [];
-  let row: string[] = [];
-  let cell = '';
-  let i = 0;
-  const endCell = () => {
-    row.push(unprotectCell(cell));
-    cell = '';
-  };
-  const endRow = () => {
-    endCell();
-    if (row.some((c) => c !== '')) rows.push(row);
-    row = [];
-  };
-  while (i < body.length) {
-    const ch = body[i];
-    if (ch === '"' && cell === '') {
-      // A quoted field: up to the closing quote; "" is a quote.
-      let j = i + 1;
-      for (;;) {
-        if (j >= body.length) throw new CsvError('unterminated quoted field');
-        if (body[j] === '"') {
-          if (body[j + 1] === '"') {
-            cell += '"';
-            j += 2;
-            continue;
-          }
-          break;
-        }
-        cell += body[j];
-        j++;
-      }
-      i = j + 1;
-      const next = body[i];
-      if (next !== undefined && next !== separator && next !== '\r' && next !== '\n') {
-        throw new CsvError(`text after a closing quote at offset ${i}`);
-      }
-      continue;
-    }
-    if (ch === separator) {
-      endCell();
-      i++;
-    } else if (ch === '\r' || ch === '\n') {
-      endRow();
-      i += ch === '\r' && body[i + 1] === '\n' ? 2 : 1;
-    } else {
-      cell += ch;
-      i++;
-    }
-  }
-  if (cell !== '' || row.length > 0) endRow();
-  const [header = [], ...rest] = rows;
-  return { header, rows: rest };
 }

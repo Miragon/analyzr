@@ -16,11 +16,13 @@ import { build, type Plugin, type UserConfig } from 'vite';
  *    schema-model in the web chunks.
  * 2. The entry chunk and its static imports hold none of them, nor the chain
  *    page, its components or the step view: those load with their routes;
- *    nor the open-questions page, its components and labels (M6 S4, the
- *    tab's route chunk and the model view's lazy section).
+ *    nor the open-questions page, its components and libs (M6 S4 and S5a,
+ *    the tab's route chunk and the model view's lazy section).
  *    Of `@analyzr/contracts`, only the zod-free `paths.ts` (the upload's file
- *    rule, M6 S1) and `open-question-labels.ts` (M6 S4, in the lazy
- *    open-questions chunks only) are in the bundle.
+ *    rule, M6 S1), `open-question-labels.ts` (M6 S4), `open-question-csv.ts`
+ *    and `personal-data.ts` (M6 S5a: the answer sheet's reader and the
+ *    personal-data check; the last three in the lazy open-questions chunks
+ *    only) are in the bundle.
  *    The entry stays under a gzip ceiling, so a page that slips into it shows.
  * 3. The main CSS has no `.vc-` rule (the renderer's CSS comes with the chunk).
  * 4. Budget: with the diagram-js (+ diagram-js-direct-editing) dependency
@@ -192,12 +194,16 @@ const isChainPageModule = (id: string) =>
     join(WEB, 'src/components/value-chain') + sep,
   ].some((path) => id === path || id.startsWith(path));
 
-/** The open-questions page, its components and labels (M6 S4): a route chunk and a lazy section. */
+/**
+ * The open-questions page, its components and libs (M6 S4; S5a: the answer
+ * dialogs, `open-question-answers.ts`, `open-question-actions.ts`): a route
+ * chunk and a lazy section.
+ */
 const isOpenQuestionsModule = (id: string) =>
   [
     join(WEB, 'src/routes/project-open-questions-page.tsx'),
     join(WEB, 'src/components/open-questions') + sep,
-    join(WEB, 'src/lib/open-questions.ts'),
+    join(WEB, 'src/lib/open-question'),
   ].some((path) => id === path || id.startsWith(path));
 
 describe('web bundle (M4 §5 bundle guard)', { timeout: 120_000 }, () => {
@@ -217,8 +223,9 @@ describe('web bundle (M4 §5 bundle guard)', { timeout: 120_000 }, () => {
     const main = reachable(chunks, entry?.fileName ?? '');
     const mainModules = chunks.filter((c) => main.has(c.fileName)).flatMap((c) => c.moduleIds);
     expect(mainModules.filter(isChainModule)).toEqual([]);
-    // M6 S1 and S4: the web's runtime imports from the contracts are zod-free: the file
-    // rule (entry) and the open questions' labels (lazy chunks only).
+    // M6 S1, S4 and S5a: the web's runtime imports from the contracts are zod-free: the file
+    // rule (entry), the open questions' labels, the answer sheet's reader and the
+    // personal-data check (lazy chunks only).
     const contracts = join(WEB, '../../packages/contracts') + sep;
     const contractsFile = (name: string) => join('..', '..', 'packages', 'contracts', 'src', name);
     const fromContracts = (list: readonly string[]) =>
@@ -226,14 +233,26 @@ describe('web bundle (M4 §5 bundle guard)', { timeout: 120_000 }, () => {
         .map((id) => relative(WEB, id))
         .sort();
     expect(fromContracts(ids)).toEqual(
-      [contractsFile('open-question-labels.ts'), contractsFile('paths.ts')].sort(),
+      [
+        contractsFile('open-question-csv.ts'),
+        contractsFile('open-question-labels.ts'),
+        contractsFile('paths.ts'),
+        contractsFile('personal-data.ts'),
+      ].sort(),
     );
     expect(fromContracts(mainModules)).toEqual([contractsFile('paths.ts')]);
     expect(chunks.some(isChainEntry)).toBe(true);
     // The chain page, its panels and the step view load with their routes, not with every page.
     expect(mainModules.filter(isChainPageModule).map((id) => relative(WEB, id))).toEqual([]);
-    // M6 S4: the tab „Offene Fragen“ and the model view's section load lazily as well.
+    // M6 S4 and S5a: the tab „Offene Fragen“, the model view's section and the answer
+    // dialogs load lazily as well.
     expect(mainModules.filter(isOpenQuestionsModule).map((id) => relative(WEB, id))).toEqual([]);
+    expect(
+      ids
+        .filter((id) => id.startsWith(join(WEB, 'src/lib/open-question-')))
+        .map((id) => relative(WEB, id))
+        .sort(),
+    ).toEqual(['src/lib/open-question-actions.ts', 'src/lib/open-question-answers.ts']);
     expect(
       chunks.some(
         (c) =>

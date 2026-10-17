@@ -2,13 +2,15 @@
  * Constants of `@analyzr/contracts` the UI needs at runtime. The web imports
  * only types from the contracts package (its zod schemas would end up in the
  * bundle); `test/limits.test.ts` keeps these copies equal to the originals.
- * The exceptions are two zod-free subpaths: `@analyzr/contracts/paths` (the
+ * The exceptions are zod-free subpaths: `@analyzr/contracts/paths` (the
  * BPMN file rule and the model key of a path, M6 S1), which `lib/upload.ts`
- * imports at runtime, and `@analyzr/contracts/open-question-labels` (the
- * open questions' German labels, M6 S4), which `lib/open-questions.ts` imports
- * in the lazy open-questions chunks; ESLint allows those subpaths and no
- * other, and the bundle guard (`test/bundle.test.ts`) keeps zod out of the
- * entry chunk and the labels out of it as well.
+ * imports at runtime, and, in the lazy open-questions chunks only,
+ * `@analyzr/contracts/open-question-labels` (the open questions' German
+ * labels, M6 S4), `@analyzr/contracts/open-question-csv` (the reader of a
+ * filled-in answer sheet) and `@analyzr/contracts/personal-data` (the
+ * personal-data check of answers, both M6 S5a); ESLint allows those subpaths
+ * and no other, and the bundle guard (`test/bundle.test.ts`) keeps zod out of
+ * the entry chunk and the open-questions modules out of it as well.
  */
 
 /** RFC 9457 `type` prefix of every analyzr problem. */
@@ -32,6 +34,15 @@ export const MAX_NOTE_CHARS = 2000;
 export const MAX_LABEL_CHARS = 100;
 export const MAX_QUESTION_CHARS = 500;
 export const MAX_BULK_DECISIONS = 500;
+
+/**
+ * Answers to open questions (M6 S5a; `packages/contracts/src/api/open-questions.ts`):
+ * the longest answer (as long as a note) and the limits of a filled-in sheet
+ * per call of `POST …/open-questions/answers`.
+ */
+export const MAX_ANSWER_CHARS = 2000;
+export const MAX_ANSWER_SHEET_ROWS = 5000;
+export const MAX_ANSWER_SHEET_BODY_BYTES = 4 * 1024 * 1024;
 
 /** Port of the analyzr server in local mode (docker/compose.yaml, `pnpm dev`). */
 export const ANALYZR_DEFAULT_PORT = 7400;

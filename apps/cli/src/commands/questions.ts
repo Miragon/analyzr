@@ -3,13 +3,17 @@
  * gaps that block links and placements, with any credential that has `read`.
  *
  * - **text** (default) and **json** page through `GET …/open-questions` in
- *   list order (`unlocks` descending): text prints one line per question (id,
- *   unlocks, kind, first model key, subject and question, the kind key and
- *   the texts as the server returns them, line breaks folded) and a count by
- *   kind; json prints every item.
+ *   list order (questions, then value chain findings, then informational
+ *   items, each by `unlocks` descending): text prints one line per question
+ *   (id, unlocks, kind, first model key, subject and question, the kind key
+ *   and the texts as the server returns them, line breaks folded, `[answered]`
+ *   after an answered one) and a count by kind; json prints every item.
+ *   `analyzr questions list` is the same command; answers are recorded by
+ *   `analyzr questions answer` (`questions-answer.ts`).
  * - **md** and **csv** fetch `GET …/open-questions/export` and write its bytes
  *   verbatim: the Markdown grouped by contact hint, the CSV with its byte
- *   order mark and the empty answer columns for the customer.
+ *   order mark and the answer columns for the customer (empty, or an
+ *   answered item's latest answer and its kind).
  *
  * `--model` (a model key or folder), `--kind`, `--source`, `--ask-who` (a
  * lane, a step owner or a folder, exactly) and `--state` are the server's
@@ -143,7 +147,7 @@ export async function allQuestions(
 }
 
 /** Text on one line: line breaks, tabs and other control characters become one space. */
-function oneLine(text: string): string {
+export function oneLine(text: string): string {
   return text.replace(/[\s\p{Cc}]+/gu, ' ').trim();
 }
 
@@ -156,7 +160,8 @@ function modelColumn(q: OpenQuestion): string {
 
 /**
  * One line per question under a header: id, unlocks (the open decisions it
- * touches), kind, model, then subject and question; columns aligned.
+ * touches), kind, model, then subject and question (`[answered]` after an
+ * answered one); columns aligned.
  */
 export function formatQuestions(items: readonly OpenQuestion[]): string[] {
   const rows = [
@@ -166,7 +171,7 @@ export function formatQuestions(items: readonly OpenQuestion[]): string[] {
       unlocks: String(q.unlocks),
       kind: q.kind,
       model: modelColumn(q),
-      question: `${oneLine(q.subjectLabel)}: ${oneLine(q.text)}`,
+      question: `${oneLine(q.subjectLabel)}: ${oneLine(q.text)}${q.state === 'answered' ? '  [answered]' : ''}`,
     })),
   ];
   const width = (k: 'id' | 'unlocks' | 'kind' | 'model') =>
@@ -178,7 +183,10 @@ export function formatQuestions(items: readonly OpenQuestion[]): string[] {
   );
 }
 
-/** `vc-seed: 3 open questions (black-box-partner 2, call-target-unknown 1)`: by count, then kind. */
+/**
+ * `vc-seed: 3 open questions (black-box-partner 2, call-target-unknown 1)`:
+ * by count, then kind; `…, 1 answered` when answers are recorded.
+ */
 export function summarizeQuestions(where: string, items: readonly OpenQuestion[]): string {
   const byKind = new Map<string, number>();
   for (const q of items) byKind.set(q.kind, (byKind.get(q.kind) ?? 0) + 1);
@@ -186,7 +194,8 @@ export function summarizeQuestions(where: string, items: readonly OpenQuestion[]
     .sort(([a, x], [b, y]) => y - x || (a < b ? -1 : a > b ? 1 : 0))
     .map(([k, n]) => `${k} ${n}`);
   const count = `${items.length} open question${items.length === 1 ? '' : 's'}`;
-  return `${where}: ${count}${kinds.length === 0 ? '' : ` (${kinds.join(', ')})`}`;
+  const answered = items.filter((q) => q.state === 'answered').length;
+  return `${where}: ${count}${kinds.length === 0 ? '' : ` (${kinds.join(', ')})`}${answered === 0 ? '' : `, ${answered} answered`}`;
 }
 
 /** The project and the filters for messages: `p (kind held, model finanzen)`. */

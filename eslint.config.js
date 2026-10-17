@@ -21,13 +21,15 @@ const CHAIN_CHUNK_MESSAGE =
 
 /**
  * The web imports types from the contracts, never their zod schemas; the
- * runtime imports are the zod-free `@analyzr/contracts/paths` (M6 S1) and
- * `@analyzr/contracts/open-question-labels` (M6 S4, lazy chunks only, which
- * the bundle guard checks). `paths` entries match the bare specifier only, so
- * a pattern restricts every other subpath.
+ * runtime imports are the zod-free `@analyzr/contracts/paths` (M6 S1),
+ * `@analyzr/contracts/open-question-labels` (M6 S4) and, for answers (M6
+ * S5a), `@analyzr/contracts/open-question-csv` and
+ * `@analyzr/contracts/personal-data` (the last three in lazy chunks only,
+ * which the bundle guard checks). `paths` entries match the bare specifier
+ * only, so a pattern restricts every other subpath.
  */
 const CONTRACTS_MESSAGE =
-  'Import types from @analyzr/client; constants live in src/lib/limits.ts; the file rule comes from @analyzr/contracts/paths, the open-question labels from @analyzr/contracts/open-question-labels.';
+  'Import types from @analyzr/client; constants live in src/lib/limits.ts; the file rule comes from @analyzr/contracts/paths, the open-question labels from @analyzr/contracts/open-question-labels, the answer sheet reader from @analyzr/contracts/open-question-csv, the personal-data check from @analyzr/contracts/personal-data.';
 const CONTRACTS_RESTRICTION = {
   paths: [{ name: '@analyzr/contracts', message: CONTRACTS_MESSAGE, allowTypeImports: true }],
   patterns: [
@@ -36,6 +38,8 @@ const CONTRACTS_RESTRICTION = {
         '@analyzr/contracts/*',
         '!@analyzr/contracts/paths',
         '!@analyzr/contracts/open-question-labels',
+        '!@analyzr/contracts/open-question-csv',
+        '!@analyzr/contracts/personal-data',
       ],
       message: CONTRACTS_MESSAGE,
       allowTypeImports: true,
@@ -117,8 +121,8 @@ export default defineConfig(
   {
     // The bundle gets types from the contracts, never their zod schemas: use
     // the generated @analyzr/client types (constants are mirrored in src/lib/limits.ts);
-    // the zod-free @analyzr/contracts/paths (M6 S1) and …/open-question-labels (M6 S4)
-    // are the runtime imports.
+    // the zod-free @analyzr/contracts/paths (M6 S1), …/open-question-labels (M6 S4),
+    // …/open-question-csv and …/personal-data (M6 S5a) are the runtime imports.
     // The value chain renderer, schema-model (with zod) and diagram-js belong to
     // the lazy chain chunk only (M4 §5): values from them are allowed in
     // src/components/value-chain/canvas/** alone (override below).

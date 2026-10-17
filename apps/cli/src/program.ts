@@ -1,11 +1,12 @@
 import { DEFAULT_ANALYZR_URL } from '@analyzr/client';
-import { AGENT_TOKEN_DEFAULT_DAYS, OWNER_KEY_FILE_ENV } from '@analyzr/contracts';
+import { AGENT_TOKEN_DEFAULT_DAYS, MAX_ANSWER_CHARS, OWNER_KEY_FILE_ENV } from '@analyzr/contracts';
 import { Command, CommanderError } from 'commander';
 
 import { healthCommand } from './commands/health.ts';
 import { importCommand } from './commands/import.ts';
 import { mcpCommand } from './commands/mcp.ts';
 import { modelsDeleteCommand, modelsListCommand, modelsRequeueCommand } from './commands/models.ts';
+import { questionsAnswerCommand } from './commands/questions-answer.ts';
 import { questionsCommand } from './commands/questions.ts';
 import {
   rulesAddCommand,
@@ -51,7 +52,7 @@ interface GlobalOptions {
 export function buildProgram(io: CliIo = processIo): Command {
   const program = new Command('analyzr')
     .description(
-      'analyzr command line: seed, import, list, requeue and delete models, list and export open questions, push and pull the value chain, manage agent tokens and auto-accept rules, bridge MCP over stdio',
+      'analyzr command line: seed, import, list, requeue and delete models, list, export and answer open questions, push and pull the value chain, manage agent tokens and auto-accept rules, bridge MCP over stdio',
     )
     .version(rootPackage.version, '-v, --version')
     .option('--url <url>', `analyzr server URL (env ANALYZR_URL, default ${DEFAULT_ANALYZR_URL})`)
@@ -149,10 +150,17 @@ export function buildProgram(io: CliIo = processIo): Command {
       modelsDeleteCommand(io, keys, { ...globals(), ...opts }),
     );
 
-  program
+  // `questions` lists (its default subcommand, so `analyzr questions -p …` lists) and answers;
+  // two subcommands, so `answer` has its own `--kind` and `-p` beside the list's filters.
+  const questions = program
     .command('questions')
     .description(
-      'the open questions of a project, most open decisions first: a table, JSON, or the Markdown or CSV export (any credential)',
+      'list and export the open questions of a project (list, the default) or answer them (answer)',
+    );
+  questions
+    .command('list', { isDefault: true })
+    .description(
+      'the open questions of a project, questions before value chain findings and informational items, each most open decisions first: a table, JSON, or the Markdown or CSV export (any credential)',
     )
     .requiredOption('-p, --project <project>', 'project key or id')
     .option('--model <key>', 'only questions touching this model, or a model below this folder')
@@ -165,7 +173,7 @@ export function buildProgram(io: CliIo = processIo): Command {
     .option('--state <state>', 'only open or only answered questions')
     .option(
       '--format <format>',
-      'text (a table, the default), md (the Markdown export), csv (the CSV export with empty answer columns) or json',
+      'text (a table, the default), md (the Markdown export), csv (the CSV export, its answer columns empty or holding the latest answer) or json',
     )
     .option('-o, --output <file>', 'write to this file (default: stdout)')
     .action(
@@ -179,6 +187,40 @@ export function buildProgram(io: CliIo = processIo): Command {
         format?: string;
         output?: string;
       }) => questionsCommand(io, { ...globals(), ...opts }),
+    );
+  questions
+    .command('answer')
+    .description(
+      'record answers as a human (owner key): one with <id> --text, or the filled-in CSV sheet of the export with --from; on a relation or placement the answer becomes a note on it',
+    )
+    .argument('[id]', 'open question id (q-…), as analyzr questions lists it')
+    .requiredOption('-p, --project <project>', 'project key or id')
+    .option(
+      '--text <text>',
+      `the answer (at most ${MAX_ANSWER_CHARS} characters; no names or other personal data)`,
+    )
+    .option(
+      '--kind <kind>',
+      'antwort (the default), ausserhalb (outside the landscape) or ergaenzt (will be modelled)',
+    )
+    .option(
+      '--from <file>',
+      'the CSV of analyzr questions --format csv with the columns Antwort and Antwortart filled in (UTF-8)',
+    )
+    .option('--dry-run', 'with --from: list what would be recorded; record nothing')
+    .option('--json', 'print JSON')
+    .action(
+      (
+        id: string | undefined,
+        opts: {
+          project: string;
+          text?: string;
+          kind?: string;
+          from?: string;
+          dryRun?: boolean;
+          json?: boolean;
+        },
+      ) => questionsAnswerCommand(io, id, { ...globals(), ...opts }),
     );
 
   const token = program.command('token').description('manage agent tokens (owner key)');

@@ -1,23 +1,42 @@
 /**
- * Open questions (M6 §4.2–§4.4, S4): the list and its Markdown and CSV
- * export, computed on read from one snapshot. Permission `read`, so viewers
- * and the read-only demo see them. Nothing here writes.
+ * Open questions (M6 §4.2–§4.5): the list and its Markdown and CSV export,
+ * computed on read from one snapshot (S4; permission `read`, so viewers and
+ * the read-only demo see them), and the answers (S5a; permission `review`,
+ * humans only): one at a time or from a filled-in sheet, each recorded in
+ * the append-only `open_question_answer`. An answer on a relation or a
+ * placement is a human note on it through the note use cases' own write
+ * (`recordRelationNote`, `addPlacementNote`), so it reaches agents exactly
+ * as a note does today; every other answer keeps its text. Answers change
+ * no analysis rule: no judgement basis, no queueing, no stage.
  */
 import {
+  MAX_ANSWER_CHARS,
   VALUE_CHAIN_KEY,
+  newId,
+  normalizeAnswerText,
+  openQuestionsPath,
+  personalDataWarnings,
+  type AnswerOpenQuestionBody,
+  type AnswerOpenQuestionResult,
+  type AnswerSheetBody,
+  type AnswerSheetResult,
   type Candidate,
   type OpenQuestion,
+  type OpenQuestionAnswer,
   type OpenQuestionExportQuery,
   type OpenQuestionPage,
   type OpenQuestionQuery,
+  type PlacementId,
   type ProjectFacts,
   type ProjectId,
+  type RelationId,
   type ValueChainId,
   type ValueChainRevisionId,
 } from '@analyzr/contracts';
 
-import type { Actor } from '../actor.ts';
+import { sourceKindOf, type Actor } from '../actor.ts';
 import { decodeCursor } from '../cursor.ts';
+import { DomainError } from '../errors.ts';
 import { visibleFindings } from '../findings.ts';
 import { linkJudgements, pairKey } from '../judgements.ts';
 import {
@@ -25,6 +44,13 @@ import {
   renderOpenQuestionsCsv,
   renderOpenQuestionsMarkdown,
 } from '../open-questions/export.ts';
+import {
+  answerTarget,
+  checkSheet,
+  sameAnswer,
+  toOpenQuestionAnswer,
+  type AnswerDraft,
+} from '../open-questions/answers.ts';
 import {
   POSITION_SHAPE,
   type ChainInput,
@@ -38,10 +64,11 @@ import {
   openQuestions,
   pageOpenQuestions,
 } from '../open-questions/read-model.ts';
-import { policy } from '../policy.ts';
+import { policy, type ProjectAccess } from '../policy.ts';
 import type {
   DoneChainTask,
   DoneModelTask,
+  OpenQuestionAnswerRecord,
   ProjectRecord,
   StoredAssertion,
   StoredSubmission,
@@ -50,8 +77,10 @@ import type {
 import { byRelation } from '../relation-state.ts';
 import { sameProcedure } from '../status.ts';
 import { loadChainState } from '../value-chain/chain-state.ts';
+import { addPlacementNote } from '../value-chain/placements.ts';
 import { loadPipelineInputs } from '../value-chain/queue.ts';
 import { ALL, type UseCaseDeps } from './deps.ts';
+import { recordRelationNote } from './review.ts';
 import { chainFindings } from './value-chains.ts';
 
 /** The rendered export: what the HTTP layer sends as an attachment. */
@@ -274,7 +303,100 @@ export async function loadOpenQuestionInput(
     ),
     chain: chain?.chain ?? null,
     submissions: await loadSubmissions(tx, deps, projectId, models, chain),
+    answers: await tx.openQuestionAnswers.list(projectId),
   };
+}
+
+/**
+ * `policy.require(…, 'review', …)` for answers: a human on an interactive
+ * client; an agent's attempt fails with `human-decision-required` carrying
+ * `reviewUrl`, the tab „Offene Fragen“ (a path the HTTP layer makes
+ * absolute).
+ */
+async function requireAnswering(tx: Tx, actor: Actor, projectRef: string): Promise<ProjectAccess> {
+  try {
+    return await policy.require(tx, actor, 'review', projectRef);
+  } catch (err) {
+    if (err instanceof DomainError && err.code === 'human-decision-required') {
+      const project = await tx.projects.findByRef(projectRef);
+      throw new DomainError(err.code, err.message, {
+        reviewUrl: openQuestionsPath(project?.key ?? projectRef),
+      });
+    }
+    throw err;
+  }
+}
+
+/**
+ * Records answers in the caller's write transaction (the project lock held),
+ * in order, each with its `open_question.answered` event (no free text in
+ * it): on a relation or placement a human note through the note use cases'
+ * own write plus a row naming the note, else a row with the text.
+ *
+ * @returns the recorded answers as the API shows them, in order
+ */
+export async function recordAnswers(
+  tx: Tx,
+  projectId: ProjectId,
+  actor: Actor,
+  drafts: readonly AnswerDraft[],
+): Promise<OpenQuestionAnswer[]> {
+  if (sourceKindOf(actor) !== 'human') {
+    throw new DomainError('human-decision-required', 'only a human answers open questions');
+  }
+  const ids: string[] = [];
+  for (const { question, kind, text } of drafts) {
+    const { subject } = question;
+    let noteAssertionId: OpenQuestionAnswerRecord['noteAssertionId'] = null;
+    if (subject.type === 'relation') {
+      const relation = await tx.relations.findInProject(projectId, subject.id as RelationId);
+      if (!relation) throw new Error(`relation ${subject.id} of a current open question vanished`);
+      noteAssertionId = (await recordRelationNote(tx, projectId, actor, relation, text)).id;
+    } else if (subject.type === 'placement') {
+      const placement = await tx.placements.findInProject(projectId, subject.id as PlacementId);
+      if (!placement) {
+        throw new Error(`placement ${subject.id} of a current open question vanished`);
+      }
+      noteAssertionId = (await addPlacementNote(tx, projectId, actor, placement, text)).id;
+    }
+    const seq = await tx.events.append(projectId, {
+      type: 'open_question.answered',
+      principalId: actor.principalId,
+      clientId: actor.clientId,
+      subjectRef: subject.id,
+      payload: {
+        questionId: question.id,
+        kind,
+        subject: { type: subject.type, id: subject.id },
+        target: answerTarget(subject),
+        ...(noteAssertionId === null ? {} : { noteAssertionId }),
+      },
+    });
+    const row: OpenQuestionAnswerRecord = {
+      id: newId('openQuestionAnswer'),
+      projectId,
+      questionId: question.id,
+      subjectType: subject.type,
+      subjectId: subject.id,
+      kind,
+      text: noteAssertionId === null ? text : null,
+      noteAssertionId,
+      principalId: actor.principalId,
+      sourceKind: 'human',
+      seq,
+    };
+    await tx.openQuestionAnswers.insert(row);
+    ids.push(row.id);
+  }
+  if (ids.length === 0) return [];
+  const stored = new Map(
+    (await tx.openQuestionAnswers.list(projectId)).map((a) => [a.id as string, a]),
+  );
+  return ids.map((id) => {
+    const a = stored.get(id);
+    if (!a) throw new Error('an answer vanished inside its transaction');
+    return toOpenQuestionAnswer(a);
+  });
 }
 
 export function openQuestionUseCases(deps: UseCaseDeps) {
@@ -287,16 +409,19 @@ export function openQuestionUseCases(deps: UseCaseDeps) {
     projectRef: string,
   ): Promise<{ project: ProjectRecord; items: OpenQuestion[] }> {
     const { project } = await policy.require(tx, actor, 'read', projectRef);
-    return {
-      project,
-      items: openQuestions(await loadOpenQuestionInput(tx, deps, project.id, candidates)),
-    };
+    return { project, items: await itemsOf(tx, project.id) };
+  }
+
+  /** Every open question of the project, in list order. */
+  async function itemsOf(tx: Tx, projectId: ProjectId): Promise<OpenQuestion[]> {
+    return openQuestions(await loadOpenQuestionInput(tx, deps, projectId, candidates));
   }
 
   return {
     /**
      * The open questions matching the filters (M6 §4.4), a cursor page in
-     * list order (`unlocks` descending), with the total.
+     * list order (questions, then the value chain's findings, then
+     * informational items, each by `unlocks` descending), with the total.
      */
     async listOpenQuestions(
       actor: Actor,
@@ -338,6 +463,91 @@ export function openQuestionUseCases(deps: UseCaseDeps) {
           }),
         };
       });
+    },
+
+    /**
+     * Answers one open question (M6 §4.5 S5a): recorded as a note on its
+     * relation or placement, else with its text; when the item's latest
+     * answer is identical (kind and text) it is returned `unchanged` and
+     * nothing is written. The text is normalized first (LF line breaks,
+     * NFC), as for a sheet. The personal-data check warns and never blocks.
+     *
+     * @throws {DomainError} `not-found` for an id that names no current item; policy errors
+     */
+    async answerOpenQuestion(
+      actor: Actor,
+      projectRef: string,
+      questionId: string,
+      body: AnswerOpenQuestionBody,
+    ): Promise<AnswerOpenQuestionResult> {
+      return deps.store.write(async (tx) => {
+        const { project } = await requireAnswering(tx, actor, projectRef);
+        await tx.projects.lockForWrite(project.id);
+        const question = (await itemsOf(tx, project.id)).find((q) => q.id === questionId);
+        if (!question) {
+          throw new DomainError(
+            'not-found',
+            'open question not found; its id changes when its source changes, so list the questions again',
+          );
+        }
+        const text = normalizeAnswerText(body.text);
+        // NFC can lengthen a few scripts' letters, so the limit holds for the stored text.
+        if (text.length > MAX_ANSWER_CHARS) {
+          throw new DomainError(
+            'validation-failed',
+            `text: at most ${MAX_ANSWER_CHARS} characters after normalization`,
+          );
+        }
+        const draft: AnswerDraft = { question, kind: body.kind, text };
+        const warnings = personalDataWarnings(text);
+        const same = sameAnswer(draft);
+        if (same) return { result: 'unchanged', answer: same, question, warnings };
+        const [answer] = await recordAnswers(tx, project.id, actor, [draft]);
+        if (!answer) throw new Error('the answer was not recorded');
+        // A note changes neither the status nor the basis of its relation or placement,
+        // so the item keeps its id and everything but its answers.
+        return {
+          result: 'recorded',
+          answer,
+          question: { ...question, state: 'answered', answers: [...question.answers, answer] },
+          warnings,
+        };
+      });
+    },
+
+    /**
+     * The answers of a filled-in sheet (M6 §4.5 "Bulk answers"), all in one
+     * transaction, each row as {@link answerOpenQuestion} would record it:
+     * empty answers ignored (counted), unknown ids and invalid rows listed and
+     * never stored, answers identical to the item's latest `unchanged`. A dry
+     * run reads one snapshot and writes nothing.
+     */
+    async answerOpenQuestions(
+      actor: Actor,
+      projectRef: string,
+      body: AnswerSheetBody,
+      options: { dryRun: boolean },
+    ): Promise<AnswerSheetResult> {
+      const run = async (tx: Tx): Promise<AnswerSheetResult> => {
+        const { project } = await requireAnswering(tx, actor, projectRef);
+        if (!options.dryRun) await tx.projects.lockForWrite(project.id);
+        const items = new Map((await itemsOf(tx, project.id)).map((q) => [q.id, q]));
+        const { counts, rows, record } = checkSheet(body.rows, items);
+        if (!options.dryRun) {
+          const recorded = await recordAnswers(
+            tx,
+            project.id,
+            actor,
+            record.map((r) => r.draft),
+          );
+          for (const [i, r] of record.entries()) {
+            const answer = recorded[i];
+            if (answer) r.result.answer = answer;
+          }
+        }
+        return { dryRun: options.dryRun, counts, rows };
+      };
+      return options.dryRun ? deps.store.read(run) : deps.store.write(run);
     },
   };
 }

@@ -16,6 +16,12 @@ import type {
   AddRelationNoteData,
   AddRelationNoteErrors,
   AddRelationNoteResponses,
+  AnswerOpenQuestionData,
+  AnswerOpenQuestionErrors,
+  AnswerOpenQuestionResponses,
+  AnswerOpenQuestionsData,
+  AnswerOpenQuestionsErrors,
+  AnswerOpenQuestionsResponses,
   ApplyAutoAcceptRuleData,
   ApplyAutoAcceptRuleErrors,
   ApplyAutoAcceptRuleResponses,
@@ -507,7 +513,7 @@ export const listNoLinks = <ThrowOnError extends boolean = false>(
 /**
  * Open questions: the gaps that block links and placements, from every source and the gap signals
  *
- * Computed on read, never stored (M6 §4.2): relation and value chain findings, holds (note, question, label), agents' questions on proposals waiting for review, current unsure placement verdicts, no-links coded `call-target` or `collaboration`, the summaries of current submissions and the pairs they left unjudged, and the gap signals over the head facts. Questions before informational items (`summary-note`, `descriptive-model`), each ordered by `unlocks` (descending), then subject, kind and id. `modelKey` matches a model or a folder (`finanzen` matches `finanzen/mahnwesen`); `askWho` matches a lane, one of the step owners or the folder exactly. Every item is `open` until answers exist (M6 S5a).
+ * Computed on read, never stored (M6 §4.2): relation and value chain findings, holds (note, question, label), agents' questions on proposals waiting for review, current unsure placement verdicts, no-links coded `call-target` or `collaboration`, the summaries of current submissions and the pairs they left unjudged, and the gap signals over the head facts. Questions first, then the value chain findings (`process-without-step`, `step-without-process`, `unresolved-link`), then informational items (`summary-note`, `descriptive-model`), each group ordered by `unlocks` (descending), then subject, kind and id. `modelKey` matches a model or a folder (`finanzen` matches `finanzen/mahnwesen`); `askWho` matches a lane, one of the step owners or the folder exactly. An item is `answered` while an answer for its id exists (M6 S5a), with its `answers`; `state` filters by it.
  */
 export const listOpenQuestions = <ThrowOnError extends boolean = false>(
   options: Options<ListOpenQuestionsData, ThrowOnError>,
@@ -523,7 +529,7 @@ export const listOpenQuestions = <ThrowOnError extends boolean = false>(
 /**
  * The open questions as a Markdown or CSV download, with the filters of the list
  *
- * Every open question matching the filters, in list order, as an attachment. `markdown` (default): German headings, grouped by the contact hint (step owners, else folder, else lanes). `csv`: the questions without the informational items (`summary-note`, `descriptive-model`, which ask nothing), UTF-8 with a byte order mark, `;`-separated (what German spreadsheet programs open directly), CRLF, every field quoted, the columns `id`, `Art`, `Frage`, `Ansprechpartner-Hinweis`, `Antwort`, `Antwortart`; the last two are empty for the customer to fill in. A cell starting with `=`, `+`, `-`, `@`, a tab, a carriage return or their full-width forms (also after a run of `'`) gets a leading `'`, so spreadsheets never run it as a formula. The file name carries the filters (`offene-fragen-<project key>-<filters>.csv`).
+ * Every open question matching the filters, in list order, as an attachment. `markdown` (default): German headings, grouped by the contact hint (step owners, else folder, else lanes). `csv`: the questions without the informational items (`summary-note`, `descriptive-model`, which ask nothing), UTF-8 with a byte order mark, `;`-separated (what German spreadsheet programs open directly), CRLF, every field quoted, the columns `id`, `Art`, `Frage`, `Ansprechpartner-Hinweis`, `Antwort`, `Antwortart`; the last two are empty for the customer to fill in, or hold an answered item's latest answer and its kind (M6 S5a; read back, it is `unchanged`); the Markdown lists every answer. A cell starting with `=`, `+`, `-`, `@`, a tab, a carriage return or their full-width forms (also after a run of `'`) gets a leading `'`, so spreadsheets never run it as a formula. The file name carries the filters (`offene-fragen-<project key>-<filters>.csv`).
  */
 export const exportOpenQuestions = <ThrowOnError extends boolean = false>(
   options: Options<ExportOpenQuestionsData, ThrowOnError>,
@@ -536,6 +542,50 @@ export const exportOpenQuestions = <ThrowOnError extends boolean = false>(
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/v1/projects/{project}/open-questions/export',
     ...options,
+  });
+
+/**
+ * Answer an open question (humans only)
+ *
+ * Records the answer (M6 §4.5 S5a) in the append-only `open_question_answer`; the item is `answered` while an answer for its id exists. Where the text lands: on a relation (held, or proposed with an agent's question) a human note through the note use case, so the next claim of either model shows it (a hold stays until a human decides it); on a placement a human note through the placement note use case (on an agent's question the process becomes due, nothing is queued; a held placement keeps homing its process, so it is not due until a human decides the hold); anything else stays with the answer (shown and exported, it reaches no agent before M6 S7). A note holds the text only, not the kind. An answer identical to the id's latest answer (kind and text) answers 200 `unchanged` and writes nothing. The text is compared and stored with LF line breaks and in Unicode NFC, trimmed; it has at most 2000 characters; a deterministic check for e-mail addresses, phone numbers and IBANs returns `warnings` and never blocks. Owner or editor on an interactive client: agent tokens get 403 `human-decision-required` with `reviewUrl`. An id that names no current open question (its source changed, which changes the id) is 404 `not-found`.
+ */
+export const answerOpenQuestion = <ThrowOnError extends boolean = false>(
+  options: Options<AnswerOpenQuestionData, ThrowOnError>,
+): RequestResult<AnswerOpenQuestionResponses, AnswerOpenQuestionErrors, ThrowOnError> =>
+  (options.client ?? client).post<
+    AnswerOpenQuestionResponses,
+    AnswerOpenQuestionErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/projects/{project}/open-questions/{question}/answers',
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  });
+
+/**
+ * Record the answers of a filled-in sheet (`?dryRun=true` first; humans only)
+ *
+ * The rows of the CSV the export wrote (`id`, `Antwort`, `Antwortart`; `readAnswerSheet` in `@analyzr/contracts/open-question-csv` reads them), each answered as by `answerOpenQuestion`, all in one transaction. Rows with an empty answer are ignored (counted only); an id that names no current open question (also one whose source changed since the export) is listed `unknown` and never stored; a row with a text over 2000 characters, control characters, an unknown `Antwortart` or an id an earlier row answers is listed `invalid` and never stored; an answer identical to the item's latest one (kind and text; with an empty `Antwortart` the same text, whatever its kind) is `unchanged`. `row` is the position in `rows`. `dryRun=true` lists the same and stores nothing. At most 5000 rows and 4194304 bytes per call (413 `payload-too-large` above).
+ */
+export const answerOpenQuestions = <ThrowOnError extends boolean = false>(
+  options: Options<AnswerOpenQuestionsData, ThrowOnError>,
+): RequestResult<AnswerOpenQuestionsResponses, AnswerOpenQuestionsErrors, ThrowOnError> =>
+  (options.client ?? client).post<
+    AnswerOpenQuestionsResponses,
+    AnswerOpenQuestionsErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/projects/{project}/open-questions/answers',
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
   });
 
 /**

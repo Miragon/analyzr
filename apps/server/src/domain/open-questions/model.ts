@@ -15,6 +15,7 @@ import {
   type Fact,
   type Finding,
   type OpenQuestion,
+  type OpenQuestionAnswer,
   type OpenQuestionRaisedBy,
   type OpenQuestionSource,
   type OpenQuestionSubject,
@@ -32,11 +33,13 @@ import type {
   RelationRecord,
   StoredAssertion,
   StoredNoLink,
+  StoredOpenQuestionAnswer,
   StoredPlacementAssertion,
 } from '../ports.ts';
 import { processHomes } from '../value-chain/findings.ts';
 import { OUTSIDE } from '../value-chain/steps.ts';
 import type { ChainStructure } from '../value-chain/structure.ts';
+import { toOpenQuestionAnswer } from './answers.ts';
 
 // ------------------------------------------------------------------ input
 
@@ -118,6 +121,8 @@ export interface OpenQuestionInput {
   /** The live value chain with a head, if any. */
   chain: ChainInput | null;
   submissions: readonly SubmissionNote[];
+  /** Every recorded answer of the project, oldest first (M6 S5a); an item is `answered` while one names its id. */
+  answers: readonly StoredOpenQuestionAnswer[];
 }
 
 // ------------------------------------------------------------------ index
@@ -197,9 +202,16 @@ export class OpenQuestionIndex {
   /** Live step generations each process is accepted on. */
   private readonly homes: ReadonlyMap<string, readonly string[]>;
   private readonly orgUnitNames = new Map<string, string>();
+  /** The recorded answers by item id, oldest first. */
+  private readonly answersById = new Map<string, OpenQuestionAnswer[]>();
 
   constructor(input: OpenQuestionInput) {
     this.input = input;
+    for (const a of input.answers) {
+      const list = this.answersById.get(a.questionId) ?? [];
+      list.push(toOpenQuestionAnswer(a));
+      this.answersById.set(a.questionId, list);
+    }
     for (const model of input.projectFacts.models) {
       const modelRefs = new Set<string>();
       this.refsOfModel.set(model.modelKey, modelRefs);
@@ -289,6 +301,11 @@ export class OpenQuestionIndex {
     for (const unit of chain?.structure.orgUnits ?? []) {
       this.orgUnitNames.set(unit.elementId, unit.name);
     }
+  }
+
+  /** The answers recorded for an item id, oldest first. */
+  answersOf(id: string): readonly OpenQuestionAnswer[] {
+    return this.answersById.get(id) ?? [];
   }
 
   /** The model key of a ref. */
@@ -467,10 +484,12 @@ export function openQuestionId(
   return `q-${digest.slice(0, 16)}`;
 }
 
-/** A draft as an open question (state `open`: answers come with S5a). */
+/** A draft as an open question: `answered` while an answer names its id (M6 S5a). */
 export function finish(index: OpenQuestionIndex, draft: Draft): OpenQuestion {
+  const id = openQuestionId(draft.kind, draft.subject, draft.version);
+  const answers = [...index.answersOf(id)];
   return {
-    id: openQuestionId(draft.kind, draft.subject, draft.version),
+    id,
     kind: draft.kind,
     source: draft.source,
     subject: draft.subject,
@@ -483,15 +502,28 @@ export function finish(index: OpenQuestionIndex, draft: Draft): OpenQuestion {
     unlocks: index.unlocks(draft.anchors),
     refs: sorted(draft.refs) as Ref[],
     raisedBy: draft.raisedBy,
-    state: 'open',
+    state: answers.length > 0 ? 'answered' : 'open',
+    answers,
   };
 }
 
 const KIND_RANK = new Map(OpenQuestionKind.options.map((k, i) => [k, i]));
 
 /**
- * The sort position of an item: questions (0) before informational items
- * (1), `unlocks` (descending), subject id, kind, id.
+ * The group an item ranks in: questions (0), then the value chain's
+ * findings (1: `process-without-step`, `step-without-process`,
+ * `unresolved-link`, which shrink as placements are accepted; owner answer
+ * 2026-10-16), then informational items (2: `summary-note`,
+ * `descriptive-model`).
+ */
+export function rankGroup(q: Pick<OpenQuestion, 'kind' | 'source'>): number {
+  if (isInformationalKind(q.kind)) return 2;
+  return q.source === 'value-chain-finding' ? 1 : 0;
+}
+
+/**
+ * The sort position of an item: its group ({@link rankGroup}), `unlocks`
+ * (descending), subject id, kind, id.
  */
 export type OpenQuestionPosition = readonly [number, number, string, number, string];
 
@@ -499,16 +531,14 @@ export type OpenQuestionPosition = readonly [number, number, string, number, str
 export const POSITION_SHAPE = ['int', 'int', 'string', 'int', 'string'] as const;
 
 export function positionOf(q: OpenQuestion): OpenQuestionPosition {
-  return [
-    isInformationalKind(q.kind) ? 1 : 0,
-    q.unlocks,
-    q.subject.id,
-    KIND_RANK.get(q.kind) ?? 0,
-    q.id,
-  ];
+  return [rankGroup(q), q.unlocks, q.subject.id, KIND_RANK.get(q.kind) ?? 0, q.id];
 }
 
-/** Orders positions: questions first, `unlocks` descending, then subject id, kind and id ascending. */
+/**
+ * Orders positions: questions, then the value chain's findings, then
+ * informational items; each group by `unlocks` descending, then subject id,
+ * kind and id ascending.
+ */
 export function comparePositions(a: OpenQuestionPosition, b: OpenQuestionPosition): number {
   return (
     a[0] - b[0] || b[1] - a[1] || byCodePoint(a[2], b[2]) || a[3] - b[3] || byCodePoint(a[4], b[4])

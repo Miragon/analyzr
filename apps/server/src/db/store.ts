@@ -17,6 +17,7 @@ import {
   type ModelId,
   type ModelStage,
   type NoLinkId,
+  type OpenQuestionAnswerId,
   type PlacementAssertionId,
   type PlacementId,
   type PrincipalId,
@@ -69,6 +70,7 @@ import type {
   StoredAssertion,
   StoredAutoAcceptRuleRevision,
   StoredNoLink,
+  StoredOpenQuestionAnswer,
   StoredPlacementAssertion,
   StoredPlacementInput,
   StoredSubmission,
@@ -2172,6 +2174,60 @@ function repos(db: Conn): Tx {
           )
           .orderBy(asc(s.autoAcceptRuleRevision.ruleId), asc(s.autoAcceptRuleRevision.revision));
         return rows.map((r) => toRuleRevision(r.rev, r.handle));
+      },
+    },
+
+    openQuestionAnswers: {
+      async insert(row) {
+        await db.insert(s.openQuestionAnswer).values(row);
+      },
+      async list(projectId) {
+        const rows = await db
+          .select({
+            answer: s.openQuestionAnswer,
+            handle: s.principal.handle,
+            relationNote: s.relationAssertion.rationale,
+            placementNote: s.placementAssertion.rationale,
+          })
+          .from(s.openQuestionAnswer)
+          .innerJoin(s.principal, eq(s.principal.id, s.openQuestionAnswer.principalId))
+          .leftJoin(
+            s.relationAssertion,
+            and(
+              eq(s.relationAssertion.projectId, s.openQuestionAnswer.projectId),
+              eq(s.relationAssertion.relationId, s.openQuestionAnswer.relationId),
+              eq(s.relationAssertion.id, s.openQuestionAnswer.noteAssertionId),
+            ),
+          )
+          .leftJoin(
+            s.placementAssertion,
+            and(
+              eq(s.placementAssertion.projectId, s.openQuestionAnswer.projectId),
+              eq(s.placementAssertion.placementId, s.openQuestionAnswer.placementId),
+              eq(s.placementAssertion.id, s.openQuestionAnswer.noteAssertionId),
+            ),
+          )
+          .where(eq(s.openQuestionAnswer.projectId, projectId))
+          .orderBy(asc(s.openQuestionAnswer.seq), asc(s.openQuestionAnswer.id));
+        return rows.map(({ answer: r, handle, relationNote, placementNote }) => {
+          const stored: StoredOpenQuestionAnswer = {
+            id: r.id as OpenQuestionAnswerId,
+            projectId: r.projectId as ProjectId,
+            questionId: r.questionId,
+            subjectType: r.subjectType,
+            subjectId: r.subjectId,
+            kind: r.kind,
+            text: r.text,
+            noteAssertionId: r.noteAssertionId as StoredOpenQuestionAnswer['noteAssertionId'],
+            principalId: r.principalId as PrincipalId,
+            sourceKind: 'human',
+            seq: r.seq,
+            answerText: r.text ?? relationNote ?? placementNote ?? '',
+            handle,
+            createdAt: r.createdAt,
+          };
+          return stored;
+        });
       },
     },
 

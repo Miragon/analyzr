@@ -1,8 +1,11 @@
 /**
- * Migrations 0009/0010 (owner decision 19) on a database that already holds
- * data from before them, as the owner's stack and the run projects do: the
- * new unique constraints, foreign keys and checks apply to existing rows,
- * which keep their content, and a marked acceptance can follow.
+ * Migrations 0009–0012 on a database that already holds data from before
+ * them, as the owner's stack and the run projects do: 0009/0010 (owner
+ * decision 19) put new unique constraints, foreign keys and checks on
+ * existing rows, which keep their content, and a marked acceptance can
+ * follow; 0011/0012 (M6 S5a) add the empty append-only table
+ * `open_question_answer`, whose foreign keys use 0009's unique constraints,
+ * and an answer on an existing relation or placement can follow.
  */
 import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -50,9 +53,8 @@ beforeAll(async () => {
   const journal = JSON.parse(await readFile(journalPath, 'utf8')) as {
     entries: { tag: string }[];
   };
-  journal.entries = journal.entries.filter(
-    (e) => !e.tag.startsWith('0009') && !e.tag.startsWith('0010'),
-  );
+  // Every later migration needs 0009/0010 (0011's foreign keys use 0009's unique constraints).
+  journal.entries = journal.entries.filter((e) => e.tag < '0009');
   await writeFile(journalPath, JSON.stringify(journal));
   await migrate(database.db, { migrationsFolder: before });
 
@@ -87,7 +89,7 @@ afterAll(async () => {
   await rm(before, { recursive: true, force: true });
 });
 
-describe('migrations 0009 and 0010 on existing data', () => {
+describe('migrations 0009 to 0012 on existing data', () => {
   it('apply, and leave the rows as they were', async () => {
     const rows = async () =>
       (
@@ -106,6 +108,10 @@ describe('migrations 0009 and 0010 on existing data', () => {
       ),
     );
     expect(Number(marked.rows[0]?.['n'])).toBe(0);
+    const answers = await database.db.execute(
+      sql.raw(`SELECT count(*) AS n FROM open_question_answer`),
+    );
+    expect(Number(answers.rows[0]?.['n'])).toBe(0);
   });
 
   it('takes a rule and a marked acceptance on an existing relation and placement', async () => {
@@ -126,6 +132,29 @@ describe('migrations 0009 and 0010 on existing data', () => {
     );
     await expect(
       database.db.execute(sql.raw(`UPDATE auto_accept_rule_revision SET enabled = false`)),
+    ).rejects.toThrow();
+  });
+
+  it('takes answers on an existing relation and placement, append-only', async () => {
+    await database.db.execute(
+      sql.raw(`
+        INSERT INTO open_question_answer (id, project_id, question_id, subject_type, subject_id, kind,
+                                          text, note_assertion_id, principal_id, source_kind, seq)
+          VALUES ('oqa_m1', '${P}', 'q-00000000000000a1', 'relation', 'rel_m1', 'answer', NULL, 'asr_m2', '${OWNER}', 'human', 9),
+                 ('oqa_m2', '${P}', 'q-00000000000000a2', 'placement', 'plc_m1', 'answer', NULL, 'pas_m1', '${OWNER}', 'human', 10),
+                 ('oqa_m3', '${P}', 'q-00000000000000a3', 'ref', 'a/x#E', 'outside-landscape', 'Extern.', NULL, '${OWNER}', 'human', 11);
+      `),
+    );
+    const linked = await database.db.execute(
+      sql.raw(`SELECT id, relation_id, placement_id FROM open_question_answer ORDER BY id`),
+    );
+    expect(linked.rows).toEqual([
+      { id: 'oqa_m1', relation_id: 'rel_m1', placement_id: null },
+      { id: 'oqa_m2', relation_id: null, placement_id: 'plc_m1' },
+      { id: 'oqa_m3', relation_id: null, placement_id: null },
+    ]);
+    await expect(
+      database.db.execute(sql.raw(`UPDATE open_question_answer SET kind = kind`)),
     ).rejects.toThrow();
   });
 });

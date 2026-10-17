@@ -2,11 +2,13 @@ import type { OpenQuestion } from '@analyzr/client';
 import { Link } from '@tanstack/react-router';
 import { cn } from 'cn';
 import {
+  CircleCheckIcon,
   CircleHelpIcon,
   FileSearchIcon,
   InfoIcon,
   LocateIcon,
   MapIcon,
+  MessageSquareReplyIcon,
   SearchCheckIcon,
   TagIcon,
   UsersIcon,
@@ -19,8 +21,15 @@ import { Endpoint } from '@/components/relation-table';
 import { PlainText } from '@/components/review/plain-text';
 import { Principal } from '@/components/review/provenance';
 import { Button } from '@/components/ui/button';
+import { formatDateTime } from '@/lib/labels';
+import {
+  ANSWER_KIND_LABELS,
+  ANSWER_TARGET_LABELS,
+  answerCountText,
+} from '@/lib/open-question-answers';
 import {
   OPEN_QUESTION_KINDS,
+  OPEN_QUESTION_STATES,
   OPEN_QUESTION_SOURCES,
   VERBATIM_INTRO,
   askWhoText,
@@ -123,10 +132,58 @@ function RaisedBy({ q }: { q: OpenQuestion }) {
 }
 
 /**
+ * The answers of an item (M6 S5a), oldest first: kind, who answered and
+ * when (the event seq as its title), where the text is (a note on the
+ * relation or placement, or the question itself), the text as plain text.
+ */
+function Answers({ q, compact }: { q: OpenQuestion; compact: boolean }) {
+  return (
+    <div
+      className="flex flex-col gap-1.5 rounded-lg border-l-2 border-success bg-success-soft/40 py-1.5 pr-2 pl-3"
+      data-testid="question-answers"
+    >
+      <span className="text-xs text-muted-foreground">{answerCountText(q.answers.length)}</span>
+      <ul className="flex flex-col gap-2" aria-label="Antworten">
+        {q.answers.map((a) => (
+          <li
+            key={a.id}
+            className="flex min-w-0 flex-col gap-0.5"
+            data-testid="question-answer"
+            data-answer-kind={a.kind}
+            data-target={a.target}
+          >
+            <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
+              <span className="font-medium text-foreground" data-testid="question-answer-kind">
+                {ANSWER_KIND_LABELS[a.kind]}
+              </span>
+              <Principal sourceKind={a.sourceKind} handle={a.by} />
+              <time
+                dateTime={a.at}
+                className="tabular-nums"
+                title={`Projektstand s${a.seq}`}
+                data-testid="question-answer-at"
+              >
+                {formatDateTime(a.at)}
+              </time>
+              <span>{ANSWER_TARGET_LABELS[a.target]}</span>
+            </span>
+            <div data-testid="question-answer-text">
+              <PlainText text={a.text} className={cn(compact ? 'text-xs' : 'text-sm')} />
+            </div>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/**
  * One open question (M6 §4.4): kind, subject and the question; human and
  * agent texts verbatim as plain text with who said them; the contact hint;
  * the links to the model view, the review screen or the value chain page;
  * the refs. `compact` (the model view's panel) leaves out the refs list.
+ * An answered item (M6 S5a) says so and shows its answers; `onAnswer`
+ * (reviewers only) adds „Beantworten“.
  */
 export function QuestionItem({
   q,
@@ -134,6 +191,7 @@ export function QuestionItem({
   resolve,
   compact = false,
   currentModel,
+  onAnswer,
 }: {
   q: OpenQuestion;
   project: string;
@@ -141,6 +199,8 @@ export function QuestionItem({
   compact?: boolean;
   /** The model in view: a link to it without an element leads nowhere new and is left out. */
   currentModel?: string;
+  /** Opens the answer dialog from its button; without it (viewers, the read-only demo) no „Beantworten“. */
+  onAnswer?: (q: OpenQuestion, trigger: HTMLElement) => void;
 }) {
   const subjectId = useId();
   const kind = OPEN_QUESTION_KINDS[q.kind];
@@ -164,6 +224,7 @@ export function QuestionItem({
       data-kind={q.kind}
       data-source={q.source}
       data-unlocks={q.unlocks}
+      data-state={q.state}
       className={cn(
         'flex min-w-0 flex-col gap-2',
         compact ? 'rounded-lg border p-2.5' : 'rounded-xl border bg-card p-4',
@@ -188,6 +249,15 @@ export function QuestionItem({
             {source.label}
           </span>
         )}
+        {q.state === 'answered' ? (
+          <ToneBadge
+            tone="success"
+            icon={CircleCheckIcon}
+            title="Mindestens eine Antwort ist gespeichert"
+          >
+            <span data-testid="question-state">{OPEN_QUESTION_STATES.answered}</span>
+          </ToneBadge>
+        ) : null}
         <span
           className="ml-auto text-xs text-muted-foreground tabular-nums"
           title="Offene Entscheidungen, die diese Frage betrifft: danach ist die Liste geordnet"
@@ -239,6 +309,8 @@ export function QuestionItem({
           <PlainText text={q.text} className={cn(compact ? 'text-xs' : 'text-sm')} />
         </div>
       )}
+
+      {q.answers.length > 0 ? <Answers q={q} compact={compact} /> : null}
 
       {shown.length > 0 ? (
         <div className="flex flex-col gap-1">
@@ -298,7 +370,7 @@ export function QuestionItem({
         )}
       </div>
 
-      {links.length > 0 ? (
+      {links.length > 0 || onAnswer ? (
         <div className="flex flex-wrap gap-2">
           {links.map((link, i) => (
             <QuestionLinkButton
@@ -309,6 +381,19 @@ export function QuestionItem({
               describedBy={subjectId}
             />
           ))}
+          {onAnswer ? (
+            <Button
+              variant="outline"
+              size="sm"
+              className="ml-auto"
+              onClick={(event) => onAnswer(q, event.currentTarget)}
+              aria-describedby={subjectId}
+              data-testid="question-answer-button"
+            >
+              <MessageSquareReplyIcon data-icon="inline-start" />
+              Beantworten
+            </Button>
+          ) : null}
         </div>
       ) : null}
     </li>

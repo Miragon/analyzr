@@ -78,6 +78,20 @@
       "when": 1791594812544,
       "tag": "0010_auto_accept_triggers",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1792161013590,
+      "tag": "0011_open_question_answer",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1792161020480,
+      "tag": "0012_open_question_answer_triggers",
+      "breakpoints": true
     }
   ]
 }

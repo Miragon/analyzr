@@ -403,9 +403,10 @@ export const openQuestionCountQuery = (project: string) =>
   });
 
 /**
- * Every open question, in the server's order (`unlocks` descending); the tab
- * filters them itself with the server's rules, so its filters are instant
- * and its options can count.
+ * Every open question with its answers (M6 S5a), in the server's order
+ * (questions, then the value chain findings, then informational items, each
+ * by `unlocks` descending); the tab filters them itself with the server's
+ * rules, so its filters are instant and its options can count.
  */
 export const openQuestionsQuery = (project: string) =>
   queryOptions({

@@ -1,12 +1,17 @@
 /**
- * The German labels of the open questions' kinds and sources (M6 §4.4) and
- * the kinds that ask nothing themselves, shared by the server's export (the
+ * The German labels of the open questions' kinds and sources (M6 §4.4), the
+ * kinds that ask nothing themselves and the answer kinds (M6 §4.5), shared by the server's export (the
  * CSV's column `Art`, the Markdown headings) and the web's tab „Offene
  * Fragen“, so the sheet and the tab say the same. Zod-free on purpose: the
  * web imports it at runtime as `@analyzr/contracts/open-question-labels` from
  * its lazy open-questions chunks (the types below are erased).
  */
-import type { OpenQuestionKind, OpenQuestionSource } from './api/open-questions.ts';
+import type {
+  OpenQuestionAnswerKind,
+  OpenQuestionAnswerTarget,
+  OpenQuestionKind,
+  OpenQuestionSource,
+} from './api/open-questions.ts';
 
 /** German label of each kind. */
 export const OPEN_QUESTION_KIND_LABELS: Readonly<Record<OpenQuestionKind, string>> = {
@@ -58,4 +63,49 @@ export const INFORMATIONAL_OPEN_QUESTION_KINDS: readonly OpenQuestionKind[] = [
 /** Whether a kind is informational ({@link INFORMATIONAL_OPEN_QUESTION_KINDS}). */
 export function isInformationalKind(kind: OpenQuestionKind): boolean {
   return INFORMATIONAL_OPEN_QUESTION_KINDS.includes(kind);
+}
+
+/**
+ * German label of each answer kind: the values of the CSV column
+ * `Antwortart` (`OPEN_QUESTION_ANSWER_KINDS`) and the dialog's choices.
+ */
+export const OPEN_QUESTION_ANSWER_KIND_LABELS: Readonly<Record<OpenQuestionAnswerKind, string>> = {
+  answer: 'Antwort',
+  'outside-landscape': 'Liegt außerhalb der Landschaft',
+  'will-be-modelled': 'Wird im Modell ergänzt',
+};
+
+/**
+ * German description of where an answer's text lands (M6 §4.5 "Where the
+ * text lands"), in the web's terms (Relation, Platzierung): „gespeichert als
+ * Notiz an der Relation“.
+ */
+export const OPEN_QUESTION_ANSWER_TARGET_LABELS: Readonly<
+  Record<OpenQuestionAnswerTarget, string>
+> = {
+  'relation-note': 'als Notiz an der Relation',
+  'placement-note': 'als Notiz an der Platzierung',
+  answer: 'bei der Frage',
+};
+
+/**
+ * Unicode composed (a decomposed „ä“ or „ß“ from another program is the same
+ * letter), spaces collapsed, case folded: how a sheet cell is compared with
+ * the kinds.
+ */
+const fold = (value: string): string =>
+  value.normalize('NFC').trim().replace(/\s+/g, ' ').toLocaleLowerCase('de');
+
+/**
+ * The answer kind a sheet's `Antwortart` cell names: its German label or its
+ * value, case and spaces ignored; an empty cell means `answer`; `null` for
+ * anything else.
+ */
+export function answerKindFromCell(cell: string): OpenQuestionAnswerKind | null {
+  const value = fold(cell);
+  if (value === '') return 'answer';
+  for (const [kind, label] of Object.entries(OPEN_QUESTION_ANSWER_KIND_LABELS)) {
+    if (value === fold(label) || value === kind) return kind as OpenQuestionAnswerKind;
+  }
+  return null;
 }

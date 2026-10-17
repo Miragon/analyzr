@@ -12,7 +12,8 @@
  *   `no_link_withdrawal`, `value_chain_revision` and `placement_assertion`
  *   are append-only (triggers in migrations 0001_append_only.sql,
  *   0005_judge_once_triggers.sql and 0007_value_chain_triggers.sql), and so
- *   are `auto_accept_rule` and `auto_accept_rule_revision` (0010);
+ *   are `auto_accept_rule` and `auto_accept_rule_revision` (0010) and
+ *   `open_question_answer` (0012);
  *   `value_chain_step` only ever takes its tombstone (0007); `placement_input`
  *   is mutable memory (M4b).
  *
@@ -28,6 +29,8 @@ import {
   FactKind,
   FactScope,
   FindingKind,
+  OpenQuestionAnswerKind,
+  OpenQuestionSubjectType,
   RelationStatus,
   RelationType,
   Role,
@@ -127,6 +130,12 @@ export const PLACEMENT_TIERS = ['key', 'lexical', 'semantic', 'manual'] as const
 export const AUTO_ACCEPT_KINDS = ['relation', 'placement'] as const;
 /** Tiers an auto-accept rule names: relations `key`, `lexical`, `semantic`; placements `lexical`, `semantic`. */
 export const AUTO_ACCEPT_TIERS = ['key', 'lexical', 'semantic'] as const;
+/** What an open question is about (M6 §4.2). */
+export const OPEN_QUESTION_SUBJECT_TYPES = values(OpenQuestionSubjectType.options);
+/** Kinds of an answer to an open question (M6 §4.5). */
+export const OPEN_QUESTION_ANSWER_KINDS = values(OpenQuestionAnswerKind.options);
+/** Subjects whose answers are recorded as a human note on them (M6 §4.5 "Where the text lands"). */
+export const NOTE_SUBJECT_TYPES = ['relation', 'placement'] as const;
 
 export const project = pgTable('project', {
   id: text().primaryKey(),
@@ -1197,6 +1206,94 @@ export const autoAcceptRuleRevision = pgTable(
       'auto_accept_rule_revision_name_check',
       sql`char_length(${t.name}) between 1 and 100 and (${t.llmModel} is null or char_length(${t.llmModel}) between 1 and 100)`,
     ),
+  ],
+);
+
+/**
+ * Answers to open questions (M6 §4.5, S5a): one row per answer, humans only,
+ * append-only (trigger in 0012). The open-questions read model is computed
+ * on read; a row names the item's id when it was answered (`q-` + 16 hex,
+ * which changes with the item's source), its subject and the answer's kind.
+ * The text lands in exactly one place: an answer on a relation or placement
+ * is a human note on it (`note_assertion_id`, through the note use cases),
+ * every other answer keeps its `text`. The generated `relation_id` and
+ * `placement_id` let one foreign key per note table pin the note to the
+ * answered relation or placement.
+ */
+export const openQuestionAnswer = pgTable(
+  'open_question_answer',
+  {
+    id: text().primaryKey(),
+    projectId: text()
+      .notNull()
+      .references(() => project.id),
+    /** The answered item's id (`q-` + 16 hex). */
+    questionId: text().notNull(),
+    subjectType: text({ enum: OPEN_QUESTION_SUBJECT_TYPES }).notNull(),
+    /** A ref, process ref, model key, relation id, placement id, step element id or chain key. */
+    subjectId: text().notNull(),
+    kind: text({ enum: OPEN_QUESTION_ANSWER_KINDS }).notNull(),
+    /** The answer, for subjects other than a relation or a placement. */
+    text: text(),
+    /** The human note the answer was recorded as, for a relation or placement subject. */
+    noteAssertionId: text(),
+    /** The answered relation of a note answer; null otherwise. */
+    relationId: text().generatedAlwaysAs(
+      sql`case when subject_type = 'relation' then subject_id end`,
+    ),
+    /** The answered placement of a note answer; null otherwise. */
+    placementId: text().generatedAlwaysAs(
+      sql`case when subject_type = 'placement' then subject_id end`,
+    ),
+    principalId: text()
+      .notNull()
+      .references(() => principal.id),
+    /** Derived from the credential; humans only (check). */
+    sourceKind: text({ enum: values(SourceKind.options) }).notNull(),
+    /** Seq of the `open_question.answered` event. */
+    seq: seqColumn().notNull(),
+    createdAt: createdAt(),
+  },
+  (t): PgTableExtraConfigValue[] => [
+    // A relation answer's note is an assertion of that relation (MATCH SIMPLE: others skip it).
+    foreignKey({
+      name: 'open_question_answer_relation_note_fk',
+      columns: [t.projectId, t.relationId, t.noteAssertionId],
+      foreignColumns: [
+        relationAssertion.projectId,
+        relationAssertion.relationId,
+        relationAssertion.id,
+      ],
+    }),
+    // A placement answer's note is an assertion of that placement.
+    foreignKey({
+      name: 'open_question_answer_placement_note_fk',
+      columns: [t.projectId, t.placementId, t.noteAssertionId],
+      foreignColumns: [
+        placementAssertion.projectId,
+        placementAssertion.placementId,
+        placementAssertion.id,
+      ],
+    }),
+    index('open_question_answer_question_idx').on(t.projectId, t.questionId, t.seq),
+    // Only humans answer (decision 4: agents propose, humans decide and answer).
+    check('open_question_answer_humans_only', sql`${t.sourceKind} = 'human'`),
+    // The text lands in exactly one place: a note on a relation or placement, else the row.
+    check(
+      'open_question_answer_text_or_note',
+      sql`(${t.text} is null) <> (${t.noteAssertionId} is null) and (${t.noteAssertionId} is not null) = (${oneOf(t.subjectType, NOTE_SUBJECT_TYPES)})`,
+    ),
+    check(
+      'open_question_answer_text_check',
+      sql`${t.text} is null or char_length(${t.text}) between 1 and 2000`,
+    ),
+    check('open_question_answer_question_id_check', sql`${t.questionId} ~ '^q-[0-9a-f]{16}$'`),
+    check('open_question_answer_kind_check', oneOf(t.kind, OPEN_QUESTION_ANSWER_KINDS)),
+    check(
+      'open_question_answer_subject_type_check',
+      oneOf(t.subjectType, OPEN_QUESTION_SUBJECT_TYPES),
+    ),
+    check('open_question_answer_source_kind_check', oneOf(t.sourceKind, SourceKind.options)),
   ],
 );
 

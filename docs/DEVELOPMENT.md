@@ -27,7 +27,8 @@ web upload), S3a (`eval:descriptive` and the `get_landscape` size), S3b (the sec
 `analyzr-integrate` with `tools/integrate`,
 [below](#the-integrate-plugin-and-toolsintegrate-m6-s3b)) and S4 (the open questions over REST,
 in the web and in `analyzr questions`, [below](#open-questions-m6-s4), [M6 S4](#m6-s4-2026-10-16))
-are in. The public read-only demo of
+and S5a (answers to them in the web, over REST and with `analyzr questions answer`,
+[M6 S5a](#m6-s5a-2026-10-17)) are in. The public read-only demo of
 owner decision 20 runs at https://analyzr-demo.fly.dev after the first deploy
 ([Demo deployment (Fly.io)](#demo-deployment-flyio)).
 
@@ -54,10 +55,11 @@ end to end](#verified-end-to-end) lists exactly what was run and what was not.
 | `plugins/analyzr-integrate` and `tools/integrate` (M6 S3b, [below](#the-integrate-plugin-and-toolsintegrate-m6-s3b)): the second Claude Code plugin (0.1.0) with `/analyzr-integrate:integrate-landscape` for BPMN 2.0 exports, the reference notes per tool and the bundled scripts `inspect.mjs` and `normalize-bpmn.mjs`; their sources and tests in `@analyzr/integrate` | working; 145 tests (normalized outputs extracted with `@analyzr/bpmn-facts`, keys, bundle, inventory, the scripts as the plugin runs them, the drift test, the release table), the CLI and web tests on the golden bundle, `claude plugin validate --strict` (Claude Code 2.1.300); followed by hand by the implementing agent and imported into a scratch stack with the checkout CLI and „Hochladen“; not yet invoked as a skill in a Claude Code or Codex session, its guard setup not tried live |
 | `examples/agents` (M3, placements since M4 S5): reference setups for Claude Code (interactive, headless `run-headless.sh [--skill placements]`), Claude Desktop (both bridge entries, German start prompts for relations, placements and drafting a chain) and Codex; documentation, not workspace packages, not in the image; no Agent SDK setup for now (owner decision 16, [HANDOFF.md](HANDOFF.md) §4) | checked without a model ([M3](#m3-2026-10-08)): shellcheck and dry runs of `run-headless.sh` against fakes (incl. failed batches, a reused log directory and a trailing slash in `ANALYZR_URL`), the Codex TOML parses; no setup has run a model yet |
 | M2 backend: analysis pipeline (claim/submit/release, lease, long-poll), claim input (with the M3 additions: message-flow ends, partner and process documentation, findings, and `judged`/`skip`), submissions, ad-hoc proposals, review (accept/reject/hold/correct, bulk, notes, timeline), model engine, relation provenance, answered findings hidden ([below](#analysis-pipeline-and-review-m2)); judge each pair once (`analyzr-relations@0.2.0`: the basis of agent judgements, the assignment at the claim, stored no-links, `Relation.noLinks`, `uncovered`; [below](#judge-each-pair-once)) | working over REST and MCP; real-Postgres integration tests incl. concurrent claims, lease expiry, cancellation, decision memory across re-uploads, the claim-input size and additions on both corpus landscapes, judge each pair once (`judge-once.test.ts`); MCP contract test with the SDK client; reviewed in the web UI ([Review in the web UI](#review-in-the-web-ui-m2)); end to end against the Docker stack with the simulation agent (HTTP and the bridge in the container; before 0.2.0) and in the browser (`e2e/pipeline.spec.ts`: review, re-upload, `suppressed` vs. `reopened`) |
-| `apps/cli`: `analyzr seed` (M3: `--project`, `--token-name`; M4 S4: `--value-chains`), `import` (M6 S1: the shared file rule, keys derived before sending, skipped plain XML, extractor warnings, the waiting tasks and the next agent step), `models list/requeue/delete` (M6 S1), `questions` (M6 S4), `token create/list/revoke`, `status`, `health`, and `analyzr mcp` (stdio bridge for Claude Desktop) | working; unit tests, an e2e test against a real server, and a live check against the running Docker stack |
+| `apps/cli`: `analyzr seed` (M3: `--project`, `--token-name`; M4 S4: `--value-chains`), `import` (M6 S1: the shared file rule, keys derived before sending, skipped plain XML, extractor warnings, the waiting tasks and the next agent step), `models list/requeue/delete` (M6 S1), `questions` (M6 S4; since S5a `questions [list]` and `questions answer`), `token create/list/revoke`, `status`, `health`, and `analyzr mcp` (stdio bridge for Claude Desktop) | working; unit tests, an e2e test against a real server, and a live check against the running Docker stack |
 | `apps/agent-sim`: `analyzr-agent-sim`, the LLM-free simulation agent (M2 item 8): works the pipeline over MCP (HTTP or the `analyzr mcp` bridge) with the deterministic policy `sim-policy-1`, since M4 S5 both task kinds (`--kinds`, the placement policy `decidePlacements`), and records claim inputs and submissions in `eval/recordings` ([below](#simulation-agent-and-evalreplay-m2)) | working; unit tests (both policies, recorder lines of both kinds, CLI, the loop against an in-memory MCP server) and an end-to-end server test on both corpus landscapes with their golden chains (every task done, provenance, nothing decided, the committed recordings reproduced byte for byte, the holdout placement recording by digest) |
-| `apps/web`: projects (create), per project the tabs Modelle (engine, revision, stage), Prüfen (M2: inbox by stage, review queue, bulk accept per tier, held list), Wertschöpfungskette (M4 S3, [below](#value-chain-in-the-web-ui-m4)), Relationen (filters, rule vs. key tier, provenance), Befunde, Offene Fragen (M6 S4: every gap as a question, filters, Markdown and CSV export), Hochladen (files or a folder via the import endpoint) and Agent verbinden (token, Claude Code/Desktop/generic configurations, revoke); model view with bpmn-js that highlights relation endpoints and switches to the other model (and, since M6 S4, lists the model's open questions); review screen per relation (both models in bpmn-js, rationale, evidence, question, provenance, timeline; accept/reject/hold/correct with A/R/H/C, J/K through the queue); bulk accept that leaves generic or widely shared names, open agent questions and ambiguous call targets unchecked; Miragon design system | working; component tests (Testing Library), Playwright smoke, review and pipeline flows against a running server, the screenshots below |
+| `apps/web`: projects (create), per project the tabs Modelle (engine, revision, stage), Prüfen (M2: inbox by stage, review queue, bulk accept per tier, held list), Wertschöpfungskette (M4 S3, [below](#value-chain-in-the-web-ui-m4)), Relationen (filters, rule vs. key tier, provenance), Befunde, Offene Fragen (M6 S4: every gap as a question, filters, Markdown and CSV export; since S5a „Beantworten“ and „Antworten aus CSV übernehmen“ for reviewers), Hochladen (files or a folder via the import endpoint) and Agent verbinden (token, Claude Code/Desktop/generic configurations, revoke); model view with bpmn-js that highlights relation endpoints and switches to the other model (and, since M6 S4, lists the model's open questions, since S5a with „Beantworten“); review screen per relation (both models in bpmn-js, rationale, evidence, question, provenance, timeline; accept/reject/hold/correct with A/R/H/C, J/K through the queue); bulk accept that leaves generic or widely shared names, open agent questions and ambiguous call targets unchecked; Miragon design system | working; component tests (Testing Library), Playwright smoke, review and pipeline flows against a running server, the screenshots below |
 | Open questions (M6 S4, [M6-INTEGRATION-AND-GAPS.md](M6-INTEGRATION-AND-GAPS.md) §4 and §8 "S4 as delivered"): the read model `apps/server/src/domain/open-questions/` (every source of §4.1, the gap signals of §4.3 without `extractor-loss`, ids, `askWho`, `unlocks`, filters, cursor pages, the Markdown and CSV export), `GET …/open-questions` and `…/open-questions/export` (permission `read`), the tab „Offene Fragen“ and the model view's section, `analyzr questions` | working over REST, the CLI and the web UI (no MCP until M6 S7); unit tests (every source on a synthetic landscape, the signals on `nordwind-handel` and eval:descriptive's variants, the export and its CSV round trip, the review fixes), a real-PostgreSQL test (`open-questions.test.ts`: every source after the simulation agent, holds and a probe agent; ids, filters, pages, both exports), CLI unit and e2e tests, web component tests, the bundle guard and Playwright (`e2e/open-questions.spec.ts`) against a scratch server; live-run neutral (MCP snapshots, claim inputs, procedures and recordings unchanged) |
+| Answers to open questions (M6 S5a, [M6-INTEGRATION-AND-GAPS.md](M6-INTEGRATION-AND-GAPS.md) §4.5 and §8 "S5a as delivered"): the append-only table `open_question_answer` (migrations 0011/0012), `open-questions/answers.ts` and the answer use cases (permission `review`, humans only; note answers through the note use cases), `POST …/open-questions/{q}/answers` and `POST …/open-questions/answers?dryRun=`, „Beantworten“ in the tab and the model view, „Antworten aus CSV übernehmen“, `analyzr questions answer`, the zod-free `@analyzr/contracts/open-question-csv` and `…/personal-data` | working over REST, the CLI and the web UI (no MCP until M6 S7); unit tests (where the text lands, the sheet check, the latest-answer rule, normalization, the personal-data check, the sheet reader with spreadsheet row numbers), real-PostgreSQL tests (`open-question-answers.test.ts`: note answers, nothing queued, the CSV round trip, humans only, the table's triggers and checks; both placement cases in `placement-pipeline.test.ts`; the migrations on existing data; `claim-golden.test.ts` pins seeded claims by SHA-256), CLI unit and e2e tests, web component tests, the bundle guard and Playwright (`e2e/open-questions.spec.ts`) against a scratch server ([M6 S5a](#m6-s5a-2026-10-17)); live-run neutral |
 | `eval:candidates` | working; passes on `nordwind-handel` (dev) and `stadtwerke-auental` (holdout); report in `eval/reports/candidates.md` |
 | `eval:replay` | working; scores the relations recordings in `eval/recordings` against `expected.yaml` (precision, recall and F1 per type and tag, must_not_link hits, questions, no-links, pairs judged twice, uncovered pairs) and, since M4 S5, the placement recordings against `expected-placements.yaml` (on the golden chain only; recall@1 next to `baseline-prefix/1`, the holdout as aggregates); report in `eval/reports/replay.md` with both live gates (it reports them, `eval:live` enforces them) |
 | `eval:placements` (M4 S4): the golden value chains against the process facts (validator, coverage, every key-tier rule proposal a must or may), the rule tier and `baseline-prefix/1` with and without votes scored; the holdout as numbers only ([below](#value-chain-and-placements-m4)) | working; passes on `nordwind-handel` (dev) and `stadtwerke-auental` (holdout); report in `eval/reports/placements.md` |
@@ -1897,7 +1899,8 @@ token), `--owner-key-file` (`ANALYZR_OWNER_KEY_FILE`).
 | `analyzr models list -p <key> [--stage <stage>] [--json]` (M6 S1) | agent token or owner key | every page of `GET …/models`: key, stage, head revision, engine, open items; `--stage` is checked before any request |
 | `analyzr models requeue -p <key> (<key>… \| --all) [--json]` (M6 S1) | owner key, or an agent token with `analyzr:write` | `POST …/analyses/requeue` with `{modelKeys}` (≤ 1,000, checked before any request) or `{all: true}`: `queued`, `open` (a task is already queued or claimed) or `not-found` per model; exit 1 if a key has no live model |
 | `analyzr models delete <key>… -p <key> [--yes] [--json]` (M6 S1) | owner key only (an agent token is refused before any request; the server's policy lets any `write` credential delete) | resolves the keys through `GET …/models` (deleting takes the `mdl_` id); an unknown key exits 1 before anything is deleted; without `--yes` it lists the models (key, stage, open items), says that partner relations turn `missing` and that uploading a key again revives its model, and exits 1 („nothing deleted“); with `--yes` `DELETE …/models/{model}` one by one (`--json`: `{deleted, models}`; when a DELETE fails, `{deleted, models, failed: {key, error}}` with the models deleted before it, then exit 1). The deletion's impact comes with M6 S2 |
-| `analyzr questions -p <key> [--model <key or folder>] [--kind <kind>] [--source <source>] [--ask-who <name>] [--state open\|answered] [--format text\|md\|csv\|json] [-o <file>]` (M6 S4) | agent token (`analyzr:read`) or owner key | the open questions ([M6-INTEGRATION-AND-GAPS.md](M6-INTEGRATION-AND-GAPS.md) §4.2): `text` (default) and `json` page through `GET …/open-questions` (questions by `unlocks` descending, informational items last): a header, one line per question (id, unlocks, kind, the first model key with `+N` for more or `-` for steps and the chain, `subject: question` as the server returns them, line breaks folded into one space) and `<project> (<filters>): N open questions (kind n, …)` (`no open questions in …` when none match), or every item as one JSON array; `md` (also `markdown`) and `csv` write `GET …/open-questions/export`'s bytes verbatim (the CSV with its byte order mark and the empty answer columns, without the informational items); every flag is checked before any request (`--ask-who`: a lane, one step owner or the folder, exactly, ≤ 200 characters); `-o` writes to a file |
+| `analyzr questions [list] -p <key> [--model <key or folder>] [--kind <kind>] [--source <source>] [--ask-who <name>] [--state open\|answered] [--format text\|md\|csv\|json] [-o <file>]` (M6 S4) | agent token (`analyzr:read`) or owner key | the open questions ([M6-INTEGRATION-AND-GAPS.md](M6-INTEGRATION-AND-GAPS.md) §4.2); `list` is the default subcommand of `questions` (M6 S5a), so `analyzr questions -p …` lists: `text` (default) and `json` page through `GET …/open-questions` (questions first, then the value chain's findings, then the informational items, each by `unlocks` descending): a header, one line per question (id, unlocks, kind, the first model key with `+N` for more or `-` for steps and the chain, `subject: question` as the server returns them, line breaks folded into one space, `  [answered]` after an answered item) and `<project> (<filters>): N open questions (kind n, …)` with `, N answered` when answers are recorded (`no open questions in …` when none match), or every item as one JSON array; `md` (also `markdown`) and `csv` write `GET …/open-questions/export`'s bytes verbatim (the CSV with its byte order mark and the answer columns, empty or holding an answered item's latest answer, without the informational items); every flag is checked before any request (`--ask-who`: a lane, one step owner or the folder, exactly, ≤ 200 characters); `-o` writes to a file |
+| `analyzr questions answer <id> -p <key> --text <text> [--kind antwort\|ausserhalb\|ergaenzt] [--json]`, `analyzr questions answer -p <key> --from <csv> [--dry-run] [--json]` (M6 S5a) | owner key only (an agent token is refused before any request: only humans answer) | one answer (`POST …/open-questions/{q}/answers`; the text normalized as the server stores it, ≤ 2,000 characters; `--kind` also takes `außerhalb`, `ergänzt`, the API values and the sheet's labels, ignoring case; no dry run, the single route has none): what was recorded, where the text landed and what it does by the item's subject and kind, the personal-data warning; or a filled-in sheet (UTF-8 only; only the rows with an `Antwort` are sent, in one call to `POST …/open-questions/answers`, `--dry-run` previews): one line per sent row under its spreadsheet row (blank rows and the header counted), the counts, exit 1 when a filled row is (or would be) left out |
 | `analyzr token create --project <key> [--name] [--scopes …] [--expires 90d] [--json]` | owner key | scopes `analyzr:read`, `analyzr:propose`, `analyzr:write` (also `read,propose`); expiry `Nd` or `Nw`, ≤ 365 days |
 | `analyzr token list` / `analyzr token revoke <id>` (`--project <key>`) | owner key | |
 | `analyzr status [--project <key>] [--json]` | agent token or owner key (optional) | health, caller, per project models by stage, relations by status, accepted relations with changed/missing endpoints, findings |
@@ -1992,9 +1995,13 @@ on read and never stored; it ranks and asks, it decides nothing and drives no st
 The pure read model lives in `apps/server/src/domain/open-questions/` (`model.ts`: input, index,
 ids, `askWho`, `unlocks`, order; `sources.ts`: the sources of §4.1; `signals.ts`: the gap signals
 of §4.3 with `SIGNALS_OFF`; `read-model.ts`: list, filters, cursor pages; `export.ts`: Markdown,
-CSV, `parseOpenQuestionsCsv` for S5a, the file name); `use-cases/open-questions.ts` loads one read
-snapshot under `policy.require(…, 'read', …)` and memoizes the whole-project candidates per
-project on the live models' `modelKey=facts_hash` (at most 8 projects per server).
+CSV, the file name; since S5a `answers.ts`: where an answer's text lands, the API view of an
+answer, the check of a sheet's rows); the CSV parser `parseOpenQuestionsCsv` and the sheet reader
+`readAnswerSheet` live in the zod-free `@analyzr/contracts/open-question-csv` since S5a (the
+server's export re-exports them). `use-cases/open-questions.ts` loads one read snapshot under
+`policy.require(…, 'read', …)` and memoizes the whole-project candidates per project on the live
+models' `modelKey=facts_hash` (at most 8 projects per server); its answer use cases require
+`review` (below).
 
 - **Sources:** relation findings (`call-target-unknown`, `call-target-dynamic`,
   `duplicate-process-id`, `message-partner-missing`, as „Befunde“ lists them: `visibleFindings`), value
@@ -2011,26 +2018,44 @@ project on the live models' `modelKey=facts_hash` (at most 8 projects per server
   `step`, `value-chain`) and `subjectLabel`, `modelKeys`, `text` (from code, or verbatim for
   human and agent texts: render as plain text), `context` and `label` (a hold's note and label),
   `askWho` (`lanes`, `stepOwners`, `folder`: a hint, never an assignee), `unlocks` (open decisions
-  touching the subject, 0 when none), `refs`, `raisedBy`, `state` (`open` until S5a).
+  touching the subject, 0 when none), `refs`, `raisedBy`, `state` (`answered` while an answer
+  names the id, S5a) and `answers` (oldest first).
 - **REST** (tag `open-questions`, permission `read`, so viewers, agent tokens with `read` and the
   read-only demo): `GET /api/v1/projects/{p}/open-questions` with `modelKey` (a model or a folder:
   `finanzen` matches `finanzen/mahnwesen`), `kind`, `source`, `askWho` (a lane, one step owner or
   the folder, exactly, ≤ 200 characters), `state`, `cursor` and `limit` (≤ 200, default 50):
-  `{items, nextCursor, total}`, questions before the informational items (`summary-note`,
-  `descriptive-model`), each by `unlocks` descending, then subject, kind and id. `GET
+  `{items, nextCursor, total}`, questions first, then the value chain's findings
+  (`process-without-step`, `step-without-process`, `unresolved-link`; the owner's answer of
+  2026-10-16), then the informational items (`summary-note`, `descriptive-model`), each group by
+  `unlocks` descending, then subject, kind and id (the cursor's first number is the group). `GET
   …/open-questions/export?format=markdown|csv` with the same filters is an attachment named
   `offene-fragen-<project>[-<filters as an ASCII slug, ≤ 80 characters>].md|csv`: the Markdown
   grouped by contact hint (step owners, else folder, else lanes), agent and human texts escaped so
   they never format or link, the informational items marked „Zur Information, keine Antwort
   nötig“; the CSV for the customer without the informational items, UTF-8 with a byte order mark,
   `;`-separated, CRLF, every field quoted, the columns `id`, `Art`, `Frage`,
-  `Ansprechpartner-Hinweis`, `Antwort`, `Antwortart` (the last two empty), a cell that a
-  spreadsheet would run as a formula prefixed with `'`.
+  `Ansprechpartner-Hinweis`, `Antwort`, `Antwortart` (the last two empty, or since S5a an
+  answered item's latest answer and its kind), a cell that a spreadsheet would run as a formula
+  prefixed with `'`.
 - **Clients:** the tab „Offene Fragen“ and the model view's section ([Web UI](#web-ui)),
   `analyzr questions` ([The `analyzr` CLI](#the-analyzr-cli)). The German labels of kinds and
   sources are the zod-free `@analyzr/contracts/open-question-labels`, shared by the export and the
   web. No MCP tool until S7 (after the live runs): claim inputs, `FindingKind`, MCP tools and
   prompts are unchanged.
+- **Answers (S5a):** `POST …/open-questions/{q}/answers` (`{text, kind}`; 201 `recorded`, 200
+  `unchanged` when the item's latest answer has the same kind and text, 404 for an id that names
+  no current item) and `POST …/open-questions/answers?dryRun=true|false` (the rows of a filled-in
+  sheet, ≤ 5,000 and 4 MB per call, one transaction; rows `recorded`, `unchanged`, `unknown`,
+  `invalid` with a reason, empty answers counted as `ignored`), permission `review`, humans only
+  (agents get `human-decision-required` with the tab's `reviewUrl`), refused by the read-only
+  demo. Texts are normalized (`normalizeAnswerText`: LF, NFC, trimmed) and checked for e-mail
+  addresses, phone numbers and IBANs (`@analyzr/contracts/personal-data`, warnings only). On a
+  relation or placement the text becomes a human note through `recordRelationNote` or
+  `addPlacementNote` (it reaches agents as any note; a held placement stays held and its process
+  not due), else it stays in `open_question_answer`. The CSV export holds an answered item's
+  latest answer and kind; `readAnswerSheet` (`@analyzr/contracts/open-question-csv`) reads a
+  re-saved sheet with each row's spreadsheet number, and both clients send only the filled rows
+  (UTF-8 only).
 
 ### Web UI
 
@@ -2046,13 +2071,13 @@ the server); after `pnpm build` the server serves it at http://127.0.0.1:7400.
 | `/projects/{key}/review/{relation}` | **Review screen** of one relation, also the relation detail and the `reviewUrl` of `human-decision-required` ([below](#review-in-the-web-ui-m2)) |
 | `/projects/{key}/relations` | **Relationen**: quick filters (all, accepted by rule, key-tier proposals, all proposals), filters status/tier/type/model in the URL (`?status=&tier=&type=&model=`), for owners also the preset „Automatisch angenommen“ and the filter `?auto=any|aar_…` (owner decision 19); type, from → to with element label, model key and process, tier, status, endpoint state, confidence, provenance (from `Relation.provenance`), details (refs, version, attributes); "Prüfen" opens the review screen, the crosshair the model view. |
 | `/projects/{key}/findings` | **Befunde** grouped by kind, each ref with a link into the model view |
-| `/projects/{key}/open-questions` | **Offene Fragen** (M6 S4, after „Befunde“; the tab counts `GET …/open-questions?state=open`'s `total`; every role and the read-only demo): every gap as a question ([M6-INTEGRATION-AND-GAPS.md](M6-INTEGRATION-AND-GAPS.md) §4), questions by open decisions („3 offene Entscheidungen“, „Keine offene Entscheidung“), informational items („Zur Information“) last; filters Art, Modell oder Ordner, Ansprechpartner-Hinweis (lanes, each org unit, folder), Quelle and Status in the URL (`?kind=&model=&askWho=&source=&state=`), counted under the other filters; human and agent texts as `PlainText` with who said them; links to the review screen, the chain page (`?step=`, `?placement=`) or the model view; „Als Markdown exportieren“ and „Als CSV exportieren“ download the export route's file for the filters under the server's name (`offene-fragen-<project>[-<filters>].md\|csv`). A lazy route chunk; the labels come from the zod-free `@analyzr/contracts/open-question-labels` |
+| `/projects/{key}/open-questions` | **Offene Fragen** (M6 S4, after „Befunde“; the tab counts `GET …/open-questions?state=open`'s `total`; every role and the read-only demo): every gap as a question ([M6-INTEGRATION-AND-GAPS.md](M6-INTEGRATION-AND-GAPS.md) §4), questions by open decisions („3 offene Entscheidungen“, „Keine offene Entscheidung“), the value chain's findings after them (the owner's answer of 2026-10-16), informational items („Zur Information“) last; filters Art, Modell oder Ordner, Ansprechpartner-Hinweis (lanes, each org unit, folder), Quelle and Status in the URL (`?kind=&model=&askWho=&source=&state=`), counted under the other filters; human and agent texts as `PlainText` with who said them; links to the review screen, the chain page (`?step=`, `?placement=`) or the model view; „Als Markdown exportieren“ and „Als CSV exportieren“ download the export route's file for the filters under the server's name (`offene-fragen-<project>[-<filters>].md\|csv`). Since M6 S5a, for editors and owners (permission `review`; not on the read-only demo): „Beantworten“ on every item opens a dialog (the Antwortart, the text, what the answer does by the item's subject and kind, a live personal-data warning, „Eine gespeicherte Antwort lässt sich nicht mehr ändern oder löschen.“, „Antwort speichern“), and an item shows its answers with who gave them and when; „Antworten aus CSV übernehmen“ reads the filled-in CSV (a German file picker, UTF-8 only), previews it through the dry run (stored, unchanged, unknown ids and invalid rows with their spreadsheet rows and texts, the personal-data alert), stores it with „N Antworten speichern“ and stays open listing the rows left out. A lazy route chunk; the labels come from the zod-free `@analyzr/contracts/open-question-labels`, the sheet reader from `…/open-question-csv` and the warning check from `…/personal-data` |
 | `/projects/{key}/upload` | **Hochladen**: drag and drop files or a whole folder, or pick them; `POST …/imports` in batches of ≤ 50 files / 25 MB; the shared file rule of `@analyzr/contracts/paths` decides (M6 S1, as `analyzr import`: `.bpmn`, `.bpmn2`, `.bpmn20.xml`, `.xml`; the picker's `accept` and the text „Erlaubt sind …“ come from `BPMN_FILE_SUFFIXES`): hidden files are dropped silently; models > 5 MB, other files, a plain `.xml` whose key a `.bpmn…` file has (a tool's sidecar, never sent, `keyTakenBy`, as `analyzr import`) and a plain `.xml` the server refuses as no BPMN are skipped and listed under „N Dateien übersprungen (kein BPMN, größer als 5,0 MB oder gleicher Modellschlüssel wie eine BPMN-Datei)“ with the reason per file („kein BPMN“, „zu groß“, „gleicher Modellschlüssel wie Prozess.bpmn“); every model key is derived before sending, in code-point order as `analyzr import` (`comparePaths`, `modelKeyOwners`: a `.bpmn…` file gets a key before a plain `.xml`), so a path without a valid key or with the key another file gets (other than such a sidecar) fails without being sent, naming that file; when every file is a plain `.xml` that is no BPMN, the warning toast „Keine BPMN-Dateien gefunden“ replaces the success toast; a dropped or picked folder is the import root, so `models/vertrieb/a.bpmn` becomes `vertrieb/a`, like `analyzr import models`; outcome per file, with the extractor's warnings as „3 Hinweise“ in a disclosure (a German label per code, the element id and the English message; an unknown code shows the code; beyond the extractor's 100, „100 Hinweise“ and its `too-many-warnings` entry „Weitere Hinweise ausgelassen“ after „… und 81 weitere“) |
 | `/projects/{key}/agents` | **Agent verbinden**: create an agent token (scopes, expiry), secret shown once with a copy button, then ready-to-paste configurations: Claude Code (`claude mcp add --transport http …`), Claude Desktop (`analyzr mcp` from the checkout with Node 24, or `docker exec -i … analyzr-server-1 analyzr mcp`; the Node or Docker path you enter becomes `command`), any other MCP client (URL + bearer header, `.mcp.json`); list and revoke tokens |
 | `/projects/{key}/rules` | **Regeln** (owner decision 19, owners only; the tab is hidden for other roles): the system rule, the project's auto-accept rules, the create/edit dialog with the live preview, apply, revoke, revisions ([below](#auto-accept-rules-in-the-web-ui-owner-decision-19)) |
 | `/projects/{key}/value-chain` | **Wertschöpfungskette** (M4 S3, the tab counts open placement items): the chain on a full-viewport canvas, the side panel, edit mode; `?step=` selects a step, `?placement=plc_…` (the `reviewUrl` of placement writes) a placement and its step ([below](#value-chain-in-the-web-ui-m4)) |
 | `/projects/{key}/value-chain/steps/{element-id}` | **Step view** (drill-down, in the project layout): breadcrumb, sub-steps with counts, the step's processes (own, in the sub-steps, reached by call) with links to the model view and back to the chain |
-| `/projects/{key}/models/{model-key}` | **Model view**: borderless bpmn-js `NavigatedViewer` (lazy chunk) with floating chrome; the panel lists the model's relations and findings; `?relation=rel_…` highlights its endpoints (marker plus "Von"/"Nach" label) and offers "Zu … wechseln" to the other model; `?element=` highlights one element (from findings or a click on the canvas, which also filters the list); the panel's section **Offene Fragen** (M6 S4, a lazy chunk) lists the model's questions, compact, with „Im Tab zeigen“ |
+| `/projects/{key}/models/{model-key}` | **Model view**: borderless bpmn-js `NavigatedViewer` (lazy chunk) with floating chrome; the panel lists the model's relations and findings; `?relation=rel_…` highlights its endpoints (marker plus "Von"/"Nach" label) and offers "Zu … wechseln" to the other model; `?element=` highlights one element (from findings or a click on the canvas, which also filters the list); the panel's section **Offene Fragen** (M6 S4, a lazy chunk) lists the model's questions, compact, with „Im Tab zeigen“ and, since M6 S5a, „Beantworten“ for reviewers (the same dialog as in the tab) |
 
 How it talks to the server: only through `@analyzr/client` (generated from the contracts) with
 `baseUrl` = the page's origin. `src/lib/api.ts` wraps `fetch`: on a 401 it calls
@@ -2473,8 +2498,14 @@ tables with the author-pinning composite foreign key to the revision, the same-s
 foreign key (new uniques `(project_id, relation_id|placement_id, id)`), the marker check and a
 partial index (`0009_auto_accept.sql`, generated, with the two uniques moved before the foreign
 keys that need them), and the append-only and no-truncate triggers on both rule tables
-(`0010_auto_accept_triggers.sql`, hand-written); `migration-auto-accept.test.ts` applies them to a
-database that already holds data.
+(`0010_auto_accept_triggers.sql`, hand-written). M6 S5a adds `open_question_answer` (id, project,
+question id `q-` and 16 hex, subject type and id, kind, `text` xor `note_assertion_id`, generated
+`relation_id`/`placement_id` with one composite foreign key each to the answered relation's or
+placement's assertion (on 0009's uniques), principal, `source_kind = 'human'`, seq; checks: humans
+only, text or note by subject type, text 1–2,000 characters, the id pattern)
+(`0011_open_question_answer.sql`, generated) and its append-only and no-truncate triggers
+(`0012_open_question_answer_triggers.sql`, hand-written); `migration-auto-accept.test.ts` applies
+0009–0012 to a database that already holds data.
 Migrations: `pnpm --filter @analyzr/server db:generate` for schema changes,
 `pnpm --filter @analyzr/server exec drizzle-kit generate --custom --name <name>` for SQL drizzle-kit
 does not model.
@@ -3288,6 +3319,34 @@ agent's recordings ([Recordings](#simulation-agent-and-evalreplay-m2)).
   review screen, the chain page and the model view, both downloads, the model view's section) and
   one test in `demo.spec.ts` (the tab, the CSV export and the model view's section on the demo,
   no write action).
+- M6 S5a "Answers recorded": contracts `test/answers.test.ts` (the sheet reader with spreadsheet
+  row numbers, `normalizeAnswerText`, the personal-data check with its pinned cases); server
+  `test/unit/open-questions.test.ts` ("answers on the items": `state` and `answers`, an item
+  opened again when its source changes, both exports and the sheet read back, the latest-answer
+  rule; "where an answer lands" on a stand-in transaction; humans only; the order with the value
+  chain's findings after the other questions), `test/integration/open-question-answers.test.ts`
+  (real PostgreSQL: an answer on a held relation as a human note linked by one row with nothing
+  queued, a subject answer kept until its source changes, a sheet previewed without storing and
+  then stored in one call, humans only and current questions only, the table append-only,
+  humans-only and one text per answer), `placement-pipeline.test.ts` (an answer to an agent's
+  placement question as a note that makes the process due; an answer to a held placement: the
+  hold stays, `due` unchanged, `requeue` `nothing-due`), `migration-auto-accept.test.ts` (0009–0012
+  on a database with data, answers on an existing relation and placement) and
+  `claim-golden.test.ts` (the claim inputs of a freshly seeded `nordwind-handel` by SHA-256
+  against `__snapshots__/claims-nordwind-handel.json`, taken on the code before S5a, also with a
+  text answer on every subject that is neither a relation nor a placement); CLI
+  `test/unit/questions-answer.test.ts` (17 tests against a fake API) and the e2e `analyzr
+  questions answer (M6 S5a)` (its own project `answers-e2e`: an agent token refused, a relation
+  answer as a note, `unchanged` on repeat, a subject answer with the personal-data warning, a
+  sheet's dry run, real run and rerun, a full export read back as `unchanged`, the `[answered]`
+  marker); web `open-questions.test.tsx` ("answering (M6 S5a)" and „Antworten aus CSV
+  übernehmen“: the dialog, the live region, the focus fallback, the earlier-answers note, the
+  file name, an ANSI file refused without a request, readable unknown rows, the left-out rows
+  after storing), `open-question-answers-lib.test.ts` (16 tests: texts, the sheet reader, the
+  preview), `limits.test.ts` and `bundle.test.ts`; Playwright `e2e/open-questions.spec.ts` (5 more
+  tests, 11 in all: the held relation and the held placement answered, the Status filter against
+  the API, an answer in the model view's section, the CSV filled in and taken back) and
+  `demo.spec.ts` (neither button on the demo).
 
 ## CI
 
@@ -4340,3 +4399,31 @@ Same machine; S4 "Open questions" with a review round's fixes on `feat/integrati
 
 Not checked: other browsers than Chromium, screen readers, `analyzr-demo check` against the new
 image, the CI run (next push).
+
+### M6 S5a (2026-10-17)
+
+Same machine; S5a "Answers recorded" with a review round's fixes and the owner's answer of
+2026-10-16 on the chain findings' rank, on `feat/integration-and-gaps`
+([M6-INTEGRATION-AND-GAPS.md](M6-INTEGRATION-AND-GAPS.md) §8 "S4 as delivered" and "S5a as
+delivered").
+
+1. Gates: `pnpm format:check`, `pnpm -r typecheck`, `pnpm -r lint` (dependency-cruiser: no
+   violations, 132 modules), `pnpm -r test` with Testcontainers (server 1,446 in 69 files, web
+   373 in 35, cli 174 plus 7 skipped, integrate 145, contracts 155, bpmn-facts 134, eval/tools
+   108, relations 85, agent-sim 57, procedures 37, demo 27, notices 9, client 4), `pnpm
+   eval:candidates` and `pnpm eval:placements` (pass), `pnpm eval:replay` and `pnpm
+   eval:descriptive`; `git diff --stat eval/reports` empty. The client's drift test and the
+   bundle guard pass; the MCP snapshots are unchanged.
+2. `claim-golden.test.ts`: the claim inputs of a freshly seeded `nordwind-handel` match the
+   snapshot taken on the code before S5a, also after a text answer on every subject that is
+   neither a relation nor a placement.
+3. Playwright in Chromium against a server run from source (port 7491, its own owner key file,
+   the UI built into a scratch directory) on PostgreSQL in the compose project `analyzr-s5agate`
+   (database only, port 55491): `open-questions.spec.ts` 11 passed (5 of them for S5a), the whole
+   suite 57 passed and 21 skipped (the demo walk and the screenshots, which need their own
+   servers). Then the server stopped by its PID and the compose project `down -v`; the owner's
+   stacks untouched. Earlier the same day, before the review round, `demo.spec.ts` passed 14
+   against a scratch demo image built from the tree (neither answer button on the demo).
+
+Not checked: `demo.spec.ts` against an image with the review round's fixes, other browsers than
+Chromium, screen readers, the CI run (next push).

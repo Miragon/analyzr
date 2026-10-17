@@ -37,9 +37,9 @@ export interface OpenQuestionOptions {
 }
 
 /**
- * Every open question of the input, in list order: questions before
- * informational items, `unlocks` descending, then subject id, kind (enum
- * order) and id. An id occurs once (the first draft wins, which only matters
+ * Every open question of the input, in list order: questions, then the
+ * value chain's findings, then informational items, each group by
+ * `unlocks` descending, then subject id, kind (enum order) and id. An id occurs once (the first draft wins, which only matters
  * for drafts identical in kind, subject and source version).
  */
 export function openQuestions(

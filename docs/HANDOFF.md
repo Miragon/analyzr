@@ -75,8 +75,15 @@ and code are in English.
   "Import hygiene", S3a `eval:descriptive` and S3b, the plugin `analyzr-integrate` v0, are done
   (M6 §8 "S1 as delivered", "S3a as delivered", "S3b as delivered"), and **S4 „Offene Fragen“**
   (2026-10-16: the open-questions read model over REST, the tab, the model view's section, the
-  Markdown and CSV export and `analyzr questions`; M6 §8 "S4 as delivered"); next is the owner's
-  review, then S5a per M6 §8's order (§7 "M6").
+  Markdown and CSV export and `analyzr questions`; M6 §8 "S4 as delivered"; since the owner's
+  answer of 2026-10-16 the value chain's findings rank after the other questions), and **S5a
+  „Antworten“** (done 2026-10-17, on the branch, with a review round's
+  fixes: answers recorded in the append-only `open_question_answer`, migrations 0011/0012, one by
+  one or from the returned CSV, in the web UI and with `analyzr questions answer`; note answers on
+  relations and placements through the note use cases; live-run neutral; M6 §8 "S5a as
+  delivered"). Next per M6 §8's order: S2 (provenance, manifest, dry run) and the trust rule
+  S2c, then S3c and S6; after the owner's live runs S5b, S7 and facts v2 as recommended (§7
+  "M6").
 
 ## 2. Read in this order
 
@@ -340,7 +347,7 @@ overall, the holdout aggregate only with „< 5“ and a secondary suppression o
 
 | Path | Content |
 |---|---|
-| `packages/contracts` | zod schemas, API resources, OpenAPI 3.1 (contracts-first routes) |
+| `packages/contracts` | zod schemas, API resources, OpenAPI 3.1 (contracts-first routes); zod-free subpaths the web may import (`paths` since M6 S1, `open-question-labels` since M6 S4, `open-question-csv` and `personal-data` since M6 S5a) |
 | `packages/client` | hey-api client generated from the OpenAPI document (drift test) |
 | `packages/bpmn-facts` | C7/C8 fact extraction, hostile-XML protection, `FACTS_VERSION` |
 | `packages/relations` | rule tier (unambiguous calls, key-tier proposals, findings), candidates for agents, `baseline-label/1`, pair assessor, and since M4 S2 `baseline-prefix/1` and the name-stem rule for placements (`placement.ts`) |
@@ -349,9 +356,9 @@ overall, the holdout aggregate only with „< 5“ and a secondary suppression o
 | `plugins/analyzr-integrate` | the second Claude Code plugin (M6 S3b, 0.1.0) for interactive, non-pipeline skills: `/analyzr-integrate:integrate-landscape <export> [--workspace <dir>]` turns a customer's BPMN 2.0 export into an import bundle `analyzr-import/1` and a German report in the consultant's workspace (keys pinned in `keymap.json`), never imports (the consultant does); reference notes per tool (unverified), the bundled scripts `inspect.mjs` and `normalize-bpmn.mjs` (generated) and their notices; a sha256 per plugin release in `tools/integrate/test/plugin.test.ts`; never loaded in live runs |
 | `tools/integrate` | `@analyzr/integrate` (M6 S3b, decision 24.8): the sources and tests of the integrate plugin's scripts (`inspect`, `normalize-bpmn` with `file`, `plan`, `bundle`, `inventory`), bundled by `pnpm --filter @analyzr/integrate generate` with a drift test; a synthetic Signavio-style export and its golden bundle, which the CLI and web tests import; imported by nothing in `apps/` or `packages/` |
 | `examples/agents` | reference setups: Claude Code (interactive and `run-headless.sh [--skill placements]`), Claude Desktop (configs + German start prompts for relations, placements and drafting a chain), Codex; documentation, not in the image |
-| `apps/server` | Hono server: domain (pure, dependency-cruiser enforced), Drizzle/PostgreSQL, REST `/api/v1`, MCP `/mcp` (stateless Streamable HTTP), local mode, agent tokens, pipeline, review; since M4 S1/S2 the value chain and placements (`src/domain/value-chain/`: storage, lifecycle, `prepareRevision`, rule proposals, findings; REST under `/value-chains`, six MCP tools; the web page since S3); since decision 19 the owner's auto-accept rules (`src/domain/auto-accept/`, seven owner-only routes and the ledger for every reviewer, no MCP); since M6 S4 the open questions (`src/domain/open-questions/`: one read model over findings, chain findings, holds, agents' questions, unsure verdicts, coded no-links, summaries and unjudged pairs plus the gap signals, computed on read; `GET …/open-questions` and `…/open-questions/export?format=markdown\|csv`, permission `read`; no MCP until S7) |
-| `apps/cli` | `analyzr health / status / import / seed [--project --issue-tokens --token-name --value-chains] / models list\|requeue\|delete / questions [--model --kind --source --ask-who --state --format text\|md\|csv\|json -o] / token create\|list\|revoke / value-chain push\|pull / rules list\|show\|add\|edit\|enable\|disable\|preview\|apply\|revoke / mcp` (stdio bridge) |
-| `apps/web` | projects, models, relations, findings, bpmn-js model view, upload, connect-an-agent, inbox, review screen; since M4 S3 the value chain page (`/projects/{key}/value-chain`: renderer viewer/modeler in a lazy chunk, placement review, save with dry run and conflict, drafts, link editing) and the step view; since decision 19 the tab „Regeln“ (auto-accept rules with live preview, apply, revoke) and the marks and filters of auto-accepted items in the review views; since M6 S4 the tab „Offene Fragen“ (every gap as a question, filters, Markdown and CSV export) and the model view's section of the same name |
+| `apps/server` | Hono server: domain (pure, dependency-cruiser enforced), Drizzle/PostgreSQL, REST `/api/v1`, MCP `/mcp` (stateless Streamable HTTP), local mode, agent tokens, pipeline, review; since M4 S1/S2 the value chain and placements (`src/domain/value-chain/`: storage, lifecycle, `prepareRevision`, rule proposals, findings; REST under `/value-chains`, six MCP tools; the web page since S3); since decision 19 the owner's auto-accept rules (`src/domain/auto-accept/`, seven owner-only routes and the ledger for every reviewer, no MCP); since M6 S4 the open questions (`src/domain/open-questions/`: one read model over findings, chain findings, holds, agents' questions, unsure verdicts, coded no-links, summaries and unjudged pairs plus the gap signals, computed on read; `GET …/open-questions` and `…/open-questions/export?format=markdown\|csv`, permission `read`; no MCP until S7); since M6 S5a the answers (the append-only `open_question_answer`, migrations 0011/0012; `POST …/open-questions/{q}/answers` and `…/open-questions/answers?dryRun=`, permission `review`, humans only; on a relation or placement a human note through the note use cases) |
+| `apps/cli` | `analyzr health / status / import / seed [--project --issue-tokens --token-name --value-chains] / models list\|requeue\|delete / questions [list] [--model --kind --source --ask-who --state --format text\|md\|csv\|json -o] / questions answer <id> --text [--kind] \| --from <csv> [--dry-run] / token create\|list\|revoke / value-chain push\|pull / rules list\|show\|add\|edit\|enable\|disable\|preview\|apply\|revoke / mcp` (stdio bridge) |
+| `apps/web` | projects, models, relations, findings, bpmn-js model view, upload, connect-an-agent, inbox, review screen; since M4 S3 the value chain page (`/projects/{key}/value-chain`: renderer viewer/modeler in a lazy chunk, placement review, save with dry run and conflict, drafts, link editing) and the step view; since decision 19 the tab „Regeln“ (auto-accept rules with live preview, apply, revoke) and the marks and filters of auto-accepted items in the review views; since M6 S4 the tab „Offene Fragen“ (every gap as a question, filters, Markdown and CSV export) and the model view's section of the same name, since M6 S5a with „Beantworten“ and „Antworten aus CSV übernehmen“ (a preview first) for reviewers |
 | `apps/agent-sim` | LLM-free reference agent that works the pipeline over MCP, both task kinds since M4 S5 |
 | `apps/demo` | `analyzr-demo seed\|serve\|check` (owner decision 20): seeds the read-only demo while its image is built, supervises PostgreSQL and the server in the container, checks a running demo from outside |
 | `eval/corpus` | test landscapes `nordwind-handel` (dev, 31 models, 17 C7/14 C8) and `stadtwerke-auental` (holdout, 26 models, 10 C7/16 C8) + `_sample`; every model deploys on Camunda 7.24.0 and 8.9.22 |
@@ -758,11 +765,24 @@ project 64 questions (14 findings, 44 chain findings, 6 black-box pools); `messa
 stays off (it duplicates `message-partner-missing`); deviations: `askWho.stepOwners` as a list,
 `unlocks` may be 0 with informational items last, the CSV without informational items, the
 export named after its filters; whole-project candidates (2.3 s at 310 models) are memoized per
-head facts; the ranking of chain findings is a question for the owner (§8). **Next:** the owner reviews S1–S4, ideally on a sandbox or anonymized export (M6
-§10.4), and confirms the rest of the order, proposed as S5a (answers in the UI) → S2a/S2b
-(provenance, manifest, dry run) → S3c → S6 (interviews), and after the live runs S5b and S7; S2c
-only with the owner's OK. Nothing of M6 changes released procedures, claim inputs or the MCP
-surface before the owner's live runs.
+head facts. **Owner answer 2026-10-16** („ja mach weiter“): the value chain's findings
+(`process-without-step`, `step-without-process`, `unresolved-link`) rank after every other
+question and before the informational items, each group by `unlocks` as before; delivered with
+S5a as a change to the sort key only (M6 §8 "S4 as delivered"). **S5a „Antworten“** (**done
+2026-10-17** on the branch, with a review round's fixes; M6 §8 "S5a as
+delivered"): „Beantworten“ in the tab and the model view, „Antworten aus CSV übernehmen“ with a
+preview, `analyzr questions answer` (one answer or `--from <csv>`), the routes `POST
+…/open-questions/{q}/answers` and `…/open-questions/answers?dryRun=` (permission `review`, humans
+only), the append-only table `open_question_answer` (migrations 0011/0012); an answer on a
+relation or placement is a human note through the existing note use cases (a held placement
+stays held, so its process is not due), every other answer keeps its text; claims of seeded
+projects pinned byte for byte. **Next**, per M6 §8's order: S2a/S2b (provenance, manifest, dry
+run) and S2c, the trust rule of decision 24.2, then S3c (renderer and spec YAML, the ad-hoc
+converter path, the bundled CLI) and S6 (interviews); after the owner's live runs S5b, S7 and
+facts v2 as recommended (M6 §3.11 and §6: the reindex with judgement carry-over first). The
+owner's review of S1–S5a, ideally on a sandbox or anonymized export (M6 §10.4), can run
+alongside. Nothing of M6 changes released procedures, claim inputs or the MCP surface before
+the owner's live runs.
 
 ### Paused milestone: process network map, M5 (owner decisions 22 and 24)
 
@@ -836,7 +856,6 @@ Git/bpmiq.yml import, MCP App widget.
 | M6: sample exports | Sandbox instances or anonymized exports of ARIS, Signavio, ADONIS, Bizagi, Visio? | M6 §10.4 |
 | M6: answers re-queue | May S5b widen the relations judgement basis by human notes and queue tasks (after the live runs)? | M6 §10.5 |
 | M6: erasure | One database per customer engagement for now, a purge use case with server mode? | M6 §10.6 |
-| M6: chain findings in „Offene Fragen“ | Chain findings rank by `unlocks` like every other question, so on a freshly seeded project 44 of the 64 items are „Prozess ohne Schritt“ (32) and „Schritt ohne Prozess“ (12) until placements are accepted; the filter Quelle separates them. Keep, or rank them below the other questions (a change to the sort key only)? | M6 §8 "S4 as delivered" |
 
 ## 9. Working agreements and pitfalls
 

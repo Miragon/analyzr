@@ -6,9 +6,10 @@
  * tools/call list_processes) in the 2025-11-25 and the 2026-07-28 revision,
  * `analyzr value-chain push|pull` with the golden dev chain, `analyzr seed
  * --value-chains` (M4 S4), `analyzr questions` on the seeded chain project
- * (M6 S4), and the import hygiene of M6 S1 (`.xml`, skipped plain XML and
- * sidecars, extractor warnings, the waiting tasks) with `analyzr models
- * list|requeue|delete`.
+ * (M6 S4), `analyzr questions answer` (one answer, a held relation's note,
+ * the CSV round trip; M6 S5a), and the import hygiene of M6 S1 (`.xml`,
+ * skipped plain XML and sidecars, extractor warnings, the waiting tasks) with
+ * `analyzr models list|requeue|delete`.
  */
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -283,6 +284,7 @@ describe('analyzr questions (M6 S4)', () => {
     const items = JSON.parse(listed.out) as {
       id: string;
       kind: string;
+      source: string;
       unlocks: number;
       modelKeys: string[];
     }[];
@@ -290,8 +292,14 @@ describe('analyzr questions (M6 S4)', () => {
     for (const q of items) byKind[q.kind] = (byKind[q.kind] ?? 0) + 1;
     expect(byKind).toEqual(SEEDED);
     expect(new Set(items.map((q) => q.id)).size).toBe(64);
-    const unlocks = items.map((q) => q.unlocks);
-    expect(unlocks).toEqual([...unlocks].sort((a, b) => b - a));
+    // The other questions first, then the value chain findings (owner answer 2026-10-16),
+    // each by unlocks.
+    const chain = items.map((q) => q.source === 'value-chain-finding');
+    expect(chain).toEqual([...chain].sort((a, b) => Number(a) - Number(b)));
+    for (const group of [false, true]) {
+      const unlocks = items.filter((_, i) => chain[i] === group).map((q) => q.unlocks);
+      expect(unlocks).toEqual([...unlocks].sort((a, b) => b - a));
+    }
 
     const table = await analyzr(['questions', '-p', 'vc-seed'], reader);
     expect(table.code).toBe(0);
@@ -362,6 +370,244 @@ describe('analyzr questions (M6 S4)', () => {
     expect(md.out).toMatch(/^# Offene Fragen: /);
     expect(md.out).toContain('Filter: Art „Pool ohne Prozess“.');
     expect(md.out.match(/^### \d+\. Pool ohne Prozess: /gm)).toHaveLength(6);
+  });
+});
+
+describe('analyzr questions answer (M6 S5a)', () => {
+  const P = 'answers-e2e';
+
+  interface Item {
+    id: string;
+    kind: string;
+    subject: { type: string; id: string };
+    state: string;
+  }
+  interface SheetOutcome {
+    dryRun: boolean;
+    counts: Record<string, number>;
+    rows: { row: number; id: string; outcome: string; reason?: string }[];
+  }
+
+  async function owner(pathname: string, init: RequestInit = {}): Promise<Response> {
+    const ownerKey = (await readFile(keyFile, 'utf8')).trim();
+    return fetch(`${server.url}/api/v1/projects/${P}${pathname}`, {
+      ...init,
+      headers: {
+        authorization: `Bearer ${ownerKey}`,
+        'content-type': 'application/json',
+        ...init.headers,
+      },
+    });
+  }
+
+  async function list(...flags: string[]): Promise<Item[]> {
+    const r = await analyzr(['questions', '-p', P, '--format', 'json', ...flags]);
+    expect(r.err).toBe('');
+    expect(r.code).toBe(0);
+    return JSON.parse(r.out) as Item[];
+  }
+
+  /** The sheet with `answer` and `kind` in the row of `id` (the export leaves both empty). */
+  function fill(sheet: string, id: string, answer: string, kind = ''): string {
+    const start = sheet.indexOf(`\r\n"${id}";`);
+    expect(start).toBeGreaterThan(0);
+    const end = sheet.indexOf(';"";""\r\n', start);
+    return `${sheet.slice(0, end)};"${answer}";"${kind}"${sheet.slice(end + ';"";""'.length)}`;
+  }
+
+  it('answers one question, a held relation as a note on it, and a filled-in sheet', async () => {
+    const seeded = await analyzr(['seed', 'nordwind-handel', '--project', P, '--json']);
+    expect(seeded.err).toBe('');
+    expect(seeded.code).toBe(0);
+
+    // A held relation is a question whose answer lands as a human note on the relation.
+    const proposed = (await (await owner('/relations?status=proposed&limit=200')).json()) as {
+      items: { id: string }[];
+    };
+    const relation = proposed.items[0];
+    if (!relation) throw new Error('the rule tier proposed no relation');
+    const hold = await owner(`/relations/${relation.id}/decision`, {
+      method: 'POST',
+      body: JSON.stringify({
+        verdict: 'hold',
+        note: 'Mit dem Fachbereich klären.',
+        question: 'Gilt diese Verbindung immer?',
+      }),
+    });
+    expect(hold.status).toBe(200);
+    const before = await list();
+    const held = before.find((q) => q.kind === 'held' && q.subject.id === relation.id);
+    const partner = before.find((q) => q.kind === 'black-box-partner');
+    if (!held || !partner) throw new Error('no held relation or black-box partner to answer');
+    expect(before.every((q) => q.state === 'open')).toBe(true);
+
+    // Agents never answer: the CLI refuses the token before any request.
+    const token = await analyzr(['token', 'create', '-p', P, '--name', 'answers', '--json']);
+    const agent = { ANALYZR_TOKEN: (JSON.parse(token.out) as { secret: string }).secret };
+    const refused = await analyzr(
+      ['questions', 'answer', held.id, '-p', P, '--text', 'Ja.'],
+      agent,
+    );
+    expect(refused.code).toBe(1);
+    expect(refused.err).toContain('only humans answer open questions');
+    expect(await list('--state', 'answered')).toEqual([]);
+
+    // One answer on the held relation: a human note on it; the item turns answered.
+    const one = await analyzr([
+      'questions',
+      'answer',
+      held.id,
+      '-p',
+      P,
+      '--text',
+      ' Ja, immer. ',
+      '--json',
+    ]);
+    expect(one.err).toBe('');
+    expect(one.code).toBe(0);
+    const recorded = JSON.parse(one.out) as {
+      result: string;
+      answer: { kind: string; target: string; text: string; note: { assertionId: string } };
+      question: { id: string; state: string };
+    };
+    expect(recorded).toMatchObject({
+      result: 'recorded',
+      answer: {
+        kind: 'answer',
+        target: 'relation-note',
+        text: 'Ja, immer.',
+        note: { type: 'relation', subjectId: relation.id },
+      },
+      question: { id: held.id, state: 'answered' },
+      warnings: [],
+    });
+    const timeline = (await (await owner(`/relations/${relation.id}/assertions`)).json()) as {
+      items: { id: string; kind: string; sourceKind: string; rationale: string }[];
+    };
+    expect(timeline.items.at(-1)).toMatchObject({
+      id: recorded.answer.note.assertionId,
+      kind: 'note',
+      sourceKind: 'human',
+      rationale: 'Ja, immer.',
+    });
+    const again = await analyzr(['questions', 'answer', held.id, '-p', P, '--text', 'Ja, immer.']);
+    expect(again.code).toBe(0);
+    expect(again.out).toContain(`${P}: answer to ${held.id} unchanged: the same answer (answer)`);
+
+    // A subject answer stays with the question; the personal-data check warns, never blocks.
+    const text = 'Die Hausbank, Kontakt max.muster@example.org';
+    const kept = await analyzr([
+      'questions',
+      'answer',
+      partner.id,
+      '-p',
+      P,
+      '--text',
+      text,
+      '--kind',
+      'ausserhalb',
+    ]);
+    expect(kept.err).toBe('');
+    expect(kept.code).toBe(0);
+    expect(kept.out).toMatch(
+      new RegExp(
+        `^${P}: answer to ${partner.id} recorded \\(outside-landscape\\), kept with the question\\n`,
+      ),
+    );
+    expect(kept.out).toContain(
+      `  warning: the answer probably contains an e-mail address (characters ${text.indexOf('max') + 1}–${text.length})\n`,
+    );
+    expect((await list('--state', 'answered')).map((q) => q.id).sort()).toEqual(
+      [held.id, partner.id].sort(),
+    );
+
+    // The sheet of the open questions, filled in: two answers, an unknown id, a wrong kind.
+    const exported = path.join(dir, 'antworten-export.csv');
+    expect(
+      (await analyzr(['questions', '-p', P, '--state', 'open', '--format', 'csv', '-o', exported]))
+        .code,
+    ).toBe(0);
+    const open = await list('--state', 'open');
+    const callTarget = open.find((q) => q.kind === 'call-target-unknown');
+    const missing = open.find((q) => q.kind === 'message-partner-missing');
+    const duplicate = open.find((q) => q.kind === 'duplicate-process-id');
+    if (!callTarget || !missing || !duplicate) throw new Error('the seeded findings changed');
+    let sheet = await readFile(exported, 'utf8');
+    sheet = fill(sheet, callTarget.id, 'Der Versand ruft den Prozess auf.');
+    sheet = fill(sheet, missing.id, 'Kommt im nächsten Release.', 'Wird im Modell ergänzt');
+    sheet = fill(sheet, duplicate.id, 'Egal.', 'vielleicht');
+    sheet += '"q-0000000000000000";"";"";"";"Gibt es nicht.";""\r\n';
+    const sheetFile = path.join(dir, 'antworten.csv');
+    await writeFile(sheetFile, sheet);
+    const ids = [...sheet.matchAll(/\r\n"(q-[0-9a-f]{16})";/g)].map((m) => m[1]);
+    const rowOf = (id: string) => ids.indexOf(id) + 2;
+
+    // The dry run lists every filled row under its spreadsheet row and stores nothing.
+    const dry = await analyzr(['questions', 'answer', '-p', P, '--from', sheetFile, '--dry-run']);
+    expect(dry.code).toBe(1);
+    expect(dry.out).toMatch(
+      new RegExp(
+        `\\n? {2}row +${rowOf(callTarget.id)} {2}${callTarget.id} {2}would record {2}answer, kept with the question\\n`,
+      ),
+    );
+    expect(dry.out).toMatch(
+      new RegExp(
+        `row +${rowOf(missing.id)} {2}${missing.id} {2}would record {2}will-be-modelled, kept with the question\\n`,
+      ),
+    );
+    expect(dry.out).toMatch(
+      new RegExp(
+        `row +${rowOf(duplicate.id)} {2}${duplicate.id} {2}invalid +unknown Antwortart "vielleicht"`,
+      ),
+    );
+    expect(dry.out).toMatch(
+      new RegExp(
+        `row +${ids.length + 1} {2}q-0000000000000000 {2}unknown +no current open question`,
+      ),
+    );
+    expect(dry.out).toContain(
+      `${P}: ${sheetFile} (dry run, nothing recorded): 2 to record, 0 unchanged, 1 unknown, 1 invalid, ${ids.length - 4} rows without an answer\n`,
+    );
+    expect(dry.err).toContain('2 rows would not be recorded (1 unknown, 1 invalid)');
+    expect(await list('--state', 'answered')).toHaveLength(2);
+
+    // Recorded: the rest in one call, the unknown and invalid rows never; again: unchanged.
+    const real = await analyzr(['questions', 'answer', '-p', P, '--from', sheetFile, '--json']);
+    expect(real.code).toBe(1);
+    expect(real.err).toContain('2 rows not recorded (1 unknown, 1 invalid)');
+    const result = JSON.parse(real.out) as SheetOutcome;
+    expect(result).toMatchObject({
+      dryRun: false,
+      counts: { recorded: 2, unchanged: 0, unknown: 1, invalid: 1, ignored: ids.length - 4 },
+    });
+    expect(result.rows.map((r) => [r.row, r.id, r.outcome])).toEqual(
+      [
+        [rowOf(callTarget.id), callTarget.id, 'recorded'],
+        [rowOf(missing.id), missing.id, 'recorded'],
+        [rowOf(duplicate.id), duplicate.id, 'invalid'],
+        [ids.length + 1, 'q-0000000000000000', 'unknown'],
+      ].sort((a, b) => Number(a[0]) - Number(b[0])),
+    );
+    const answered = await list('--state', 'answered');
+    expect(answered.map((q) => q.id).sort()).toEqual(
+      [held.id, partner.id, callTarget.id, missing.id].sort(),
+    );
+    const repeated = await analyzr(['questions', 'answer', '-p', P, '--from', sheetFile, '--json']);
+    expect((JSON.parse(repeated.out) as SheetOutcome).counts).toMatchObject({
+      recorded: 0,
+      unchanged: 2,
+    });
+
+    // The export carries the latest answers; read back, the whole sheet is unchanged.
+    const all = path.join(dir, 'antworten-alle.csv');
+    expect((await analyzr(['questions', '-p', P, '--format', 'csv', '-o', all])).code).toBe(0);
+    const roundTrip = await analyzr(['questions', 'answer', '-p', P, '--from', all, '--dry-run']);
+    expect(roundTrip.err).toBe('');
+    expect(roundTrip.code).toBe(0);
+    expect(roundTrip.out).toContain(': 0 to record, 4 unchanged, 0 unknown, 0 invalid, ');
+    const table = await analyzr(['questions', '-p', P, '--state', 'answered']);
+    expect(table.out.match(/ {2}\[answered\]\n/g)).toHaveLength(4);
+    expect(table.out).toMatch(/: 4 open questions \(.*\), 4 answered\n$/);
   });
 });
 

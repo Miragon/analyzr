@@ -657,7 +657,12 @@ OpenQuestion {
 - **Id:** the source version is the head `facts_hash` of the subject's model for findings and
   signals, the assertion id for questions and holds, the placement input hash for unsure
   verdicts, the submission id for summaries. When the source changes, the id changes, and an
-  answered item comes back open.
+  answered item comes back open. Value chain findings are versioned by what they ask about: the
+  process model's `facts_hash` (`process-without-step`), the step's fingerprint
+  (`step-without-process`) and with the link (`unresolved-link`). A chain finding that goes away
+  (a placement accepted) and comes back (the placement revoked or rejected, its step removed)
+  therefore keeps its id and its answer, by design (S5a): the answer is about the process or the
+  step, not about a placement, and the question's text is the same.
 - **`unlocks`:** for a ref, the unjudged or non-current candidate pairs of tiers `rule`, `key`
   and `lexical` and the proposed or held relations touching it, at least 1; for a process, plus
   its open placement; for a model, the sum over its endpoints. It ranks, it predicts nothing.
@@ -703,7 +708,9 @@ without a warning, and ships with S2, which stores the warnings.
   „Antwort“, „Liegt außerhalb der Landschaft“, „Wird im Modell ergänzt“), so the customer can fill
   in the sheet and S5a reads it back.
 - **Web:** the tab „Offene Fragen“ after „Befunde“ with its count, filters (Art, Modell oder
-  Ordner, Ansprechpartner-Hinweis, Quelle, Status), sorted by `unlocks`; a section „Offene
+  Ordner, Ansprechpartner-Hinweis, Quelle, Status), sorted by `unlocks` (since the owner's
+  answer of 2026-10-16 the value chain's findings after the other questions, §8 "S4 as
+  delivered"); a section „Offene
   Fragen“ in the model view; buttons „Als Markdown exportieren“ and „Als CSV exportieren“. Agent
   and human texts render with the existing `PlainText` component. The page is a lazy route chunk
   (entry ceiling, decision 21).
@@ -734,7 +741,8 @@ exists. Where the text lands:
 | Subject | Text stored as | Effect in S5a | Added by S5b |
 |---|---|---|---|
 | relation (held, or proposed with an agent question) | a human note through the existing `addRelationNote` use case (existing claim input field `notes`) | as any note today: shown to the next claim of either model; blocks auto-accept rules on the pair | the pair's agent judgements stop being current and the origin model of each is queued in the same transaction |
-| placement | a human note through the existing placement note use case | as today: the process becomes due (`lastNonAgentSeqs`); nothing is queued | the placement task is queued in the same transaction (`queuePlacementTasks`) instead of waiting for a submit, an ingest or `analyzr value-chain requeue` |
+| placement, proposed with an agent question | a human note through the existing placement note use case | as today: the process becomes due (`lastNonAgentSeqs`); nothing is queued | the placement task is queued in the same transaction (`queuePlacementTasks`) instead of waiting for a submit, an ingest or `analyzr value-chain requeue` |
+| placement, held | a human note through the existing placement note use case | as today: the hold keeps homing the process (`processHomes.held`), so it is not open and never due; no agent gets it until the reviewer decides the hold | nothing while the hold stands: the process stays homed, so a queued task finds it not due |
 | anything else (findings, signals, unsure verdicts, no-links without a relation, summaries) | `text` in the row | shown and exported; the dialog points at the path that works today: change the model's documentation and re-import (a new `facts_hash` re-queues the model) | reaches agents only with S7 (an optional `answers` field in both claim inputs, counted in the bases below) |
 
 **Bulk answers (S5a).** `analyzr questions answer -p <project> --from antworten.csv [--dry-run]`
@@ -1400,8 +1408,9 @@ Deviations from §4 and choices the spec left open:
   unambiguous and no option exceeds the filter's 200 characters; the export and the web join them
   for display only („Organisationseinheiten A, B“, also as the Markdown group).
 - **`unlocks` may be 0** (§4.2 says at least 1): an item that touches no open decision says „Keine
-  offene Entscheidung“, not „1 offene Entscheidung“. The list orders questions before the
-  informational items (`summary-note`, `descriptive-model`), each by `unlocks` descending, then
+  offene Entscheidung“, not „1 offene Entscheidung“. The list orders questions first, the value
+  chain's findings after them (the owner's answer of 2026-10-16, below) and the informational
+  items (`summary-note`, `descriptive-model`) last, each group by `unlocks` descending, then
   subject, kind and id (the cursor carries that position). A model's informational items count
   the open decisions at every element and process of the model (§4.2's "sum over its endpoints",
   each pair once), the chain's summary its open processes and the proposed or held placements on
@@ -1447,11 +1456,21 @@ Deviations from §4 and choices the spec left open:
   focus to the first filter, a link names the item's subject (`aria-describedby`), the source
   label shows only where the badge and the verbatim intro do not say it already.
 
-**Taken by the implementing agent (the owner may overrule):** chain findings rank like every other
-question, by `unlocks`. On a freshly seeded project 44 of the 64 items are `process-without-step`
-(32) and `step-without-process` (12), correctly so while nothing is placed; they shrink as
-placements are accepted, and the filter Quelle (`source=value-chain-finding`) separates them. If
-they should rank below the other questions, that is a change to the sort key only.
+**Taken by the implementing agent, then changed by the owner:** S4 let chain findings rank like
+every other question, by `unlocks`. On a freshly seeded project 44 of the 64 items are
+`process-without-step` (32) and `step-without-process` (12), correctly so while nothing is
+placed; they shrink as placements are accepted, and the filter Quelle
+(`source=value-chain-finding`) separates them. The agent proposed ranking them below the other
+questions as a change to the sort key only. **Owner answer 2026-10-16** („ja mach weiter“ to
+that proposal): value chain findings (source `value-chain-finding`: `process-without-step`,
+`step-without-process`, `unresolved-link`) rank after every other question and before the
+informational items (`summary-note`, `descriptive-model`); within each group the order stays
+(`unlocks` descending, then subject, kind and id). Delivered with S5a as a change to the sort key
+only: `rankGroup` in `open-questions/model.ts` gives the group (0 questions, 1 chain findings, 2
+informational items), the cursor keeps its shape `[int, int, string, int, string]` with the group
+as its first number, the tab's intro and the Markdown export's header say the order („…,
+Befunde der Wertschöpfungskette danach, Hinweise zur Information zuletzt.“), and the server's
+unit tests, the CLI's e2e test and `e2e/open-questions.spec.ts` pin it.
 
 Verified (2026-10-16, after the review round): every gate (AGENTS.md, plus `pnpm
 eval:descriptive`; `eval/reports` unchanged), Playwright `e2e/open-questions.spec.ts` (6 passed)
@@ -1469,6 +1488,99 @@ held relation is a human note on it, one `open_question_answer` row links it, an
 a subject answer marks the item answered until its source changes; the CSV preview lists unknown
 ids and stores nothing for them; claims of note-free seeded projects are byte-identical;
 recordings and `eval:replay` unchanged.
+
+**S5a as delivered** (2026-10-17, branch `feat/integration-and-gaps`; every gate green, with a
+review round's fixes): the append-only table `open_question_answer` (migrations 0011, generated,
+and 0012, its append-only and no-truncate triggers; a composite foreign key from a note answer to
+its relation's or placement's assertion through generated `relation_id`/`placement_id`, checks:
+humans only, text or note by subject type, text 1–2,000 characters, the id pattern), the pure
+`apps/server/src/domain/open-questions/answers.ts` (where the text lands, the check of a sheet's
+rows) and the answer use cases in `use-cases/open-questions.ts` (permission `review`, humans
+only, `human-decision-required` with the tab's `reviewUrl`; a note answer goes through
+`recordRelationNote` or `addPlacementNote`, every answer gets an `open_question.answered` event
+without free text), the routes `POST …/open-questions/{q}/answers` and `POST
+…/open-questions/answers?dryRun=` (read-only demo: `demo-readonly`), `state` and `answers` on
+every item, the latest answer and its kind in the CSV and every answer in the Markdown, the
+zod-free `@analyzr/contracts/open-question-csv` (the sheet's reader, shared by the server's
+export, the CLI and the web) and `@analyzr/contracts/personal-data` (the warning check),
+„Beantworten“ in the tab and the model view's section, „Antworten aus CSV übernehmen“ with a
+preview, and `analyzr questions answer <id> --text [--kind]` and `--from <csv> [--dry-run]`.
+Live-run neutral: the claim inputs of a freshly seeded project are pinned by SHA-256
+(`claim-golden.test.ts`), also after a text answer on every subject that is neither a relation
+nor a placement; no claim input format, procedure, plugin, judgement basis, queueing, auto-accept
+safeguard, `FindingKind`, MCP tool or prompt, fact, stage, recording or report changed.
+
+Deviations from §4.5 and choices the spec left open (after the review round):
+
+- **A held placement is not made due by an answer.** §4.5's table first said a placement answer
+  makes the process due; that holds for an agent's question on a proposed placement only. A held
+  placement homes its process (`processHomes.held`), so it stays not open: no agent gets it until
+  the reviewer decides the hold (the table above now has both rows;
+  `placement-pipeline.test.ts` pins `due` unchanged and `requeue` `nothing-due`). The dialog, the
+  CLI and the route descriptions say it by the item's kind.
+- **`unchanged` means identical to the item's latest answer** (kind and text), the one the list
+  and the export show as current; going back to an earlier answer records it again. A sheet row
+  with an empty `Antwortart` (also a sheet without the column) whose text equals the latest
+  answer is `unchanged` whatever the latest kind, so a re-saved export records nothing twice.
+- **Texts are normalized before they are compared and stored** (`normalizeAnswerText`: LF line
+  breaks, Unicode NFC, trimmed), on both routes and in the CLI's own checks; `Antwortart` cells
+  are compared in NFC as well.
+- **Sheets are UTF-8 only, in the CLI and the web**: the web decodes the file's bytes with a
+  fatal UTF-8 decoder and refuses an ANSI sheet (German Excel's „CSV (Trennzeichen-getrennt)“)
+  before sending anything, since a stored answer cannot be corrected.
+- **Rows keep their spreadsheet numbers**: the parser counts every record, blank ones and the
+  header included, and both clients send only the filled rows and map the server's positions
+  back, so a full export with more than 5,000 questions imports when at most 5,000 are filled.
+  After storing, the web keeps the dialog open while rows were left out and lists them with
+  their texts.
+- **A note holds the text only**: the kind stays in `open_question_answer`; the dialog asks for a
+  text that stands on its own.
+- **The personal-data check** also finds `089 / 12 34 56`, `030 - 123456` and `030 – 1234567`,
+  and no longer flags bare digit runs under 11 digits (SAP document numbers such as
+  `0090001234`), `01` other than the mobile prefixes 015–017, or digits right after an id's
+  label (`Sachkonto`, `Rechnung`, `Beleg`, `Prozess-ID` …). It warns, never blocks.
+- **Value chain findings keep their id when they go away and come back** (§4.2): the answer is
+  about the process or the step.
+- **Both dialogs say that a stored answer cannot be changed or deleted**, as the CLI does.
+- **A note answer writes two events**: the note's own (`relation.noted` or `placement.noted`, as
+  the note use cases write it) and `open_question.answered`; the row's `seq` is the answer
+  event's. The row has no `client_id` (the event carries it) and a `created_at`.
+- **Writes take the project lock** and compute the items after taking it, as the neighbouring
+  write use cases do; a sheet's dry run reads one snapshot without the lock. A sheet is one
+  transaction: at most 5,000 filled rows and 4 MB per call (413 `payload-too-large` above), and
+  both clients refuse a larger sheet before sending (the consultant splits it) instead of
+  splitting it themselves.
+- **No dry run for a single answer** (the single route has none): its personal-data warning
+  comes with the stored answer, in the CLI after storing; the web dialog shows it live while
+  typing. It never blocks.
+- **`analyzr questions` has subcommands**: Commander lets a parent command take its options
+  anywhere on the line, so the list's `-p` and `--kind` would have swallowed the answer's flags.
+  `list` is the default subcommand, so `analyzr questions -p …` lists as before; `analyzr
+  questions list` means the same, and `analyzr questions answer` records. The list marks answered
+  items with `[answered]` and its summary ends with `, N answered`.
+- **The CLI's `--kind`** takes `antwort`, `ausserhalb`/`außerhalb` and `ergaenzt`/`ergänzt`, the
+  API values and the sheet's labels, ignoring case; an empty or unknown value is refused before
+  any request. `--from` exits 1 when a filled row is (or in a dry run would be) left out as
+  `unknown` or `invalid`, after printing; in a real run the other rows are stored. The CLI counts
+  a warning's position from 1 and never echoes the matched text.
+- **The web's file picker** is a German button („Datei auswählen“, then „Andere Datei
+  auswählen“) over a hidden input, since Chromium's native one is English; after saving, the
+  focus returns to the item's „Beantworten“, or to the count when the Status filter „Offen“
+  removed the item. An item with answers says „Schon beantwortet. Deine Antwort kommt hinzu; die
+  bisherige bleibt stehen.“ (answers are append-only).
+
+Verified (2026-10-17, after the review round, and again after the docs pass with the owner's
+answer on the chain findings): `pnpm format:check`, `pnpm -r typecheck`, `pnpm -r lint`
+(dependency-cruiser: no violations, 132 modules), `pnpm -r test` with Testcontainers (server
+1,446 in 69 files, web 373 in 35, cli 174 plus 7 skipped, contracts 155), `pnpm eval:candidates`,
+`pnpm eval:replay`, `pnpm eval:placements` and `pnpm eval:descriptive` with `git diff --stat
+eval/reports` empty; Playwright in Chromium against a server run from source on PostgreSQL in a
+scratch compose project (database only, removed afterwards): `open-questions.spec.ts` 11 passed,
+the whole suite 57 passed and 21 skipped (the demo walk and the screenshots)
+([DEVELOPMENT.md](DEVELOPMENT.md) "M6 S5a (2026-10-17)"). `demo.spec.ts` passed 14 against a
+demo image built before the review round (neither button appears on the demo). Not checked:
+`demo.spec.ts` against an image with the review round's fixes, other browsers than Chromium,
+screen readers.
 
 **S5b "Answers re-judged"** (after the live runs unless the owner says otherwise, §10.5). Scope:
 §4.5's relations basis and queueing, the one-time requeue at deploy. Done when: a note answer on

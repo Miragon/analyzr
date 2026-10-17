@@ -8,8 +8,12 @@
  *   of it (the signal counts that decided which signals ship);
  * - every source of §4.1 on a synthetic landscape, with ids, texts,
  *   `askWho` and `unlocks`;
- * - filters, order and cursor pages;
- * - the Markdown and CSV export, the CSV's formula protection and its round trip.
+ * - filters, order (value chain findings after the other questions, owner
+ *   answer 2026-10-16) and cursor pages;
+ * - the Markdown and CSV export, the CSV's formula protection and its round trip;
+ * - answers (M6 S5a): the state and the answers on the items, where each
+ *   answer's text lands (the use case's routing on a stand-in transaction),
+ *   the answers in both exports, and the check of a filled-in sheet.
  * Synthetic models only besides the dev landscape.
  */
 import path from 'node:path';
@@ -19,6 +23,8 @@ import {
   OPEN_QUESTION_KIND_LABELS,
   OpenQuestion,
   isInformationalKind,
+  readAnswerSheet,
+  type OpenQuestionAnswerId,
   type PlacementAssertionId,
   type PlacementId,
   type PrincipalId,
@@ -40,8 +46,12 @@ import {
   renderOpenQuestionsMarkdown,
   unprotectCell,
 } from '../../src/domain/open-questions/export.ts';
+import type { Actor } from '../../src/domain/actor.ts';
+import { DomainError } from '../../src/domain/errors.ts';
+import { checkSheet, sameAnswer } from '../../src/domain/open-questions/answers.ts';
 import {
   POSITION_SHAPE,
+  rankGroup,
   type ChainInput,
   type OpenQuestionInput,
 } from '../../src/domain/open-questions/model.ts';
@@ -61,13 +71,17 @@ import { noLinkCode } from '../../src/domain/open-questions/sources.ts';
 import {
   CandidateCache,
   currentPlacementBatches,
+  recordAnswers,
 } from '../../src/domain/use-cases/open-questions.ts';
 import type {
   DoneChainTask,
+  OpenQuestionAnswerRecord,
   PlacementRecord,
   RelationRecord,
   StoredNoLink,
+  StoredOpenQuestionAnswer,
   StoredPlacementAssertion,
+  Tx,
 } from '../../src/domain/ports.ts';
 import { pairKey } from '../../src/domain/judgements.ts';
 import { recomputeStatus } from '../../src/domain/status.ts';
@@ -1179,6 +1193,24 @@ describe('the review fixes', () => {
     );
   });
 
+  it('ranks the value chain findings after the other questions, before informational items', async () => {
+    const items = openQuestions(await synthetic());
+    const groups = items.map(rankGroup);
+    expect(groups).toEqual([...groups].sort((a, b) => a - b));
+    expect(new Set(groups)).toEqual(new Set([0, 1, 2]));
+    expect(
+      items.filter((q) => rankGroup(q) === 1).every((q) => q.source === 'value-chain-finding'),
+    ).toBe(true);
+    for (const group of [0, 1, 2]) {
+      const unlocks = items.filter((q) => rankGroup(q) === group).map((q) => q.unlocks);
+      expect(unlocks).toEqual([...unlocks].sort((a, b) => b - a));
+    }
+    // A chain finding with more open decisions than a question still comes after it.
+    const lastQuestion = items.filter((q) => rankGroup(q) === 0).at(-1);
+    const firstChain = items.find((q) => rankGroup(q) === 1);
+    expect(firstChain?.unlocks).toBeGreaterThan(lastQuestion?.unlocks ?? Infinity);
+  });
+
   it('counts 0 where nothing is open and ranks informational items last', async () => {
     const input = await synthetic();
     const items = openQuestions({ ...input, chain: null });
@@ -1277,5 +1309,419 @@ describe('the export, after review', () => {
     const long = exportFilename('p', { askWho: 'x'.repeat(200) }, 'csv');
     expect(long).toBe(`offene-fragen-p-${'x'.repeat(80)}.csv`);
     expect(exportFilename('p', { askWho: '„“' }, 'csv')).toBe('offene-fragen-p.csv');
+  });
+});
+
+// --------------------------------------------------------------- answers (S5a)
+
+const HUMAN_ACTOR: Actor = {
+  principalId: HUMAN,
+  kind: 'user',
+  handle: 'owner',
+  clientId: 'analyzr-web',
+  interactive: true,
+  scopes: ['analyzr:review'],
+  binding: null,
+};
+
+const answerId = (n: number): OpenQuestionAnswerId => `oqa_${String(n).padStart(26, '0')}`;
+
+/** A stored answer to `q` (a note answer for relation and placement subjects). */
+function stored(
+  n: number,
+  q: OpenQuestion,
+  over: Partial<StoredOpenQuestionAnswer> = {},
+): StoredOpenQuestionAnswer {
+  const note =
+    q.subject.type === 'relation'
+      ? assertionId(900 + n)
+      : q.subject.type === 'placement'
+        ? placementAssertionId(900 + n)
+        : null;
+  return {
+    id: answerId(n),
+    projectId: PROJECT,
+    questionId: q.id,
+    subjectType: q.subject.type,
+    subjectId: q.subject.id,
+    kind: 'answer',
+    text: note === null ? `Antwort ${n}` : null,
+    noteAssertionId: note,
+    principalId: HUMAN,
+    sourceKind: 'human',
+    seq: 1000 + n,
+    answerText: `Antwort ${n}`,
+    handle: 'owner',
+    createdAt: AT,
+    ...over,
+  };
+}
+
+describe('answers on the items', () => {
+  it('turns an item answered while an answer names its id, with the answers', async () => {
+    const input = await synthetic();
+    const items = openQuestions(input);
+    const heldRelation = items.find((q) => q.kind === 'held' && q.subject.type === 'relation');
+    const heldPlacement = items.find((q) => q.kind === 'held' && q.subject.type === 'placement');
+    const finding = items.find((q) => q.source === 'finding');
+    if (!heldRelation || !heldPlacement || !finding) throw new Error('missing items');
+    const answers = [
+      stored(1, heldRelation),
+      stored(2, heldPlacement),
+      stored(3, finding, { kind: 'outside-landscape' }),
+      stored(4, finding, { kind: 'will-be-modelled' }),
+      // An answer to an item whose source changed since: it answers nothing now.
+      stored(5, finding, { questionId: 'q-00000000000000ff' }),
+    ];
+    const answered = openQuestions({ ...input, answers });
+    for (const q of answered) expect(OpenQuestion.parse(q)).toEqual(q);
+    expect(answered.map((q) => q.id)).toEqual(items.map((q) => q.id));
+    const byId = new Map(answered.map((q) => [q.id, q]));
+    expect(byId.get(heldRelation.id)).toMatchObject({
+      state: 'answered',
+      answers: [
+        {
+          id: answerId(1),
+          questionId: heldRelation.id,
+          kind: 'answer',
+          target: 'relation-note',
+          text: 'Antwort 1',
+          note: {
+            type: 'relation',
+            subjectId: heldRelation.subject.id,
+            assertionId: assertionId(901),
+          },
+          by: 'owner',
+          sourceKind: 'human',
+          seq: 1001,
+          at: AT.toISOString(),
+        },
+      ],
+    });
+    expect(byId.get(heldPlacement.id)?.answers).toMatchObject([
+      {
+        target: 'placement-note',
+        note: { type: 'placement', assertionId: placementAssertionId(902) },
+      },
+    ]);
+    expect(byId.get(finding.id)?.answers).toMatchObject([
+      { kind: 'outside-landscape', target: 'answer', note: null, text: 'Antwort 3' },
+      { kind: 'will-be-modelled', text: 'Antwort 4' },
+    ]);
+    // Everything else as before; the state filter separates them.
+    const others = answered.filter(
+      (q) => ![heldRelation.id, heldPlacement.id, finding.id].includes(q.id),
+    );
+    expect(others).toEqual(
+      items.filter((q) => ![heldRelation.id, heldPlacement.id, finding.id].includes(q.id)),
+    );
+    expect(others.every((q) => q.state === 'open' && q.answers.length === 0)).toBe(true);
+    expect(filterOpenQuestions(answered, { state: 'answered' }).map((q) => q.id)).toEqual(
+      items
+        .filter((q) => [heldRelation.id, heldPlacement.id, finding.id].includes(q.id))
+        .map((q) => q.id),
+    );
+    expect(filterOpenQuestions(answered, { state: 'open' })).toEqual(others);
+  });
+
+  it("opens a subject answer's item again when its source changes", async () => {
+    const input = await synthetic();
+    const finding = openQuestions(input).find(
+      (q) => q.source === 'finding' && q.modelKeys.includes('vertrieb/auftrag'),
+    );
+    if (!finding) throw new Error('no finding in vertrieb/auftrag');
+    const answers = [stored(1, finding)];
+    expect(openQuestions({ ...input, answers }).find((q) => q.id === finding.id)?.state).toBe(
+      'answered',
+    );
+    const models = new Map(input.models);
+    const head = models.get('vertrieb/auftrag');
+    if (!head) throw new Error('no head');
+    models.set('vertrieb/auftrag', { ...head, factsHash: 'f'.repeat(64) });
+    const changed = openQuestions({ ...input, models, answers });
+    expect(changed.some((q) => q.id === finding.id)).toBe(false);
+    const again = changed.find(
+      (q) =>
+        q.source === 'finding' && q.subject.id === finding.subject.id && q.kind === finding.kind,
+    );
+    expect(again).toMatchObject({ state: 'open', answers: [] });
+  });
+
+  it('shows the answers in both exports; the sheet read back changes nothing', async () => {
+    const input = await synthetic();
+    const items = openQuestions(input);
+    const finding = items.find((q) => q.source === 'finding');
+    if (!finding) throw new Error('no finding');
+    const answered = openQuestions({
+      ...input,
+      answers: [
+        stored(1, finding, { answerText: 'Erst so.' }),
+        stored(2, finding, { kind: 'outside-landscape', answerText: '=Dann so.' }),
+      ],
+    });
+    const csv = renderOpenQuestionsCsv(answered);
+    // The latest answer and its kind, protected against formulas like every cell.
+    expect(csv).toContain(`"'=Dann so.";"Liegt außerhalb der Landschaft"`);
+    const sheet = readAnswerSheet(csv);
+    expect(sheet.filter((r) => r.text !== '')).toEqual([
+      {
+        id: finding.id,
+        text: '=Dann so.',
+        kind: 'Liegt außerhalb der Landschaft',
+        line: expect.any(Number) as unknown,
+      },
+    ]);
+    const checked = checkSheet(sheet, new Map(answered.map((q) => [q.id, q])));
+    expect(checked.counts).toMatchObject({ recorded: 0, unchanged: 1, ignored: sheet.length - 1 });
+    const md = renderOpenQuestionsMarkdown(answered, {
+      projectName: 'P',
+      projectKey: 'p',
+      seq: 1,
+      filter: {},
+    });
+    expect(md).toContain('- Antwort (Antwort, owner, Ereignis 1001): Erst so.\n');
+    expect(md).toContain(
+      '- Antwort (Liegt außerhalb der Landschaft, owner, Ereignis 1002): \\=Dann so.\n',
+    );
+  });
+});
+
+describe('a filled-in sheet', () => {
+  it('lists unknown, changed and invalid rows, ignores empty ones and keeps the rest', async () => {
+    const input = await synthetic();
+    const items = openQuestions(input);
+    const [a, b, c, d, e] = items.filter((q) => !isInformationalKind(q.kind));
+    if (!a || !b || !c || !d || !e) throw new Error('too few items');
+    const answered = openQuestions({ ...input, answers: [stored(1, e)] });
+    const current = new Map(answered.map((q) => [q.id, q]));
+    const rows = [
+      { id: a.id, text: '  Ja, über a@b.de.  ', kind: '' },
+      { id: ` ${b.id} `, text: 'x'.repeat(2000), kind: 'Wird im Modell ergänzt' },
+      { id: c.id, text: 'x'.repeat(2001), kind: '' },
+      { id: d.id, text: 'Mit\u0007Glocke', kind: '' },
+      { id: e.id, text: 'Antwort 1', kind: 'antwort' },
+      { id: 'q-00000000000000ff', text: 'Geänderte Quelle.', kind: '' },
+      { id: 'kein-id', text: 'Irgendwas.', kind: '' },
+      { id: a.id, text: 'Zweimal.', kind: '' },
+      { id: c.id, text: '   ', kind: 'Antwort' },
+      { id: '', text: '', kind: '' },
+      { id: d.id.replace('q-', 'q-'), text: 'Vielleicht', kind: 'Vielleicht' },
+    ];
+    const checked = checkSheet(rows, current);
+    expect(checked.counts).toEqual({
+      recorded: 2,
+      unchanged: 1,
+      unknown: 2,
+      invalid: 4,
+      ignored: 2,
+    });
+    expect(
+      checked.rows.map((r) => [r.row, r.outcome, r.reason ?? r.kind ?? null, r.warnings.length]),
+    ).toEqual([
+      [1, 'recorded', 'answer', 1],
+      [2, 'recorded', 'will-be-modelled', 0],
+      [3, 'invalid', 'too-long', 0],
+      [4, 'invalid', 'control-characters', 0],
+      [5, 'unchanged', 'answer', 0],
+      [6, 'unknown', null, 0],
+      [7, 'unknown', null, 0],
+      [8, 'invalid', 'duplicate-id', 0],
+      [11, 'invalid', 'duplicate-id', 0],
+    ]);
+    // What gets recorded: trimmed texts on the current items, with where they land.
+    expect(
+      checked.record.map((r) => [r.draft.question.id, r.draft.kind, r.draft.text.length]),
+    ).toEqual([
+      [a.id, 'answer', 'Ja, über a@b.de.'.length],
+      [b.id, 'will-be-modelled', 2000],
+    ]);
+    expect(checked.rows[0]?.target).toBe(
+      a.subject.type === 'relation'
+        ? 'relation-note'
+        : a.subject.type === 'placement'
+          ? 'placement-note'
+          : 'answer',
+    );
+    expect(checked.rows[4]?.answer?.id).toBe(answerId(1));
+    // An unknown kind on a first row of its id.
+    expect(
+      checkSheet([{ id: d.id, text: 'Vielleicht', kind: 'Vielleicht' }], current).rows,
+    ).toMatchObject([{ outcome: 'invalid', reason: 'unknown-kind' }]);
+  });
+
+  it('compares with the latest answer only: going back to an earlier one records it again', async () => {
+    const input = await synthetic();
+    const finding = openQuestions(input).find((q) => q.source === 'finding');
+    if (!finding) throw new Error('no finding');
+    // x, then y: y is the current answer (the export and the list show it).
+    const answered = openQuestions({
+      ...input,
+      answers: [
+        stored(1, finding, { answerText: 'x' }),
+        stored(2, finding, { kind: 'outside-landscape', answerText: 'y' }),
+      ],
+    });
+    const current = new Map(answered.map((q) => [q.id, q]));
+    const item = current.get(finding.id);
+    if (!item) throw new Error('no item');
+    // Back to x: recorded, so x becomes the latest again.
+    expect(sameAnswer({ question: item, kind: 'answer', text: 'x' })).toBeUndefined();
+    expect(checkSheet([{ id: item.id, text: 'x', kind: 'Antwort' }], current).rows).toMatchObject([
+      { outcome: 'recorded', kind: 'answer' },
+    ]);
+    // y again: unchanged, with the latest answer.
+    expect(sameAnswer({ question: item, kind: 'outside-landscape', text: 'y' })?.id).toBe(
+      answerId(2),
+    );
+    // y with another kind: a new answer.
+    expect(sameAnswer({ question: item, kind: 'answer', text: 'y' })).toBeUndefined();
+    expect(
+      checkSheet([{ id: item.id, text: 'y', kind: 'Wird im Modell ergänzt' }], current).rows,
+    ).toMatchObject([{ outcome: 'recorded', kind: 'will-be-modelled' }]);
+    // An empty Antwortart (or none: a sheet without the column) with the latest text is
+    // unchanged whatever the latest kind, so a re-saved export records nothing twice.
+    expect(checkSheet([{ id: item.id, text: ' y ', kind: '' }], current).rows).toMatchObject([
+      { outcome: 'unchanged', answer: { id: answerId(2), kind: 'outside-landscape' } },
+    ]);
+  });
+
+  it('normalizes line breaks and Unicode before comparing, as the stored texts are', async () => {
+    const input = await synthetic();
+    const finding = openQuestions(input).find((q) => q.source === 'finding');
+    if (!finding) throw new Error('no finding');
+    const answered = openQuestions({
+      ...input,
+      answers: [stored(1, finding, { answerText: 'Zeile 1\nZeile 2: ergänzt' })],
+    });
+    const current = new Map(answered.map((q) => [q.id, q]));
+    // CRLF from Windows tools, a lone CR, decomposed umlauts: the same answer.
+    const checked = checkSheet(
+      [{ id: finding.id, text: 'Zeile 1\r\nZeile 2: erga\u0308nzt\r\n', kind: 'Antwort' }],
+      current,
+    );
+    expect(checked.rows).toMatchObject([{ outcome: 'unchanged' }]);
+    const recorded = checkSheet(
+      [{ id: finding.id, text: 'Neu\rmit Umbruch: Stra\u00DFe'.normalize('NFD'), kind: '' }],
+      current,
+    );
+    expect(recorded.record.map((r) => r.draft.text)).toEqual(['Neu\nmit Umbruch: Straße']);
+  });
+});
+
+describe('where an answer lands (the use case on a stand-in transaction)', () => {
+  /** A transaction that knows one relation and one placement and records what is written. */
+  function standIn(input: OpenQuestionInput) {
+    const written: { table: string; row: Record<string, unknown> }[] = [];
+    const events: { type: string; payload: Record<string, unknown> }[] = [];
+    const answers: StoredOpenQuestionAnswer[] = [];
+    let seq = 5000;
+    const tx = {
+      relations: {
+        findInProject: (_p: string, id: string) =>
+          Promise.resolve(input.relations.find((r) => r.id === id) ?? null),
+      },
+      placements: {
+        findInProject: (_p: string, id: string) =>
+          Promise.resolve(input.chain?.placements.find((x) => x.id === id) ?? null),
+      },
+      assertions: {
+        insert: (row: Record<string, unknown>) => {
+          written.push({ table: 'relation_assertion', row });
+          return Promise.resolve();
+        },
+      },
+      placementAssertions: {
+        insert: (row: Record<string, unknown>) => {
+          written.push({ table: 'placement_assertion', row });
+          return Promise.resolve();
+        },
+      },
+      events: {
+        append: (_p: string, e: { type: string; payload: Record<string, unknown> }) => {
+          events.push(e);
+          return Promise.resolve(++seq);
+        },
+      },
+      openQuestionAnswers: {
+        insert: (row: OpenQuestionAnswerRecord) => {
+          written.push({ table: 'open_question_answer', row: { ...row } });
+          const note = written.find((w) => w.row['id'] === row.noteAssertionId)?.row;
+          answers.push({
+            ...row,
+            answerText: row.text ?? String(note?.['rationale']),
+            handle: 'owner',
+            createdAt: AT,
+          });
+          return Promise.resolve();
+        },
+        list: () => Promise.resolve(answers),
+      },
+    };
+    return { tx: tx as unknown as Tx, written, events };
+  }
+
+  it('records a note on a relation or placement and a text otherwise, each with its event', async () => {
+    const input = await synthetic();
+    const items = openQuestions(input);
+    const relation = items.find((q) => q.kind === 'held' && q.subject.type === 'relation');
+    const placementItem = items.find((q) => q.subject.type === 'placement');
+    const finding = items.find((q) => q.source === 'finding');
+    if (!relation || !placementItem || !finding) throw new Error('missing items');
+    const { tx, written, events } = standIn(input);
+    const recorded = await recordAnswers(tx, PROJECT, HUMAN_ACTOR, [
+      { question: relation, kind: 'answer', text: 'Ja, als Nachricht.' },
+      { question: placementItem, kind: 'will-be-modelled', text: 'Kommt ins Modell.' },
+      { question: finding, kind: 'outside-landscape', text: 'Extern.' },
+    ]);
+    expect(
+      written.map((w) => [w.table, w.row['kind'], w.row['rationale'] ?? w.row['text']]),
+    ).toEqual([
+      ['relation_assertion', 'note', 'Ja, als Nachricht.'],
+      ['open_question_answer', 'answer', null],
+      ['placement_assertion', 'note', 'Kommt ins Modell.'],
+      ['open_question_answer', 'will-be-modelled', null],
+      ['open_question_answer', 'outside-landscape', 'Extern.'],
+    ]);
+    expect(written[0]?.row).toMatchObject({ sourceKind: 'human', relationId: relation.subject.id });
+    expect(written[1]?.row).toMatchObject({
+      questionId: relation.id,
+      subjectType: 'relation',
+      noteAssertionId: written[0]?.row['id'],
+      sourceKind: 'human',
+    });
+    expect(written[3]?.row['noteAssertionId']).toBe(written[2]?.row['id']);
+    expect(written[4]?.row['noteAssertionId']).toBeNull();
+    expect(events.map((e) => e.type)).toEqual([
+      'relation.noted',
+      'open_question.answered',
+      'placement.noted',
+      'open_question.answered',
+      'open_question.answered',
+    ]);
+    // No free text in the answer events.
+    expect(events[4]?.payload).toEqual({
+      questionId: finding.id,
+      kind: 'outside-landscape',
+      subject: finding.subject,
+      target: 'answer',
+    });
+    expect(recorded.map((a) => [a.target, a.text, a.seq])).toEqual([
+      ['relation-note', 'Ja, als Nachricht.', 5002],
+      ['placement-note', 'Kommt ins Modell.', 5004],
+      ['answer', 'Extern.', 5005],
+    ]);
+  });
+
+  it('lets only humans answer', async () => {
+    const input = await synthetic();
+    const finding = openQuestions(input).find((q) => q.source === 'finding');
+    if (!finding) throw new Error('no finding');
+    const { tx, written } = standIn(input);
+    await expect(
+      recordAnswers(tx, PROJECT, { ...HUMAN_ACTOR, kind: 'service', interactive: false }, [
+        { question: finding, kind: 'answer', text: 'Agent.' },
+      ]),
+    ).rejects.toBeInstanceOf(DomainError);
+    expect(written).toEqual([]);
   });
 });

@@ -294,8 +294,8 @@ function matchesAskWho(askWho: OpenQuestionAskWho, value: string): boolean {
 }
 
 /**
- * The items matching every filter, in their order (questions before
- * informational items, each by `unlocks` descending).
+ * The items matching every filter, in their order (questions, then the value
+ * chain findings, then informational items, each by `unlocks` descending).
  * The same rules as the server's `filterOpenQuestions`, which the export
  * applies to the same filters, so the download holds what the tab shows.
  */

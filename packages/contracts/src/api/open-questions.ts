@@ -9,10 +9,13 @@
  */
 import { z } from 'zod';
 
+import { OpenQuestionAnswerId } from '../ids.ts';
+import { PERSONAL_DATA_KINDS } from '../personal-data.ts';
 import { ModelKey, Ref } from '../refs.ts';
 import { SourceKind } from '../relations.ts';
-import { plainName } from '../zod-utils.ts';
-import { Cursor, DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT } from './common.ts';
+import { orNull, plainName, plainText } from '../zod-utils.ts';
+import { Cursor, DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT, Timestamp } from './common.ts';
+import { MAX_NOTE_CHARS } from './shared.ts';
 
 /**
  * Kind of an open question. Its own enum, never `FindingKind`, which is part
@@ -127,7 +130,7 @@ export const OpenQuestionRaisedBy = z
   .meta({ id: 'OpenQuestionRaisedBy', description: 'Who raised an open question, and when.' });
 export type OpenQuestionRaisedBy = z.infer<typeof OpenQuestionRaisedBy>;
 
-/** `open`; `answered` comes with answers (M6 S5a), so S4 lists every item as `open`. */
+/** `answered` while at least one answer is recorded for the item's id (M6 S5a), else `open`. */
 export const OpenQuestionState = z
   .enum(['open', 'answered'])
   .meta({ id: 'OpenQuestionState', description: 'State of an open question.' });
@@ -150,6 +153,85 @@ export const OpenQuestionId = z
     example: 'q-3f2a9c41d07be815',
   });
 export type OpenQuestionId = z.infer<typeof OpenQuestionId>;
+
+/**
+ * Kind of an answer (M6 §4.5; the CSV column `Antwortart`, German labels in
+ * `@analyzr/contracts/open-question-labels`): `answer` („Antwort“),
+ * `outside-landscape` („Liegt außerhalb der Landschaft“; like every kind it
+ * marks the item answered, it never dismisses a finding) and
+ * `will-be-modelled` („Wird im Modell ergänzt“).
+ */
+export const OpenQuestionAnswerKind = z
+  .enum(['answer', 'outside-landscape', 'will-be-modelled'])
+  .meta({ id: 'OpenQuestionAnswerKind', description: 'Kind of an answer to an open question.' });
+export type OpenQuestionAnswerKind = z.infer<typeof OpenQuestionAnswerKind>;
+
+/** Longest answer text: as long as a note, where answers on relations and placements land. */
+export const MAX_ANSWER_CHARS = MAX_NOTE_CHARS;
+
+/**
+ * An answer text as the server compares and stores it: line breaks as LF (a
+ * spreadsheet saves a cell's line breaks as LF, while Windows tools send
+ * CRLF), Unicode composed (NFC: a decomposed „ä“ is the same answer),
+ * surrounding white space trimmed. So a sheet read back again matches the
+ * answer it shows.
+ */
+export function normalizeAnswerText(text: string): string {
+  return text.replace(/\r\n?/g, '\n').normalize('NFC').trim();
+}
+
+/**
+ * Where an answer's text is stored (M6 §4.5 "Where the text lands"): a human
+ * note on the item's relation (`relation-note`, through the note use case:
+ * the next claim of either model shows it; a hold stays until a human
+ * decides) or placement (`placement-note`, through the placement note use
+ * case: on an agent's question the process becomes due and nothing is
+ * queued; a held placement keeps homing its process, so it is not due and
+ * no agent gets it until a human decides the hold), else the answer itself
+ * (`answer`: shown and exported; it reaches agents only with S7). A note
+ * holds the text only, never the kind.
+ */
+export const OpenQuestionAnswerTarget = z
+  .enum(['relation-note', 'placement-note', 'answer'])
+  .meta({ id: 'OpenQuestionAnswerTarget', description: "Where an answer's text is stored." });
+export type OpenQuestionAnswerTarget = z.infer<typeof OpenQuestionAnswerTarget>;
+
+/** The note an answer on a relation or placement was recorded as. */
+export const OpenQuestionAnswerNote = z
+  .object({
+    type: z.enum(['relation', 'placement']),
+    /** The relation (`rel_…`) or placement (`plc_…`). */
+    subjectId: z.string(),
+    /** The note: a relation assertion (`asr_…`) or placement assertion (`pas_…`) of kind `note`. */
+    assertionId: z.string(),
+  })
+  .meta({ id: 'OpenQuestionAnswerNote', description: 'The note an answer was recorded as.' });
+export type OpenQuestionAnswerNote = z.infer<typeof OpenQuestionAnswerNote>;
+
+/**
+ * One recorded answer (append-only, humans only): its kind, its text (for a
+ * note answer the note's text) and the note it was recorded as, who gave it
+ * and the event seq.
+ */
+export const OpenQuestionAnswer = z
+  .object({
+    id: OpenQuestionAnswerId,
+    questionId: OpenQuestionId,
+    kind: OpenQuestionAnswerKind,
+    target: OpenQuestionAnswerTarget,
+    /** The answer, verbatim (plain text, render it as such). */
+    text: z.string(),
+    /** The note it was recorded as (`relation-note`, `placement-note`); `null` for `answer`. */
+    note: orNull(OpenQuestionAnswerNote),
+    /** Pseudonymous handle of the human who answered. */
+    by: z.string(),
+    sourceKind: z.literal('human'),
+    /** Seq of the `open_question.answered` event. */
+    seq: z.number().int().min(1),
+    at: Timestamp,
+  })
+  .meta({ id: 'OpenQuestionAnswer', description: 'An answer to an open question.' });
+export type OpenQuestionAnswer = z.infer<typeof OpenQuestionAnswer>;
 
 /** One open question (M6 §4.2). */
 export const OpenQuestion = z
@@ -181,14 +263,21 @@ export const OpenQuestion = z
      * (a process: at its process ref and every element; a model: at every
      * element of the model), plus 1 per open process (no accepted placement),
      * plus a step's proposed and held placements (the value chain: every live
-     * step's). It ranks, it predicts nothing: the list puts informational
-     * items (`summary-note`, `descriptive-model`) last, then orders by it.
+     * step's). It ranks, it predicts nothing: the list puts the questions
+     * first, then the value chain findings, then informational items
+     * (`summary-note`, `descriptive-model`), and orders each group by it.
      */
     unlocks: z.number().int().min(0),
     /** Refs for the reviewer to follow (elements, processes, both ends of a relation). */
     refs: z.array(Ref),
     raisedBy: OpenQuestionRaisedBy,
     state: OpenQuestionState,
+    /**
+     * The answers recorded for this id, oldest first (empty while `open`).
+     * An answer belongs to the id: when the item's source changes, so does
+     * its id, and the item is `open` again.
+     */
+    answers: z.array(OpenQuestionAnswer),
   })
   .meta({ id: 'OpenQuestion', description: 'A gap in the landscape, as a question.' });
 export type OpenQuestion = z.infer<typeof OpenQuestion>;
@@ -219,8 +308,9 @@ export const OpenQuestionFilter = z.object({
 export type OpenQuestionFilter = z.infer<typeof OpenQuestionFilter>;
 
 /**
- * Query of `GET …/open-questions`: the filters and a cursor page, questions
- * before informational items, each ordered by `unlocks` (descending).
+ * Query of `GET …/open-questions`: the filters and a cursor page; questions,
+ * then the value chain findings, then informational items, each group
+ * ordered by `unlocks` (descending).
  */
 export const OpenQuestionQuery = OpenQuestionFilter.extend({
   cursor: Cursor.optional(),
@@ -253,9 +343,169 @@ export const OPEN_QUESTION_CSV_COLUMNS = [
   'Antwortart',
 ] as const;
 
-/** The answer kinds of the `Antwortart` column (M6 §4.4; recorded from S5a on). */
+/**
+ * The answer kinds of the `Antwortart` column (M6 §4.4), as the sheet names
+ * them: the labels of {@link OpenQuestionAnswerKind}, in its order.
+ */
 export const OPEN_QUESTION_ANSWER_KINDS = [
   'Antwort',
   'Liegt außerhalb der Landschaft',
   'Wird im Modell ergänzt',
 ] as const;
+
+/**
+ * Path of the tab „Offene Fragen“ of a project in the web UI. The answer
+ * routes' `human-decision-required` problems carry it as `reviewUrl`
+ * (absolute, on the server's origin).
+ */
+export function openQuestionsPath(projectKey: string): string {
+  return `/projects/${encodeURIComponent(projectKey)}/open-questions`;
+}
+
+/** A finding of the personal-data check (`@analyzr/contracts/personal-data`): kind and UTF-16 offsets into the text, `end` exclusive. */
+export const PersonalDataWarning = z
+  .object({
+    kind: z.enum(PERSONAL_DATA_KINDS),
+    start: z.number().int().min(0),
+    end: z.number().int().min(0),
+  })
+  .meta({
+    id: 'PersonalDataWarning',
+    description:
+      'Probable personal data in a text (e-mail, phone, IBAN); a warning, never a block.',
+  });
+export type PersonalDataWarning = z.infer<typeof PersonalDataWarning>;
+
+/** Params of the routes about one open question. */
+export const OpenQuestionParam = z.object({ question: OpenQuestionId });
+
+/**
+ * An answer to one open question (M6 §4.5, humans only): the text (at most
+ * {@link MAX_ANSWER_CHARS} characters, no control characters except tab and
+ * line breaks; stored as {@link normalizeAnswerText} gives it) and the kind
+ * (default `answer`).
+ */
+export const AnswerOpenQuestionBody = z
+  .object({
+    text: plainText(z.string().trim().min(1).max(MAX_ANSWER_CHARS)),
+    kind: OpenQuestionAnswerKind.default('answer'),
+  })
+  .meta({ id: 'AnswerOpenQuestionBody', description: 'An answer to an open question.' });
+export type AnswerOpenQuestionBody = z.infer<typeof AnswerOpenQuestionBody>;
+
+/**
+ * The recorded answer (`recorded`), or the item's latest answer when the
+ * new one is identical to it (`unchanged`: same kind and text, nothing
+ * written; an earlier answer that a later one followed is recorded again,
+ * so it becomes the latest); the item as the list now shows it; the
+ * personal-data check's warnings on the text.
+ */
+export const AnswerOpenQuestionResult = z
+  .object({
+    result: z.enum(['recorded', 'unchanged']),
+    answer: OpenQuestionAnswer,
+    question: OpenQuestion,
+    warnings: z.array(PersonalDataWarning),
+  })
+  .meta({ id: 'AnswerOpenQuestionResult', description: 'The answer and the answered question.' });
+export type AnswerOpenQuestionResult = z.infer<typeof AnswerOpenQuestionResult>;
+
+/** Rows per call of the sheet route (a sheet with more is sent in parts). */
+export const MAX_ANSWER_SHEET_ROWS = 5000;
+/** Bytes of a sheet route body (413 `payload-too-large` above). */
+export const MAX_ANSWER_SHEET_BODY_BYTES = 4 * 1024 * 1024;
+
+/**
+ * One row of a filled-in sheet, its cells as written (`readAnswerSheet` in
+ * `@analyzr/contracts/open-question-csv` reads them from the CSV): `id`,
+ * `text` (the column `Antwort`) and `kind` (the column `Antwortart`: a
+ * label of {@link OPEN_QUESTION_ANSWER_KINDS} or a value of
+ * {@link OpenQuestionAnswerKind}, case and surrounding spaces ignored;
+ * empty means `answer`). The server checks each row and lists the ones it
+ * cannot store, so the cells have no length limit here (the body has).
+ */
+export const AnswerSheetRowInput = z
+  .object({
+    id: z.string(),
+    text: z.string(),
+    kind: z.string().default(''),
+  })
+  .meta({ id: 'AnswerSheetRowInput', description: 'One row of a filled-in answer sheet.' });
+
+/** The rows of a filled-in sheet (the CSV of `GET …/open-questions/export?format=csv`). */
+export const AnswerSheetBody = z
+  .object({ rows: z.array(AnswerSheetRowInput).max(MAX_ANSWER_SHEET_ROWS) })
+  .meta({ id: 'AnswerSheetBody', description: 'The rows of a filled-in answer sheet.' });
+export type AnswerSheetBody = z.infer<typeof AnswerSheetBody>;
+
+/** Query of the sheet route: `dryRun=true` previews and stores nothing. */
+export const AnswerSheetQuery = z.object({
+  dryRun: z.enum(['true', 'false']).optional(),
+});
+export type AnswerSheetQuery = z.infer<typeof AnswerSheetQuery>;
+
+/**
+ * What became of a sheet row:
+ * - `recorded`: stored (in a dry run: would be stored);
+ * - `unchanged`: the item's latest answer is identical (same kind and text;
+ *   with an empty `Antwortart`, the same text whatever its kind), so
+ *   nothing is stored;
+ * - `unknown`: the id names no current open question (also when its source
+ *   changed since the export, which changes the id); never stored;
+ * - `invalid`: the row cannot be stored (`reason`); never stored.
+ */
+export const AnswerSheetOutcome = z
+  .enum(['recorded', 'unchanged', 'unknown', 'invalid'])
+  .meta({ id: 'AnswerSheetOutcome', description: 'What became of a sheet row.' });
+export type AnswerSheetOutcome = z.infer<typeof AnswerSheetOutcome>;
+
+/**
+ * Why a row is `invalid`: the answer is longer than {@link MAX_ANSWER_CHARS}
+ * characters (`too-long`), has control characters other than tab and line
+ * breaks (`control-characters`), its `Antwortart` is none of the kinds
+ * (`unknown-kind`), or an earlier row of the call answers the same id
+ * (`duplicate-id`).
+ */
+export const AnswerSheetReason = z
+  .enum(['too-long', 'control-characters', 'unknown-kind', 'duplicate-id'])
+  .meta({ id: 'AnswerSheetReason', description: 'Why a sheet row cannot be stored.' });
+export type AnswerSheetReason = z.infer<typeof AnswerSheetReason>;
+
+/** One row's outcome; rows with an empty answer are only counted (`ignored`). */
+export const AnswerSheetRowResult = z
+  .object({
+    /** Position of the row in `rows`, from 1 (clients map it to the row of their sheet). */
+    row: z.number().int().min(1),
+    /** The `id` cell, as sent. */
+    id: z.string(),
+    outcome: AnswerSheetOutcome,
+    /** Why an `invalid` row cannot be stored. */
+    reason: AnswerSheetReason.optional(),
+    /** The answer's kind (`recorded`, `unchanged`). */
+    kind: OpenQuestionAnswerKind.optional(),
+    /** Where its text lands (`recorded`, `unchanged`). */
+    target: OpenQuestionAnswerTarget.optional(),
+    /** The stored answer (`recorded` without a dry run; `unchanged`: the item's latest one). */
+    answer: OpenQuestionAnswer.optional(),
+    /** The personal-data check's warnings on the answer text. */
+    warnings: z.array(PersonalDataWarning),
+  })
+  .meta({ id: 'AnswerSheetRowResult', description: "One sheet row's outcome." });
+export type AnswerSheetRowResult = z.infer<typeof AnswerSheetRowResult>;
+
+/** The outcome of a sheet: counts and every row that is not `ignored`, in order. */
+export const AnswerSheetResult = z
+  .object({
+    dryRun: z.boolean(),
+    counts: z.object({
+      recorded: z.number().int().min(0),
+      unchanged: z.number().int().min(0),
+      unknown: z.number().int().min(0),
+      invalid: z.number().int().min(0),
+      /** Rows with an empty answer. */
+      ignored: z.number().int().min(0),
+    }),
+    rows: z.array(AnswerSheetRowResult),
+  })
+  .meta({ id: 'AnswerSheetResult', description: 'What a filled-in sheet stored or would store.' });
+export type AnswerSheetResult = z.infer<typeof AnswerSheetResult>;

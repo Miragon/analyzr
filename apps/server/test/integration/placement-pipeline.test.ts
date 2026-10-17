@@ -9,16 +9,19 @@
  * offered again, unsure and skipped ones only after their input changed),
  * supersession, saves during a lease, truncation and its follow-up,
  * revocation and withdrawals, revival, ad-hoc proposals as verdicts, only
- * what a claim shows moving an input hash (notes on open proposals, org
- * units, sibling processes), the `inTask` marker of `list_unplaced_processes`,
+ * what a claim shows moving an input hash (notes on open proposals, also
+ * as answers to open questions (M6 S5a), org units, sibling processes), the
+ * `inTask` marker of `list_unplaced_processes`,
  * the first task at server start, and the stage of the chain. Synthetic
  * models and chains only.
  */
 import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
 import type {
   AnalysisTaskPage,
+  AnswerOpenQuestionResult,
   ClaimedPlacementAnalysis,
   CreatedAgentToken,
+  OpenQuestionPage,
   PendingAnalyses,
   Placement,
   PlacementAssertionList,
@@ -1204,6 +1207,136 @@ describe('only what a claim shows moves an input hash', () => {
       }),
     ]);
     expect(c2.input.processes[0]?.decisions).toEqual([]);
+  });
+
+  it("records an answer to an agent's placement question as such a note (M6 S5a)", async () => {
+    const P1 = 'q/eins#P_Eins';
+    const P2 = 'q/zwei#P_Zwei';
+    const f = await Fixture.create('pl-answer', {
+      'q/eins': [{ id: 'P_Eins', name: 'Eingang' }],
+      'q/zwei': [{ id: 'P_Zwei', name: 'Zweitschrift' }],
+    });
+    const c1 = await only(f.agent, f.key);
+    await submitPlacement(
+      f.agent,
+      c1.taskId,
+      placementSubmission(
+        c1,
+        [item('step-pruefung', P1, { confidence: 0.5, question: 'Gehört der Eingang hierher?' })],
+        { unsure: [{ process: P2, reason: 'Unklar.' }] },
+      ),
+    );
+    expect((await f.detail()).pipeline.due).toBe(0);
+    const proposed = await f.placementOn('step-pruefung', P1);
+    const questions = (
+      await json<OpenQuestionPage>(
+        await t.asOwner(`/api/v1/projects/${f.key}/open-questions?kind=agent-question`),
+      )
+    ).items;
+    const asked = questions.find((q) => q.subject.id === proposed?.id);
+    if (!asked) throw new Error("the agent's placement question is no open question");
+    // The consultant answers it: a placement note, the process due, nothing queued.
+    const before = await f.lastSeq();
+    const answered = await json<AnswerOpenQuestionResult>(
+      await post(
+        (p, i) => t.asOwner(p, i),
+        `/api/v1/projects/${f.key}/open-questions/${asked.id}/answers`,
+        {
+          text: 'Eher Bescheidausgabe.',
+        },
+      ),
+      201,
+    );
+    expect(answered.answer).toMatchObject({
+      target: 'placement-note',
+      note: { type: 'placement', subjectId: proposed?.id },
+    });
+    const note = (await f.timeline(proposed?.id ?? '')).at(-1);
+    expect(note).toMatchObject({
+      id: answered.answer.note?.assertionId,
+      kind: 'note',
+      sourceKind: 'human',
+      rationale: 'Eher Bescheidausgabe.',
+    });
+    expect(await f.chainEvents(before)).toEqual([]);
+    expect((await f.detail()).pipeline).toMatchObject({ due: 1, task: { state: 'done' } });
+    expect(await f.placementOn('step-pruefung', P1)).toMatchObject({
+      status: 'proposed',
+      version: proposed?.version,
+    });
+    // The next task shows the answer on the proposal, as any note.
+    expect(await f.requeue()).toMatchObject({ outcome: 'queued' });
+    const c2 = await only(f.agent, f.key);
+    expect(c2.input.processes.map((p) => p.process)).toEqual([P1]);
+    expect(c2.input.processes[0]?.proposals[0]?.notes).toEqual([
+      { text: 'Eher Bescheidausgabe.', at: expect.any(String) as unknown },
+    ]);
+  });
+
+  it('records an answer to a held placement as a note; the hold stays and nothing becomes due (M6 S5a)', async () => {
+    const P1 = 'qh/eins#P_Eins';
+    const P2 = 'qh/zwei#P_Zwei';
+    const f = await Fixture.create('pl-answer-held', {
+      'qh/eins': [{ id: 'P_Eins', name: 'Eingang' }],
+      'qh/zwei': [{ id: 'P_Zwei', name: 'Zweitschrift' }],
+    });
+    const c1 = await only(f.agent, f.key);
+    await submitPlacement(
+      f.agent,
+      c1.taskId,
+      placementSubmission(c1, [item('step-pruefung', P1)], {
+        unsure: [{ process: P2, reason: 'Unklar.' }],
+      }),
+    );
+    const proposed = await f.placementOn('step-pruefung', P1);
+    if (!proposed) throw new Error('no proposal');
+    // The reviewer holds it with a question (decision 10, „Vormerken“).
+    expect(
+      (
+        await f.decide(proposed.id, {
+          verdict: 'hold',
+          note: 'Mit dem Fachbereich klären.',
+          question: 'Gehört der Eingang hierher?',
+          version: proposed.version,
+        })
+      ).status,
+    ).toBe(200);
+    const held = await f.placementOn('step-pruefung', P1);
+    expect(held?.status).toBe('held');
+    const due = (await f.detail()).pipeline.due;
+    expect(due).toBe(0);
+    const question = (
+      await json<OpenQuestionPage>(
+        await t.asOwner(`/api/v1/projects/${f.key}/open-questions?kind=held`),
+      )
+    ).items.find((q) => q.subject.id === proposed.id);
+    if (!question) throw new Error('the held placement is no open question');
+    // The answer is a placement note; the placement keeps homing its process, so it is not due.
+    const before = await f.lastSeq();
+    const answered = await json<AnswerOpenQuestionResult>(
+      await post(
+        (p, i) => t.asOwner(p, i),
+        `/api/v1/projects/${f.key}/open-questions/${question.id}/answers`,
+        { text: 'Ja, der Eingang gehört zur Antragsprüfung.' },
+      ),
+      201,
+    );
+    expect(answered.answer).toMatchObject({
+      target: 'placement-note',
+      note: { type: 'placement', subjectId: proposed.id },
+    });
+    expect((await f.timeline(proposed.id)).at(-1)).toMatchObject({
+      id: answered.answer.note?.assertionId,
+      kind: 'note',
+      sourceKind: 'human',
+    });
+    expect(await f.chainEvents(before)).toEqual([]);
+    expect((await f.detail()).pipeline.due).toBe(due);
+    expect(await f.placementOn('step-pruefung', P1)).toMatchObject({
+      status: 'held',
+      version: held?.version,
+    });
+    expect(await f.requeue()).toEqual({ outcome: 'nothing-due', taskId: null });
   });
 
   it('re-offers nothing after saves that only add an org unit, during a lease or after it', async () => {

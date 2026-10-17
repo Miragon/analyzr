@@ -87,6 +87,44 @@ interface DecisionFields {
   confidence: number | null;
 }
 
+/**
+ * Records a human note on a relation (an answer to a held question or to an
+ * agent's question, a remark), in the caller's transaction: it never changes
+ * the relation's status, tier or version, and the next claim of either
+ * model shows it. Used by `addRelationNote` and by the answers to open
+ * questions on a relation (M6 S5a).
+ */
+export async function recordRelationNote(
+  tx: Tx,
+  projectId: ProjectId,
+  actor: Actor,
+  relation: RelationRecord,
+  text: string,
+): Promise<AssertionRecord> {
+  const note = await prepareAssertion(tx, projectId, relation, {
+    kind: 'note',
+    verdict: null,
+    sourceKind: sourceKindOf(actor),
+    principalId: actor.principalId,
+    clientId: actor.clientId,
+    declared: null,
+    submissionId: null,
+    tier: null,
+    confidence: null,
+    rationale: text,
+    evidence: null,
+    question: null,
+    label: null,
+    linkedRelationId: null,
+    fromFp: relation.fromFp,
+    toFp: relation.toFp,
+    fromHash: null,
+    toHash: null,
+  });
+  await tx.assertions.insert(note);
+  return note;
+}
+
 /** Records a human decision on a relation and refreshes its derived state. */
 async function recordDecision(
   tx: Tx,
@@ -418,27 +456,7 @@ export function reviewUseCases(deps: UseCaseDeps) {
         await tx.projects.lockForWrite(project.id);
         const relation = await tx.relations.findInProject(project.id, relationId);
         if (!relation) throw new DomainError('not-found', 'relation not found');
-        const note = await prepareAssertion(tx, project.id, relation, {
-          kind: 'note',
-          verdict: null,
-          sourceKind: sourceKindOf(actor),
-          principalId: actor.principalId,
-          clientId: actor.clientId,
-          declared: null,
-          submissionId: null,
-          tier: null,
-          confidence: null,
-          rationale: body.text,
-          evidence: null,
-          question: null,
-          label: null,
-          linkedRelationId: null,
-          fromFp: relation.fromFp,
-          toFp: relation.toFp,
-          fromHash: null,
-          toHash: null,
-        });
-        await tx.assertions.insert(note);
+        const note = await recordRelationNote(tx, project.id, actor, relation, body.text);
         const stored = (await tx.assertions.listForRelations(project.id, [relation.id])).find(
           (a) => a.id === note.id,
         );

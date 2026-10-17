@@ -750,6 +750,7 @@ export type OpenQuestion = {
   refs: Array<Ref>;
   raisedBy: OpenQuestionRaisedBy;
   state: OpenQuestionState;
+  answers: Array<OpenQuestionAnswer>;
 };
 
 /**
@@ -833,9 +834,131 @@ export type OpenQuestionRaisedBy = {
 export type OpenQuestionState = 'open' | 'answered';
 
 /**
+ * An answer to an open question.
+ */
+export type OpenQuestionAnswer = {
+  id: OpenQuestionAnswerId;
+  questionId: OpenQuestionId;
+  kind: OpenQuestionAnswerKind;
+  target: OpenQuestionAnswerTarget;
+  text: string;
+  note: OpenQuestionAnswerNote | null;
+  by: string;
+  sourceKind: 'human';
+  seq: number;
+  at: Timestamp;
+};
+
+/**
+ * Answer to an open question (`oqa_` + ULID).
+ */
+export type OpenQuestionAnswerId = string;
+
+/**
+ * Kind of an answer to an open question.
+ */
+export type OpenQuestionAnswerKind = 'answer' | 'outside-landscape' | 'will-be-modelled';
+
+/**
+ * Where an answer's text is stored.
+ */
+export type OpenQuestionAnswerTarget = 'relation-note' | 'placement-note' | 'answer';
+
+/**
+ * The note an answer was recorded as.
+ */
+export type OpenQuestionAnswerNote = {
+  type: 'relation' | 'placement';
+  subjectId: string;
+  assertionId: string;
+};
+
+/**
  * Format of the open-questions export.
  */
 export type OpenQuestionExportFormat = 'markdown' | 'csv';
+
+/**
+ * The answer and the answered question.
+ */
+export type AnswerOpenQuestionResult = {
+  result: 'recorded' | 'unchanged';
+  answer: OpenQuestionAnswer;
+  question: OpenQuestion;
+  warnings: Array<PersonalDataWarning>;
+};
+
+/**
+ * Probable personal data in a text (e-mail, phone, IBAN); a warning, never a block.
+ */
+export type PersonalDataWarning = {
+  kind: 'email' | 'phone' | 'iban';
+  start: number;
+  end: number;
+};
+
+/**
+ * An answer to an open question.
+ */
+export type AnswerOpenQuestionBody = {
+  text: string;
+  kind?: OpenQuestionAnswerKind;
+};
+
+/**
+ * What a filled-in sheet stored or would store.
+ */
+export type AnswerSheetResult = {
+  dryRun: boolean;
+  counts: {
+    recorded: number;
+    unchanged: number;
+    unknown: number;
+    invalid: number;
+    ignored: number;
+  };
+  rows: Array<AnswerSheetRowResult>;
+};
+
+/**
+ * One sheet row's outcome.
+ */
+export type AnswerSheetRowResult = {
+  row: number;
+  id: string;
+  outcome: AnswerSheetOutcome;
+  reason?: AnswerSheetReason;
+  kind?: OpenQuestionAnswerKind;
+  target?: OpenQuestionAnswerTarget;
+  answer?: OpenQuestionAnswer;
+  warnings: Array<PersonalDataWarning>;
+};
+
+/**
+ * What became of a sheet row.
+ */
+export type AnswerSheetOutcome = 'recorded' | 'unchanged' | 'unknown' | 'invalid';
+
+/**
+ * Why a sheet row cannot be stored.
+ */
+export type AnswerSheetReason = 'too-long' | 'control-characters' | 'unknown-kind' | 'duplicate-id';
+
+/**
+ * The rows of a filled-in answer sheet.
+ */
+export type AnswerSheetBody = {
+  rows: Array<AnswerSheetRowInput>;
+};
+
+/**
+ * One row of a filled-in answer sheet.
+ */
+export type AnswerSheetRowInput = {
+  id: string;
+  text: string;
+  kind?: string;
+};
 
 /**
  * The history of a relation, oldest first.
@@ -3807,6 +3930,106 @@ export type ExportOpenQuestionsResponses = {
 
 export type ExportOpenQuestionsResponse =
   ExportOpenQuestionsResponses[keyof ExportOpenQuestionsResponses];
+
+export type AnswerOpenQuestionData = {
+  body: AnswerOpenQuestionBody;
+  path: {
+    /**
+     * Project id (`prj_…`) or project key.
+     */
+    project: string;
+    /**
+     * Id of an open question: `q-` + 16 hex characters.
+     */
+    question: OpenQuestionId;
+  };
+  query?: never;
+  url: '/api/v1/projects/{project}/open-questions/{question}/answers';
+};
+
+export type AnswerOpenQuestionErrors = {
+  /**
+   * Problem: `unauthorized`
+   */
+  401: ApiProblem;
+  /**
+   * Problem: `insufficient-scope`, `human-decision-required`, `forbidden`, `demo-readonly`
+   */
+  403: ApiProblem;
+  /**
+   * Problem: `not-found`
+   */
+  404: ApiProblem;
+  /**
+   * Problem: `validation-failed`
+   */
+  422: ApiProblem;
+};
+
+export type AnswerOpenQuestionError = AnswerOpenQuestionErrors[keyof AnswerOpenQuestionErrors];
+
+export type AnswerOpenQuestionResponses = {
+  /**
+   * An identical answer was recorded earlier
+   */
+  200: AnswerOpenQuestionResult;
+  /**
+   * The answer was recorded
+   */
+  201: AnswerOpenQuestionResult;
+};
+
+export type AnswerOpenQuestionResponse =
+  AnswerOpenQuestionResponses[keyof AnswerOpenQuestionResponses];
+
+export type AnswerOpenQuestionsData = {
+  body: AnswerSheetBody;
+  path: {
+    /**
+     * Project id (`prj_…`) or project key.
+     */
+    project: string;
+  };
+  query?: {
+    dryRun?: 'true' | 'false';
+  };
+  url: '/api/v1/projects/{project}/open-questions/answers';
+};
+
+export type AnswerOpenQuestionsErrors = {
+  /**
+   * Problem: `unauthorized`
+   */
+  401: ApiProblem;
+  /**
+   * Problem: `insufficient-scope`, `human-decision-required`, `forbidden`, `demo-readonly`
+   */
+  403: ApiProblem;
+  /**
+   * Problem: `not-found`
+   */
+  404: ApiProblem;
+  /**
+   * Problem: `payload-too-large`
+   */
+  413: ApiProblem;
+  /**
+   * Problem: `validation-failed`
+   */
+  422: ApiProblem;
+};
+
+export type AnswerOpenQuestionsError = AnswerOpenQuestionsErrors[keyof AnswerOpenQuestionsErrors];
+
+export type AnswerOpenQuestionsResponses = {
+  /**
+   * What the sheet stored or would store
+   */
+  200: AnswerSheetResult;
+};
+
+export type AnswerOpenQuestionsResponse =
+  AnswerOpenQuestionsResponses[keyof AnswerOpenQuestionsResponses];
 
 export type GetRelationAssertionsData = {
   body?: never;

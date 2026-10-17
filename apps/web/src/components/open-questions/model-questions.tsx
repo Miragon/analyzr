@@ -6,16 +6,20 @@ import { useMemo } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { errorMessage } from '@/lib/api';
 import { questionsOfModel } from '@/lib/open-questions';
+import { useProjectPermissions } from '@/lib/permissions';
 import { modelOpenQuestionsQuery } from '@/lib/queries';
 import type { RefResolver } from '@/lib/refs';
 
+import { AnswerDialog } from './answer-dialog';
 import { QuestionItem } from './question-item';
+import { useAnswerDialog } from './use-answer-dialog';
 
 /**
  * The section „Offene Fragen“ of the model view (M6 §4.4): the questions
- * touching this model, in list order, compact, and a link to the tab
- * filtered by the model. Loaded lazily with the model view's panel, so the
- * entry chunk carries none of it.
+ * touching this model, in list order, compact, with their answers and, for
+ * reviewers, „Beantworten“ (M6 S5a), and a link to the tab filtered by the
+ * model. Loaded lazily with the model view's panel, so the entry chunk
+ * carries none of it.
  */
 export default function ModelQuestions({
   project,
@@ -28,6 +32,8 @@ export default function ModelQuestions({
 }) {
   const query = useQuery(modelOpenQuestionsQuery(project, modelKey));
   const items = useMemo(() => questionsOfModel(query.data ?? [], modelKey), [query.data, modelKey]);
+  const { canReview } = useProjectPermissions(project);
+  const answering = useAnswerDialog();
 
   return (
     <section aria-labelledby="model-open-questions" data-testid="model-open-questions">
@@ -67,10 +73,14 @@ export default function ModelQuestions({
               resolve={resolve}
               compact
               currentModel={modelKey}
+              {...(canReview ? { onAnswer: answering.open } : {})}
             />
           ))}
         </ul>
       )}
+      {canReview ? (
+        <AnswerDialog project={project} state={answering.state} onClose={answering.close} />
+      ) : null}
     </section>
   );
 }

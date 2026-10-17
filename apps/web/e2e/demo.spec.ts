@@ -54,6 +54,8 @@ const WRITE_ACTIONS = [
   /erneut bestätigen/,
   /^Speichern$/,
   /^Importieren$/,
+  /^Beantworten$/,
+  /Antworten aus CSV übernehmen/,
 ];
 
 /** Test ids of the value chain's write actions (stable where texts may change). */
@@ -65,6 +67,8 @@ const WRITE_TEST_IDS = [
   'edit-chain',
   'bulk-open',
   'placement-decision',
+  'question-answer-button',
+  'open-questions-import',
 ];
 
 const unexpected: string[] = [];

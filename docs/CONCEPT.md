@@ -125,10 +125,19 @@ auto_accept_rule_revision(project_id, rule_id, kind, revision >= 1, name, enable
   check((rule_id is null) = (rule_revision is null) and (rule_id is not null or trigger_id is null)
         and (rule_id is null or (source_kind = 'human' and ((kind = 'decision' and verdict = 'accept'
              and trigger_id is not null and tier is null) or (kind = 'withdrawal' and trigger_id is null)))))
+-- M6 S5a (answers to open questions; migrations 0011/0012, M6-INTEGRATION-AND-GAPS.md §4.5):
+open_question_answer(id, project_id, question_id ~ '^q-[0-9a-f]{16}$', subject_type, subject_id,
+         kind in ('answer','outside-landscape','will-be-modelled'), text (1–2000), note_assertion_id,
+         relation_id, placement_id (generated from subject_type/subject_id), principal_id,
+         source_kind = 'human', seq,
+         check(exactly one of text and note_assertion_id; note_assertion_id iff subject_type in
+               ('relation','placement')),
+         fk (project_id, relation_id, note_assertion_id) → relation_assertion(project_id, relation_id, id),
+         fk (project_id, placement_id, note_assertion_id) → placement_assertion(project_id, placement_id, id))
 ```
 
 `seq` comes from `UPDATE project SET last_seq = last_seq + 1 RETURNING last_seq` in the writing transaction, which serializes writes per project and keeps `seq` dense for cursors. Triggers block UPDATE and DELETE on `event` and the other append-only tables (since M4 also
-`value_chain_revision` and `placement_assertion`; a `value_chain_step` row only takes its tombstone; since owner decision 19 both auto-accept rule tables). The policy limits rule decisions to `call` relations.
+`value_chain_revision` and `placement_assertion`; a `value_chain_step` row only takes its tombstone; since owner decision 19 both auto-accept rule tables; since M6 S5a `open_question_answer`). The policy limits rule decisions to `call` relations.
 
 ## 3. Analysis pipeline
 
@@ -246,6 +255,7 @@ Rejected relations are exported on purpose, so offline agents do not propose the
 | `/projects/{p}/landscape`, `…/relations[/{rel}]` | GET; POST to propose or add a manual relation |
 | `…/no-links` (`?modelKey=`) | GET: agents' live, current no-links, also on pairs without a relation |
 | `…/open-questions` (`?modelKey=&kind=&source=&askWho=&state=`, cursor pages), `…/open-questions/export?format=markdown\|csv` (same filters) (M6 S4) | GET (permission `read`): the open-questions read model, computed on read and never stored (M6 §4.2); the export as an attachment named after the filters |
+| `…/open-questions/{q}/answers`, `…/open-questions/answers?dryRun=` (M6 S5a) | POST (permission `review`, humans only): one answer, or the rows of a filled-in CSV sheet in one transaction; on a relation or placement the text is a human note through the note use cases, else it stays in `open_question_answer` (M6 §4.5) |
 | `…/relations/{rel}/decision` (`accept`, `reject`, `hold`), `…/decisions` | POST; bulk needs ids, versions and `expectedCount` |
 | `/projects/{p}/value-chains[/{key}]`, `…/{key}/content` (`If-Match: "r<rev>"`, `If-None-Match: *`, `?dryRun=true`), `…/revisions[/{rev}/content]`, `…/steps/{id}`, `…/findings`, `…/unplaced-processes` (M4) | GET, POST, PUT, DELETE (writes: humans only) |
 | `…/value-chains/{key}/placements[/{plc}]`, `…/{plc}/decision`, `…/placements/decisions`, `…/{plc}/notes`, `…/{plc}/assertions`, `…/{plc}/proposal` (M4) | GET; POST to propose or add a manual placement; decisions, bulk and notes by humans; DELETE own proposal |
@@ -268,7 +278,7 @@ Problem types: 422 `validation-failed`, `bpmn-invalid`, `value-chain-invalid` (w
 
 There is no decide tool; an attempt returns `human-decision-required` with the review URL (the stubs `decide_relation` and `decide_placement` exist only to say so). Prompts and `instructions`: §7. Resources: `analyzr://projects/{p}/models/{key}.bpmn` and `…/landscape.json`.
 
-**Events:** `model.revised|deleted`, `analysis.queued|claimed|done|failed`, `relation.proposed|decided|endpoint_changed`, `value_chain.created|revised|deleted`, `placement.proposed|withdrawn|decided|noted|endpoint_changed` (M4), `auto_accept_rule.created|revised|applied` and `auto_accept.revoked` (owner decision 19; ids, revision and counts, never criteria), `member.changed`, `agent_token.created|revoked`. An auto-acceptance is a `relation.decided`/`placement.decided` event whose principal is the causer (the agent whose proposal triggered it, or the owner who applied the rule) and whose payload names the deciding owner and `autoAccept: {ruleId, revision, triggerId}`; a revocation is a `*.withdrawn` event with the same marker. Unmarked events are unchanged. Long-polls wait on Postgres `LISTEN`; webhooks will read the same table.
+**Events:** `model.revised|deleted`, `analysis.queued|claimed|done|failed`, `relation.proposed|decided|endpoint_changed`, `value_chain.created|revised|deleted`, `placement.proposed|withdrawn|decided|noted|endpoint_changed` (M4), `auto_accept_rule.created|revised|applied` and `auto_accept.revoked` (owner decision 19; ids, revision and counts, never criteria), `open_question.answered` (M6 S5a; question id, kind, subject, target and the note's id, never the text), `member.changed`, `agent_token.created|revoked`. An auto-acceptance is a `relation.decided`/`placement.decided` event whose principal is the causer (the agent whose proposal triggered it, or the owner who applied the rule) and whose payload names the deciding owner and `autoAccept: {ruleId, revision, triggerId}`; a revocation is a `*.withdrawn` event with the same marker. Unmarked events are unchanged. Long-polls wait on Postgres `LISTEN`; webhooks will read the same table.
 
 ## 6. Auth and authorization
 

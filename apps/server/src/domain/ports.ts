@@ -31,6 +31,9 @@ import type {
   ModelId,
   ModelStage,
   NoLinkId,
+  OpenQuestionAnswerId,
+  OpenQuestionAnswerKind,
+  OpenQuestionSubjectType,
   PlacementAssertionId,
   PlacementId,
   PrincipalId,
@@ -1145,6 +1148,42 @@ export interface AutoAcceptRuleRepo {
   ): Promise<StoredAutoAcceptRuleRevision[]>;
 }
 
+/**
+ * An answer to an open question (`open_question_answer`, M6 S5a): the text
+ * in `text`, or, for a relation or placement subject, the human note it was
+ * recorded as (`noteAssertionId`).
+ */
+export interface OpenQuestionAnswerRecord {
+  id: OpenQuestionAnswerId;
+  projectId: ProjectId;
+  /** The answered item's id (`q-` + 16 hex). */
+  questionId: string;
+  subjectType: OpenQuestionSubjectType;
+  subjectId: string;
+  kind: OpenQuestionAnswerKind;
+  text: string | null;
+  /** A relation assertion (`asr_…`) or placement assertion (`pas_…`) of kind `note`. */
+  noteAssertionId: AssertionId | PlacementAssertionId | null;
+  principalId: PrincipalId;
+  sourceKind: 'human';
+  /** Seq of the `open_question.answered` event. */
+  seq: number;
+}
+
+/** An answer as read back: with its text resolved (a note answer's note text), the handle and the time. */
+export interface StoredOpenQuestionAnswer extends OpenQuestionAnswerRecord {
+  /** `text`, or the text of the note it was recorded as. */
+  answerText: string;
+  handle: string;
+  createdAt: Date;
+}
+
+export interface OpenQuestionAnswerRepo {
+  insert(row: OpenQuestionAnswerRecord): Promise<void>;
+  /** Every answer of the project, oldest first, with the note texts resolved. */
+  list(projectId: ProjectId): Promise<StoredOpenQuestionAnswer[]>;
+}
+
 export interface FindingRepo {
   replace(projectId: ProjectId, findings: readonly Finding[]): Promise<void>;
   list(projectId: ProjectId): Promise<Finding[]>;
@@ -1177,6 +1216,7 @@ export interface Tx {
   placementAssertions: PlacementAssertionRepo;
   placementInputs: PlacementInputRepo;
   autoAcceptRules: AutoAcceptRuleRepo;
+  openQuestionAnswers: OpenQuestionAnswerRepo;
   findings: FindingRepo;
   events: EventRepo;
 }

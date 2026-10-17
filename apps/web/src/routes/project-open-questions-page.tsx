@@ -3,7 +3,10 @@ import { useQuery } from '@tanstack/react-query';
 import { CircleCheckIcon, FileDownIcon, FilterXIcon, SearchXIcon } from 'lucide-react';
 import { useMemo, useState } from 'react';
 
+import { AnswerDialog } from '@/components/open-questions/answer-dialog';
+import { AnswerSheetDialog } from '@/components/open-questions/answer-sheet-dialog';
 import { QuestionItem } from '@/components/open-questions/question-item';
+import { useAnswerDialog } from '@/components/open-questions/use-answer-dialog';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import {
@@ -34,6 +37,7 @@ import {
   type FacetOption,
   type OpenQuestionFilters,
 } from '@/lib/open-questions';
+import { useProjectPermissions } from '@/lib/permissions';
 import { modelsQuery, openQuestionsQuery } from '@/lib/queries';
 import { toast } from '@/lib/toast';
 import { useProjectFacts } from '@/lib/use-project-facts';
@@ -107,7 +111,7 @@ function ExportButtons({ project, filters }: { project: string; filters: OpenQue
           data-format={format}
           title={
             format === 'csv'
-              ? 'Die Fragen mit leeren Spalten „Antwort“ und „Antwortart“ zum Ausfüllen, ohne die Hinweise zur Information'
+              ? 'Die Fragen mit den Spalten „Antwort“ und „Antwortart“ zum Ausfüllen (bei beantworteten Fragen steht die letzte Antwort darin), ohne die Hinweise zur Information'
               : 'Nach Ansprechpartner-Hinweis gruppiert, zum Lesen und für Gespräche'
           }
         >
@@ -161,11 +165,14 @@ function FacetSelect({
 }
 
 /**
- * The tab „Offene Fragen“ (M6 §4.4): every open question of the project,
- * ordered by the open decisions it touches (`unlocks`), filtered by kind,
- * model or folder, contact hint, source and state (in the URL), and the
- * export of exactly the filtered list as Markdown or CSV. Read-only for
- * every role; answering comes with S5a.
+ * The tab „Offene Fragen“ (M6 §4.4): every open question of the project in
+ * the server's order (questions, then the value chain findings, then the
+ * informational items, each by the open decisions it touches), filtered by
+ * kind, model or folder, contact hint, source and state (in the URL), and the
+ * export of exactly the filtered list as Markdown or CSV. Every role reads
+ * it; reviewers (editors and owners, never on the read-only demo) answer
+ * each item with „Beantworten“ and take a filled-in CSV back with „Antworten
+ * aus CSV übernehmen“ (M6 §4.5, S5a).
  */
 export function OpenQuestionsPage() {
   const { project } = projectOpenQuestionsRoute.useParams();
@@ -174,6 +181,8 @@ export function OpenQuestionsPage() {
   const questions = useQuery(openQuestionsQuery(project));
   const models = useQuery(modelsQuery(project));
   const { resolve } = useProjectFacts(project, models.data);
+  const { canReview } = useProjectPermissions(project);
+  const answering = useAnswerDialog();
   const [shown, setShown] = useState(PAGE);
 
   const filters = useMemo(() => parseOpenQuestionFilters({ ...search }), [search]);
@@ -215,9 +224,13 @@ export function OpenQuestionsPage() {
     <p className="text-muted-foreground">
       Hier steht, wo der Landschaft Wissen fehlt, um Relationen oder Platzierungen zu entscheiden:
       Befunde, Vormerkungen, Fragen und Einschätzungen der Agenten und Lückensignale aus den
-      Modellen. Ganz oben stehen die Fragen, an denen die meisten offenen Entscheidungen hängen;
-      Hinweise zur Information stehen zuletzt. Der Ansprechpartner-Hinweis nennt Lanes,
-      Organisationseinheiten und Ordner: ein Hinweis, keine Zuständigkeit.
+      Modellen. Ganz oben stehen die Fragen, an denen die meisten offenen Entscheidungen hängen,
+      danach die Befunde der Wertschöpfungskette; Hinweise zur Information stehen zuletzt. Der
+      Ansprechpartner-Hinweis nennt Lanes, Organisationseinheiten und Ordner: ein Hinweis, keine
+      Zuständigkeit.
+      {canReview
+        ? ' Mit „Beantworten“ hältst du eine Antwort fest, mit „Antworten aus CSV übernehmen“ die Antworten aus der ausgefüllten CSV.'
+        : null}
     </p>
   );
 
@@ -333,7 +346,9 @@ export function OpenQuestionsPage() {
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p
-          className="text-sm text-muted-foreground"
+          id="oq-count"
+          tabIndex={-1}
+          className="text-sm text-muted-foreground outline-none"
           aria-live="polite"
           data-testid="open-questions-count"
         >
@@ -342,7 +357,10 @@ export function OpenQuestionsPage() {
             : `${all.length} ${all.length === 1 ? 'Frage' : 'Fragen'}`}
           , geordnet nach offenen Entscheidungen
         </p>
-        <ExportButtons project={project} filters={filters} />
+        <div className="flex flex-wrap items-center gap-2">
+          <ExportButtons project={project} filters={filters} />
+          {canReview ? <AnswerSheetDialog project={project} items={all} /> : null}
+        </div>
       </div>
 
       {items.length === 0 ? (
@@ -367,7 +385,13 @@ export function OpenQuestionsPage() {
       ) : (
         <ul className="flex flex-col gap-3" aria-label="Offene Fragen">
           {visible.map((q) => (
-            <QuestionItem key={q.id} q={q} project={project} resolve={resolve} />
+            <QuestionItem
+              key={q.id}
+              q={q}
+              project={project}
+              resolve={resolve}
+              {...(canReview ? { onAnswer: answering.open } : {})}
+            />
           ))}
         </ul>
       )}
@@ -380,6 +404,14 @@ export function OpenQuestionsPage() {
         >
           {`Weitere ${Math.min(PAGE, items.length - visible.length)} anzeigen (${items.length - visible.length} übrig)`}
         </Button>
+      ) : null}
+      {canReview ? (
+        <AnswerDialog
+          project={project}
+          state={answering.state}
+          onClose={answering.close}
+          fallbackFocusId="oq-count"
+        />
       ) : null}
     </div>
   );
