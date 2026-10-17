@@ -9,6 +9,7 @@
     ".": "./src/index.ts",
     "./paths": "./src/paths.ts",
     "./open-question-labels": "./src/open-question-labels.ts",
+    "./amendment-labels": "./src/amendment-labels.ts",
     "./open-question-csv": "./src/open-question-csv.ts",
     "./personal-data": "./src/personal-data.ts"
   },

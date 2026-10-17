@@ -1,6 +1,7 @@
 /**
- * `analyzr models list|requeue|delete` (M6 S1): the models of a project over
- * the existing routes.
+ * `analyzr models list|requeue|delete|pull` (M6 S1; pull since S5c-2): the
+ * models of a project over the existing routes (`analyzr models amend` is in
+ * `amend.ts`).
  *
  * - **list** pages through `GET …/models` (any credential): key, stage, head
  *   revision, engine and open items, optionally one `--stage`.
@@ -18,13 +19,27 @@
  *   `{deleted, models, failed: {key, error}}` with the models already
  *   deleted before it exits 1. The deletion's impact on relations and
  *   placements comes with M6 S2.
+ * - **pull** (any credential) writes a live model's BPMN bytes verbatim
+ *   (`GET …/revisions/{revision}/content`, read as bytes, so a byte order
+ *   mark and line endings stay): the head, which is the amended revision
+ *   when amendments apply (M6 S5c-2, §4.8 c: „BPMN herunterladen“), or with
+ *   `--original` the uploaded revision the head is computed from
+ *   (`source.upstream`, „Original herunterladen“). It prints `r<rev>
+ *   <sha256>` and what the revision is on stderr.
  */
+import { createHash } from 'node:crypto';
+import { writeFile } from 'node:fs/promises';
+import path from 'node:path';
+
 import {
   deleteModel,
+  getRevisionContent,
   listModels,
+  listRevisions,
   requeueAnalyses,
   type Model,
   type RequeueResult,
+  type Revision,
 } from '@analyzr/client';
 import { MAX_PAGE_LIMIT, ModelStage, isModelKey } from '@analyzr/contracts';
 
@@ -237,4 +252,69 @@ export async function modelsDeleteCommand(
       `${opts.project}: ${plural(models.length, 'model')} deleted; partner relations turn missing, uploading a key again revives its model\n`,
     );
   }
+}
+
+export interface PullOptions extends CredentialOptions {
+  url: string;
+  project: string;
+  /** The uploaded revision the head is computed from, instead of the head. */
+  original?: boolean;
+  /** Output file; default stdout. */
+  output?: string;
+}
+
+/** The model's head revision (the pages of `GET …/revisions`, newest first, until it turns up). */
+async function headRevision(api: Api, project: string, model: Model): Promise<Revision> {
+  let cursor: string | undefined;
+  do {
+    const page = await call(
+      api,
+      `list the revisions of ${model.key} in ${project}`,
+      listRevisions({
+        client: api.client,
+        path: { project, model: model.id },
+        query: { limit: MAX_PAGE_LIMIT, ...(cursor === undefined ? {} : { cursor }) },
+      }),
+    );
+    const head = page.items.find((r) => r.id === model.headRevisionId);
+    if (head) return head;
+    cursor = page.nextCursor ?? undefined;
+  } while (cursor !== undefined);
+  throw new CliError(`the head revision of ${model.key} is missing from its revisions`);
+}
+
+/** `analyzr models pull <key> -p <project> [--original] [-o <file>]`. */
+export async function modelsPullCommand(io: CliIo, key: string, opts: PullOptions): Promise<void> {
+  const [modelKey] = parseKeys([key]);
+  const api = createApi(io, opts.url, await anyCredential(io, opts));
+  const model = (await allModels(api, opts.project)).find((m) => m.key === modelKey);
+  if (!model) throw new CliError(`no live model ${key} in ${opts.project}`);
+  const head = await headRevision(api, opts.project, model);
+  const upstream = head.source.kind === 'amendment' ? head.source.upstream : undefined;
+  const revisionId = opts.original === true && upstream ? upstream.revisionId : head.id;
+  const rev = opts.original === true && upstream ? upstream.rev : head.rev;
+  const data = await call(
+    api,
+    `read r${rev} of ${model.key} in ${opts.project}`,
+    getRevisionContent({
+      client: api.client,
+      path: { project: opts.project, model: model.id, revision: revisionId },
+      // The bytes verbatim: a text read would drop a byte order mark.
+      parseAs: 'arrayBuffer',
+    }),
+  );
+  const raw = data as unknown;
+  if (!(raw instanceof ArrayBuffer)) throw new CliError('the server sent no BPMN');
+  const bytes = new Uint8Array(raw);
+  const hash = createHash('sha256').update(bytes).digest('hex');
+  if (opts.output === undefined)
+    io.stdout(new TextDecoder('utf-8', { ignoreBOM: true }).decode(bytes));
+  else await writeFile(path.resolve(io.cwd, opts.output), bytes);
+  const what =
+    upstream === undefined
+      ? 'uploaded, the head'
+      : opts.original === true
+        ? `uploaded; the head r${head.rev} is amended from it`
+        : `the head, amended from the uploaded r${upstream.rev}`;
+  io.stderr(`r${rev} ${hash} (${what})\n`);
 }

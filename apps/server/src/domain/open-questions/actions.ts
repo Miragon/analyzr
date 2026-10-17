@@ -9,29 +9,46 @@
  * pickers' suggestions), and the German rationales from code. The use case (`use-cases/open-questions.ts`) runs
  * the actions through the use cases that exist.
  *
- * Model amendments (`amend`, `withdraw-amendment`) come with S5c-2; until
- * then the kinds whose primary action is an amendment offer the documented
- * fallback: `link` on `call-target-unknown` without a `calledElement` and on
- * a nameless `message-partner-missing`, only the note on
- * `unlabelled-boundary` and `undocumented-process`.
+ * Model amendments (S5c-2, §4.8 a): `amend` is the primary action of a call
+ * without a target, a nameless message or signal endpoint, unnamed start or
+ * end events and an undocumented process, and a secondary one on a call
+ * whose target names no process and on a named endpoint (never over an
+ * expression in either dialect); an `amendment-conflict` offers
+ * `withdraw-amendment` first and, where the incoming value does not resolve
+ * (a call target naming no process, a name pairing with nothing), „Meine
+ * Ergänzung behalten“.
  */
 import {
+  AMENDABLE_ELEMENT_LABELS,
+  AMENDED_HINT,
+  MAX_AMENDMENT_ITEMS,
   OPEN_QUESTION_ACTION_LABELS as LABEL,
   OPEN_QUESTION_KIND_LABELS,
   OUTSIDE_STEP,
+  amendmentFieldLabel,
+  endpointTypeLabel,
+  formatRef,
   isInformationalKind,
+  parseRef,
+  type AmendableElementKind,
+  type Fact,
+  type ModelAmendmentId,
   type OpenQuestion,
   type OpenQuestionAction,
+  type OpenQuestionAmendTarget,
   type OpenQuestionDecisionItem,
   type OpenQuestionKind,
   type OpenQuestionLinkProposal,
   type OpenQuestionPick,
   type OpenQuestionSubject,
+  type OpenQuestionWithdrawCompare,
   type Ref,
 } from '@analyzr/contracts';
+import { quoteDe } from '@analyzr/relations';
 
 import type { RelationRecord } from '../ports.ts';
-import type { OpenQuestionIndex } from './model.ts';
+import { incomingValue } from './amendment-questions.ts';
+import { openQuestionId, type AmendmentInfo, type OpenQuestionIndex } from './model.ts';
 import { openUncoveredPairs } from './sources.ts';
 
 const byCodePoint = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
@@ -369,18 +386,283 @@ const placeOnOutside = (): OpenQuestionAction => ({
   step: OUTSIDE_STEP,
 });
 
+// ------------------------------------------------------------ amendments
+
+/** One form field of an `amend` action, labelled „Aufrufaktivität „Rechnung stellen““. */
+/** The German type of an amend target; a message or signal endpoint by its BPMN type and family. */
+export function targetTypeLabel(
+  ix: OpenQuestionIndex,
+  ref: string,
+  element: AmendableElementKind,
+): string {
+  if (element !== 'endpoint') return AMENDABLE_ELEMENT_LABELS[element];
+  const ep = ix.factsAt(ref).find((x) => /^(msg|sig)_/.test(x.kind));
+  return endpointTypeLabel(
+    ep?.attrs.elementType,
+    ep === undefined ? null : ep.kind.startsWith('sig_') ? 'signal' : 'message',
+  );
+}
+
+function amendTarget(
+  ix: OpenQuestionIndex,
+  f: Pick<Fact, 'ref' | 'elementId'>,
+  op: OpenQuestionAmendTarget['op'],
+  element: AmendableElementKind,
+  prefill?: string,
+): OpenQuestionAmendTarget {
+  return {
+    elementId: f.elementId,
+    op,
+    label: `${targetTypeLabel(ix, f.ref, element)} ${quoteDe(ix.elementName(f.ref))}`,
+    ...(prefill === undefined ? {} : { prefill }),
+  };
+}
+
+/**
+ * An `amend` action on the model of `ref` (M6 §4.8 a), its targets capped at
+ * {@link MAX_AMENDMENT_ITEMS}; `undefined` without a target or a model head.
+ */
+function amendAction(
+  ix: OpenQuestionIndex,
+  ref: string,
+  action: { primary: boolean; label: string; replaces?: ModelAmendmentId; hint?: string },
+  targets: readonly OpenQuestionAmendTarget[],
+): OpenQuestionAction[] {
+  const modelKey = ix.modelOf(ref);
+  const head = ix.input.models.get(modelKey);
+  if (!head || targets.length === 0) return [];
+  return [
+    {
+      type: 'amend',
+      primary: action.primary,
+      label: action.label,
+      amend: {
+        modelId: head.modelId,
+        modelKey,
+        targets: targets.slice(0, MAX_AMENDMENT_ITEMS),
+        ...(action.replaces === undefined ? {} : { replaces: action.replaces }),
+      },
+      ...(action.hint === undefined ? {} : { hint: action.hint }),
+    },
+  ];
+}
+
+/** A `withdraw-amendment` action: one amendment, or every live one of the model. */
+function withdrawAction(
+  ix: OpenQuestionIndex,
+  modelKey: string,
+  primary: boolean,
+  label: string,
+  amendment?: ModelAmendmentId,
+  compare?: OpenQuestionWithdrawCompare,
+): OpenQuestionAction[] {
+  const head = ix.input.models.get(modelKey);
+  if (!head) return [];
+  return [
+    {
+      type: 'withdraw-amendment',
+      primary,
+      label,
+      withdraw: {
+        modelId: head.modelId,
+        modelKey,
+        ...(amendment === undefined ? {} : { amendment }),
+        ...(compare === undefined ? {} : { compare }),
+      },
+    },
+  ];
+}
+
+/** The live amendment an `amend` at the element replaces, and whether the value comes from it. */
+function replacing(
+  live: AmendmentInfo | undefined,
+  value: string | null | undefined,
+): { replaces?: ModelAmendmentId; hint?: string } {
+  if (live === undefined) return {};
+  return { replaces: live.id, ...(live.after === value ? { hint: AMENDED_HINT } : {}) };
+}
+
+/**
+ * The actions of a `call-target-unknown` item (§4.8 a): without a
+ * `calledElement`, `amend` „Aufrufziel eintragen …“ first and `link` „Nur
+ * verknüpfen …“; with a target naming no process (or a no-link coded
+ * `call-target`), `link` first and `amend` „Aufrufziel im Modell ändern …“;
+ * never `amend` over an expression in either dialect.
+ */
+function callTargetActions(ix: OpenQuestionIndex, item: OpenQuestion): OpenQuestionAction[] {
+  const call = ix.factsAt(item.subject.id).find((f) => f.kind === 'call');
+  const amendable = call !== undefined && !isExpression(call.keyRaw);
+  const target = call && amendTarget(ix, call, 'call-target', 'call');
+  const live = ix.liveAmendmentAt(item.subject.id, 'call-target');
+  if (item.source === 'finding' && amendable && call.keyRaw === '' && target) {
+    return [
+      ...amendAction(
+        ix,
+        call.ref,
+        { primary: true, label: LABEL.amendCallTarget, ...replacing(live, call.keyRaw) },
+        [target],
+      ),
+      linkAction(ix, item, { primary: false, label: LABEL.linkOnly, pick: 'process' }),
+      outside(false),
+    ];
+  }
+  return [
+    linkAction(ix, item, { primary: true, label: LABEL.link, pick: 'process' }),
+    ...(amendable && target
+      ? amendAction(
+          ix,
+          call.ref,
+          { primary: false, label: LABEL.amendCallTargetChange, ...replacing(live, call.keyRaw) },
+          [target],
+        )
+      : []),
+    outside(false),
+  ];
+}
+
+/**
+ * The actions of a partner question at a message or signal endpoint
+ * (§4.8 a): nameless, `amend` „Nachrichtennamen eintragen …“ first; named,
+ * `link` first and `amend` „Nachrichtennamen ändern …“ („Signalnamen …“ for
+ * a signal); never `amend` over an expression.
+ */
+function endpointActions(ix: OpenQuestionIndex, item: OpenQuestion): OpenQuestionAction[] {
+  const facts = ix.factsAt(item.subject.id);
+  const ep =
+    facts.find((f) => f.kind === 'msg_throw' || f.kind === 'msg_catch') ??
+    facts.find((f) => f.kind === 'sig_throw' || f.kind === 'sig_catch');
+  const signal = ep !== undefined && ep.kind.startsWith('sig_');
+  const name = ep === undefined ? undefined : signal ? ep.attrs.signalName : ep.attrs.messageName;
+  const amendable = ep !== undefined && ep.attrs.dynamic !== true && !isExpression(name ?? '');
+  const live = ix.liveAmendmentAt(item.subject.id, 'message-name');
+  const amend = (primary: boolean, label: string) =>
+    amendable
+      ? amendAction(ix, ep.ref, { primary, label, ...replacing(live, name ?? null) }, [
+          amendTarget(ix, ep, 'message-name', 'endpoint'),
+        ])
+      : [];
+  const link = (primary: boolean) =>
+    linkAction(ix, item, { primary, label: LABEL.link, pick: 'endpoint' });
+  if (amendable && name === undefined) {
+    return [
+      ...amend(true, signal ? LABEL.amendSignalName : LABEL.amendMessageName),
+      link(false),
+      outside(false),
+    ];
+  }
+  return [
+    link(true),
+    ...amend(false, signal ? LABEL.amendSignalNameChange : LABEL.amendMessageNameChange),
+    outside(false),
+  ];
+}
+
+/**
+ * Whether a `value-changed` conflict may keep analyzr's value over the
+ * incoming one (§4.8 a „only where the op may write over the incoming value
+ * (c)“): only where the incoming value does not resolve, since replacing a
+ * value that resolves is not in v1 (§4.8 c, decision 25.3 „Nicht
+ * überschreiben“). A call target that names no head process and is no
+ * expression; a message or signal name the endpoint asked about pairs with
+ * nothing (its rule-tier finding `dangling-throw` or `unmatched-catch`
+ * stands, or it has no name); never a start or end name (a changed one is
+ * always a label) and never documentation (the tool's text always wins).
+ */
+function keepAllowed(ix: OpenQuestionIndex, modelKey: string, a: AmendmentInfo): boolean {
+  const incoming = incomingValue(ix, modelKey, a);
+  switch (a.op) {
+    case 'call-target': {
+      const value = incoming ?? '';
+      if (value === '') return true;
+      if (isExpression(value)) return false;
+      return !ix.input.projectFacts.models.some((m) =>
+        m.processes.some((p) => p.processId === value),
+      );
+    }
+    case 'message-name': {
+      if (incoming === undefined) return false;
+      if (incoming === null || incoming === '') return true;
+      const anchor = formatRef(modelKey, a.viaElementId ?? a.elementId);
+      return ix.input.findings.some(
+        (f) =>
+          (f.kind === 'dangling-throw' || f.kind === 'unmatched-catch') && f.refs.includes(anchor),
+      );
+    }
+    case 'event-name':
+    case 'process-documentation':
+      return false;
+  }
+}
+
+/**
+ * The actions of an `amendment-conflict` item (§4.8 a): `value-changed`
+ * takes the tool's value (a withdrawal) or, where the incoming value does
+ * not resolve ({@link keepAllowed}), keeps the amendment over it (a new
+ * amendment that replaces it, its `before` the incoming value);
+ * `element-missing` withdraws it, or every live amendment of the model;
+ * `expression` only withdraws it.
+ */
+function conflictActions(ix: OpenQuestionIndex, item: OpenQuestion): OpenQuestionAction[] {
+  const { modelKey } = parseRef(item.subject.id);
+  const m = ix.input.amendments?.get(modelKey);
+  if (!m) return [];
+  for (const entry of m.plan) {
+    if (entry.outcome !== 'conflict') continue;
+    const id = openQuestionId(
+      'amendment-conflict',
+      item.subject,
+      `${entry.id}|${m.uploadedRevisionId}`,
+    );
+    if (id !== item.id) continue;
+    const a = m.live.find((x) => x.id === entry.id);
+    if (!a) return [];
+    if (entry.reason === 'value-changed') {
+      const at = formatRef(modelKey, a.viaElementId ?? a.elementId);
+      // Only a call target or a message or signal name is ever kept (keepAllowed).
+      const kind: AmendableElementKind = a.op === 'call-target' ? 'call' : 'endpoint';
+      const family = ix.factsAt(at).some((f) => f.kind.startsWith('sig_'))
+        ? 'signal'
+        : ix.factsAt(at).some((f) => f.kind.startsWith('msg_'))
+          ? 'message'
+          : null;
+      const compare: OpenQuestionWithdrawCompare = {
+        field: amendmentFieldLabel(a.op, a.op === 'message-name' ? family : null),
+        incoming: incomingValue(ix, modelKey, a) ?? null,
+        after: a.after,
+        before: a.before,
+      };
+      return [
+        ...withdrawAction(ix, modelKey, true, LABEL.takeSourceValue, a.id, compare),
+        ...(!keepAllowed(ix, modelKey, a)
+          ? []
+          : amendAction(ix, at, { primary: false, label: LABEL.keepAmendment, replaces: a.id }, [
+              amendTarget(
+                ix,
+                { ref: at, elementId: a.viaElementId ?? a.elementId },
+                a.op,
+                kind,
+                a.after,
+              ),
+            ])),
+      ];
+    }
+    if (entry.reason === 'element-missing') {
+      return [
+        ...withdrawAction(ix, modelKey, true, LABEL.withdrawAmendment, a.id),
+        ...withdrawAction(ix, modelKey, false, LABEL.withdrawAllAmendments),
+      ];
+    }
+    return withdrawAction(ix, modelKey, true, LABEL.withdrawAmendment, a.id);
+  }
+  return [];
+}
+
 /** The actions of a non-informational kind, without the note. */
 function kindActions(item: OpenQuestion, ix: OpenQuestionIndex): OpenQuestionAction[] {
   const { subject } = item;
   switch (item.kind) {
     case 'call-target-unknown':
-      // Both flavours (no calledElement, or one naming no process; also a no-link coded
-      // `call-target`): in S5c-1 `link` is primary; S5c-2 adds `amend` „Aufrufziel
-      // eintragen …“ (primary without a calledElement) unless isExpression().
-      return [
-        linkAction(ix, item, { primary: true, label: LABEL.link, pick: 'process' }),
-        outside(false),
-      ];
+      return callTargetActions(ix, item);
     case 'call-target-dynamic':
       return [
         linkAction(ix, item, {
@@ -408,11 +690,7 @@ function kindActions(item: OpenQuestion, ix: OpenQuestionIndex): OpenQuestionAct
       ];
     case 'message-partner-missing':
     case 'message-without-name':
-      // Named or nameless: in S5c-1 `link` is primary; S5c-2 adds `amend` „Nachrichtennamen …“.
-      return [
-        linkAction(ix, item, { primary: true, label: LABEL.link, pick: 'endpoint' }),
-        outside(false),
-      ];
+      return endpointActions(ix, item);
     case 'held':
     case 'agent-question': {
       const decides = decisionItem(ix, subject);
@@ -484,8 +762,31 @@ function kindActions(item: OpenQuestion, ix: OpenQuestionIndex): OpenQuestionAct
         linkAction(ix, item, { primary: true, label: LABEL.link, pick: 'process' }),
         outside(false),
       ];
-    case 'unlabelled-boundary':
-    case 'undocumented-process':
+    case 'unlabelled-boundary': {
+      // One form field per unnamed none start or end event of the process: the starts first,
+      // then the ends, each by id, as the question asks („Was startet …, und womit endet er?“).
+      const events = item.refs.flatMap((ref) => {
+        const f = ix
+          .factsAt(ref)
+          .find((x) => (x.kind === 'evt_start' || x.kind === 'evt_end') && x.label === '');
+        return f ? [f] : [];
+      });
+      const targets = [
+        ...events.filter((f) => f.kind === 'evt_start'),
+        ...events.filter((f) => f.kind === 'evt_end'),
+      ].map((f) =>
+        amendTarget(ix, f, 'event-name', f.kind === 'evt_start' ? 'start-event' : 'end-event'),
+      );
+      return amendAction(ix, subject.id, { primary: true, label: LABEL.amendEventName }, targets);
+    }
+    case 'undocumented-process': {
+      const { elementId } = parseRef(subject.id);
+      return amendAction(ix, subject.id, { primary: true, label: LABEL.amendDocumentation }, [
+        amendTarget(ix, { ref: subject.id as Ref, elementId }, 'process-documentation', 'process'),
+      ]);
+    }
+    case 'amendment-conflict':
+      return conflictActions(ix, item);
     case 'summary-note':
     case 'descriptive-model':
       return [];

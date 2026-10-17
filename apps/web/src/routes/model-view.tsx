@@ -1,4 +1,4 @@
-import type { Finding, Relation } from '@analyzr/client';
+import type { Fact, Finding, Relation } from '@analyzr/client';
 import { useQuery } from '@tanstack/react-query';
 import { Link, createRoute } from '@tanstack/react-router';
 import { cn } from 'cn';
@@ -11,7 +11,7 @@ import {
   TriangleAlertIcon,
   XIcon,
 } from 'lucide-react';
-import { lazy, Suspense, useMemo } from 'react';
+import { lazy, Suspense, useCallback, useMemo, useState } from 'react';
 
 import { EngineBadge, StageBadge, StatusBadge, TierBadge, TYPE_ICONS } from '@/components/badges';
 import { MiragonMark } from '@/components/page-shell';
@@ -44,6 +44,32 @@ const SubprocessLink = lazy(() =>
     default: m.SubprocessLink,
   })),
 );
+/**
+ * Model amendments (M6 S5c-2): the section „Ergänzen“ for the selected
+ * element, the header's badge and downloads, and the collection's bar, all
+ * from one lazy module (one chunk), never with the entry.
+ */
+const AmendSection = lazy(() => import('@/components/amendments/model-amendments'));
+const ModelAmendHeader = lazy(() =>
+  import('@/components/amendments/model-amendments').then((m) => ({
+    default: m.ModelAmendHeader,
+  })),
+);
+const CollectBar = lazy(() =>
+  import('@/components/amendments/model-amendments').then((m) => ({ default: m.CollectBar })),
+);
+
+/** Fact kinds an amendment can write a field of (M6 §4.8 c); other elements never ask the server. */
+const AMENDABLE_KINDS: ReadonlySet<Fact['kind']> = new Set([
+  'process',
+  'call',
+  'msg_throw',
+  'msg_catch',
+  'sig_throw',
+  'sig_catch',
+  'evt_start',
+  'evt_end',
+]);
 
 interface ModelViewSearch {
   /** Selected relation (`rel_…`): its endpoints are highlighted. */
@@ -221,7 +247,28 @@ function ModelView() {
     }),
     enabled: model !== undefined,
   });
-  const { resolve } = useProjectFacts(project, models.data);
+  const { resolve, byModel } = useProjectFacts(project, models.data);
+  const amendableSelected =
+    search.element !== undefined &&
+    (byModel
+      .get(modelKey)
+      ?.facts.some((f) => f.elementId === search.element && AMENDABLE_KINDS.has(f.kind)) ??
+      false);
+  // The elements the head's applied amendments wrote (the overlay „ergänzt“), as the header reports them.
+  const [amendedOf, setAmendedOf] = useState<{ modelId: string; ids: readonly string[] } | null>(
+    null,
+  );
+  const modelId = model?.id;
+  const onAmended = useCallback(
+    (ids: readonly string[]) => {
+      if (modelId) setAmendedOf({ modelId, ids });
+    },
+    [modelId],
+  );
+  const amended = useMemo(
+    () => (amendedOf && amendedOf.modelId === modelId ? amendedOf.ids : []),
+    [amendedOf, modelId],
+  );
 
   const relations = useMemo(
     () => (landscape.data?.relations ?? []).filter((r) => touchesModel(r, modelKey)),
@@ -301,6 +348,7 @@ function ModelView() {
               xml={content.data.xml}
               highlights={highlights}
               focus={focus}
+              amended={amended}
               onElementClick={(elementId) => {
                 if (elementId === search.element) return;
                 void navigate({ search: { element: elementId }, replace: true });
@@ -350,6 +398,9 @@ function ModelView() {
               r{model.headRev}
             </Badge>
             <StageBadge stage={model.stage} />
+            <Suspense fallback={null}>
+              <ModelAmendHeader project={project} model={model} onAmended={onAmended} />
+            </Suspense>
           </div>
         ) : null}
       </header>
@@ -379,6 +430,24 @@ function ModelView() {
           ) : null}
         </div>
         <div className="flex-1 overflow-y-auto p-2">
+          {model ? (
+            <Suspense fallback={null}>
+              <div className="empty:hidden mb-2">
+                <CollectBar project={project} modelId={model.id} />
+              </div>
+            </Suspense>
+          ) : null}
+          {search.element && model && amendableSelected ? (
+            <Suspense fallback={<Skeleton className="mb-2 h-12" />}>
+              <AmendSection
+                key={`${model.id}:${search.element}`}
+                project={project}
+                model={model}
+                elementId={search.element}
+                resolve={resolve}
+              />
+            </Suspense>
+          ) : null}
           {search.element && content.data && model ? (
             <Suspense fallback={null}>
               <SubprocessLink

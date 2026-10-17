@@ -13,7 +13,13 @@ export interface DiagramElement {
   width?: number;
   height?: number;
   parent?: DiagramElement;
-  businessObject?: { processRef?: { id?: string } };
+  businessObject?: {
+    processRef?: { id?: string };
+    /** A send or receive task's message. */
+    messageRef?: { id?: string };
+    /** An event's definitions: the message or signal it references. */
+    eventDefinitions?: { messageRef?: { id?: string }; signalRef?: { id?: string } }[];
+  };
 }
 export interface ElementRegistry {
   get(id: string): DiagramElement | undefined;
@@ -72,6 +78,8 @@ export const MARKERS = {
   evidence: 'analyzr-evidence',
 } as const;
 export const OVERLAY_TYPE = 'analyzr-highlight';
+/** The overlays „ergänzt“ on elements an amendment wrote (M6 S5c-2). */
+export const AMENDED_OVERLAY_TYPE = 'analyzr-amended';
 
 /**
  * A shape for an element or process id: the element itself, else the pool
@@ -87,6 +95,30 @@ export function resolveElement(
     (e) => e.type === 'bpmn:Participant' && e.businessObject?.processRef?.id === id,
   )[0];
   return pool ?? null;
+}
+
+/** Whether a shape references the message or signal `id` (its event definition, or a send or receive task). */
+function references(element: DiagramElement, id: string): boolean {
+  const bo = element.businessObject;
+  if (!bo) return false;
+  if (bo.messageRef?.id === id) return true;
+  return (bo.eventDefinitions ?? []).some((d) => d.messageRef?.id === id || d.signalRef?.id === id);
+}
+
+/**
+ * The shapes an amendment of `id` shows at (M6 S5c-2, the overlay
+ * „ergänzt“): the element itself, the pool of a process, or, for a
+ * `bpmn:message` or `bpmn:signal` (a root element without a shape), every
+ * shape that references it. Empty for the root of a plain process.
+ */
+export function resolveAmended(
+  registry: Pick<ElementRegistry, 'get' | 'filter'>,
+  id: string,
+): DiagramElement[] {
+  const element = resolveElement(registry, id);
+  if (element) return [element];
+  if (registry.get(id)) return [];
+  return registry.filter((e) => e.parent !== undefined && e.type !== 'label' && references(e, id));
 }
 
 /** The id a click on `element` refers to: a pool stands for its process. */

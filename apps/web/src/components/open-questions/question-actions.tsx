@@ -1,4 +1,8 @@
-import type { OpenQuestion, OpenQuestionAction } from '@analyzr/client';
+import type {
+  OpenQuestion,
+  OpenQuestionAction,
+  OpenQuestionWithdrawCompare,
+} from '@analyzr/client';
 import { useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import {
@@ -6,6 +10,7 @@ import {
   ChevronDownIcon,
   CopyCheckIcon,
   EarthIcon,
+  InboxIcon,
   LinkIcon,
   MapPinIcon,
   MessageSquarePlusIcon,
@@ -24,6 +29,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Spinner } from '@/components/ui/spinner';
+import { useCollected } from '@/lib/amendments';
 import { ApiError, errorMessage } from '@/lib/api';
 import { useQuestionAction } from '@/lib/open-question-actions';
 import type { RefResolver } from '@/lib/refs';
@@ -38,6 +44,7 @@ import {
   PlacePanel,
   type PanelProps,
 } from './action-panels';
+import { AmendPanel, WithdrawAllPanel, WithdrawOnePanel } from './amend-panel';
 
 /**
  * The action row of an open question (M6 §4.8 a, S5c-1), for reviewers
@@ -47,7 +54,12 @@ import {
  * decide), one click for the rest (the outside mark, „Gehört zu keinem
  * Schritt“, requeue), the chain page for a step's link, the note dialog for
  * „Notiz hinzufügen“. An item marked „außerhalb“ offers to take the mark
- * back instead.
+ * back instead. Model amendments (S5c-2): `amend` opens the amend form
+ * below the item (with „Sammeln“); `withdraw-amendment` opens a
+ * confirmation with the withdrawal's cost (its dry run), for one amendment
+ * („Wert aus dem Quellsystem übernehmen“) or every amendment of the model;
+ * a `value-changed` conflict shows both values side by side, with „Meine
+ * Ergänzung behalten“ as a visible second button where it is offered.
  */
 
 /** What the row needs from the list it sits in. */
@@ -66,6 +78,8 @@ const ICONS: Record<OpenQuestionAction['type'], LucideIcon> = {
   outside: EarthIcon,
   requeue: RefreshCwIcon,
   'fix-link': PenLineIcon,
+  amend: PenLineIcon,
+  'withdraw-amendment': Undo2Icon,
   note: MessageSquarePlusIcon,
 };
 
@@ -83,6 +97,11 @@ function hasPanel(action: OpenQuestionAction): boolean {
       return true;
     case 'place':
       return action.step === undefined;
+    case 'amend':
+      return true;
+    case 'withdraw-amendment':
+      // A withdrawal writes a new head: its cost first, from the dry run (M6 §4.8 c).
+      return true;
     default:
       return false;
   }
@@ -99,6 +118,14 @@ function ActionPanel(props: PanelProps) {
       return <ChooseCopyPanel {...props} />;
     case 'place':
       return <PlacePanel {...props} />;
+    case 'amend':
+      return <AmendPanel {...props} />;
+    case 'withdraw-amendment':
+      return props.action.withdraw?.amendment === undefined ? (
+        <WithdrawAllPanel {...props} />
+      ) : (
+        <WithdrawOnePanel {...props} />
+      );
     default:
       return null;
   }
@@ -178,11 +205,51 @@ function ActionButton({
   );
 }
 
+/** The hint next to an action, e.g. „in analyzr ergänzt“ on an `amend` whose value comes from an amendment. */
+function ActionHint({ action }: { action: OpenQuestionAction | undefined }) {
+  if (!action?.hint) return null;
+  return (
+    <span className="text-xs text-muted-foreground" data-testid="question-action-hint">
+      {action.hint}
+    </span>
+  );
+}
+
+/** „(leer)“ for no value, else the value in German quotes. */
+const shownValue = (value: string | null) =>
+  value === null || value === '' ? '(leer)' : `„${value}“`;
+
+/** The two values of a `value-changed` conflict, side by side, above its actions. */
+function ConflictValues({ compare }: { compare: OpenQuestionWithdrawCompare }) {
+  return (
+    <dl
+      className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 rounded-lg border bg-muted/40 p-2.5 text-sm"
+      aria-label={`${compare.field}: die beiden Werte`}
+      data-testid="conflict-values"
+    >
+      <dt className="text-muted-foreground">Im Quellsystem</dt>
+      <dd className="min-w-0 font-medium break-words" data-testid="conflict-incoming">
+        {shownValue(compare.incoming)}
+      </dd>
+      <dt className="text-muted-foreground">In analyzr ergänzt</dt>
+      <dd className="min-w-0 font-medium break-words" data-testid="conflict-after">
+        {shownValue(compare.after)}
+      </dd>
+      <dt className="text-muted-foreground">Vorher</dt>
+      <dd className="min-w-0 break-words text-muted-foreground">{shownValue(compare.before)}</dd>
+    </dl>
+  );
+}
+
 const isGone = (error: unknown) =>
   error instanceof ApiError && error.status === 404 && error.problem.code === 'not-found';
 
-/** A stable key of an action within its item (types repeat: `place` on a step and on `@outside`). */
-const keyOf = (a: OpenQuestionAction) => `${a.type}:${a.pick ?? ''}:${a.step ?? ''}`;
+/**
+ * A stable key of an action within its item (types repeat: `place` on a step
+ * and on `@outside`, `withdraw-amendment` of one amendment and of all).
+ */
+const keyOf = (a: OpenQuestionAction) =>
+  `${a.type}:${a.pick ?? ''}:${a.step ?? ''}:${a.withdraw?.amendment ?? ''}:${a.amend?.targets[0]?.op ?? ''}`;
 
 export function QuestionActions({
   q,
@@ -208,6 +275,8 @@ export function QuestionActions({
   const act = useQuestionAction(project);
   const requeue = useRequeue(project);
   const feedback = useActionFeedback(project, resolve);
+  // An amendment collected at this item waits in the collection's bar („Sammeln“).
+  const collected = useCollected().some((c) => c.questionId === q.id);
   const [withdrawing, setWithdrawing] = useState(false);
   /** The one-click action that runs (its button shows a spinner). */
   const [running, setRunning] = useState<string | null>(null);
@@ -216,7 +285,13 @@ export function QuestionActions({
   const mark = q.answers.find((a) => a.role === 'outside-mark' && a.withdrawal === null);
   const actions = q.actions.filter((a) => !(mark && a.type === 'outside'));
   const primary = mark ? undefined : actions.find((a) => a.primary);
-  const others = actions.filter((a) => a !== primary);
+  // A conflict between the source tool's value and analyzr's (M6 §4.8 a): both values side
+  // by side, and keeping analyzr's value as a visible second button where it is offered.
+  const compare = primary?.type === 'withdraw-amendment' ? primary.withdraw?.compare : undefined;
+  const keep = compare
+    ? actions.find((a) => a.type === 'amend' && a.amend?.replaces === primary?.withdraw?.amendment)
+    : undefined;
+  const others = actions.filter((a) => a !== primary && a !== keep);
   const current = actions.find((a) => keyOf(a) === open && hasPanel(a));
   const busy = act.isPending || requeue.isPending || withdrawing;
 
@@ -310,6 +385,7 @@ export function QuestionActions({
 
   return (
     <>
+      {compare ? <ConflictValues compare={compare} /> : null}
       <div className="flex flex-wrap items-center gap-2" data-testid="question-actions">
         {mark ? (
           <Button
@@ -347,6 +423,28 @@ export function QuestionActions({
             describedBy={describedBy}
             onChoose={choose}
           />
+        ) : null}
+        {keep ? (
+          <ActionButton
+            action={keep}
+            variant="outline"
+            busy={busy}
+            running={false}
+            expanded={open === keyOf(keep)}
+            panelId={panelId}
+            describedBy={describedBy}
+            onChoose={choose}
+          />
+        ) : null}
+        <ActionHint action={primary} />
+        {collected ? (
+          <span
+            className="inline-flex items-center gap-1 text-xs text-primary"
+            data-testid="question-collected"
+          >
+            <InboxIcon className="size-3.5" aria-hidden />
+            gesammelt
+          </span>
         ) : null}
         {others.length > 0 ? (
           <DropdownMenu modal={false}>
@@ -401,6 +499,11 @@ export function QuestionActions({
                   >
                     <MenuIcon type={action.type} />
                     {action.label}
+                    {action.hint ? (
+                      <span className="ml-auto pl-2 text-xs text-muted-foreground">
+                        {action.hint}
+                      </span>
+                    ) : null}
                   </DropdownMenuItem>
                 ),
               )}

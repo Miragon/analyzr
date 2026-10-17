@@ -13,6 +13,7 @@ import type {
 
 import { encodeCursor } from '../cursor.ts';
 import { actionsFor, resolvedByLink, resolvedCopies } from './actions.ts';
+import { amendmentQuestions } from './amendment-questions.ts';
 import {
   OpenQuestionIndex,
   comparePositions,
@@ -68,6 +69,7 @@ export function buildOpenQuestions(
     ...noLinkQuestions(ix),
     ...submissionQuestions(ix),
     ...signalQuestions(ix, options.signals ?? SHIPPED_SIGNALS),
+    ...amendmentQuestions(ix),
   ];
   const byId = new Map<string, OpenQuestion>();
   for (const d of drafts) {

@@ -191,6 +191,19 @@
 .analyzr-overlay[data-tone='evidence'] {
   background: var(--cd-success);
 }
+/*
+ * An element an amendment wrote (M6 S5c-2): a small outlined pen on the shape's lower
+ * right corner, so it never reads as a selection and never covers the labels above.
+ */
+.analyzr-overlay[data-tone='amended'] {
+  padding: 3px;
+  border-radius: 999px;
+  background: var(--cd-weiss);
+  color: var(--cd-blau);
+  box-shadow:
+    inset 0 0 0 1px var(--cd-blau),
+    var(--cd-shadow-1);
+}
 .analyzr-canvas .djs-container {
   font-family: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
 }

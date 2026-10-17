@@ -9,7 +9,7 @@ import {
 } from '@analyzr/contracts';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { formatNextSteps, formatWarningCounts } from '../../src/commands/import.ts';
+import { amendmentsText, formatNextSteps, formatWarningCounts } from '../../src/commands/import.ts';
 import { batches, findBpmnFiles, planImport, type BpmnFile } from '../../src/files.ts';
 import { runCli } from '../../src/program.ts';
 import {
@@ -564,6 +564,48 @@ describe('analyzr import', () => {
       const { files } = JSON.parse(t.out()) as { files: ImportFileOutcome[] };
       expect(files[0]).toEqual(warned);
       expect(Object.keys(files[1]!)).toEqual(['path', 'modelKey', 'outcome', 'problem']);
+    });
+
+    it('prints what became of live amendments and points at the conflicts (M6 S5c-2)', async () => {
+      const ids = (n: number) =>
+        Array.from({ length: n }, (_, i) => `mam_01JC000000000000000000000${i}` as const);
+      const amended: ImportFileOutcome = {
+        path: 'w/a.bpmn',
+        modelKey: 'w/a',
+        outcome: 'revised',
+        problem: null,
+        amendments: {
+          applied: { count: 2, ids: ids(2) },
+          inSource: { count: 1, ids: ids(1) },
+          conflicts: { count: 1, ids: ids(1) },
+        },
+      };
+      const a = fakeApi({
+        'POST /api/v1/projects/demo/imports': importRoute((p) =>
+          p === 'w/a.bpmn' ? amended : created(p),
+        ),
+        ...NOTHING_WAITING,
+      });
+      const t = testIo({ ANALYZR_OWNER_KEY_FILE: keyFile }, a.fetch, { cwd: dir });
+      expect(await runCli(['import', 'warned', '-p', 'demo'], t.io)).toBe(0);
+      expect(t.out()).toContain(
+        '  revised   w/a  amendments: 2 applied, 1 already in the source, 1 conflict\n  created   w/b\n',
+      );
+      expect(t.out()).toContain(
+        'demo: 1 amendment no longer applies; see analyzr questions -p demo --kind amendment-conflict\n',
+      );
+      expect(
+        amendmentsText({
+          applied: { count: 0, ids: [] },
+          inSource: { count: 0, ids: [] },
+          conflicts: { count: 3, ids: ids(3) },
+        }),
+      ).toBe('3 conflicts');
+      expect(amendmentsText(undefined)).toBeNull();
+      // JSON carries the counts as the server sends them.
+      const j = testIo({ ANALYZR_OWNER_KEY_FILE: keyFile }, a.fetch, { cwd: dir });
+      expect(await runCli(['import', 'warned', '-p', 'demo', '--json'], j.io)).toBe(0);
+      expect((JSON.parse(j.out()) as { files: ImportFileOutcome[] }).files[0]).toEqual(amended);
     });
 
     it('counts warnings beyond the listed entries', () => {

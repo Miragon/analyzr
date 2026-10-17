@@ -1,8 +1,9 @@
 # analyzr – Milestone M6 "Landscape integration and gap analysis"
 
 Status: in progress (2026-10-15); owner decisions 24 and 25 (§2, HANDOFF §4); S0 (this concept,
-revised after review), S1, S3a, S3b, S4 and S5a done, the „erste Anfänge“ await the owner's review;
-next S5c, answering by action and model amendments (decision 25, §4.8, §8) · Branch:
+revised after review), S1, S3a, S3b, S4, S5a, S5c-1 and S5c-2 (answering by action and model
+amendments, decision 25, §4.8) done, the „erste Anfänge“ await the owner's review; next S2a/S2b,
+then S2c, S3c and S6 (§8 "Order since decision 25") · Branch:
 `feat/integration-and-gaps` ·
 Spec: [CONCEPT.md](CONCEPT.md) §1–§7 · Previous: [M4-VALUE-CHAIN.md](M4-VALUE-CHAIN.md) · Paused:
 the process network map (decision 22, issue [#2](https://github.com/Miragon/analyzr/issues/2)),
@@ -1190,7 +1191,10 @@ documentation), and where a live amendment set it (to replace or withdraw it). E
 `amendable` answers „Nur für offene Fragen“ with the reason (`only-open-questions`). Replacing a
 value that resolves (a call that reaches a process, a name that pairs, a labelled event, the
 tool's documentation) would turn accepted relations `changed` and override the source tool; it
-is not in v1 (§6).
+is not in v1 (§6). As delivered (§8 "S5c-2 as delivered"), "a live amendment set it" counts only
+a live amendment the head applies (one in conflict or carried over by the tool sets nothing), and
+„Meine Ergänzung behalten“ is offered only where the incoming value does not resolve, never for
+a start or end name.
 
 Not in v1: **process ids** (`duplicate-process-id`). A process id is the anchor of every relation
 and placement at the process (`<key>#<processId>`), the target of other models' calls, and is
@@ -1290,7 +1294,10 @@ provenance stays on the revision its manifest describes (§3.3). **Identical byt
 the head's own `content_hash`, with its `source.upstream.contentHash` and with the content hash
 of every amended revision of the model (analyzr's own output, such as a corrected BPMN downloaded
 before later amendments), so importing the same export again, or uploading any downloaded
-amended file, stores nothing and never counts an amendment as carried over. The cost: an import
+amended file, stores nothing and never counts an amendment as carried over. As delivered, only
+amended revisions whose bytes differ from their uploaded revision's count: a re-derivation that
+applied nothing holds an earlier export, which the tool may bring back as a revert (§8 "S5c-2 as
+delivered"). The cost: an import
 of an amended model writes two revisions, and `headRev` counts both. `model_revision.xml`
 changes its comment from "the uploaded bytes, verbatim" to "the uploaded bytes, or bytes
 computed from an uploaded revision by amendments".
@@ -1330,7 +1337,11 @@ change only in their message name and what derives from it, key and fingerprint)
 code. A failed check refuses the amendment (422 `validation-failed`, `reason:
 'amendment-not-applicable'`) or, at a re-import, makes it a conflict. Golden tests pin the child
 order on C7 and C8 fixtures against what Camunda Modeler writes for the same change (saved from
-the Modeler once into the fixtures; no new dependency).
+the Modeler once into the fixtures; no new dependency). As delivered, the fixtures are
+hand-written in the Modeler's layout and the expected files are `applyAmendments`' own output
+(regression snapshots), with a dependency-free check of the BPMN XSD's child order over them and
+every corpus output; one Modeler save of each fixture is asked of the owner (§8 "S5c-2 as
+delivered", HANDOFF §8).
 
 **What an amended revision sets off** is what any change from the tool sets off: a new
 `facts_hash` (the extractor and `FACTS_VERSION` are unchanged) runs `recomputeProject`, queues
@@ -1386,14 +1397,16 @@ contracts first) gain an optional `amendments: {applied, inSource, conflicts}` (
 most 20 ids), present only for a model with live amendments, so the corpus and seed JSON stay
 byte-identical; `revision` is the final head, and an optional `uploadedRevisionId` names the
 uploaded one. The CLI prints „2 Ergänzungen angewendet, 1 Konflikt“, the web upload panel the
-same per file.
+same per file (as delivered the CLI prints English, „amendments: 2 applied, 1 conflict“, like
+the rest of the CLI).
 
 **Concurrency.** Ingest reads the live amendment set with the heads before its write transaction
 and plans, applies and extracts there (CPU-bound, as it extracts today, `ingest.ts`), keeping a
 token of the set (the sorted live ids and the highest amendment or withdrawal seq); under the
 project lock it reads the set again and, if the token changed, plans, applies and extracts again
 inside the transaction. Amendment writes and withdrawals take the project lock and check
-`If-Match` inside it. So an amendment recorded while an import is being extracted is in the head
+`If-Match` inside it (as delivered, `If-Match` is required on amendment writes and optional on
+withdrawals, HANDOFF §8). So an amendment recorded while an import is being extracted is in the head
 after the import. The tail every head change runs (`recomputeProject`, `touchNoLinkRelations`,
 `syncValueChainAfterModels`, `queueAnalysis`, `queuePlacementTasks`) moves into one function that
 ingest, amendment writes and withdrawals call.
@@ -1447,7 +1460,8 @@ decision 22) would write the head, amended or not; §9.
 - `GET /projects/{p}/amendments` (`read`; filters `modelKey`, `state`), `POST
   /projects/{p}/amendments/{a}/withdrawal` and `POST
   /projects/{p}/models/{model}/amendments/withdrawal` (every live amendment of the model; both
-  `review` and `write`), and the export above.
+  `review` and `write`; as delivered also `?dryRun=` with the cost and an optional `If-Match`),
+  and the export above.
 
 **Both permissions.** An amendment is a human decision about content (`review`, humans only) and
 writes a revision, which ingest guards with `write`. Scopes do not nest that way
@@ -1581,8 +1595,8 @@ draft (after the owner's rated draft run, M4b) are later work.
   changes is that analyzr writes revisions of its own, amended revisions computed from uploaded
   bytes (ADR-0001 decisions 2 and 3; CONCEPT principle 3, §2's `model_revision.xml` and §4's
   "BPMN bytes are canonical at their origin (the revision for uploads …)"). ADR-0001's header and
-  CONCEPT principle 3 and §4 carry a forward note since decision 25; S5c-2's docs pass rewrites
-  the places (§8 "S5c-2").
+  CONCEPT principle 3 and §4 carried a forward note since decision 25; S5c-2's docs pass rewrote
+  the places (§8 "S5c-2 as delivered").
 - **Decision 9 as amended by 24.2 (S2c):** a unique static call in a derived revision is
   proposed, not accepted; until S2c ships, decision 9 holds unchanged. Decision 25.2 adds
   (confirmed by the owner 2026-10-17) that a call target a human set by amendment counts as
@@ -2528,6 +2542,115 @@ MCP tools, prompts and snapshots, recordings and reports. Done when:
 - claims of a seeded project without amendments byte-identical; the corpus JSON of `analyzr
   import` and `seed --json` byte-identical; MCP snapshots, recordings, `eval:replay` and every
   report unchanged; all gates green.
+
+**S5c-2 as delivered** (2026-10-17, branch `feat/integration-and-gaps`; every gate green, with a
+review round's fixes): `applyAmendments` and `readAmendable` in `@analyzr/bpmn-facts` (`src/amend.ts`, on a
+positioned element scan, `src/xml-elements.ts`), reached through `AnalysisPort.amend` and
+`AnalysisPort.readAmendable`; `model_amendment` and `model_amendment_withdrawal` (migrations 0015
+generated, 0016 the triggers; typed id `mam_`); uploaded and amended revisions with the plan on
+the head, each with its own `model.revised`; the pure `apps/server/src/domain/amendments/`
+(planning, the fields a human may set, derivation, effect and cost, the change list);
+re-application at every import with the concurrency token, revival included, and the shared tail
+function; withdrawals of one or all of a model; the open question `amendment-conflict` (source
+`amendment`) with its actions; `amendments` and `uploadedRevisionId` in the import and PUT results
+only for models with live amendments; the routes of tag `amendments` (contracts first, the client
+regenerated); the form at a question with „Sammeln“ and its bar, the model view's „Ergänzen“ with
+history, overlay, badge and both downloads (lazy), the mark in the models table; `analyzr models
+amend|pull`, `analyzr questions amend` and `analyzr amendments list|export|withdraw`; the docs
+(CONCEPT principle 3, §2, §4, §5, §6; ADR-0001 decisions 2 and 3; DEVELOPMENT.md). Live-run
+neutral: no change to the extractor and `FACTS_VERSION` (`xml-scan.ts` only gains exports), the
+rule tier's rules, `FindingKind`, claim input formats, procedures, plugins, MCP tools, prompts and
+snapshots, recordings or reports; `claim-golden.test.ts` and the key shapes of the corpus import
+and `seed --json` results unchanged.
+
+Deviations from §4.8 c and choices the spec left open (after the review round):
+
+- **The golden C7 and C8 fixtures are hand-written, not Modeler saves.** §4.8 c asks for golden
+  tests against what Camunda Modeler writes for the same change, saved once into the fixtures; the
+  inputs (`packages/bpmn-facts/test/fixtures/amend/c7-modeler.bpmn`, `c8-modeler.bpmn`) are written
+  in the Modeler's layout, and the `*.amended.bpmn` files are `applyAmendments`' own output, so
+  those two tests are regression snapshots (named so). What stands in for the Modeler comparison: a
+  dependency-free check of the BPMN XSD's child order (`test/support/xsd-order.ts`: per BPMN element
+  `documentation*`, `extensionElements?`, the rest; `definitions`: `import*`, `extension*`, root
+  elements, `BPMNDiagram*`, `relationship*`), run over the snapshots and over the output of every
+  Modeler-written corpus model of `_sample` and `nordwind-handel` with every field amended (no new
+  break of the order; the holdout is left out). The implementing agent recorded that the review
+  round's check with Camunda 7.24's XSD-validating parser passed the snapshots and the corpus
+  outputs; that check is not in the repository, and the gate pass did not repeat it (no engine
+  was started). HANDOFF §8 asks
+  the owner for one Modeler save of each fixture to compare the child order with.
+- **Files declared in another encoding than UTF-8.** `assertSafeXml` reads every file as UTF-8, so
+  such a file holds ASCII only; Java parsers follow the declaration. `applyAmendments` therefore
+  writes every code point above U+007E as a character reference in such a file (the declaration
+  read from the text), and refuses a character beyond the Basic Multilingual Plane there
+  (`unsupported-structure`), because the extractor's parser (saxen) decodes numeric references
+  with `String.fromCharCode` and the check could not read it back.
+- **A new message or signal goes before a trailing `relationship`** too (the XSD's order), not only
+  before the first `BPMNDiagram`.
+- **„Meine Ergänzung behalten“ only where the incoming value does not resolve** (§4.8 a, c): a call
+  target naming no head process and no expression, or a name the endpoint asked about that pairs
+  with nothing; never for a start or end name (a changed one is a label) and never for
+  documentation. `amendable` counts only a live amendment the head applies as „a live amendment set
+  it“; one in conflict or carried over by the tool sets nothing, so the model view cannot write over
+  a value the tool changed either.
+- **`unchanged` after a withdrawal that left nothing to apply.** §4.8 c lists "the content hash of
+  every amended revision of the model" as analyzr's own output; a re-derivation that applied
+  nothing has the uploaded bytes, so counting it would drop a later revert to that export without a
+  signal. Only amended revisions whose bytes differ from their uploaded revision's count.
+- **Withdrawals take an optional `If-Match: "r<headRev>"`** (checked under the project lock, 412
+  `revision-conflict`; a header naming no revision never matches) **and a dry run**
+  (`?dryRun=true`: what would end and the `cost` of the new head, nothing written). §4.8 c's "check
+  `If-Match`" reads as required for amendment writes; for withdrawals it is optional so that a
+  script withdrawing by id keeps working. The web sends the head its dry run showed, from the
+  model view, the conflict actions and „Alle Ergänzungen … zurücknehmen“; `analyzr amendments
+  withdraw` sends it with `--rev <n>`. Every withdrawal in the web asks first with the cost (as
+  every save does), so „Wert aus dem Quellsystem übernehmen“ is no longer one click.
+- **A name keyed by the message or signal itself is stored with an endpoint** (`via_element_id`:
+  the first endpoint by id that references it), so its conflict question reads the incoming value
+  at that endpoint and the change list names the element.
+- **The conflict question names the field with its article and family** („Welcher
+  Nachrichtenname gilt für die Empfangsaufgabe „…“ in „…“?“), shows the incoming value first, and
+  the `withdraw-amendment` action of a `value-changed` conflict carries both values (`compare`),
+  which the tab shows side by side above the actions, with „Meine Ergänzung behalten“ as a visible
+  second button where it is offered. Endpoints are labelled by their BPMN type and family
+  („Nachrichten-Zwischenereignis“, „Sendeaufgabe“) instead of „Nachrichten- oder
+  Signalelement“, and `AmendableField` carries `typeLabel` and `fieldLabel`.
+- **The change list names each element as the source tool knows it**: its uploaded revision's
+  label, „ohne Namen“ when it has none, and its id („Endereignis ohne Namen (ID End_Auftrag)“; a
+  message or signal name adds the message or signal and its id). Per model the Markdown lists
+  „Zu übertragen“ (applied, conflict) before „Erledigt“ (in the source, withdrawn, superseded);
+  the CSV writes raw values in „Vorher“ and „Nachher“ (an empty cell for none) and adds „Ziel“ (a
+  call target's process) and „Zu übertragen“ (`ja`/`nein`).
+- **`analyzr questions amend`**, not named in §4.8 c, runs an item's `amend` action from the CLI
+  (the prefilled value for „Meine Ergänzung behalten“).
+- **A stale `replaces`** (it names another amendment than the field's live one) answers 409
+  `conflict`.
+- **The CLI prints English** („amendments: 2 applied, 1 conflict“), like the rest of the CLI; §4.8
+  c's „2 Ergänzungen angewendet, 1 Konflikt“ is the web upload panel's wording, which links to
+  „Offene Fragen“ filtered by the model's conflicts.
+- **Web details**: the model view's section shows only where this user can set a field or the
+  element has a history („Ergänzungen“ when nothing can be set), and says where a field no
+  question names is changed instead; the amended mark is a small pen on the shape's lower right
+  corner, clear of the highlight labels; the collection's bar is opaque, its lists scroll, it
+  checks against the model's current head and asks before the page is left; the cost sentence
+  says what a pair is („Paare (mögliche Verbindungen zu anderen Modellen) werden von den Agenten
+  neu beurteilt“), and why „Sammeln“ helps is said under the buttons; a call target shows as the
+  process the human picked; the start events come before the end events in the form of
+  „Start oder Ende ohne Namen“.
+
+Verified (2026-10-17, after the review round, and again by a separate gate pass on the final
+tree): every gate (`pnpm format:check`, `pnpm -r typecheck`, `pnpm -r lint` with
+dependency-cruiser, `pnpm -r test` with Testcontainers, `pnpm eval:candidates`, `pnpm
+eval:replay`, `pnpm eval:placements`, `pnpm eval:descriptive`; `git diff --stat eval/reports`
+empty; MCP snapshots unchanged; the gate pass changed no code); the entry chunk 211.0 KB gzip
+(ceiling 240 KB); Playwright in Chromium against a server run from source on a scratch
+PostgreSQL: `amendments.spec.ts` 5 passed and `open-questions.spec.ts` 21 passed, the whole
+suite 72 passed and 21 skipped; `demo.spec.ts` 14 passed against a scratch demo image built from
+the tree, and `analyzr-demo check` passed on it ([DEVELOPMENT.md](DEVELOPMENT.md) "M6 S5c-2
+(2026-10-17)"). Not checked: other browsers than Chromium, screen readers, a Camunda Modeler save
+of the two fixtures (HANDOFF §8), a Camunda engine deploying amended files (the repository's
+tests check the XSD's child order only), 0015/0016 on a database that already holds models and
+revisions (the migrations test's data holds none), the CI run (next push).
 
 **S6 "Interviews".** Scope: §5 items 1–4 as skills and scripts; the skill text generator and the
 German start prompts (§3.7). Does not touch: analyzr's core. Done when: a synthetic

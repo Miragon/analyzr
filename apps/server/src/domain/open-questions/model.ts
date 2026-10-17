@@ -10,10 +10,14 @@ import {
   OpenQuestionKind,
   isInformationalKind,
   parseRef,
+  type AmendmentOp,
+  type AmendmentPlanEntry,
   type Candidate,
   type Engine,
   type Fact,
   type Finding,
+  type ModelAmendmentId,
+  type ModelId,
   type OpenQuestion,
   type OpenQuestionAnswer,
   type OpenQuestionRaisedBy,
@@ -45,6 +49,8 @@ import { isLiveMark, toOpenQuestionAnswer } from './answers.ts';
 
 /** A live model's head as the read model needs it. */
 export interface ModelHead {
+  /** The model's id (the amendment actions name it, M6 S5c-2). */
+  modelId: ModelId;
   /** `bpmn:definitions` name or the first process name. */
   name: string | null;
   engine: Engine | null;
@@ -100,6 +106,27 @@ export interface SubmissionNote {
   uncovered: { count: number; pairs: readonly TypedPair[] } | null;
 }
 
+/** A live amendment as the read model reads it (M6 S5c-2). */
+export interface AmendmentInfo {
+  id: ModelAmendmentId;
+  elementId: string;
+  viaElementId: string | null;
+  op: AmendmentOp;
+  before: string | null;
+  after: string;
+}
+
+/**
+ * A live model's amendments (M6 S5c-2): the uploaded revision its head is
+ * computed from (the head itself when it is the uploaded revision), the
+ * head's plan and the live amendments in seq order.
+ */
+export interface ModelAmendments {
+  uploadedRevisionId: string;
+  plan: readonly AmendmentPlanEntry[];
+  live: readonly AmendmentInfo[];
+}
+
 /** Everything the read model reads, from one snapshot. */
 export interface OpenQuestionInput {
   /** Head facts of every live model (`headProjectFacts`). */
@@ -126,6 +153,12 @@ export interface OpenQuestionInput {
    * S5a, S5c-1); an item is `answered` while a live outside mark names its id.
    */
   answers: readonly StoredOpenQuestionAnswer[];
+  /**
+   * The live models with live amendments, by model key (M6 S5c-2): their
+   * conflicts are questions, and an `amend` replaces a live amendment.
+   * Absent: no model has any.
+   */
+  amendments?: ReadonlyMap<string, ModelAmendments>;
 }
 
 // ------------------------------------------------------------------ index
@@ -335,6 +368,19 @@ export class OpenQuestionIndex {
   /** The answers recorded for an item id, oldest first. */
   answersOf(id: string): readonly OpenQuestionAnswer[] {
     return this.answersById.get(id) ?? [];
+  }
+
+  /**
+   * The live amendment of an op at an element of a model (M6 S5c-2): keyed by
+   * the element, or opened from it (`viaElementId`, a message endpoint).
+   */
+  liveAmendmentAt(ref: string, op: AmendmentOp): AmendmentInfo | undefined {
+    const { modelKey, elementId } = parseRef(ref);
+    return this.input.amendments
+      ?.get(modelKey)
+      ?.live.find(
+        (a) => a.op === op && (a.elementId === elementId || a.viaElementId === elementId),
+      );
   }
 
   /** The process (ref) a ref lies in: its own for a process ref; `undefined` when unknown. */

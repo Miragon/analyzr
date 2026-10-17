@@ -1,6 +1,7 @@
 import { importModels } from '@analyzr/client';
 import type { ExtractWarning, ImportFileOutcome } from '@analyzr/client';
 import { useQueryClient } from '@tanstack/react-query';
+import { Link } from '@tanstack/react-router';
 import { cn } from 'cn';
 import {
   CircleCheckIcon,
@@ -34,6 +35,7 @@ import { keys } from '@/lib/queries';
 import {
   BPMN_ACCEPT,
   BPMN_SUFFIX_TEXT,
+  amendmentCountsText,
   entriesFromDataTransfer,
   entriesFromFileList,
   filesOf,
@@ -337,6 +339,31 @@ export function UploadPanel({
                         </TableCell>
                         <TableCell className="whitespace-normal text-muted-foreground">
                           {o.problem ? (o.problem.detail ?? o.problem.title) : null}
+                          {amendmentCountsText(o.amendments) ? (
+                            <span
+                              className={cn(
+                                'block',
+                                (o.amendments?.conflicts.count ?? 0) > 0 && 'text-warning',
+                              )}
+                              data-testid="import-amendments"
+                            >
+                              {amendmentCountsText(o.amendments)}
+                              {(o.amendments?.conflicts.count ?? 0) > 0 && o.modelKey ? (
+                                <>
+                                  {' – '}
+                                  <Link
+                                    to="/projects/$project/open-questions"
+                                    params={{ project }}
+                                    search={{ kind: 'amendment-conflict', model: o.modelKey }}
+                                    className="text-link underline"
+                                    data-testid="import-amendment-conflicts"
+                                  >
+                                    in „Offene Fragen“ entscheiden
+                                  </Link>
+                                </>
+                              ) : null}
+                            </span>
+                          ) : null}
                           {o.warningCount ? (
                             <WarningsDisclosure
                               warnings={o.warnings ?? []}

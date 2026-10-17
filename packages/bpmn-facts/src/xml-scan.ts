@@ -22,7 +22,7 @@ const QUOTE = '"'.charCodeAt(0);
 const APOS = "'".charCodeAt(0);
 
 /** XML NameStartChar, approximated for non-ASCII (everything from U+00C0 up). */
-function isNameStart(c: number): boolean {
+export function isNameStart(c: number): boolean {
   return (
     (c >= 0x41 && c <= 0x5a) || // A-Z
     (c >= 0x61 && c <= 0x7a) || // a-z
@@ -32,14 +32,15 @@ function isNameStart(c: number): boolean {
   );
 }
 
-function skipPast(text: string, terminator: string, from: number, what: string): number {
+/** Offset just past the next `terminator` from `from`. @throws {BpmnInputError} `not-xml` when there is none */
+export function skipPast(text: string, terminator: string, from: number, what: string): number {
   const end = text.indexOf(terminator, from);
   if (end < 0) throw new BpmnInputError('not-xml', `unterminated ${what} at offset ${from}`);
   return end + terminator.length;
 }
 
 /** Index of the `>` that closes the tag starting at `lt`; `>` inside quoted attribute values is skipped. */
-function tagEnd(text: string, lt: number): number {
+export function tagEnd(text: string, lt: number): number {
   let quote = 0;
   for (let i = lt + 1; i < text.length; i++) {
     const c = text.charCodeAt(i);
@@ -64,7 +65,8 @@ const PREDEFINED: Readonly<Record<string, string>> = {
   apos: "'",
 };
 
-function decodeReferences(value: string): string {
+/** Decodes the predefined entities and character references of an attribute value; anything else stays as written. */
+export function decodeReferences(value: string): string {
   return value.replace(/&(#x[0-9a-fA-F]+|#[0-9]+|[a-z]+);/g, (whole, ref: string) => {
     if (ref.startsWith('#')) {
       const code = ref[1] === 'x' ? parseInt(ref.slice(2), 16) : parseInt(ref.slice(1), 10);

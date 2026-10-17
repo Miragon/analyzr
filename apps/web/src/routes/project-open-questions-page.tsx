@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { CircleCheckIcon, FileDownIcon, FilterXIcon, SearchXIcon } from 'lucide-react';
 import { useCallback, useMemo, useRef, useState } from 'react';
 
+import CollectBar from '@/components/amendments/collect-bar';
 import { AnswerSheetDialog } from '@/components/open-questions/answer-sheet-dialog';
 import { NoteDialog } from '@/components/open-questions/note-dialog';
 import type { QuestionActor } from '@/components/open-questions/question-actions';
@@ -241,7 +242,7 @@ export function OpenQuestionsPage() {
       Ansprechpartner-Hinweis nennt Lanes, Organisationseinheiten und Ordner: ein Hinweis, keine
       Zuständigkeit.
       {canReview
-        ? ' Die meisten Fragen haben eine Aktion, die sie erledigt: verknüpfen, platzieren, entscheiden oder als außerhalb der Landschaft markieren; was eine Aktion angelegt hat, nimmst du mit „Rückgängig“ zurück. Die übrigen erledigt ein neuer Import des ergänzten Modells. Mit „Notiz hinzufügen“ hältst du fest, was du weißt, mit „Antworten aus CSV übernehmen“ die Antworten aus der ausgefüllten CSV (als Notizen).'
+        ? ' Die meisten Fragen haben eine Aktion, die sie erledigt: verknüpfen, platzieren, entscheiden, einen fehlenden Wert im Modell ergänzen oder als außerhalb der Landschaft markieren; was eine Aktion angelegt hat, nimmst du mit „Rückgängig“ zurück. Ergänzungen sammelst du mit „Sammeln“ und speicherst sie je Modell in einem Schritt. Mit „Notiz hinzufügen“ hältst du fest, was du weißt, mit „Antworten aus CSV übernehmen“ die Antworten aus der ausgefüllten CSV (als Notizen).'
         : null}
     </p>
   );
@@ -374,6 +375,12 @@ export function OpenQuestionsPage() {
           {canReview ? <AnswerSheetDialog project={project} items={all} /> : null}
         </div>
       </div>
+
+      {canReview ? (
+        <div className="sticky top-2 z-20 empty:hidden">
+          <CollectBar project={project} />
+        </div>
+      ) : null}
 
       {items.length === 0 ? (
         <Empty className="border bg-card py-10" data-testid="open-questions-empty">

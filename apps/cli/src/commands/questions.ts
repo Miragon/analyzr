@@ -14,7 +14,9 @@
  *   the ref), and a count by kind; json prints every item.
  *   `analyzr questions list` is the same command; notes are recorded by
  *   `analyzr questions answer` (`questions-answer.ts`), the actions by
- *   `analyzr questions outside|link|place` (`questions-act.ts`).
+ *   `analyzr questions outside|link|place` (`questions-act.ts`) and, since
+ *   S5c-2, `analyzr questions amend` (`amend.ts`; under an item the targets
+ *   of an `amend` action with several, or the value it sets again).
  * - **md** and **csv** fetch `GET …/open-questions/export` and write its bytes
  *   verbatim: the Markdown grouped by contact hint, the CSV with its byte
  *   order mark and the column `Antwort` for the customer (empty, or the
@@ -254,6 +256,33 @@ export function hasSuggestions(items: readonly OpenQuestion[]): boolean {
   return items.some((q) => withSuggestions(q).length > 0);
 }
 
+/** The longest prefilled value a line shows. */
+const PREFILL_SHOWN = 60;
+
+/**
+ * Under an item, what `analyzr questions amend` needs beyond the value
+ * (M6 S5c-2): the targets of an `amend` action with several (`--element`
+ * picks one), and the value an action records again without one („Meine
+ * Ergänzung behalten“).
+ */
+function amendLines(q: OpenQuestion): string[] {
+  return q.actions.flatMap((a) => {
+    if (a.type !== 'amend' || !a.amend) return [];
+    const { targets } = a.amend;
+    if (targets.length > 1) {
+      return [
+        `      amend targets: ${targets.map((t) => `${oneLine(t.label)} (--element ${t.elementId})`).join(', ')}`,
+      ];
+    }
+    return targets.flatMap((t) => {
+      if (t.prefill === undefined) return [];
+      const value = oneLine(t.prefill);
+      const shown = value.length > PREFILL_SHOWN ? `${value.slice(0, PREFILL_SHOWN - 1)}…` : value;
+      return [`      amend „${oneLine(a.label)}“ sets „${shown}“ again`];
+    });
+  });
+}
+
 /** The marker after a question with a live outside mark (state `answered`). */
 const ANSWERED = '  [answered: outside the landscape]';
 
@@ -263,7 +292,8 @@ const ANSWERED = '  [answered: outside the landscape]';
  * (`[answered: outside the landscape]` after a marked one); columns aligned.
  * Under a question, one line per action with suggested targets, each as
  * `„Name“ (ref)` where `names` knows the process, else its ref, and below
- * it the proposals a link to each target accepts.
+ * it the proposals a link to each target accepts; then the targets of an
+ * `amend` action with several, or the value it sets again.
  */
 export function formatQuestions(
   items: readonly OpenQuestion[],
@@ -286,14 +316,17 @@ export function formatQuestions(
       model: modelColumn(q),
       action: primaryAction(q),
       question: `${oneLine(q.subjectLabel)}: ${oneLine(q.text)}${q.state === 'answered' ? ANSWERED : ''}`,
-      suggestions: withSuggestions(q).flatMap((a) => [
-        `      suggested for ${a.type}: ${a.suggested.map((ref) => targetLabel(ref, names)).join(', ')}`,
-        // What linking a suggested target accepts instead of writing a manual relation.
-        ...(a.proposals ?? []).map(
-          (p) =>
-            `        ${p.target}: accepts the ${p.type} proposal ${p.from} → ${p.to} (${p.relation})`,
-        ),
-      ]),
+      suggestions: [
+        ...withSuggestions(q).flatMap((a) => [
+          `      suggested for ${a.type}: ${a.suggested.map((ref) => targetLabel(ref, names)).join(', ')}`,
+          // What linking a suggested target accepts instead of writing a manual relation.
+          ...(a.proposals ?? []).map(
+            (p) =>
+              `        ${p.target}: accepts the ${p.type} proposal ${p.from} → ${p.to} (${p.relation})`,
+          ),
+        ]),
+        ...amendLines(q),
+      ],
     })),
   ];
   const width = (k: 'id' | 'unlocks' | 'kind' | 'model' | 'action') =>

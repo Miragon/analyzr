@@ -7,7 +7,8 @@ import { z } from 'zod';
  * stored no-links; `vch`, `vcr`, `plc` and `pas` are M4's
  * value chains, value chain revisions, placements and placement assertions
  * (M4-VALUE-CHAIN.md §2); `aar` are the owner's auto-accept rules (owner
- * decision 19); `oqa` are answers to open questions (M6 S5a).
+ * decision 19); `oqa` are answers to open questions (M6 S5a); `mam` are model
+ * amendments (M6 S5c-2).
  */
 export const ID_PREFIXES = {
   project: 'prj',
@@ -27,6 +28,7 @@ export const ID_PREFIXES = {
   placementAssertion: 'pas',
   autoAcceptRule: 'aar',
   openQuestionAnswer: 'oqa',
+  modelAmendment: 'mam',
 } as const;
 
 export type IdKind = keyof typeof ID_PREFIXES;
@@ -104,6 +106,12 @@ export const OpenQuestionAnswerId = typedId(
   'Answer to an open question (`oqa_` + ULID).',
 );
 export type OpenQuestionAnswerId = TypedId<'oqa'>;
+export const ModelAmendmentId = typedId(
+  'mam',
+  'ModelAmendmentId',
+  'Model amendment id (`mam_` + ULID).',
+);
+export type ModelAmendmentId = TypedId<'mam'>;
 
 /**
  * Creates a new typed ULID: 48-bit millisecond timestamp plus 80 random bits,

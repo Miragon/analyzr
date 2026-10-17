@@ -62,6 +62,13 @@ const WRITE_ACTIONS = [
   /Verknüpfen mit/,
   /^Liegt außerhalb der Landschaft$/,
   /^Markierung zurücknehmen$/,
+  // M6 S5c-2: model amendments
+  /^Eintragen …$/,
+  /^Ändern …$/,
+  /^Sammeln$/,
+  /^Zurücknehmen$/,
+  /^Jetzt speichern$/,
+  /^Alle zurücknehmen$/,
 ];
 
 /** Test ids of the value chain's write actions (stable where texts may change). */
@@ -77,6 +84,11 @@ const WRITE_TEST_IDS = [
   'question-withdraw-mark',
   'subprocess-link',
   'open-questions-import',
+  'amend-form',
+  'amend-section-edit',
+  'amend-withdraw',
+  'withdraw-confirm',
+  'collect-bar',
 ];
 
 const unexpected: string[] = [];

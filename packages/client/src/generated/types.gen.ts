@@ -445,8 +445,10 @@ export type PutModelResult = {
   outcome: 'created' | 'revised' | 'unchanged';
   model: Model;
   revision: Revision;
+  uploadedRevisionId?: RevisionId;
   warnings?: Array<ExtractWarning>;
   warningCount?: number;
+  amendments?: AmendmentCounts;
 };
 
 /**
@@ -474,10 +476,53 @@ export type Sha256Hex = string;
  * Origin of a revision.
  */
 export type RevisionSource = {
-  kind: 'upload' | 'import' | 'seed';
+  kind: 'upload' | 'import' | 'seed' | 'amendment';
   path?: string;
+  uploader?: 'human' | 'agent';
+  upstream?: RevisionUpstream;
+  amendments?: Array<AmendmentPlanEntry>;
   [key: string]: unknown;
 };
+
+/**
+ * The uploaded revision an amended revision is computed from.
+ */
+export type RevisionUpstream = {
+  revisionId: RevisionId;
+  rev: number;
+  contentHash: Sha256Hex;
+};
+
+/**
+ * A live amendment and its outcome on the head.
+ */
+export type AmendmentPlanEntry = {
+  id: ModelAmendmentId;
+  elementId: string;
+  op: AmendmentOp;
+  outcome: AmendmentOutcome;
+  reason?: AmendmentConflictReason;
+};
+
+/**
+ * Model amendment id (`mam_` + ULID).
+ */
+export type ModelAmendmentId = string;
+
+/**
+ * Operation of a model amendment.
+ */
+export type AmendmentOp = 'call-target' | 'message-name' | 'event-name' | 'process-documentation';
+
+/**
+ * Where a live amendment stands on the head.
+ */
+export type AmendmentOutcome = 'applied' | 'in-source' | 'conflict';
+
+/**
+ * Why a live amendment is in conflict.
+ */
+export type AmendmentConflictReason = 'element-missing' | 'value-changed' | 'expression';
 
 /**
  * A non-fatal observation of the fact extractor.
@@ -486,6 +531,24 @@ export type ExtractWarning = {
   code: string;
   message: string;
   elementId?: string;
+};
+
+/**
+ * What became of a model's live amendments.
+ */
+export type AmendmentCounts = {
+  applied: {
+    count: number;
+    ids: Array<ModelAmendmentId>;
+  };
+  inSource: {
+    count: number;
+    ids: Array<ModelAmendmentId>;
+  };
+  conflicts: {
+    count: number;
+    ids: Array<ModelAmendmentId>;
+  };
 };
 
 /**
@@ -530,6 +593,7 @@ export type ImportFileOutcome = {
   problem: ApiProblem | null;
   warnings?: Array<ExtractWarning>;
   warningCount?: number;
+  amendments?: AmendmentCounts;
 };
 
 export type ImportModelsBody = {
@@ -538,6 +602,299 @@ export type ImportModelsBody = {
    */
   files: Array<Blob | File>;
 };
+
+/**
+ * The amendable fields of one element.
+ */
+export type AmendableElement = {
+  modelId: ModelId;
+  modelKey: ModelKey;
+  elementId: string;
+  headRevisionId: RevisionId;
+  headRev: number;
+  uploadedRevisionId: RevisionId;
+  fields: Array<AmendableField>;
+  history: Array<ModelAmendment>;
+};
+
+/**
+ * A field of an element a model amendment can set.
+ */
+export type AmendableField = {
+  op: AmendmentOp;
+  elementId: string;
+  viaElementId: string | null;
+  element: AmendableElementKind;
+  typeLabel: string;
+  fieldLabel: string;
+  value: string | null;
+  uploadedValue: string | null;
+  settable: boolean;
+  reason: AmendmentRefusal | null;
+  live: ModelAmendment | null;
+  readers: Array<Ref>;
+  suggestions: AmendSuggestions;
+};
+
+/**
+ * Kind of element an amendment writes.
+ */
+export type AmendableElementKind =
+  'call' | 'start-event' | 'end-event' | 'process' | 'message' | 'signal' | 'endpoint';
+
+/**
+ * Why a model amendment cannot be recorded.
+ */
+export type AmendmentRefusal =
+  | 'only-open-questions'
+  | 'invalid-value'
+  | 'expression'
+  | 'cmmn-call'
+  | 'has-documentation'
+  | 'wrong-element'
+  | 'element-missing'
+  | 'duplicate-id'
+  | 'redeclared-prefix'
+  | 'unsupported-structure'
+  | 'check-failed'
+  | 'duplicate-amendment'
+  | 'in-source'
+  | 'unknown-ref'
+  | 'not-a-process'
+  | 'same-process'
+  | 'partner-not-paired'
+  | 'not-a-call-target'
+  | 'not-a-message-name';
+
+/**
+ * A targeted amendment of a model field.
+ */
+export type ModelAmendment = {
+  id: ModelAmendmentId;
+  modelId: ModelId;
+  modelKey: ModelKey;
+  elementId: string;
+  viaElementId: string | null;
+  op: AmendmentOp;
+  before: string | null;
+  after: string;
+  baseRevisionId: RevisionId;
+  supersedesId: ModelAmendmentId | null;
+  by: string;
+  sourceKind: 'human';
+  seq: number;
+  at: Timestamp;
+  state: AmendmentState;
+  conflict: AmendmentConflictReason | null;
+  modelDeleted: boolean;
+  withdrawal: ModelAmendmentWithdrawal | null;
+};
+
+/**
+ * State of a model amendment.
+ */
+export type AmendmentState = 'applied' | 'in-source' | 'conflict' | 'withdrawn' | 'superseded';
+
+/**
+ * The end of a model amendment.
+ */
+export type ModelAmendmentWithdrawal = {
+  reason: AmendmentWithdrawalReason;
+  by: string;
+  seq: number;
+  at: Timestamp;
+};
+
+/**
+ * How an amendment ended.
+ */
+export type AmendmentWithdrawalReason = 'withdrawn' | 'superseded';
+
+/**
+ * What the form offers for a field.
+ */
+export type AmendSuggestions = {
+  processes?: Array<AmendProcessSuggestion>;
+  names?: Array<AmendNameSuggestion>;
+  labels?: Array<string>;
+};
+
+/**
+ * A process a call target can name.
+ */
+export type AmendProcessSuggestion = {
+  ref: Ref;
+  processId: string;
+  name: string;
+  modelKey: ModelKey;
+  modelName: string | null;
+  ambiguous: boolean;
+};
+
+/**
+ * A message or signal name of the landscape.
+ */
+export type AmendNameSuggestion = {
+  name: string;
+  endpoints: Array<AmendNameEndpoint>;
+};
+
+/**
+ * An endpoint that throws or catches a name.
+ */
+export type AmendNameEndpoint = {
+  ref: Ref;
+  kind: FactKind;
+  name: string;
+  processName: string | null;
+  modelKey: ModelKey;
+  partner: boolean;
+};
+
+/**
+ * The outcome of an amendment request.
+ */
+export type AmendModelResult = {
+  dryRun: boolean;
+  outcome: 'recorded' | 'unchanged';
+  items: Array<AmendModelItemResult>;
+  model: Model;
+  revision: Revision | null;
+  effect: AmendmentEffect;
+  cost: AmendmentCost;
+};
+
+/**
+ * What became of one amendment.
+ */
+export type AmendModelItemResult = {
+  elementId: string;
+  op: AmendmentOp;
+  outcome: 'recorded' | 'unchanged' | 'not-applicable';
+  reason?: AmendmentRefusal;
+  message?: string;
+  amendmentElementId?: string;
+  after?: string;
+  before?: string | null;
+  amendment?: ModelAmendment;
+  supersedes?: ModelAmendmentId;
+  warnings?: Array<PersonalDataWarning>;
+};
+
+/**
+ * Probable personal data in a text (e-mail, phone, IBAN); a warning, never a block.
+ */
+export type PersonalDataWarning = {
+  kind: 'email' | 'phone' | 'iban';
+  start: number;
+  end: number;
+};
+
+/**
+ * The would-be effect of amendments.
+ */
+export type AmendmentEffect = {
+  findingsResolved: Array<Finding>;
+  findingsAdded: Array<Finding>;
+  accepted: Array<AmendmentEffectRelation>;
+  proposed: Array<AmendmentEffectRelation>;
+  withdrawn: Array<AmendmentEffectRelation>;
+  partnerAccepted: Array<AmendmentEffectRelation>;
+  changed: Array<AmendmentEffectRelation>;
+  retired: Array<AmendmentEffectRelation>;
+};
+
+/**
+ * A deterministic finding about the landscape.
+ */
+export type Finding = {
+  kind: FindingKind;
+  refs: Array<Ref>;
+  detail: string;
+};
+
+/**
+ * Kind of a deterministic finding.
+ */
+export type FindingKind =
+  | 'unresolved-call'
+  | 'dynamic-call'
+  | 'duplicate-process-id'
+  | 'dangling-throw'
+  | 'unmatched-catch';
+
+/**
+ * A relation an amendment affects.
+ */
+export type AmendmentEffectRelation = {
+  relation: RelationId | null;
+  type: RelationType;
+  from: Ref;
+  to: Ref;
+};
+
+/**
+ * Relation id (`rel_` + ULID).
+ */
+export type RelationId = string;
+
+/**
+ * Type of a relation between two processes.
+ */
+export type RelationType = 'call' | 'message' | 'signal' | 'trigger' | 'manual';
+
+/**
+ * The cost of a new head.
+ */
+export type AmendmentCost = {
+  factsChange: boolean;
+  pairsToRejudge: number;
+  taskClaimed: boolean;
+};
+
+/**
+ * The amendments of one model.
+ */
+export type AmendModelBody = {
+  items: Array<AmendModelItem>;
+};
+
+/**
+ * One amendment of a request.
+ */
+export type AmendModelItem = {
+  elementId: string;
+  op: AmendmentOp;
+  after?: string;
+  target?: Ref;
+  partner?: Ref;
+  replaces?: ModelAmendmentId;
+};
+
+/**
+ * The outcome of a withdrawal.
+ */
+export type WithdrawAmendmentsResult = {
+  result: 'withdrawn' | 'unchanged';
+  amendments: Array<ModelAmendment>;
+  model: Model | null;
+  revision: Revision | null;
+  dryRun?: boolean;
+  cost?: AmendmentCost;
+};
+
+/**
+ * Model amendments.
+ */
+export type ModelAmendmentList = {
+  items: Array<ModelAmendment>;
+  seq: number;
+};
+
+/**
+ * Format of the change list.
+ */
+export type AmendmentExportFormat = 'markdown' | 'csv';
 
 /**
  * The current process landscape of a project.
@@ -582,16 +939,6 @@ export type Relation = {
   noLinks: Array<RelationNoLink>;
   updatedAt: Timestamp;
 };
-
-/**
- * Relation id (`rel_` + ULID).
- */
-export type RelationId = string;
-
-/**
- * Type of a relation between two processes.
- */
-export type RelationType = 'call' | 'message' | 'signal' | 'trigger' | 'manual';
 
 /**
  * Review status of a relation.
@@ -667,25 +1014,6 @@ export type RelationNoLink = {
  * Stored no-link id (`nlk_` + ULID).
  */
 export type NoLinkId = string;
-
-/**
- * A deterministic finding about the landscape.
- */
-export type Finding = {
-  kind: FindingKind;
-  refs: Array<Ref>;
-  detail: string;
-};
-
-/**
- * Kind of a deterministic finding.
- */
-export type FindingKind =
-  | 'unresolved-call'
-  | 'dynamic-call'
-  | 'duplicate-process-id'
-  | 'dangling-throw'
-  | 'unmatched-catch';
 
 /**
  * A page of Relation items.
@@ -781,7 +1109,8 @@ export type OpenQuestionKind =
   | 'message-without-name'
   | 'undocumented-process'
   | 'isolated-process'
-  | 'descriptive-model';
+  | 'descriptive-model'
+  | 'amendment-conflict';
 
 /**
  * Source of an open question.
@@ -795,7 +1124,8 @@ export type OpenQuestionSource =
   | 'no-link'
   | 'summary'
   | 'unjudged'
-  | 'signal';
+  | 'signal'
+  | 'amendment';
 
 /**
  * What an open question is about.
@@ -906,13 +1236,25 @@ export type OpenQuestionAction = {
   pairs?: Array<TypedPair>;
   step?: string;
   decides?: Array<OpenQuestionDecisionItem>;
+  amend?: OpenQuestionAmend;
+  withdraw?: OpenQuestionWithdraw;
+  hint?: string;
 };
 
 /**
  * Type of an action on an open question.
  */
 export type OpenQuestionActionType =
-  'decide' | 'link' | 'place' | 'choose-copy' | 'outside' | 'requeue' | 'fix-link' | 'note';
+  | 'decide'
+  | 'link'
+  | 'place'
+  | 'choose-copy'
+  | 'outside'
+  | 'requeue'
+  | 'fix-link'
+  | 'amend'
+  | 'withdraw-amendment'
+  | 'note';
 
 /**
  * The picker an action needs.
@@ -949,6 +1291,46 @@ export type OpenQuestionDecisionItem = {
 };
 
 /**
+ * What an amend action sets.
+ */
+export type OpenQuestionAmend = {
+  modelId: ModelId;
+  modelKey: ModelKey;
+  targets: Array<OpenQuestionAmendTarget>;
+  replaces?: ModelAmendmentId;
+};
+
+/**
+ * One field an amend action sets.
+ */
+export type OpenQuestionAmendTarget = {
+  elementId: string;
+  op: AmendmentOp;
+  label: string;
+  prefill?: string;
+};
+
+/**
+ * What a withdraw-amendment action withdraws.
+ */
+export type OpenQuestionWithdraw = {
+  modelId: ModelId;
+  modelKey: ModelKey;
+  amendment?: ModelAmendmentId;
+  compare?: OpenQuestionWithdrawCompare;
+};
+
+/**
+ * The values a value-changed amendment conflict chooses between.
+ */
+export type OpenQuestionWithdrawCompare = {
+  field: string;
+  incoming: string | null;
+  after: string;
+  before: string | null;
+};
+
+/**
  * Format of the open-questions export.
  */
 export type OpenQuestionExportFormat = 'markdown' | 'csv';
@@ -961,15 +1343,6 @@ export type AnswerOpenQuestionResult = {
   answer: OpenQuestionAnswer;
   question: OpenQuestion;
   warnings: Array<PersonalDataWarning>;
-};
-
-/**
- * Probable personal data in a text (e-mail, phone, IBAN); a warning, never a block.
- */
-export type PersonalDataWarning = {
-  kind: 'email' | 'phone' | 'iban';
-  start: number;
-  end: number;
 };
 
 /**
@@ -3675,6 +4048,348 @@ export type ImportModelsResponses = {
 };
 
 export type ImportModelsResponse = ImportModelsResponses[keyof ImportModelsResponses];
+
+export type GetAmendableData = {
+  body?: never;
+  path: {
+    /**
+     * Project id (`prj_…`) or project key.
+     */
+    project: string;
+    /**
+     * Model id (`mdl_` + ULID).
+     */
+    model: ModelId;
+    elementId: string;
+  };
+  query?: never;
+  url: '/api/v1/projects/{project}/models/{model}/elements/{elementId}/amendable';
+};
+
+export type GetAmendableErrors = {
+  /**
+   * Problem: `unauthorized`
+   */
+  401: ApiProblem;
+  /**
+   * Problem: `insufficient-scope`
+   */
+  403: ApiProblem;
+  /**
+   * Problem: `not-found`
+   */
+  404: ApiProblem;
+  /**
+   * Problem: `validation-failed`
+   */
+  422: ApiProblem;
+};
+
+export type GetAmendableError = GetAmendableErrors[keyof GetAmendableErrors];
+
+export type GetAmendableResponses = {
+  /**
+   * The amendable fields
+   */
+  200: AmendableElement;
+};
+
+export type GetAmendableResponse = GetAmendableResponses[keyof GetAmendableResponses];
+
+export type AmendModelData = {
+  body: AmendModelBody;
+  headers?: {
+    'if-match'?: string;
+  };
+  path: {
+    /**
+     * Project id (`prj_…`) or project key.
+     */
+    project: string;
+    /**
+     * Model id (`mdl_` + ULID).
+     */
+    model: ModelId;
+  };
+  query?: {
+    dryRun?: 'true' | 'false';
+  };
+  url: '/api/v1/projects/{project}/models/{model}/amendments';
+};
+
+export type AmendModelErrors = {
+  /**
+   * Problem: `unauthorized`
+   */
+  401: ApiProblem;
+  /**
+   * Problem: `insufficient-scope`, `human-decision-required`, `forbidden`, `demo-readonly`
+   */
+  403: ApiProblem;
+  /**
+   * Problem: `not-found`
+   */
+  404: ApiProblem;
+  /**
+   * Problem: `conflict`
+   */
+  409: ApiProblem;
+  /**
+   * Problem: `revision-conflict`
+   */
+  412: ApiProblem;
+  /**
+   * Problem: `validation-failed`
+   */
+  422: ApiProblem;
+  /**
+   * Problem: `precondition-required`
+   */
+  428: ApiProblem;
+};
+
+export type AmendModelError = AmendModelErrors[keyof AmendModelErrors];
+
+export type AmendModelResponses = {
+  /**
+   * A dry run, or `unchanged`
+   */
+  200: AmendModelResult;
+  /**
+   * The amendments were recorded
+   */
+  201: AmendModelResult;
+};
+
+export type AmendModelResponse = AmendModelResponses[keyof AmendModelResponses];
+
+export type WithdrawModelAmendmentsData = {
+  body?: never;
+  headers?: {
+    'if-match'?: string;
+  };
+  path: {
+    /**
+     * Project id (`prj_…`) or project key.
+     */
+    project: string;
+    /**
+     * Model id (`mdl_` + ULID).
+     */
+    model: ModelId;
+  };
+  query?: {
+    dryRun?: 'true' | 'false';
+  };
+  url: '/api/v1/projects/{project}/models/{model}/amendments/withdrawal';
+};
+
+export type WithdrawModelAmendmentsErrors = {
+  /**
+   * Problem: `unauthorized`
+   */
+  401: ApiProblem;
+  /**
+   * Problem: `insufficient-scope`, `human-decision-required`, `forbidden`, `demo-readonly`
+   */
+  403: ApiProblem;
+  /**
+   * Problem: `not-found`
+   */
+  404: ApiProblem;
+  /**
+   * Problem: `revision-conflict`
+   */
+  412: ApiProblem;
+  /**
+   * Problem: `validation-failed`
+   */
+  422: ApiProblem;
+};
+
+export type WithdrawModelAmendmentsError =
+  WithdrawModelAmendmentsErrors[keyof WithdrawModelAmendmentsErrors];
+
+export type WithdrawModelAmendmentsResponses = {
+  /**
+   * A dry run, or nothing was live (`unchanged`)
+   */
+  200: WithdrawAmendmentsResult;
+  /**
+   * The amendments were withdrawn
+   */
+  201: WithdrawAmendmentsResult;
+};
+
+export type WithdrawModelAmendmentsResponse =
+  WithdrawModelAmendmentsResponses[keyof WithdrawModelAmendmentsResponses];
+
+export type ListAmendmentsData = {
+  body?: never;
+  path: {
+    /**
+     * Project id (`prj_…`) or project key.
+     */
+    project: string;
+  };
+  query?: {
+    /**
+     * Immutable model key: lowercase slug segments separated by `/`.
+     */
+    modelKey?: ModelKey;
+    /**
+     * State of a model amendment.
+     */
+    state?: AmendmentState;
+  };
+  url: '/api/v1/projects/{project}/amendments';
+};
+
+export type ListAmendmentsErrors = {
+  /**
+   * Problem: `unauthorized`
+   */
+  401: ApiProblem;
+  /**
+   * Problem: `insufficient-scope`
+   */
+  403: ApiProblem;
+  /**
+   * Problem: `not-found`
+   */
+  404: ApiProblem;
+  /**
+   * Problem: `validation-failed`
+   */
+  422: ApiProblem;
+};
+
+export type ListAmendmentsError = ListAmendmentsErrors[keyof ListAmendmentsErrors];
+
+export type ListAmendmentsResponses = {
+  /**
+   * The amendments
+   */
+  200: ModelAmendmentList;
+};
+
+export type ListAmendmentsResponse = ListAmendmentsResponses[keyof ListAmendmentsResponses];
+
+export type ExportAmendmentsData = {
+  body?: never;
+  path: {
+    /**
+     * Project id (`prj_…`) or project key.
+     */
+    project: string;
+  };
+  query?: {
+    /**
+     * Immutable model key: lowercase slug segments separated by `/`.
+     */
+    modelKey?: ModelKey;
+    /**
+     * State of a model amendment.
+     */
+    state?: AmendmentState;
+    /**
+     * Format of the change list.
+     */
+    format?: AmendmentExportFormat;
+    since?: number | null;
+  };
+  url: '/api/v1/projects/{project}/amendments/export';
+};
+
+export type ExportAmendmentsErrors = {
+  /**
+   * Problem: `unauthorized`
+   */
+  401: ApiProblem;
+  /**
+   * Problem: `insufficient-scope`
+   */
+  403: ApiProblem;
+  /**
+   * Problem: `not-found`
+   */
+  404: ApiProblem;
+  /**
+   * Problem: `validation-failed`
+   */
+  422: ApiProblem;
+};
+
+export type ExportAmendmentsError = ExportAmendmentsErrors[keyof ExportAmendmentsErrors];
+
+export type ExportAmendmentsResponses = {
+  /**
+   * The change list
+   */
+  200: string;
+};
+
+export type ExportAmendmentsResponse = ExportAmendmentsResponses[keyof ExportAmendmentsResponses];
+
+export type WithdrawAmendmentData = {
+  body?: never;
+  headers?: {
+    'if-match'?: string;
+  };
+  path: {
+    /**
+     * Project id (`prj_…`) or project key.
+     */
+    project: string;
+    /**
+     * Model amendment id (`mam_` + ULID).
+     */
+    amendment: ModelAmendmentId;
+  };
+  query?: {
+    dryRun?: 'true' | 'false';
+  };
+  url: '/api/v1/projects/{project}/amendments/{amendment}/withdrawal';
+};
+
+export type WithdrawAmendmentErrors = {
+  /**
+   * Problem: `unauthorized`
+   */
+  401: ApiProblem;
+  /**
+   * Problem: `insufficient-scope`, `human-decision-required`, `forbidden`, `demo-readonly`
+   */
+  403: ApiProblem;
+  /**
+   * Problem: `not-found`
+   */
+  404: ApiProblem;
+  /**
+   * Problem: `revision-conflict`
+   */
+  412: ApiProblem;
+  /**
+   * Problem: `validation-failed`
+   */
+  422: ApiProblem;
+};
+
+export type WithdrawAmendmentError = WithdrawAmendmentErrors[keyof WithdrawAmendmentErrors];
+
+export type WithdrawAmendmentResponses = {
+  /**
+   * A dry run, or the amendment had ended before (`unchanged`)
+   */
+  200: WithdrawAmendmentsResult;
+  /**
+   * The amendment was withdrawn
+   */
+  201: WithdrawAmendmentsResult;
+};
+
+export type WithdrawAmendmentResponse =
+  WithdrawAmendmentResponses[keyof WithdrawAmendmentResponses];
 
 export type GetLandscapeData = {
   body?: never;

@@ -730,6 +730,21 @@ describe('analyzr questions outside|link|place (refused)', () => {
     expect(describeActions(PAIR_ITEM)).toBe(
       'Erneut einplanen (requeue, analyzr models requeue), Paar verknüpfen … (link), Notiz hinzufügen (note, analyzr questions answer)',
     );
+    // M6 S5c-2: the amendment actions name their commands.
+    expect(
+      describeActions({
+        actions: [
+          {
+            type: 'withdraw-amendment',
+            primary: true,
+            label: 'Wert aus dem Quellsystem übernehmen',
+          },
+          { type: 'amend', primary: false, label: 'Meine Ergänzung behalten' },
+        ],
+      }),
+    ).toBe(
+      'Wert aus dem Quellsystem übernehmen (withdraw-amendment, analyzr amendments withdraw), Meine Ergänzung behalten (amend, analyzr questions amend)',
+    );
   });
 
   it("reports an id that names no current item, and the server's problem", async () => {

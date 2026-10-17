@@ -10,7 +10,10 @@
  * the CSV round trip; M6 S5a, notes since S5c-1), `analyzr questions
  * outside|link|place` (M6 S5c-1: targets by ref, model key and process name,
  * an accepted proposal, placements on a step and on `@outside`, the outside
- * mark and its withdrawal, an S5a sheet), and the import hygiene of M6 S1 (`.xml`,
+ * mark and its withdrawal, an S5a sheet), `analyzr models amend|pull`,
+ * `analyzr questions amend` and `analyzr amendments list|export|withdraw` (M6
+ * S5c-2: amended and uploaded revisions, re-imports with a conflict and
+ * „Meine Ergänzung behalten“, the change list, withdrawals), and the import hygiene of M6 S1 (`.xml`,
  * skipped plain XML and sidecars, extractor warnings, the waiting tasks) with
  * `analyzr models list|requeue|delete`.
  */
@@ -946,6 +949,418 @@ describe('analyzr questions outside|link|place (M6 S5c-1)', () => {
     const after = await list();
     expect(after.find((q) => q.id === pool.id)?.state).toBe('answered');
     expect(after.find((q) => q.id === held.id)?.state).toBe('open');
+  });
+});
+
+describe('analyzr models amend|pull, questions amend and amendments (M6 S5c-2)', () => {
+  const P = 'amend-e2e';
+  const CALL = 'vertrieb/auftrag#Call_Rechnung';
+  const RECHNUNG = 'finanzen/rechnung#Process_Rechnung';
+  const root = () => path.join(dir, P);
+  const DEFS =
+    'xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:camunda="http://camunda.org/schema/1.0/bpmn" targetNamespace="http://example.org/bpmn"';
+
+  /** The caller, written for this test: a call without a target, a resolved call, unnamed start and end. */
+  const auftrag = (v: { task?: string; called?: string } = {}) =>
+    [
+      '<?xml version="1.0" encoding="UTF-8"?>',
+      `<bpmn:definitions ${DEFS} id="Defs_Auftrag">`,
+      '  <bpmn:process id="Process_Auftrag" name="Auftragsabwicklung" isExecutable="true">',
+      '    <bpmn:documentation>Wickelt Aufträge ab.</bpmn:documentation>',
+      '    <bpmn:startEvent id="Start_Auftrag" />',
+      `    <bpmn:task id="Task_Pruefen" name="${v.task ?? 'Auftrag prüfen'}" />`,
+      `    <bpmn:callActivity id="Call_Rechnung" name="Rechnung stellen"${v.called === undefined ? '' : ` calledElement="${v.called}"`} />`,
+      '    <bpmn:callActivity id="Call_Lager" name="Einlagern" calledElement="Process_Lager" />',
+      '    <bpmn:endEvent id="End_Auftrag" />',
+      '  </bpmn:process>',
+      '</bpmn:definitions>',
+      '',
+    ].join('\n');
+  const rechnung = [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    `<bpmn:definitions ${DEFS} id="Defs_Rechnung">`,
+    '  <bpmn:process id="Process_Rechnung" name="Rechnungsstellung" isExecutable="true">',
+    '    <bpmn:documentation>Stellt Rechnungen.</bpmn:documentation>',
+    '    <bpmn:startEvent id="Start_Rechnung" name="Rechnung angefordert" />',
+    '    <bpmn:endEvent id="End_Rechnung" name="Rechnung gestellt" />',
+    '  </bpmn:process>',
+    '</bpmn:definitions>',
+    '',
+  ].join('\n');
+  const lager = [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    `<bpmn:definitions ${DEFS} id="Defs_Lager">`,
+    '  <bpmn:process id="Process_Lager" name="Einlagerung" isExecutable="true">',
+    '    <bpmn:startEvent id="Start_Lager" name="Ware angekommen" />',
+    '    <bpmn:endEvent id="End_Lager" name="Ware eingelagert" />',
+    '  </bpmn:process>',
+    '</bpmn:definitions>',
+    '',
+  ].join('\n');
+
+  interface Item {
+    id: string;
+    kind: string;
+    subject: { type: string; id: string };
+    actions: {
+      type: string;
+      primary: boolean;
+      label: string;
+      amend?: { targets: { elementId: string; op: string; prefill?: string }[]; replaces?: string };
+      withdraw?: { amendment?: string };
+    }[];
+  }
+  interface Amendment {
+    id: string;
+    modelKey: string;
+    elementId: string;
+    op: string;
+    before: string | null;
+    after: string;
+    state: string;
+    conflict: string | null;
+    seq: number;
+  }
+
+  async function list(...flags: string[]): Promise<Item[]> {
+    const r = await analyzr(['questions', '-p', P, '--format', 'json', ...flags]);
+    expect(r.err).toBe('');
+    expect(r.code).toBe(0);
+    return JSON.parse(r.out) as Item[];
+  }
+
+  async function amendments(): Promise<Amendment[]> {
+    const r = await analyzr(['amendments', 'list', '-p', P, '--json']);
+    expect(r.code).toBe(0);
+    return (JSON.parse(r.out) as { items: Amendment[] }).items;
+  }
+
+  /** Imports `vertrieb/auftrag.bpmn` with these bytes alone. */
+  async function reimport(text: string, name: string) {
+    await mkdir(path.join(root(), name, 'vertrieb'), { recursive: true });
+    await writeFile(path.join(root(), name, 'vertrieb', 'auftrag.bpmn'), text);
+    return analyzr(['import', path.join(P, name), '-p', P]);
+  }
+
+  const pull = async (...flags: string[]) => {
+    const r = await analyzr(['models', 'pull', 'vertrieb/auftrag', '-p', P, ...flags]);
+    expect(r.code).toBe(0);
+    return r;
+  };
+
+  beforeAll(async () => {
+    for (const [rel, text] of [
+      ['vertrieb/auftrag.bpmn', auftrag()],
+      ['finanzen/rechnung.bpmn', rechnung],
+      ['lager/einlagerung.bpmn', lager],
+    ] as const) {
+      await mkdir(path.dirname(path.join(root(), 'src', rel)), { recursive: true });
+      await writeFile(path.join(root(), 'src', rel), text);
+    }
+  });
+
+  it('amends through the questions and the models, pulls both revisions and re-imports', async () => {
+    const imported = await analyzr(['import', path.join(P, 'src'), '-p', P, '--create']);
+    expect(imported.err).toBe('');
+    expect(imported.code).toBe(0);
+
+    const items = await list();
+    const call = items.find((q) => q.kind === 'call-target-unknown' && q.subject.id === CALL);
+    const boundary = items.find((q) => q.kind === 'unlabelled-boundary');
+    if (!call || !boundary) throw new Error('no call or boundary question');
+    expect(call.actions.find((a) => a.primary)?.type).toBe('amend');
+    const table = await analyzr(['questions', '-p', P]);
+    expect(table.out).toMatch(
+      /\n {6}amend targets: Startereignis „Start_Auftrag“ \(--element Start_Auftrag\), Endereignis „End_Auftrag“ \(--element End_Auftrag\)\n/,
+    );
+
+    // A dry run writes nothing and names the call the rule tier accepts.
+    const dry = await analyzr([
+      'models',
+      'amend',
+      'vertrieb/auftrag',
+      '-p',
+      P,
+      '--element',
+      'Call_Rechnung',
+      '--call-target',
+      'Rechnungsstellung',
+      '--dry-run',
+    ]);
+    expect(dry.err).toBe('');
+    expect(dry.code).toBe(0);
+    expect(dry.out).toContain(`${P}: vertrieb/auftrag (r1): dry run, nothing recorded yet\n`);
+    expect(dry.out).toContain(
+      '  would record  call target of Call_Rechnung: (none) → „Process_Rechnung“\n',
+    );
+    expect(dry.out).toContain(`    accepted by the rule tier: call ${CALL} → ${RECHNUNG}\n`);
+    expect(dry.out).toContain(`    finding resolved: unresolved-call ${CALL}\n`);
+    expect((await amendments()).length).toBe(0);
+
+    // The question's action: the call target by process name.
+    const byQuestion = await analyzr([
+      'questions',
+      'amend',
+      call.id,
+      '-p',
+      P,
+      '--call-target',
+      'Rechnungsstellung',
+    ]);
+    expect(byQuestion.err).toBe('');
+    expect(byQuestion.code).toBe(0);
+    expect(byQuestion.out).toContain(
+      `${P}: amended vertrieb/auftrag: new head r2, computed from the uploaded r1\n  ${call.id}: `,
+    );
+    expect(byQuestion.out).toMatch(
+      /\n {2}recorded {2}call target of Call_Rechnung: \(none\) → „Process_Rechnung“ \(mam_\w{26}\)\n/,
+    );
+    expect(byQuestion.out).toMatch(
+      /\n {2}withdraw it with: analyzr amendments withdraw mam_\w{26} -p amend-e2e\n/,
+    );
+    const after = await list();
+    expect(after.some((q) => q.subject.id === CALL)).toBe(false);
+
+    // Several targets: --element picks one.
+    const fresh = after.find((q) => q.kind === 'unlabelled-boundary');
+    if (!fresh) throw new Error('the boundary question is gone');
+    const several = await analyzr([
+      'questions',
+      'amend',
+      fresh.id,
+      '-p',
+      P,
+      '--name',
+      'Auftrag eingegangen',
+    ]);
+    expect(several.code).toBe(1);
+    expect(several.err).toContain(`${fresh.id} amends 2 elements: pick one with --element <id>:`);
+    const start = await analyzr([
+      'questions',
+      'amend',
+      fresh.id,
+      '-p',
+      P,
+      '--element',
+      'Start_Auftrag',
+      '--name',
+      'Auftrag eingegangen',
+    ]);
+    expect(start.err).toBe('');
+    expect(start.code).toBe(0);
+    expect(start.out).toContain(
+      `${P}: amended vertrieb/auftrag: new head r3, computed from the uploaded r1\n`,
+    );
+
+    // Both downloads: the amended head, and the original byte for byte.
+    const head = await pull('-o', path.join(P, 'amended.bpmn'));
+    expect(head.err).toMatch(/^r3 [0-9a-f]{64} \(the head, amended from the uploaded r1\)\n$/);
+    const amended = await readFile(path.join(root(), 'amended.bpmn'), 'utf8');
+    expect(amended).toBe(
+      auftrag()
+        .replace(
+          '<bpmn:startEvent id="Start_Auftrag" />',
+          '<bpmn:startEvent id="Start_Auftrag" name="Auftrag eingegangen" />',
+        )
+        .replace(
+          'name="Rechnung stellen" />',
+          'name="Rechnung stellen" calledElement="Process_Rechnung" />',
+        ),
+    );
+    const original = await pull('--original');
+    expect(original.out).toBe(auftrag());
+    expect(original.err).toMatch(
+      /^r1 [0-9a-f]{64} \(uploaded; the head r3 is amended from it\)\n$/,
+    );
+
+    // The same bytes, and analyzr's own amended bytes, stay unchanged.
+    const same = await reimport(auftrag(), 'same');
+    expect(same.code).toBe(0);
+    expect(same.out).toContain('  unchanged vertrieb/auftrag  amendments: 2 applied\n');
+    const own = await reimport(amended, 'own');
+    expect(own.out).toContain('  unchanged vertrieb/auftrag  amendments: 2 applied\n');
+
+    // A change elsewhere: the uploaded revision and an amended head with both amendments.
+    const elsewhere = await reimport(auftrag({ task: 'Auftrag sorgfältig prüfen' }), 'elsewhere');
+    expect(elsewhere.err).toBe('');
+    // The extractor still warns about the call without a target in the uploaded bytes.
+    expect(elsewhere.out).toContain(
+      '  revised   vertrieb/auftrag  warnings: 1 (call-without-target 1)  amendments: 2 applied\n',
+    );
+    const rederived = await pull();
+    expect(rederived.err).toMatch(/^r5 [0-9a-f]{64} \(the head, amended from the uploaded r4\)\n$/);
+    expect(rederived.out).toContain('name="Auftrag sorgfältig prüfen"');
+    expect(rederived.out).toContain('calledElement="Process_Rechnung"');
+
+    // The tool sets another target: a conflict, the other amendment still applies.
+    const changed = auftrag({ task: 'Auftrag sorgfältig prüfen', called: 'Process_Versand' });
+    const conflict = await reimport(changed, 'conflict');
+    expect(conflict.out).toContain(
+      '  revised   vertrieb/auftrag  amendments: 1 applied, 1 conflict\n',
+    );
+    expect(conflict.out).toContain(
+      `${P}: 1 amendment no longer applies; see analyzr questions -p ${P} --kind amendment-conflict\n`,
+    );
+    const [question, ...more] = await list('--kind', 'amendment-conflict');
+    if (!question) throw new Error('no amendment-conflict question');
+    expect(more).toHaveLength(0);
+    expect(question.actions.map((a) => [a.type, a.primary, a.label])).toEqual([
+      ['withdraw-amendment', true, 'Wert aus dem Quellsystem übernehmen'],
+      ['amend', false, 'Meine Ergänzung behalten'],
+      ['note', false, 'Notiz hinzufügen'],
+    ]);
+    const conflicted = (await amendments()).find((a) => a.op === 'call-target');
+    expect(conflicted).toMatchObject({ state: 'conflict', conflict: 'value-changed' });
+
+    // „Meine Ergänzung behalten“: the prefilled value again, over the tool's value.
+    const keep = await analyzr(['questions', 'amend', question.id, '-p', P]);
+    expect(keep.err).toBe('');
+    expect(keep.code).toBe(0);
+    expect(keep.out).toContain(
+      `  recorded  call target of Call_Rechnung: „Process_Versand“ → „Process_Rechnung“ (`,
+    );
+    expect(keep.out).toContain(`, replacing ${conflicted?.id ?? '?'}\n`);
+    expect(await list('--kind', 'amendment-conflict')).toHaveLength(0);
+  });
+
+  it('refuses a field no question names and agents; documents a process; exports and withdraws', async () => {
+    const refused = await analyzr([
+      'models',
+      'amend',
+      'vertrieb/auftrag',
+      '-p',
+      P,
+      '--element',
+      'Call_Lager',
+      '--call-target',
+      'Rechnungsstellung',
+    ]);
+    expect(refused.code).toBe(1);
+    expect(refused.out).toContain(
+      '  not applicable  call target of Call_Lager: only-open-questions',
+    );
+    expect(refused.err).toBe('analyzr: the amendment is not applicable; nothing recorded\n');
+
+    const token = await analyzr([
+      'token',
+      'create',
+      '-p',
+      P,
+      '--scopes',
+      'read,propose,write',
+      '--json',
+    ]);
+    const agent = { ANALYZR_TOKEN: (JSON.parse(token.out) as { secret: string }).secret };
+    const byAgent = await analyzr(
+      [
+        'models',
+        'amend',
+        'lager/einlagerung',
+        '-p',
+        P,
+        '--element',
+        'Process_Lager',
+        '--documentation',
+        'X',
+      ],
+      agent,
+    );
+    expect(byAgent.code).toBe(1);
+    expect(byAgent.err).toContain('only humans amend models');
+    const listed = await analyzr(['amendments', 'list', '-p', P], agent);
+    expect(listed.code).toBe(0);
+    expect(listed.out).toMatch(/: 3 amendments \(applied 2, superseded 1\), as of event \d+\n$/);
+    const { seq } = JSON.parse((await analyzr(['amendments', 'list', '-p', P, '--json'])).out) as {
+      seq: number;
+    };
+
+    const documented = await analyzr([
+      'models',
+      'amend',
+      'lager/einlagerung',
+      '-p',
+      P,
+      '--element',
+      'Process_Lager',
+      '--documentation',
+      'Lagert eingehende Ware ein.',
+    ]);
+    expect(documented.err).toBe('');
+    expect(documented.code).toBe(0);
+    expect(documented.out).toContain(
+      `${P}: amended lager/einlagerung: new head r2, computed from the uploaded r1\n`,
+    );
+    expect(documented.out).toContain(
+      '  recorded  documentation of Process_Lager: (none) → „Lagert eingehende Ware ein.“ (',
+    );
+
+    // The change list: every amendment as CSV; with --since only the new one.
+    const csv = await analyzr([
+      'amendments',
+      'export',
+      '-p',
+      P,
+      '--format',
+      'csv',
+      '-o',
+      path.join(P, 'liste.csv'),
+    ]);
+    expect(csv.err).toBe('');
+    expect(csv.code).toBe(0);
+    const bytes = await readFile(path.join(root(), 'liste.csv'));
+    expect([...bytes.subarray(0, 3)]).toEqual([0xef, 0xbb, 0xbf]);
+    expect(
+      bytes
+        .toString('utf8')
+        .split('\r\n')
+        .filter((l) => l !== ''),
+    ).toHaveLength(5);
+    const since = await analyzr(['amendments', 'export', '-p', P, '--since', String(seq)]);
+    expect(since.code).toBe(0);
+    expect(since.out).toMatch(/^# Änderungsliste: /);
+    expect(since.out).toContain(`neu seit Ereignis ${seq}`);
+    expect(since.out.match(/^#### \d+\. /gm)).toHaveLength(1);
+    expect(since.out).toContain('### Zu übertragen (1)');
+    expect(since.out).toContain('Lagert eingehende Ware ein.');
+    expect(since.err).toMatch(
+      /^as of event \d+: export with --since \d+ next time for what is new\n$/,
+    );
+
+    // Withdrawals: one, then every live amendment of a model.
+    const byAgentWithdraw = await analyzr(
+      ['amendments', 'withdraw', '--model', 'lager/einlagerung', '-p', P],
+      agent,
+    );
+    expect(byAgentWithdraw.code).toBe(1);
+    expect(byAgentWithdraw.err).toContain('only humans withdraw amendments');
+    const doc = (await amendments()).find((a) => a.op === 'process-documentation');
+    if (!doc) throw new Error('no documentation amendment');
+    const one = await analyzr(['amendments', 'withdraw', doc.id, '-p', P]);
+    expect(one.err).toBe('');
+    expect(one.code).toBe(0);
+    expect(one.out).toContain(
+      `${P}: withdrew 1 amendment of lager/einlagerung; new head r3, re-derived from the uploaded r1 (no amendment applies: the uploaded bytes)\n`,
+    );
+    const again = await analyzr(['amendments', 'withdraw', doc.id, '-p', P]);
+    expect(again.out).toBe(`${P}: nothing withdrawn: ${doc.id} ended before (withdrawn)\n`);
+
+    const all = await analyzr(['amendments', 'withdraw', '--model', 'vertrieb/auftrag', '-p', P]);
+    expect(all.err).toBe('');
+    expect(all.code).toBe(0);
+    expect(all.out).toContain(
+      `${P}: withdrew 2 amendments of vertrieb/auftrag; new head r9, re-derived from the uploaded r6 (no amendment applies: the uploaded bytes)\n`,
+    );
+    const head = await pull();
+    expect(head.out).toBe(
+      auftrag({ task: 'Auftrag sorgfältig prüfen', called: 'Process_Versand' }),
+    );
+    expect(head.err).toMatch(/^r9 [0-9a-f]{64} \(the head, amended from the uploaded r6\)\n$/);
+    expect((await amendments()).map((a) => a.state).sort()).toEqual([
+      'superseded',
+      'withdrawn',
+      'withdrawn',
+      'withdrawn',
+    ]);
   });
 });
 

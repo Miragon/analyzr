@@ -5,6 +5,7 @@ import {
   AgentTokenId,
   AnalysisTaskId,
   AutoAcceptRuleId,
+  ModelAmendmentId,
   ModelId,
   PlacementId,
   RelationId,
@@ -13,6 +14,18 @@ import {
 import { ApiProblem, PROBLEMS, PROBLEM_CONTENT_TYPE, type ProblemCode } from '../problem.ts';
 import { ModelKey } from '../refs.ts';
 import { AgentTokenList, CreateAgentTokenBody, CreatedAgentToken } from './agent-tokens.ts';
+import { MAX_AMENDMENT_ITEMS } from './amendment-core.ts';
+import {
+  AmendModelBody,
+  AmendModelQuery,
+  AmendModelResult,
+  AmendableElement,
+  AmendmentExportQuery,
+  AmendmentListQuery,
+  ModelAmendmentList,
+  WithdrawAmendmentsQuery,
+  WithdrawAmendmentsResult,
+} from './amendments.ts';
 import {
   ApplyAutoAcceptBody,
   ApplyAutoAcceptResult,
@@ -163,6 +176,19 @@ const projectAnalysisParams = ProjectParam.extend({ analysis: AnalysisTaskId });
 const autoAcceptRuleParams = ProjectParam.extend({ rule: AutoAcceptRuleId });
 const openQuestionParams = ProjectParam.extend(OpenQuestionParam.shape);
 const openQuestionAnswerParams = ProjectParam.extend(OpenQuestionAnswerParam.shape);
+const elementParams = modelParams.extend({ elementId: z.string().min(1).max(255) });
+const amendmentParams = ProjectParam.extend({ amendment: ModelAmendmentId });
+
+/**
+ * Problems of the amendment writes (M6 §4.8 c): agents get
+ * `human-decision-required` (with `reviewUrl`), a scope without `analyzr:write`
+ * or `analyzr:review` `insufficient-scope`, a viewer `forbidden`.
+ */
+const AMENDMENT_WRITE_PROBLEMS = [
+  'human-decision-required',
+  'forbidden',
+  'insufficient-scope',
+] as const;
 
 function jsonBody<T extends z.ZodType>(schema: T) {
   return { required: true, content: { [JSON_TYPE]: { schema } } };
@@ -503,6 +529,186 @@ export const apiRoutes = withDemoReadOnly({
         'unsupported-media-type',
         'validation-failed',
       ),
+    },
+  },
+
+  getAmendable: {
+    method: 'get',
+    path: `${API_PREFIX}/projects/{project}/models/{model}/elements/{elementId}/amendable`,
+    operationId: 'getAmendable',
+    tags: ['amendments'],
+    summary: 'The fields of an element a model amendment can set (ETag `"r<headRev>"`)',
+    description:
+      'M6 §4.8 c: per field the element allows (call target, message or signal name, start or ' +
+      'end name, process documentation), the value on the head and on the uploaded revision, ' +
+      'whether it can be set and why not (`only-open-questions`: no open question names it, it ' +
+      'is neither empty nor unresolved and no live amendment set it; `expression`, ' +
+      '`cmmn-call`, …), its live amendment, the elements reading a message name and the ' +
+      "suggestions (processes, names with their endpoints, labels), plus the element's " +
+      'amendment history. An endpoint that references a message or signal yields the field of ' +
+      'that message or signal (every endpoint referencing it changes with it); a pool resolves ' +
+      'to its process. `ETag: "r<headRev>"` is what the save sends as `If-Match`. A deleted ' +
+      'model, or an element the head has no fact and no amendable field for, is 404 `not-found`.',
+    request: { params: elementParams },
+    responses: {
+      200: {
+        ...json(AmendableElement, 'The amendable fields'),
+        headers: z.object({ ETag: z.string().meta({ description: '`"r<headRev>"`' }) }),
+      },
+      ...problems(...READ_PROBLEMS),
+    },
+  },
+  amendModel: {
+    method: 'post',
+    path: `${API_PREFIX}/projects/{project}/models/{model}/amendments`,
+    operationId: 'amendModel',
+    tags: ['amendments'],
+    summary:
+      'Amend fields of a model: a new amended head (`If-Match: "r<headRev>"`; `?dryRun=true` first)',
+    description:
+      `Records up to ${MAX_AMENDMENT_ITEMS} amendments of one model (M6 §4.8 c) in one transaction ` +
+      'under the project lock: the uploaded revision stays as it came, and analyzr writes an ' +
+      'amended revision computed from its bytes by byte-preserving splices (never a ' +
+      'bpmn-moddle round trip), checked by extracting it again; it becomes the head, with ' +
+      '`source.kind: amendment`, its `upstream` and the plan of every live amendment. A new ' +
+      'amendment of an element and op supersedes the live one. Events: `model.amended` (ids, ' +
+      "elements and ops, no values), then the amended revision's `model.revised`. The new head " +
+      'sets off what any change from the tool does (rules, endpoint states, the relations task, ' +
+      'the placement input); a manual link from the call to the target it now calls, and one to ' +
+      'a `partner` whose key-tier proposal the amendment accepts, is retired by a human ' +
+      'rejection. Each item is `recorded`, `unchanged` (identical to its live amendment) or ' +
+      '`not-applicable` with the reason; a request with a `not-applicable` item writes nothing ' +
+      "(422 `validation-failed`, `reason: 'amendment-not-applicable'`, the items in `items`). " +
+      'The answer carries the effect at the element and the cost (pairs to re-judge, a claimed ' +
+      'relations task); `dryRun=true` computes the same and writes nothing. `If-Match: ' +
+      '"r<headRev>"` is required (428 `precondition-required`) and checked under the lock (412 ' +
+      '`revision-conflict` with `headRev`). Humans only and both permissions `review` and ' +
+      '`write`: agent tokens get 403 `human-decision-required` with `reviewUrl`, a scope ' +
+      'without both 403 `insufficient-scope`. A deleted model is 404 `not-found`.',
+    request: {
+      params: modelParams,
+      query: AmendModelQuery,
+      headers: z.object({ 'if-match': z.string().max(200).optional() }),
+      body: jsonBody(AmendModelBody),
+    },
+    responses: {
+      200: json(AmendModelResult, 'A dry run, or `unchanged`'),
+      201: json(AmendModelResult, 'The amendments were recorded'),
+      ...problems(
+        ...READ_PROBLEMS,
+        ...AMENDMENT_WRITE_PROBLEMS,
+        'conflict',
+        'revision-conflict',
+        'precondition-required',
+      ),
+    },
+  },
+  withdrawModelAmendments: {
+    method: 'post',
+    path: `${API_PREFIX}/projects/{project}/models/{model}/amendments/withdrawal`,
+    operationId: 'withdrawModelAmendments',
+    tags: ['amendments'],
+    summary: 'Withdraw every live amendment of a model in one step (humans only)',
+    description:
+      '„Alle Ergänzungen dieses Modells zurücknehmen“ (M6 §4.8 c): one withdrawal row per live ' +
+      'amendment (reason `withdrawn`, a `model.amendment_withdrawn` event each) and one ' +
+      're-derivation from the uploaded revision, a new revision whose bytes equal the uploaded ' +
+      "revision's. A deleted model keeps its amendments live until withdrawn; a withdrawal " +
+      'there records its rows only and writes no revision. Nothing live answers 200 ' +
+      '`unchanged`. `If-Match: "r<headRev>"` (optional) names the head the human saw and is ' +
+      'checked under the project lock (412 `revision-conflict` with `headRev`), so an amendment ' +
+      'recorded meanwhile is not withdrawn unseen. `dryRun=true` answers what would be ' +
+      'withdrawn and the `cost` of the new head (pairs to re-judge, a claimed relations task) ' +
+      'and writes nothing. Permissions `review` and `write`, humans only.',
+    request: {
+      params: modelParams,
+      query: WithdrawAmendmentsQuery,
+      headers: z.object({ 'if-match': z.string().max(200).optional() }),
+    },
+    responses: {
+      200: json(WithdrawAmendmentsResult, 'A dry run, or nothing was live (`unchanged`)'),
+      201: json(WithdrawAmendmentsResult, 'The amendments were withdrawn'),
+      ...problems(...READ_PROBLEMS, ...AMENDMENT_WRITE_PROBLEMS, 'revision-conflict'),
+    },
+  },
+  listAmendments: {
+    method: 'get',
+    path: `${API_PREFIX}/projects/{project}/amendments`,
+    operationId: 'listAmendments',
+    tags: ['amendments'],
+    summary: 'The model amendments of a project, oldest first, filtered by model and state',
+    description:
+      "Every amendment with its state: a live one's outcome on its model's head (`applied`, " +
+      '`in-source`, `conflict` with its reason) or how it ended (`withdrawn`, `superseded`); ' +
+      '`modelDeleted` marks those of a deleted model. `modelKey` matches a model or a folder.',
+    request: { params: projectParams, query: AmendmentListQuery },
+    responses: {
+      200: json(ModelAmendmentList, 'The amendments'),
+      ...problems(...READ_PROBLEMS),
+    },
+  },
+  exportAmendments: {
+    method: 'get',
+    path: `${API_PREFIX}/projects/{project}/amendments/export`,
+    operationId: 'exportAmendments',
+    tags: ['amendments'],
+    summary: 'The change list for the source tool, as Markdown or CSV (`since=<seq>`)',
+    description:
+      'The amendments matching the filters, grouped per model (name and key), each with the ' +
+      "pool or process and lane, the element's German type and name, the field, before → " +
+      'after, who, when and the state; a call target names its process and model, marked ' +
+      '„Ziel nicht mehr in der Landschaft“ when no head process has that id; a shared message ' +
+      'lists every element referencing it. Every export names the seq it reflects („Stand: ' +
+      'Ereignis …“), and `since` lists only what was recorded or ended after it. analyzr writes ' +
+      'nothing back to the source tool (decision 7). CSV: UTF-8 with a byte order mark, ' +
+      '`;`-separated, CRLF, every field quoted, formula-like cells escaped.',
+    request: { params: projectParams, query: AmendmentExportQuery },
+    responses: {
+      200: {
+        description: 'The change list',
+        headers: z.object({
+          'Content-Disposition': z.string().meta({
+            description:
+              '`attachment; filename="ergaenzungen-<project key>.md"` (or `.csv`); with filters, ' +
+              'their values as an ASCII slug before the extension',
+          }),
+        }),
+        content: {
+          'text/markdown': { schema: z.string() },
+          'text/csv': { schema: z.string() },
+        },
+      },
+      ...problems(...READ_PROBLEMS),
+    },
+  },
+  withdrawAmendment: {
+    method: 'post',
+    path: `${API_PREFIX}/projects/{project}/amendments/{amendment}/withdrawal`,
+    operationId: 'withdrawAmendment',
+    tags: ['amendments'],
+    summary: 'Withdraw one amendment („Ergänzung zurücknehmen“; humans only)',
+    description:
+      'Records the withdrawal (reason `withdrawn`, a `model.amendment_withdrawn` event naming ' +
+      'the id and op) and re-derives the head from the uploaded revision with the remaining ' +
+      'live amendments: a new revision, with none left one whose bytes equal the uploaded ' +
+      "revision's. On a deleted model only the row is recorded, no revision. An amendment that " +
+      'ended before answers 200 `unchanged`. `If-Match: "r<headRev>"` (optional) names the ' +
+      "head of the amendment's model the human saw and is checked under the project lock (412 " +
+      '`revision-conflict` with `headRev`). `dryRun=true` answers the `cost` of the new head ' +
+      '(pairs to re-judge, a claimed relations task) and writes nothing. Permissions `review` ' +
+      'and `write`, humans only.',
+    request: {
+      params: amendmentParams,
+      query: WithdrawAmendmentsQuery,
+      headers: z.object({ 'if-match': z.string().max(200).optional() }),
+    },
+    responses: {
+      200: json(
+        WithdrawAmendmentsResult,
+        'A dry run, or the amendment had ended before (`unchanged`)',
+      ),
+      201: json(WithdrawAmendmentsResult, 'The amendment was withdrawn'),
+      ...problems(...READ_PROBLEMS, ...AMENDMENT_WRITE_PROBLEMS, 'revision-conflict'),
     },
   },
 

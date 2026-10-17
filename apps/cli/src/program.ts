@@ -2,10 +2,21 @@ import { DEFAULT_ANALYZR_URL } from '@analyzr/client';
 import { AGENT_TOKEN_DEFAULT_DAYS, MAX_ANSWER_CHARS, OWNER_KEY_FILE_ENV } from '@analyzr/contracts';
 import { Command, CommanderError, Option } from 'commander';
 
+import { modelsAmendCommand, questionsAmendCommand, type AmendOptions } from './commands/amend.ts';
+import {
+  amendmentsExportCommand,
+  amendmentsListCommand,
+  amendmentsWithdrawCommand,
+} from './commands/amendments.ts';
 import { healthCommand } from './commands/health.ts';
 import { importCommand } from './commands/import.ts';
 import { mcpCommand } from './commands/mcp.ts';
-import { modelsDeleteCommand, modelsListCommand, modelsRequeueCommand } from './commands/models.ts';
+import {
+  modelsDeleteCommand,
+  modelsListCommand,
+  modelsPullCommand,
+  modelsRequeueCommand,
+} from './commands/models.ts';
 import {
   collect,
   questionsLinkCommand,
@@ -58,7 +69,7 @@ interface GlobalOptions {
 export function buildProgram(io: CliIo = processIo): Command {
   const program = new Command('analyzr')
     .description(
-      'analyzr command line: seed, import, list, requeue and delete models, list, export, answer and act on open questions, push and pull the value chain, manage agent tokens and auto-accept rules, bridge MCP over stdio',
+      'analyzr command line: seed, import, list, requeue, delete, amend and pull models, list, export, answer and act on open questions, list, export and withdraw model amendments, push and pull the value chain, manage agent tokens and auto-accept rules, bridge MCP over stdio',
     )
     .version(rootPackage.version, '-v, --version')
     .option('--url <url>', `analyzr server URL (env ANALYZR_URL, default ${DEFAULT_ANALYZR_URL})`)
@@ -119,9 +130,33 @@ export function buildProgram(io: CliIo = processIo): Command {
       ) => importCommand(io, dir, { ...globals(), ...opts }),
     );
 
+  /** The value flags of `models amend` and `questions amend`, and the dry run. */
+  const amendFlags = (cmd: Command): Command =>
+    cmd
+      .option(
+        '--call-target <target>',
+        'the target of a call activity: a ref, the key of a model with one process, or a unique process name',
+      )
+      .option(
+        '--message-name <name>',
+        'the name of the message or signal an endpoint references (every element referencing it reads the new name)',
+      )
+      .option('--name <label>', 'the name of a start or end event')
+      .option('--documentation <text>', 'the documentation of a process that has none')
+      .option(
+        '--partner <ref>',
+        'with --message-name: the endpoint of another process whose name it is; the proposal between them is accepted as your decision',
+      )
+      .option('--dry-run', 'print the effect and the cost; record nothing')
+      .option(
+        '--yes',
+        "save even when an agent holds the model's relations task (the new head cancels it, and the agent's work is lost)",
+      )
+      .option('--json', 'print JSON');
+
   const models = program
     .command('models')
-    .description("list, requeue and delete a project's models");
+    .description("list, requeue, delete, amend and pull a project's models");
   models
     .command('list')
     .description('list the models: key, stage, head revision, engine, open items')
@@ -155,13 +190,37 @@ export function buildProgram(io: CliIo = processIo): Command {
     .action((keys: string[], opts: { project: string; yes?: boolean; json?: boolean }) =>
       modelsDeleteCommand(io, keys, { ...globals(), ...opts }),
     );
+  amendFlags(
+    models
+      .command('amend')
+      .description(
+        'amend one field of a model as a human (owner key): the call target, a message or signal name, a start or end name, or the documentation of a process without one, where an open question names it or it is empty; a new amended revision computed from the uploaded one, which the next import applies again while the source tool leaves the field as it was. Dry run first; prints the effect and the cost',
+      )
+      .argument('<key>', 'model key')
+      .requiredOption('-p, --project <project>', 'project key or id')
+      .option('--element <id>', 'the element whose field is set: its id in the BPMN file'),
+  ).action((key: string, opts: AmendOptions & { project: string }) =>
+    modelsAmendCommand(io, key, { ...globals(), ...opts }),
+  );
+  models
+    .command('pull')
+    .description(
+      "write a model's BPMN verbatim: the head (amended when amendments apply), or with --original the uploaded revision it is computed from; r<rev> <sha256> on stderr (any credential)",
+    )
+    .argument('<key>', 'model key')
+    .requiredOption('-p, --project <project>', 'project key or id')
+    .option('--original', 'the uploaded revision, without the amendments')
+    .option('-o, --output <file>', 'write to this file (default: stdout)')
+    .action((key: string, opts: { project: string; original?: boolean; output?: string }) =>
+      modelsPullCommand(io, key, { ...globals(), ...opts }),
+    );
 
   // `questions` lists (its default subcommand, so `analyzr questions -p …` lists), takes notes
   // and runs the actions; subcommands, so each has its own flags beside the list's filters.
   const questions = program
     .command('questions')
     .description(
-      'list and export the open questions of a project (list, the default), add notes (answer) or act on them (outside, link, place)',
+      'list and export the open questions of a project (list, the default), add notes (answer) or act on them (outside, link, place, amend)',
     );
   questions
     .command('list', { isDefault: true })
@@ -286,6 +345,82 @@ export function buildProgram(io: CliIo = processIo): Command {
         id: string,
         opts: { project: string; step?: string; process?: string; note?: string; json?: boolean },
       ) => questionsPlaceCommand(io, id, { ...globals(), ...opts }),
+    );
+  amendFlags(
+    questions
+      .command('amend')
+      .description(
+        "answer an open question by amending the model as a human (owner key): the field its amend action names, in one new amended revision; without a value it records the action's prefilled one („Meine Ergänzung behalten“). Dry run first; prints the effect and the cost",
+      )
+      .argument('<id>', 'open question id (q-…), as analyzr questions lists it')
+      .requiredOption('-p, --project <project>', 'project key or id')
+      .option(
+        '--element <id>',
+        'which of the targets the action lists (start and end events without a name)',
+      ),
+  ).action((id: string, opts: AmendOptions & { project: string }) =>
+    questionsAmendCommand(io, id, { ...globals(), ...opts }),
+  );
+
+  const amendments = program
+    .command('amendments')
+    .description(
+      "list, export and withdraw a project's model amendments („Ergänzungen“): fields a human set in analyzr, applied to every import of the model while the source tool leaves them as they were",
+    );
+  amendments
+    .command('list')
+    .description(
+      'the amendments of a project, oldest first: id, model, element, op, state (applied, in-source, conflict, withdrawn, superseded), before → after (any credential)',
+    )
+    .requiredOption('-p, --project <project>', 'project key or id')
+    .option('--model <key>', 'only amendments of this model, or of a model below this folder')
+    .option('--state <state>', 'only this state, e.g. conflict')
+    .option('--json', 'print JSON')
+    .action((opts: { project: string; model?: string; state?: string; json?: boolean }) =>
+      amendmentsListCommand(io, { ...globals(), ...opts }),
+    );
+  amendments
+    .command('export')
+    .description(
+      'the change list to carry into the source tool by hand, grouped per model, as Markdown or CSV, written verbatim; analyzr writes nothing back (any credential)',
+    )
+    .requiredOption('-p, --project <project>', 'project key or id')
+    .option('--model <key>', 'only amendments of this model, or of a model below this folder')
+    .option('--state <state>', 'only this state, e.g. applied')
+    .option(
+      '--since <seq>',
+      'only what was recorded or ended after this event (the export names the event it reflects)',
+    )
+    .option('--format <format>', 'md (Markdown, the default) or csv (UTF-8 with a byte order mark)')
+    .option('-o, --output <file>', 'write to this file (default: stdout)')
+    .action(
+      (opts: {
+        project: string;
+        model?: string;
+        state?: string;
+        since?: string;
+        format?: string;
+        output?: string;
+      }) => amendmentsExportCommand(io, { ...globals(), ...opts }),
+    );
+  amendments
+    .command('withdraw')
+    .description(
+      'withdraw an amendment as a human (owner key), or with --model every live amendment of a model: a new head re-derived from the uploaded revision without them (a deleted model gets none, only the withdrawals)',
+    )
+    .argument('[id]', 'amendment id (mam_…), as analyzr amendments list shows it')
+    .requiredOption('-p, --project <project>', 'project key or id')
+    .option('--model <key>', 'every live amendment of this model, in one step')
+    .option(
+      '--rev <n>',
+      "withdraw only while the model's head is still r<n> (as analyzr models lists it): an amendment recorded since is never withdrawn unseen",
+    )
+    .option('--json', 'print JSON')
+    .action(
+      (
+        id: string | undefined,
+        opts: { project: string; model?: string; rev?: string; json?: boolean },
+      ) => amendmentsWithdrawCommand(io, id, { ...globals(), ...opts }),
     );
 
   const token = program.command('token').description('manage agent tokens (owner key)');

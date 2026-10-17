@@ -8,7 +8,7 @@ analyzr is a headless store for process landscapes. It holds BPMN models, the fa
 
 1. **Headless first.** Every capability is a domain use case, reachable through REST and, where agents need it, through MCP. The UI has no private endpoints.
 2. **Code computes facts, agents judge, humans decide.**
-3. **Postgres is the record; files are for exchange.** BPMN comes in, OKF goes out, and nothing flows both ways. (Owner decision 25 adds targeted model amendments, stored as amended revisions computed from the uploaded bytes and downloadable as corrected BPMN and a change list, never written back; M6 §4.8.)
+3. **Postgres is the record; files are for exchange.** BPMN comes in, OKF goes out, and nothing flows both ways: analyzr never writes to a source tool. Since owner decision 25 analyzr also writes revisions of its own: *amended revisions*, computed from the uploaded bytes by byte-preserving splices of the fields open questions name, re-applied at every import of the key while the source tool leaves the field as it was, and offered as corrected BPMN and a change list that a human carries into the source tool by hand (M6 §4.8 c). The uploaded bytes always stay a revision of their own.
 4. **One model is one BPMN file with a stable key.** Collaborations are never split.
 5. **Append-only history, authorization in the domain.** Revisions, facts, assertions, submissions, no-links and events never change. Every use case checks access, and composite foreign keys back the checks up.
 6. **The agent is the operator's choice.** analyzr ships no runner and holds no LLM credentials; whoever runs the agent brings model, credentials and compute.
@@ -24,7 +24,8 @@ analyzr is a headless store for process landscapes. It holds BPMN models, the fa
 | Principal | `prn_`: a user `(iss, sub)` or a service `(iss, client_id)`; an agent token (`agt_`, §6) is a service with `iss = urn:analyzr:agent-token` |
 | Membership | role `viewer`, `editor` or `owner` |
 | Model | `mdl_` with an immutable `key` such as `billing/dunning` |
-| Revision | `rev_`, holding immutable bytes |
+| Revision | `rev_`, holding immutable bytes: an *uploaded* revision (the bytes as they came, from an upload, an import or a seed) or, since owner decision 25, an *amended* revision (`source.kind = 'amendment'`), computed from an uploaded revision (`source.upstream`) by the live model amendments its plan marks applied |
+| Model amendment (owner decision 25, M6 S5c-2) | `mam_`, append-only: one field of one element (`call-target`, `message-name`, `event-name`, `process-documentation`) with the value before and after, set by a human; ends with a withdrawal row (`withdrawn` or `superseded`); at most one live per model, element and op |
 | Fact | `(revision, kind, element_id)` |
 | Relation | `rel_`, plus the natural key `(type, from_ref, to_ref)` |
 | Assertion, submission, no-link | append-only; submissions stored verbatim; a no-link (`nlk_`, an agent's judgement that a typed pair is unrelated) ends with a withdrawal row |
@@ -36,7 +37,7 @@ analyzr is a headless store for process landscapes. It holds BPMN models, the fa
 
 **Refs** have the form `<model_key>#<element_id>`, or `<model_key>#<process_id>` for a process.
 
-**Hashes.** `content_hash` makes identical uploads no-ops; `facts_hash` ignores layout. Each fact's `fingerprint = sha256(kind|event_def|ref_name_norm|label_norm|scope)[:12]` tells "same id, same meaning" apart from "same id, changed meaning".
+**Hashes.** `content_hash` makes identical uploads no-ops: an upload is `unchanged` when its bytes equal the head's, its uploaded revision's (`source.upstream.contentHash`) or any amended revision's of the model that holds analyzr's output (a corrected BPMN downloaded earlier; not a re-derivation that applied nothing, whose bytes are an earlier export the tool may bring back as a revert; M6 S5c-2); `facts_hash` ignores layout. Each fact's `fingerprint = sha256(kind|event_def|ref_name_norm|label_norm|scope)[:12]` tells "same id, same meaning" apart from "same id, changed meaning".
 
 **Facts** come from `@analyzr/bpmn-facts` and are versioned by `FACTS_VERSION`:
 
@@ -82,7 +83,9 @@ membership(project_id, principal_id, role)    invitation(id, project_id, email_n
 agent_token(id, project_id, principal_id, name, prefix, secret_hash unique, scopes, expires_at,
          revoked_at, created_by, last_used_at)
 model(id, project_id, key, name, head_revision_id, deleted_seq, unique(project_id, key))
-model_revision(id, project_id, model_id, rev, xml, content_hash, facts_hash, facts_version, source jsonb, principal_id, seq)
+model_revision(id, project_id, model_id, rev, xml, content_hash, facts_hash, facts_version, source jsonb, principal_id, seq,
+         unique(project_id, model_id, id))   -- xml: the uploaded bytes, or bytes computed from an uploaded
+                                             -- revision by amendments (M6 S5c-2); the unique since 0015
 fact(revision_id, project_id, kind, element_id, process_id, scope, event_def, label, key_raw, key_norm,
      fingerprint, attrs jsonb, pk(revision_id, kind, element_id))
 relation(id, project_id, type, from_ref, to_ref, status, endpoint_state, tier, confidence, version,
@@ -140,10 +143,21 @@ open_question_answer(id, project_id, question_id ~ '^q-[0-9a-f]{16}$', subject_t
 -- unique('open_question_answer_project_id_unique') on open_question_answer(project_id, id), and
 open_question_answer_withdrawal(answer_id pk, project_id, principal_id, source_kind = 'human', seq, created_at,
          fk (project_id, answer_id) → open_question_answer(project_id, id))
+-- M6 S5c-2 (model amendments; migrations 0015/0016, M6-INTEGRATION-AND-GAPS.md §4.8 c):
+model_amendment(id 'mam_', project_id, model_id, element_id, via_element_id null,
+         op in ('call-target','message-name','event-name','process-documentation'),
+         before null, after, base_revision_id, supersedes_id null, principal_id, client_id,
+         source_kind = 'human', seq, created_at, unique(project_id, id),
+         fk (project_id, model_id) → model, fk (project_id, model_id, base_revision_id) → model_revision,
+         fk (project_id, supersedes_id) → model_amendment(project_id, id))
+model_amendment_withdrawal(amendment_id pk, project_id, reason in ('withdrawn','superseded'), principal_id,
+         source_kind = 'human', seq, created_at, fk (project_id, amendment_id) → model_amendment(project_id, id))
 ```
 
+**Amended revisions** (owner decision 25, M6 §4.8 c). The uploaded bytes stay a revision of their own; an amended revision on top of it becomes the head, with `source = {kind: 'amendment', uploader, upstream: {revisionId, rev, contentHash}, amendments: [{id, elementId, op, outcome, reason?}]}`: every live amendment of the model with its outcome (`applied`, `in-source`, or `conflict` with `element-missing`, `value-changed` or `expression`); when nothing applies, the uploaded revision is the head and carries the plan. Every derivation (an amendment, a withdrawal, a re-import, a revival) computes the head from the uploaded revision's bytes with exactly the amendments the plan marks applied, through `applyAmendments` in `@analyzr/bpmn-facts` (byte-preserving splices, never a bpmn-moddle round trip; refused unless the extracted facts read exactly the intended change). A model's head is always its revision with the highest seq, and every revision has its own `model.revised` event. Values are stored in the extractor's sanitized form and never enter events.
+
 `seq` comes from `UPDATE project SET last_seq = last_seq + 1 RETURNING last_seq` in the writing transaction, which serializes writes per project and keeps `seq` dense for cursors. Triggers block UPDATE and DELETE on `event` and the other append-only tables (since M4 also
-`value_chain_revision` and `placement_assertion`; a `value_chain_step` row only takes its tombstone; since owner decision 19 both auto-accept rule tables; since M6 S5a `open_question_answer`, since M6 S5c-1 `open_question_answer_withdrawal`). An item is `answered` while an outside mark (`kind = 'outside-landscape'`, not on a relation or placement subject) without a withdrawal names its id; marking again records a new row, and every other row is a note. The policy limits rule decisions to `call` relations.
+`value_chain_revision` and `placement_assertion`; a `value_chain_step` row only takes its tombstone; since owner decision 19 both auto-accept rule tables; since M6 S5a `open_question_answer`, since M6 S5c-1 `open_question_answer_withdrawal`, since M6 S5c-2 `model_amendment` and `model_amendment_withdrawal`). An item is `answered` while an outside mark (`kind = 'outside-landscape'`, not on a relation or placement subject) without a withdrawal names its id; marking again records a new row, and every other row is a note. The policy limits rule decisions to `call` relations.
 
 ## 3. Analysis pipeline
 
@@ -222,7 +236,7 @@ The stage shows in `GET /projects/{p}/models?stage=` and MCP `list_processes`; h
 | Offline reading, diffs, PR review | via export | native |
 | Build cost | low | high (clone, merge, credentials, webhooks) |
 
-Git only wins in rows a read-only export covers too. **Decision: hybrid, but asymmetric.** Postgres is canonical for everything computed or decided; BPMN bytes are canonical at their origin (the revision for uploads; a linked repo, later, mirrored with `source={repo,commit,path}` and closed to UI upload). (Owner decision 25: a head may be an amended revision computed from an uploaded one, which stays stored as it came; M6 §4.8 c.)
+Git only wins in rows a read-only export covers too. **Decision: hybrid, but asymmetric.** Postgres is canonical for everything computed or decided; BPMN bytes are canonical at their origin (the uploaded revision for uploads, kept as it came; a linked repo, later, mirrored with `source={repo,commit,path}` and closed to UI upload). Since owner decision 25 a model's head may be an amended revision computed from its uploaded revision by analyzr's amendments (M6 §4.8 c): its bytes are analyzr's, derived again from the uploaded bytes whenever the amendments or the upload change, and downloadable next to the original (`getRevisionContent` of either).
 
 **Import.** Every adapter yields `{path, bytes, sha256, source}` for `ingest(projectId, files, actor)`; the model key is the slugified path (`modelKeyFromPath`, with the BPMN file rule `.bpmn`, `.bpmn2`, `.bpmn20.xml`, `.xml` in `@analyzr/contracts`, shared by the server, the CLI and the web since M6 S1). Upload/`PUT`, the web upload and `analyzr import <dir>` ship in v1 (the CLI derives every key before sending and refuses a key twice across its batches; extractor warnings come back in the results, not stored), a one-shot bpmiq.yml import (vendored MIT `content.ts`) in R2, the import bundle with a manifest is proposed for M6 S2, linked sync and OKF restore later.
 
@@ -231,7 +245,7 @@ Git only wins in rows a read-only export covers too. **Decision: hybrid, but asy
 ```
 <project-key>/
   index.md                                     # okf_version: "0.2"
-  models/<model-key>.bpmn                      # head bytes, verbatim
+  models/<model-key>.bpmn                      # head bytes, verbatim: uploaded or amended (decision 25)
   processes/<process-id>.md                    # type: Process; sources → /models/<key>.bpmn#<process_id>
   relations/<type>--<from>--<to>--<hash8>.md   # type: Process Relation; from/to → #element_id, analyzr: {state, tier, …}
 ```
@@ -256,8 +270,12 @@ Rejected relations are exported on purpose, so offline agents do not propose the
 | `/projects[/{p}]`, `…/members` (users, and services as `(iss, client_id)`), `…/invitations` | CRUD (create: any user; other writes: owner) |
 | `/projects/{p}/agent-tokens[/{t}]` | GET, POST (secret shown once), DELETE |
 | `/projects/{p}/models?stage=`, `…/models/{m}[/revisions/{r}/(content\|facts)]` | GET, DELETE |
-| `/projects/{p}/models/by-key/{key}` | PUT raw BPMN → 201 new model, 200 new revision, 200 `unchanged`; a new model or revision carries the extractor's `warnings` (≤ 20) and `warningCount` when there are any |
-| `/projects/{p}/imports` | POST ≤ 50 files, outcome per file (with the extractor's warnings, as PUT) |
+| `/projects/{p}/models/by-key/{key}` | PUT raw BPMN → 201 new model, 200 new revision, 200 `unchanged`; a new model or revision carries the extractor's `warnings` (≤ 20) and `warningCount` when there are any; for a model with live amendments (M6 S5c-2) also `amendments: {applied, inSource, conflicts}` (counts and ≤ 20 ids) and, when an amended head was written on top, `uploadedRevisionId` (`revision` is the final head) |
+| `/projects/{p}/imports` | POST ≤ 50 files, outcome per file (with the extractor's warnings and the amendments, as PUT) |
+| `…/models/{m}/elements/{elementId}/amendable` (M6 S5c-2) | GET (permission `read`, `ETag: "r<headRev>"`): the fields of the element an amendment can set, their values, why not, suggestions and history (M6 §4.8 c) |
+| `…/models/{m}/amendments?dryRun=` (M6 S5c-2) | POST (permissions `review` and `write`, humans only; `If-Match: "r<headRev>"` required, 428/412): up to 20 amendments of one model; an amended head computed from the uploaded revision, with the effect at the element and the cost (pairs to re-judge, a claimed task) |
+| `…/amendments` (`?modelKey=&state=`), `…/amendments/export?format=markdown\|csv&since=` (M6 S5c-2) | GET (permission `read`): every amendment with its state; the change list for the source tool, grouped per model, what to carry over first |
+| `…/amendments/{a}/withdrawal`, `…/models/{m}/amendments/withdrawal` (`?dryRun=`, optional `If-Match: "r<headRev>"`) (M6 S5c-2) | POST (permissions `review` and `write`, humans only): withdraws one, or every live amendment of a model, with one re-derivation (a new revision; none on a deleted model); the dry run answers the cost |
 | `/projects/{p}/landscape`, `…/relations[/{rel}]` | GET; POST to propose or add a manual relation |
 | `…/no-links` (`?modelKey=`) | GET: agents' live, current no-links, also on pairs without a relation |
 | `…/open-questions` (`?modelKey=&kind=&source=&askWho=&state=`, cursor pages), `…/open-questions/export?format=markdown\|csv` (same filters) (M6 S4) | GET (permission `read`): the open-questions read model, computed on read and never stored (M6 §4.2); the export as an attachment named after the filters |
@@ -286,7 +304,7 @@ Problem types: 422 `validation-failed`, `bpmn-invalid`, `value-chain-invalid` (w
 
 There is no decide tool; an attempt returns `human-decision-required` with the review URL (the stubs `decide_relation` and `decide_placement` exist only to say so). Prompts and `instructions`: §7. Resources: `analyzr://projects/{p}/models/{key}.bpmn` and `…/landscape.json`.
 
-**Events:** `model.revised|deleted`, `analysis.queued|claimed|done|failed`, `relation.proposed|decided|endpoint_changed`, `value_chain.created|revised|deleted`, `placement.proposed|withdrawn|decided|noted|endpoint_changed` (M4), `auto_accept_rule.created|revised|applied` and `auto_accept.revoked` (owner decision 19; ids, revision and counts, never criteria), `open_question.answered` (M6 S5a; question id, kind, subject, target and the note's id, never the text), `member.changed`, `agent_token.created|revoked`. An auto-acceptance is a `relation.decided`/`placement.decided` event whose principal is the causer (the agent whose proposal triggered it, or the owner who applied the rule) and whose payload names the deciding owner and `autoAccept: {ruleId, revision, triggerId}`; a revocation is a `*.withdrawn` event with the same marker. Unmarked events are unchanged. Long-polls wait on Postgres `LISTEN`; webhooks will read the same table.
+**Events:** `model.revised|deleted`, `analysis.queued|claimed|done|failed`, `relation.proposed|decided|endpoint_changed`, `value_chain.created|revised|deleted`, `placement.proposed|withdrawn|decided|noted|endpoint_changed` (M4), `auto_accept_rule.created|revised|applied` and `auto_accept.revoked` (owner decision 19; ids, revision and counts, never criteria), `open_question.answered` (M6 S5a; question id, kind, subject, target and the note's id, never the text), `open_question.answer_withdrawn` (M6 S5c-1), `model.amended` and `model.amendment_withdrawn` (M6 S5c-2: the recorded and superseded amendment ids, element ids and ops, or the withdrawn id, op and reason, never a value; an amended revision has its own `model.revised` with `source.kind: 'amendment'`, after `model.amended` in the same transaction), `member.changed`, `agent_token.created|revoked`. An auto-acceptance is a `relation.decided`/`placement.decided` event whose principal is the causer (the agent whose proposal triggered it, or the owner who applied the rule) and whose payload names the deciding owner and `autoAccept: {ruleId, revision, triggerId}`; a revocation is a `*.withdrawn` event with the same marker. Unmarked events are unchanged. Long-polls wait on Postgres `LISTEN`; webhooks will read the same table.
 
 ## 6. Auth and authorization
 
@@ -329,7 +347,7 @@ WorkOS: CIMD, DCR and a resource indicator for the canonical resource. Tokens re
 
 **IdP client credentials** need no extra code: an owner registers `(iss, client_id)` as a service with a role of at most `editor`.
 
-**Principals and provenance.** The system principal `analyzr-rules` may only accept `call` relations during ingest. An owner's auto-accept rule (owner decision 19) decides as the human author of the rule revision in force, with `source_kind = 'human'` and the marker of §2; the event names the agent (or the owner applying the rule) as causer. Agent tokens get 403 `forbidden` on every rule route (403 `human-decision-required` on the ledger of acceptances, which every human reviewer reads), and no MCP tool, resource or claim input carries rule data: claim inputs show an auto-accepted item as a plain human `accept`, and a revocation's rationale („Automatische Annahme widerrufen“) names no rule. Interactive clients are listed in `ANALYZR_INTERACTIVE_CLIENTS` (default `analyzr-web,analyzr-cli`), never `analyzr-mcp`, DCR or CIMD ids. `source_kind` is derived, never sent: `human` is a user on an interactive client, `rule` the system principal, `agent` everything else, including a person chatting in claude.ai or ChatGPT.
+**Principals and provenance.** The system principal `analyzr-rules` may only accept `call` relations during ingest; it never records or withdraws a model amendment (carrying a value over from the source tool is computed, never written). A model amendment and its withdrawal (M6 S5c-2) are a human decision about content that writes a revision, so the use cases require both `review` and `write` (scopes do not nest that way; a review-only scope gets `insufficient-scope`, an agent `human-decision-required`). An amended revision's own `uploader` and `principal_id` are those of the request that caused it (the human for an amendment or a withdrawal; the importer at a re-import or a revival); readers of provenance and the trust class follow `source.upstream` to the uploaded revision, except that a call target a human set by amendment counts as modelled (decision 25.2, M6 §3.10). An owner's auto-accept rule (owner decision 19) decides as the human author of the rule revision in force, with `source_kind = 'human'` and the marker of §2; the event names the agent (or the owner applying the rule) as causer. Agent tokens get 403 `forbidden` on every rule route (403 `human-decision-required` on the ledger of acceptances, which every human reviewer reads), and no MCP tool, resource or claim input carries rule data: claim inputs show an auto-accepted item as a plain human `accept`, and a revocation's rationale („Automatische Annahme widerrufen“) names no rule. Interactive clients are listed in `ANALYZR_INTERACTIVE_CLIENTS` (default `analyzr-web,analyzr-cli`), never `analyzr-mcp`, DCR or CIMD ids. `source_kind` is derived, never sent: `human` is a user on an interactive client, `rule` the system principal, `agent` everything else, including a person chatting in claude.ai or ChatGPT.
 
 **Permission = scope ∩ role ∩ principal rule:**
 

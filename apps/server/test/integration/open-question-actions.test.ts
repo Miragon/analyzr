@@ -216,8 +216,10 @@ describe('actions on the open questions of nordwind-handel', () => {
       (q) => q.source === 'finding' && q.subject.id === FRAUD_CHECK,
       'the fraud check',
     );
+    // S5c-2: the target can also be set in the model („Aufrufziel im Modell ändern …“).
     expect(item.actions.map((a) => [a.type, a.primary])).toEqual([
       ['link', true],
+      ['amend', false],
       ['outside', false],
       ['note', false],
     ]);

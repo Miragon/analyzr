@@ -69,7 +69,11 @@ import {
   type ProcessEntry,
 } from './questions.ts';
 
-/** The actions the CLI runs; the others (decide, choose-copy, fix-link) are in the web. */
+/**
+ * The actions this module runs; `amend` is `analyzr questions amend`
+ * (`amend.ts`), `withdraw-amendment` `analyzr amendments withdraw`, and the
+ * others (decide, choose-copy, fix-link) are in the web.
+ */
 export type CliActionType = 'outside' | 'link' | 'place';
 
 export interface ActOptions extends CredentialOptions {
@@ -129,6 +133,10 @@ function elsewhere(a: OpenQuestionAction): string {
       return ', analyzr models requeue';
     case 'note':
       return ', analyzr questions answer';
+    case 'amend':
+      return ', analyzr questions amend';
+    case 'withdraw-amendment':
+      return ', analyzr amendments withdraw';
     default:
       return '';
   }

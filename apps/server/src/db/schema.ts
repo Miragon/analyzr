@@ -13,8 +13,8 @@
  *   are append-only (triggers in migrations 0001_append_only.sql,
  *   0005_judge_once_triggers.sql and 0007_value_chain_triggers.sql), and so
  *   are `auto_accept_rule` and `auto_accept_rule_revision` (0010),
- *   `open_question_answer` (0012) and `open_question_answer_withdrawal`
- *   (0014);
+ *   `open_question_answer` (0012), `open_question_answer_withdrawal`
+ *   (0014), `model_amendment` and `model_amendment_withdrawal` (0016);
  *   `value_chain_step` only ever takes its tombstone (0007); `placement_input`
  *   is mutable memory (M4b).
  *
@@ -23,6 +23,7 @@
  */
 import {
   AgentScope,
+  AmendmentOp,
   AssertionKind,
   Engine,
   EndpointState,
@@ -69,7 +70,10 @@ import {
 
 import type { PlacementClaim } from '../domain/ports.ts';
 
-/** Raw bytes (`bytea`); revisions keep the uploaded BPMN verbatim. */
+/**
+ * Raw bytes (`bytea`); revisions keep the uploaded BPMN verbatim, or the bytes
+ * analyzr computed from an uploaded revision by amendments (M6 S5c-2).
+ */
 const bytea = customType<{ data: Uint8Array; driverData: Buffer }>({
   dataType: () => 'bytea',
   toDriver: (value) => Buffer.from(value.buffer, value.byteOffset, value.byteLength),
@@ -137,6 +141,10 @@ export const OPEN_QUESTION_SUBJECT_TYPES = values(OpenQuestionSubjectType.option
 export const OPEN_QUESTION_ANSWER_KINDS = values(OpenQuestionAnswerKind.options);
 /** Subjects whose answers are recorded as a human note on them (M6 §4.5 "Where the text lands"). */
 export const NOTE_SUBJECT_TYPES = ['relation', 'placement'] as const;
+/** Operations of a model amendment (M6 §4.8 c). */
+export const AMENDMENT_OPS = values(AmendmentOp.options);
+/** How a model amendment ends: withdrawn by a human, or superseded by a later one (M6 §4.8 c). */
+export const AMENDMENT_WITHDRAWAL_REASONS = ['withdrawn', 'superseded'] as const;
 
 export const project = pgTable('project', {
   id: text().primaryKey(),
@@ -282,7 +290,7 @@ export const modelRevision = pgTable(
     projectId: text().notNull(),
     modelId: text().notNull(),
     rev: integer().notNull(),
-    /** The uploaded bytes, verbatim. */
+    /** The uploaded bytes, or bytes computed from an uploaded revision by amendments (M6 S5c-2). */
     xml: bytea().notNull(),
     contentHash: text().notNull(),
     factsHash: text().notNull(),
@@ -301,6 +309,8 @@ export const modelRevision = pgTable(
   },
   (t): PgTableExtraConfigValue[] => [
     unique('model_revision_project_id_unique').on(t.projectId, t.id),
+    // The target of `model_amendment`'s base revision key (M6 S5c-2): a revision of its model.
+    unique('model_revision_project_model_id_unique').on(t.projectId, t.modelId, t.id),
     unique('model_revision_model_rev_unique').on(t.modelId, t.rev),
     check(
       'model_revision_engine_check',
@@ -1331,6 +1341,99 @@ export const openQuestionAnswerWithdrawal = pgTable(
       foreignColumns: [openQuestionAnswer.projectId, openQuestionAnswer.id],
     }),
     check('open_question_answer_withdrawal_humans_only', sql`${t.sourceKind} = 'human'`),
+  ],
+);
+
+/**
+ * Model amendments (M6 §4.8 c, S5c-2): a human's targeted change of a field
+ * an open question names, append-only (triggers in 0016). `element_id` is the
+ * element whose field is written (for `message-name` the referenced message
+ * or signal, with the endpoint the form was opened from in
+ * `via_element_id`); `before` is the value the base revision (an uploaded
+ * revision of the model) reads, `after` the value set, both sanitized like
+ * facts. A row is live while it has no `model_amendment_withdrawal`; the
+ * domain keeps one live row per model, element and op under the project
+ * lock. Values are model content and never enter events.
+ */
+export const modelAmendment = pgTable(
+  'model_amendment',
+  {
+    id: text().primaryKey(),
+    projectId: text().notNull(),
+    modelId: text().notNull(),
+    elementId: text().notNull(),
+    viaElementId: text(),
+    op: text({ enum: AMENDMENT_OPS }).notNull(),
+    before: text(),
+    after: text().notNull(),
+    /** The uploaded revision `before` was read from. */
+    baseRevisionId: text().notNull(),
+    /** The live amendment of the same element and op this one superseded. */
+    supersedesId: text(),
+    principalId: text()
+      .notNull()
+      .references(() => principal.id),
+    clientId: text(),
+    /** Derived from the credential; humans only (check). */
+    sourceKind: text({ enum: values(SourceKind.options) }).notNull(),
+    /** Seq of the `model.amended` event. */
+    seq: seqColumn().notNull(),
+    createdAt: createdAt(),
+  },
+  (t): PgTableExtraConfigValue[] => [
+    unique('model_amendment_project_id_unique').on(t.projectId, t.id),
+    foreignKey({
+      name: 'model_amendment_model_fk',
+      columns: [t.projectId, t.modelId],
+      foreignColumns: [model.projectId, model.id],
+    }),
+    foreignKey({
+      name: 'model_amendment_base_revision_fk',
+      columns: [t.projectId, t.modelId, t.baseRevisionId],
+      foreignColumns: [modelRevision.projectId, modelRevision.modelId, modelRevision.id],
+    }),
+    foreignKey({
+      name: 'model_amendment_supersedes_fk',
+      columns: [t.projectId, t.supersedesId],
+      foreignColumns: [t.projectId, t.id],
+    }),
+    index('model_amendment_model_idx').on(t.projectId, t.modelId),
+    check('model_amendment_op_check', oneOf(t.op, AMENDMENT_OPS)),
+    check('model_amendment_humans_only', sql`${t.sourceKind} = 'human'`),
+  ],
+);
+
+/**
+ * The end of a model amendment (M6 §4.8 c): `withdrawn` by a human
+ * („Ergänzung zurücknehmen“) or `superseded` by a later amendment of the
+ * same element and op, humans only, append-only (triggers in 0016). Its `seq`
+ * is that of the `model.amendment_withdrawn` (or `model.amended`) event.
+ * Carrying a value over from the source tool is computed, never written.
+ */
+export const modelAmendmentWithdrawal = pgTable(
+  'model_amendment_withdrawal',
+  {
+    amendmentId: text()
+      .primaryKey()
+      .references(() => modelAmendment.id),
+    projectId: text().notNull(),
+    reason: text({ enum: AMENDMENT_WITHDRAWAL_REASONS }).notNull(),
+    principalId: text()
+      .notNull()
+      .references(() => principal.id),
+    /** Derived from the credential; humans only (check). */
+    sourceKind: text({ enum: values(SourceKind.options) }).notNull(),
+    seq: seqColumn().notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    foreignKey({
+      name: 'model_amendment_withdrawal_amendment_fk',
+      columns: [t.projectId, t.amendmentId],
+      foreignColumns: [modelAmendment.projectId, modelAmendment.id],
+    }),
+    check('model_amendment_withdrawal_reason_check', oneOf(t.reason, AMENDMENT_WITHDRAWAL_REASONS)),
+    check('model_amendment_withdrawal_humans_only', sql`${t.sourceKind} = 'human'`),
   ],
 );
 

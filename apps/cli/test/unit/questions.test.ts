@@ -354,6 +354,59 @@ describe('analyzr questions (actions in the table)', () => {
       `        ${BRIEF}: accepts the call proposal ${first.subject.id} → ${BRIEF} (rel_01JC0000000000000000000009)`,
     ]);
   });
+
+  it('names the targets of an amend action with several, and the value one sets again (M6 S5c-2)', () => {
+    const [first] = ACTIONS;
+    if (!first) throw new Error('no item');
+    const amend = (targets: NonNullable<OpenQuestion['actions'][number]['amend']>['targets']) => ({
+      type: 'amend' as const,
+      primary: true,
+      label: 'Namen eintragen …',
+      amend: {
+        modelId: 'mdl_01JC0000000000000000000001' as const,
+        modelKey: 'finanzen/gutschrift',
+        targets,
+      },
+    });
+    const boundary: OpenQuestion = {
+      ...first,
+      actions: [
+        amend([
+          { elementId: 'Start_1', op: 'event-name', label: 'Startereignis „Start_1“' },
+          { elementId: 'End_1', op: 'event-name', label: 'Endereignis „End_1“' },
+        ]),
+      ],
+    };
+    expect(formatQuestions([boundary]).slice(2)).toEqual([
+      '      amend targets: Startereignis „Start_1“ (--element Start_1), Endereignis „End_1“ (--element End_1)',
+    ]);
+    const keep: OpenQuestion = {
+      ...first,
+      actions: [
+        {
+          ...amend([
+            {
+              elementId: 'Call_1',
+              op: 'call-target',
+              label: 'Aufrufaktivität „Brief versenden“',
+              prefill: 'Process_Briefversand',
+            },
+          ]),
+          primary: false,
+          label: 'Meine Ergänzung behalten',
+        },
+      ],
+    };
+    expect(formatQuestions([keep]).slice(2)).toEqual([
+      '      amend „Meine Ergänzung behalten“ sets „Process_Briefversand“ again',
+    ]);
+    // One target without a value to keep: nothing beyond the item's line.
+    const one: OpenQuestion = {
+      ...first,
+      actions: [amend([{ elementId: 'Call_1', op: 'call-target', label: 'Aufrufaktivität' }])],
+    };
+    expect(formatQuestions([one])).toHaveLength(2);
+  });
 });
 
 describe('analyzr questions (export)', () => {

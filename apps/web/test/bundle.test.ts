@@ -18,12 +18,16 @@ import { build, type Plugin, type UserConfig } from 'vite';
  *    page, its components or the step view: those load with their routes;
  *    nor the open-questions page, its components and libs (M6 S4, S5a and
  *    S5c-1, the tab's route chunk and the model view's lazy section, which
- *    also carries the collapsed subprocess's „Verknüpfen mit …“).
+ *    also carries the collapsed subprocess's „Verknüpfen mit …“); nor the
+ *    model amendments (M6 S5c-2: the amend form with „Sammeln“, the model
+ *    view's „Ergänzen“ with its history, the header's badge and downloads,
+ *    the change list), which load with the tab and the model view's own
+ *    lazy module.
  *    Of `@analyzr/contracts`, only the zod-free `paths.ts` (the upload's file
  *    rule, M6 S1), `open-question-labels.ts` (M6 S4), `open-question-csv.ts`
  *    and `personal-data.ts` (M6 S5a: the answer sheet's reader and the
- *    personal-data check; the last three in the lazy open-questions chunks
- *    only) are in the bundle.
+ *    personal-data check) and `amendment-labels.ts` (M6 S5c-2; the last four
+ *    in lazy chunks only) are in the bundle.
  *    The entry stays under a gzip ceiling, so a page that slips into it shows.
  * 3. The main CSS has no `.vc-` rule (the renderer's CSS comes with the chunk).
  * 4. Budget: with the diagram-js (+ diagram-js-direct-editing) dependency
@@ -59,7 +63,13 @@ const BUDGET = 40 * 1024;
  * „Verknüpfen mit …“, same chunk); the action row, its pickers and panels and
  * Radix's dropdown menu (with floating-ui) load with the open-questions
  * chunks only. 208.0 KB after S5c-1's review round: the picker list's
- * truncation hint, now shared with the dynamic call's multi-select.
+ * truncation hint, now shared with the dynamic call's multi-select. 211.1 KB
+ * after M6 S5c-2 (2026-10-17): under 1 KB of entry code (the models table's
+ * mark „ergänzt“ and its query, the upload result's amendment counts, the
+ * model view's three lazy imports of the amendments module and the canvas's
+ * `amended` prop); the rest is rolldown splitting the entry again, from 5
+ * chunks into 7, since the amend form and the model view's amendments module
+ * share UI modules (field, textarea, permissions) with it.
  */
 const ENTRY_CEILING = 240 * 1024;
 
@@ -215,6 +225,15 @@ const isOpenQuestionsModule = (id: string) =>
     join(WEB, 'src/lib/open-question'),
   ].some((path) => id === path || id.startsWith(path));
 
+/**
+ * Model amendments (M6 S5c-2): the amend form, the collection's bar, the
+ * model view's section, header parts and the change list, and their lib.
+ */
+const isAmendmentsModule = (id: string) =>
+  [join(WEB, 'src/components/amendments') + sep, join(WEB, 'src/lib/amendments.ts')].some(
+    (path) => id === path || id.startsWith(path),
+  );
+
 describe('web bundle (M4 §5 bundle guard)', { timeout: 120_000 }, () => {
   it('holds one diagram-js and one zod v4, keeps the chain code lazy and its CSS out of the main CSS', async () => {
     const { chunks, css } = await buildReport();
@@ -243,6 +262,7 @@ describe('web bundle (M4 §5 bundle guard)', { timeout: 120_000 }, () => {
         .sort();
     expect(fromContracts(ids)).toEqual(
       [
+        contractsFile('amendment-labels.ts'),
         contractsFile('open-question-csv.ts'),
         contractsFile('open-question-labels.ts'),
         contractsFile('paths.ts'),
@@ -256,6 +276,16 @@ describe('web bundle (M4 §5 bundle guard)', { timeout: 120_000 }, () => {
     // M6 S4 and S5a: the tab „Offene Fragen“, the model view's section and the answer
     // dialogs load lazily as well.
     expect(mainModules.filter(isOpenQuestionsModule).map((id) => relative(WEB, id))).toEqual([]);
+    // M6 S5c-2: the amendments' form, section, bar and downloads load lazily too.
+    expect(mainModules.filter(isAmendmentsModule).map((id) => relative(WEB, id))).toEqual([]);
+    expect(ids.some(isAmendmentsModule)).toBe(true);
+    expect(
+      chunks.some(
+        (c) =>
+          c.isDynamicEntry &&
+          (c.facadeModuleId ?? '').endsWith(`amendments${sep}model-amendments.tsx`),
+      ),
+    ).toBe(true);
     expect(
       ids
         .filter((id) => id.startsWith(join(WEB, 'src/lib/open-question-')))

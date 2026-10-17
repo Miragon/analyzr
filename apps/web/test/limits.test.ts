@@ -19,6 +19,14 @@ describe('constants copied from @analyzr/contracts', () => {
     expect(limits.MAX_BULK_DECISIONS).toBe(contracts.MAX_BULK_DECISIONS);
   });
 
+  it('match the amendment limits (M6 S5c-2)', async () => {
+    const amendments = await import('../src/lib/amendments');
+    expect(amendments.MAX_AMENDMENT_ITEMS).toBe(contracts.MAX_AMENDMENT_ITEMS);
+    expect(Object.keys(amendments.AMENDMENT_VALUE_LIMITS).sort()).toEqual(
+      [...contracts.AmendmentOp.options].sort(),
+    );
+  });
+
   it('match the answer limits (M6 S5a)', () => {
     expect(limits.MAX_ANSWER_CHARS).toBe(contracts.MAX_ANSWER_CHARS);
     expect(limits.MAX_LINK_TARGETS).toBe(contracts.MAX_LINK_TARGETS);
@@ -143,10 +151,22 @@ describe('constants copied from @analyzr/contracts', () => {
     expect(Object.keys(answers.SHEET_REASON_TEXTS).sort()).toEqual(
       [...contracts.AnswerSheetReason.options].sort(),
     );
-    // actions (M6 S5c-1): every action type has an icon and a way to run in the row
+    // actions (M6 S5c-1, S5c-2): every action type has an icon and a way to run in the row
+    // (`amend` the amend form, `withdraw-amendment` one click or, for a whole model, a panel)
     const actionTypes = [...contracts.OpenQuestionActionType.options].sort();
     expect(actionTypes).toEqual(
-      ['choose-copy', 'decide', 'fix-link', 'link', 'note', 'outside', 'place', 'requeue'].sort(),
+      [
+        'choose-copy',
+        'decide',
+        'fix-link',
+        'link',
+        'note',
+        'outside',
+        'place',
+        'requeue',
+        'amend',
+        'withdraw-amendment',
+      ].sort(),
     );
     // the verbatim sources each name who said the text
     for (const source of ['hold', 'agent-question', 'unsure', 'no-link', 'summary'] as const) {

@@ -22,6 +22,7 @@ import type { AppEnv } from './http/context.ts';
 import { demoReadOnlyGuard } from './http/demo-guard.ts';
 import { problemFromError, problemResponse, validationHook } from './http/problem.ts';
 import { registerAgentTokenRoutes } from './http/routes/agent-tokens.ts';
+import { registerAmendmentRoutes } from './http/routes/amendments.ts';
 import { registerAnalysisRoutes } from './http/routes/analyses.ts';
 import { registerAutoAcceptRoutes } from './http/routes/auto-accept.ts';
 import { registerModelRoutes } from './http/routes/models.ts';
@@ -154,6 +155,7 @@ export function createAnalyzrApp(deps: AppDeps): AnalyzrApp {
   });
   registerProjectRoutes(app, useCases);
   registerModelRoutes(app, useCases);
+  registerAmendmentRoutes(app, useCases);
   registerRelationRoutes(app, useCases);
   registerOpenQuestionRoutes(app, useCases);
   registerReviewRoutes(app, useCases);

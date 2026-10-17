@@ -1005,6 +1005,9 @@
           "revision": {
             "$ref": "#/components/schemas/Revision"
           },
+          "uploadedRevisionId": {
+            "$ref": "#/components/schemas/RevisionId"
+          },
           "warnings": {
             "type": "array",
             "items": {
@@ -1016,6 +1019,9 @@
             "type": "integer",
             "minimum": 1,
             "maximum": 101
+          },
+          "amendments": {
+            "$ref": "#/components/schemas/AmendmentCounts"
           }
         },
         "required": [
@@ -1095,11 +1101,28 @@
             "enum": [
               "upload",
               "import",
-              "seed"
+              "seed",
+              "amendment"
             ]
           },
           "path": {
             "type": "string"
+          },
+          "uploader": {
+            "type": "string",
+            "enum": [
+              "human",
+              "agent"
+            ]
+          },
+          "upstream": {
+            "$ref": "#/components/schemas/RevisionUpstream"
+          },
+          "amendments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AmendmentPlanEntry"
+            }
           }
         },
         "required": [
@@ -1107,6 +1130,88 @@
         ],
         "additionalProperties": {},
         "description": "Origin of a revision."
+      },
+      "RevisionUpstream": {
+        "type": "object",
+        "properties": {
+          "revisionId": {
+            "$ref": "#/components/schemas/RevisionId"
+          },
+          "rev": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "contentHash": {
+            "$ref": "#/components/schemas/Sha256Hex"
+          }
+        },
+        "required": [
+          "revisionId",
+          "rev",
+          "contentHash"
+        ],
+        "description": "The uploaded revision an amended revision is computed from."
+      },
+      "AmendmentPlanEntry": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/ModelAmendmentId"
+          },
+          "elementId": {
+            "type": "string"
+          },
+          "op": {
+            "$ref": "#/components/schemas/AmendmentOp"
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/AmendmentOutcome"
+          },
+          "reason": {
+            "$ref": "#/components/schemas/AmendmentConflictReason"
+          }
+        },
+        "required": [
+          "id",
+          "elementId",
+          "op",
+          "outcome"
+        ],
+        "description": "A live amendment and its outcome on the head."
+      },
+      "ModelAmendmentId": {
+        "type": "string",
+        "pattern": "^mam_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "description": "Model amendment id (`mam_` + ULID).",
+        "example": "mam_01J9Z3N4X5Q6R7S8T9V0W1X2Y3"
+      },
+      "AmendmentOp": {
+        "type": "string",
+        "enum": [
+          "call-target",
+          "message-name",
+          "event-name",
+          "process-documentation"
+        ],
+        "description": "Operation of a model amendment."
+      },
+      "AmendmentOutcome": {
+        "type": "string",
+        "enum": [
+          "applied",
+          "in-source",
+          "conflict"
+        ],
+        "description": "Where a live amendment stands on the head."
+      },
+      "AmendmentConflictReason": {
+        "type": "string",
+        "enum": [
+          "element-missing",
+          "value-changed",
+          "expression"
+        ],
+        "description": "Why a live amendment is in conflict."
       },
       "ExtractWarning": {
         "type": "object",
@@ -1129,6 +1234,77 @@
           "message"
         ],
         "description": "A non-fatal observation of the fact extractor."
+      },
+      "AmendmentCounts": {
+        "type": "object",
+        "properties": {
+          "applied": {
+            "type": "object",
+            "properties": {
+              "count": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "ids": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ModelAmendmentId"
+                },
+                "maxItems": 20
+              }
+            },
+            "required": [
+              "count",
+              "ids"
+            ]
+          },
+          "inSource": {
+            "type": "object",
+            "properties": {
+              "count": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "ids": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ModelAmendmentId"
+                },
+                "maxItems": 20
+              }
+            },
+            "required": [
+              "count",
+              "ids"
+            ]
+          },
+          "conflicts": {
+            "type": "object",
+            "properties": {
+              "count": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "ids": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ModelAmendmentId"
+                },
+                "maxItems": 20
+              }
+            },
+            "required": [
+              "count",
+              "ids"
+            ]
+          }
+        },
+        "required": [
+          "applied",
+          "inSource",
+          "conflicts"
+        ],
+        "description": "What became of a model's live amendments."
       },
       "BpmnXml": {
         "type": "string",
@@ -1262,6 +1438,9 @@
             "type": "integer",
             "minimum": 1,
             "maximum": 101
+          },
+          "amendments": {
+            "$ref": "#/components/schemas/AmendmentCounts"
           }
         },
         "required": [
@@ -1288,6 +1467,873 @@
         "required": [
           "files"
         ]
+      },
+      "AmendableElement": {
+        "type": "object",
+        "properties": {
+          "modelId": {
+            "$ref": "#/components/schemas/ModelId"
+          },
+          "modelKey": {
+            "$ref": "#/components/schemas/ModelKey"
+          },
+          "elementId": {
+            "type": "string"
+          },
+          "headRevisionId": {
+            "$ref": "#/components/schemas/RevisionId"
+          },
+          "headRev": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "uploadedRevisionId": {
+            "$ref": "#/components/schemas/RevisionId"
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AmendableField"
+            }
+          },
+          "history": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ModelAmendment"
+            }
+          }
+        },
+        "required": [
+          "modelId",
+          "modelKey",
+          "elementId",
+          "headRevisionId",
+          "headRev",
+          "uploadedRevisionId",
+          "fields",
+          "history"
+        ],
+        "description": "The amendable fields of one element."
+      },
+      "AmendableField": {
+        "type": "object",
+        "properties": {
+          "op": {
+            "$ref": "#/components/schemas/AmendmentOp"
+          },
+          "elementId": {
+            "type": "string"
+          },
+          "viaElementId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "element": {
+            "$ref": "#/components/schemas/AmendableElementKind"
+          },
+          "typeLabel": {
+            "type": "string"
+          },
+          "fieldLabel": {
+            "type": "string"
+          },
+          "value": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "uploadedValue": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "settable": {
+            "type": "boolean"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AmendmentRefusal"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "live": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ModelAmendment"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "readers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Ref"
+            }
+          },
+          "suggestions": {
+            "$ref": "#/components/schemas/AmendSuggestions"
+          }
+        },
+        "required": [
+          "op",
+          "elementId",
+          "viaElementId",
+          "element",
+          "typeLabel",
+          "fieldLabel",
+          "value",
+          "uploadedValue",
+          "settable",
+          "reason",
+          "live",
+          "readers",
+          "suggestions"
+        ],
+        "description": "A field of an element a model amendment can set."
+      },
+      "AmendableElementKind": {
+        "type": "string",
+        "enum": [
+          "call",
+          "start-event",
+          "end-event",
+          "process",
+          "message",
+          "signal",
+          "endpoint"
+        ],
+        "description": "Kind of element an amendment writes."
+      },
+      "AmendmentRefusal": {
+        "type": "string",
+        "enum": [
+          "only-open-questions",
+          "invalid-value",
+          "expression",
+          "cmmn-call",
+          "has-documentation",
+          "wrong-element",
+          "element-missing",
+          "duplicate-id",
+          "redeclared-prefix",
+          "unsupported-structure",
+          "check-failed",
+          "duplicate-amendment",
+          "in-source",
+          "unknown-ref",
+          "not-a-process",
+          "same-process",
+          "partner-not-paired",
+          "not-a-call-target",
+          "not-a-message-name"
+        ],
+        "description": "Why a model amendment cannot be recorded."
+      },
+      "ModelAmendment": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/ModelAmendmentId"
+          },
+          "modelId": {
+            "$ref": "#/components/schemas/ModelId"
+          },
+          "modelKey": {
+            "$ref": "#/components/schemas/ModelKey"
+          },
+          "elementId": {
+            "type": "string"
+          },
+          "viaElementId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "op": {
+            "$ref": "#/components/schemas/AmendmentOp"
+          },
+          "before": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "after": {
+            "type": "string"
+          },
+          "baseRevisionId": {
+            "$ref": "#/components/schemas/RevisionId"
+          },
+          "supersedesId": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ModelAmendmentId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "by": {
+            "type": "string"
+          },
+          "sourceKind": {
+            "type": "string",
+            "enum": [
+              "human"
+            ]
+          },
+          "seq": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "at": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "state": {
+            "$ref": "#/components/schemas/AmendmentState"
+          },
+          "conflict": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AmendmentConflictReason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "modelDeleted": {
+            "type": "boolean"
+          },
+          "withdrawal": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ModelAmendmentWithdrawal"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "modelId",
+          "modelKey",
+          "elementId",
+          "viaElementId",
+          "op",
+          "before",
+          "after",
+          "baseRevisionId",
+          "supersedesId",
+          "by",
+          "sourceKind",
+          "seq",
+          "at",
+          "state",
+          "conflict",
+          "modelDeleted",
+          "withdrawal"
+        ],
+        "description": "A targeted amendment of a model field."
+      },
+      "AmendmentState": {
+        "type": "string",
+        "enum": [
+          "applied",
+          "in-source",
+          "conflict",
+          "withdrawn",
+          "superseded"
+        ],
+        "description": "State of a model amendment."
+      },
+      "ModelAmendmentWithdrawal": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "$ref": "#/components/schemas/AmendmentWithdrawalReason"
+          },
+          "by": {
+            "type": "string"
+          },
+          "seq": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "at": {
+            "$ref": "#/components/schemas/Timestamp"
+          }
+        },
+        "required": [
+          "reason",
+          "by",
+          "seq",
+          "at"
+        ],
+        "description": "The end of a model amendment."
+      },
+      "AmendmentWithdrawalReason": {
+        "type": "string",
+        "enum": [
+          "withdrawn",
+          "superseded"
+        ],
+        "description": "How an amendment ended."
+      },
+      "AmendSuggestions": {
+        "type": "object",
+        "properties": {
+          "processes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AmendProcessSuggestion"
+            }
+          },
+          "names": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AmendNameSuggestion"
+            }
+          },
+          "labels": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "description": "What the form offers for a field."
+      },
+      "AmendProcessSuggestion": {
+        "type": "object",
+        "properties": {
+          "ref": {
+            "$ref": "#/components/schemas/Ref"
+          },
+          "processId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "modelKey": {
+            "$ref": "#/components/schemas/ModelKey"
+          },
+          "modelName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "ambiguous": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ref",
+          "processId",
+          "name",
+          "modelKey",
+          "modelName",
+          "ambiguous"
+        ],
+        "description": "A process a call target can name."
+      },
+      "AmendNameSuggestion": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "endpoints": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AmendNameEndpoint"
+            }
+          }
+        },
+        "required": [
+          "name",
+          "endpoints"
+        ],
+        "description": "A message or signal name of the landscape."
+      },
+      "AmendNameEndpoint": {
+        "type": "object",
+        "properties": {
+          "ref": {
+            "$ref": "#/components/schemas/Ref"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/FactKind"
+          },
+          "name": {
+            "type": "string"
+          },
+          "processName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "modelKey": {
+            "$ref": "#/components/schemas/ModelKey"
+          },
+          "partner": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ref",
+          "kind",
+          "name",
+          "processName",
+          "modelKey",
+          "partner"
+        ],
+        "description": "An endpoint that throws or catches a name."
+      },
+      "AmendModelResult": {
+        "type": "object",
+        "properties": {
+          "dryRun": {
+            "type": "boolean"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "recorded",
+              "unchanged"
+            ]
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AmendModelItemResult"
+            }
+          },
+          "model": {
+            "$ref": "#/components/schemas/Model"
+          },
+          "revision": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Revision"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "effect": {
+            "$ref": "#/components/schemas/AmendmentEffect"
+          },
+          "cost": {
+            "$ref": "#/components/schemas/AmendmentCost"
+          }
+        },
+        "required": [
+          "dryRun",
+          "outcome",
+          "items",
+          "model",
+          "revision",
+          "effect",
+          "cost"
+        ],
+        "description": "The outcome of an amendment request."
+      },
+      "AmendModelItemResult": {
+        "type": "object",
+        "properties": {
+          "elementId": {
+            "type": "string"
+          },
+          "op": {
+            "$ref": "#/components/schemas/AmendmentOp"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "recorded",
+              "unchanged",
+              "not-applicable"
+            ]
+          },
+          "reason": {
+            "$ref": "#/components/schemas/AmendmentRefusal"
+          },
+          "message": {
+            "type": "string"
+          },
+          "amendmentElementId": {
+            "type": "string"
+          },
+          "after": {
+            "type": "string"
+          },
+          "before": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "amendment": {
+            "$ref": "#/components/schemas/ModelAmendment"
+          },
+          "supersedes": {
+            "$ref": "#/components/schemas/ModelAmendmentId"
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PersonalDataWarning"
+            }
+          }
+        },
+        "required": [
+          "elementId",
+          "op",
+          "outcome"
+        ],
+        "description": "What became of one amendment."
+      },
+      "PersonalDataWarning": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "email",
+              "phone",
+              "iban"
+            ]
+          },
+          "start": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "end": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "kind",
+          "start",
+          "end"
+        ],
+        "description": "Probable personal data in a text (e-mail, phone, IBAN); a warning, never a block."
+      },
+      "AmendmentEffect": {
+        "type": "object",
+        "properties": {
+          "findingsResolved": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Finding"
+            }
+          },
+          "findingsAdded": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Finding"
+            }
+          },
+          "accepted": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AmendmentEffectRelation"
+            }
+          },
+          "proposed": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AmendmentEffectRelation"
+            }
+          },
+          "withdrawn": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AmendmentEffectRelation"
+            }
+          },
+          "partnerAccepted": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AmendmentEffectRelation"
+            }
+          },
+          "changed": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AmendmentEffectRelation"
+            }
+          },
+          "retired": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AmendmentEffectRelation"
+            }
+          }
+        },
+        "required": [
+          "findingsResolved",
+          "findingsAdded",
+          "accepted",
+          "proposed",
+          "withdrawn",
+          "partnerAccepted",
+          "changed",
+          "retired"
+        ],
+        "description": "The would-be effect of amendments."
+      },
+      "Finding": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/FindingKind"
+          },
+          "refs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Ref"
+            },
+            "minItems": 1
+          },
+          "detail": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "refs",
+          "detail"
+        ],
+        "description": "A deterministic finding about the landscape."
+      },
+      "FindingKind": {
+        "type": "string",
+        "enum": [
+          "unresolved-call",
+          "dynamic-call",
+          "duplicate-process-id",
+          "dangling-throw",
+          "unmatched-catch"
+        ],
+        "description": "Kind of a deterministic finding."
+      },
+      "AmendmentEffectRelation": {
+        "type": "object",
+        "properties": {
+          "relation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RelationId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "type": {
+            "$ref": "#/components/schemas/RelationType"
+          },
+          "from": {
+            "$ref": "#/components/schemas/Ref"
+          },
+          "to": {
+            "$ref": "#/components/schemas/Ref"
+          }
+        },
+        "required": [
+          "relation",
+          "type",
+          "from",
+          "to"
+        ],
+        "description": "A relation an amendment affects."
+      },
+      "RelationId": {
+        "type": "string",
+        "pattern": "^rel_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "description": "Relation id (`rel_` + ULID).",
+        "example": "rel_01J9Z3N4X5Q6R7S8T9V0W1X2Y3"
+      },
+      "RelationType": {
+        "type": "string",
+        "enum": [
+          "call",
+          "message",
+          "signal",
+          "trigger",
+          "manual"
+        ],
+        "description": "Type of a relation between two processes."
+      },
+      "AmendmentCost": {
+        "type": "object",
+        "properties": {
+          "factsChange": {
+            "type": "boolean"
+          },
+          "pairsToRejudge": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "taskClaimed": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "factsChange",
+          "pairsToRejudge",
+          "taskClaimed"
+        ],
+        "description": "The cost of a new head."
+      },
+      "AmendModelBody": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AmendModelItem"
+            },
+            "minItems": 1,
+            "maxItems": 20
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "description": "The amendments of one model."
+      },
+      "AmendModelItem": {
+        "type": "object",
+        "properties": {
+          "elementId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
+          },
+          "op": {
+            "$ref": "#/components/schemas/AmendmentOp"
+          },
+          "after": {
+            "type": "string",
+            "maxLength": 8000
+          },
+          "target": {
+            "$ref": "#/components/schemas/Ref"
+          },
+          "partner": {
+            "$ref": "#/components/schemas/Ref"
+          },
+          "replaces": {
+            "$ref": "#/components/schemas/ModelAmendmentId"
+          }
+        },
+        "required": [
+          "elementId",
+          "op"
+        ],
+        "description": "One amendment of a request."
+      },
+      "WithdrawAmendmentsResult": {
+        "type": "object",
+        "properties": {
+          "result": {
+            "type": "string",
+            "enum": [
+              "withdrawn",
+              "unchanged"
+            ]
+          },
+          "amendments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ModelAmendment"
+            }
+          },
+          "model": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Model"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "revision": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Revision"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "dryRun": {
+            "type": "boolean"
+          },
+          "cost": {
+            "$ref": "#/components/schemas/AmendmentCost"
+          }
+        },
+        "required": [
+          "result",
+          "amendments",
+          "model",
+          "revision"
+        ],
+        "description": "The outcome of a withdrawal."
+      },
+      "ModelAmendmentList": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ModelAmendment"
+            }
+          },
+          "seq": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "items",
+          "seq"
+        ],
+        "description": "Model amendments."
+      },
+      "AmendmentExportFormat": {
+        "type": "string",
+        "enum": [
+          "markdown",
+          "csv"
+        ],
+        "default": "markdown",
+        "description": "Format of the change list."
       },
       "Landscape": {
         "type": "object",
@@ -1448,23 +2494,6 @@
           "updatedAt"
         ],
         "description": "A relation between two processes."
-      },
-      "RelationId": {
-        "type": "string",
-        "pattern": "^rel_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
-        "description": "Relation id (`rel_` + ULID).",
-        "example": "rel_01J9Z3N4X5Q6R7S8T9V0W1X2Y3"
-      },
-      "RelationType": {
-        "type": "string",
-        "enum": [
-          "call",
-          "message",
-          "signal",
-          "trigger",
-          "manual"
-        ],
-        "description": "Type of a relation between two processes."
       },
       "RelationStatus": {
         "type": "string",
@@ -1682,41 +2711,6 @@
         "pattern": "^nlk_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
         "description": "Stored no-link id (`nlk_` + ULID).",
         "example": "nlk_01J9Z3N4X5Q6R7S8T9V0W1X2Y3"
-      },
-      "Finding": {
-        "type": "object",
-        "properties": {
-          "kind": {
-            "$ref": "#/components/schemas/FindingKind"
-          },
-          "refs": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/Ref"
-            },
-            "minItems": 1
-          },
-          "detail": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "kind",
-          "refs",
-          "detail"
-        ],
-        "description": "A deterministic finding about the landscape."
-      },
-      "FindingKind": {
-        "type": "string",
-        "enum": [
-          "unresolved-call",
-          "dynamic-call",
-          "duplicate-process-id",
-          "dangling-throw",
-          "unmatched-catch"
-        ],
-        "description": "Kind of a deterministic finding."
       },
       "RelationPage": {
         "type": "object",
@@ -1969,7 +2963,8 @@
           "message-without-name",
           "undocumented-process",
           "isolated-process",
-          "descriptive-model"
+          "descriptive-model",
+          "amendment-conflict"
         ],
         "description": "Kind of an open question."
       },
@@ -1984,7 +2979,8 @@
           "no-link",
           "summary",
           "unjudged",
-          "signal"
+          "signal",
+          "amendment"
         ],
         "description": "Source of an open question."
       },
@@ -2288,6 +3284,15 @@
             "items": {
               "$ref": "#/components/schemas/OpenQuestionDecisionItem"
             }
+          },
+          "amend": {
+            "$ref": "#/components/schemas/OpenQuestionAmend"
+          },
+          "withdraw": {
+            "$ref": "#/components/schemas/OpenQuestionWithdraw"
+          },
+          "hint": {
+            "type": "string"
           }
         },
         "required": [
@@ -2307,6 +3312,8 @@
           "outside",
           "requeue",
           "fix-link",
+          "amend",
+          "withdraw-amendment",
           "note"
         ],
         "description": "Type of an action on an open question."
@@ -2400,6 +3407,109 @@
         ],
         "description": "A relation or placement an action decides."
       },
+      "OpenQuestionAmend": {
+        "type": "object",
+        "properties": {
+          "modelId": {
+            "$ref": "#/components/schemas/ModelId"
+          },
+          "modelKey": {
+            "$ref": "#/components/schemas/ModelKey"
+          },
+          "targets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OpenQuestionAmendTarget"
+            },
+            "minItems": 1,
+            "maxItems": 20
+          },
+          "replaces": {
+            "$ref": "#/components/schemas/ModelAmendmentId"
+          }
+        },
+        "required": [
+          "modelId",
+          "modelKey",
+          "targets"
+        ],
+        "description": "What an amend action sets."
+      },
+      "OpenQuestionAmendTarget": {
+        "type": "object",
+        "properties": {
+          "elementId": {
+            "type": "string"
+          },
+          "op": {
+            "$ref": "#/components/schemas/AmendmentOp"
+          },
+          "label": {
+            "type": "string"
+          },
+          "prefill": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "elementId",
+          "op",
+          "label"
+        ],
+        "description": "One field an amend action sets."
+      },
+      "OpenQuestionWithdraw": {
+        "type": "object",
+        "properties": {
+          "modelId": {
+            "$ref": "#/components/schemas/ModelId"
+          },
+          "modelKey": {
+            "$ref": "#/components/schemas/ModelKey"
+          },
+          "amendment": {
+            "$ref": "#/components/schemas/ModelAmendmentId"
+          },
+          "compare": {
+            "$ref": "#/components/schemas/OpenQuestionWithdrawCompare"
+          }
+        },
+        "required": [
+          "modelId",
+          "modelKey"
+        ],
+        "description": "What a withdraw-amendment action withdraws."
+      },
+      "OpenQuestionWithdrawCompare": {
+        "type": "object",
+        "properties": {
+          "field": {
+            "type": "string"
+          },
+          "incoming": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "after": {
+            "type": "string"
+          },
+          "before": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "field",
+          "incoming",
+          "after",
+          "before"
+        ],
+        "description": "The values a value-changed amendment conflict chooses between."
+      },
       "OpenQuestionExportFormat": {
         "type": "string",
         "enum": [
@@ -2439,33 +3549,6 @@
           "warnings"
         ],
         "description": "The answer and the answered question."
-      },
-      "PersonalDataWarning": {
-        "type": "object",
-        "properties": {
-          "kind": {
-            "type": "string",
-            "enum": [
-              "email",
-              "phone",
-              "iban"
-            ]
-          },
-          "start": {
-            "type": "integer",
-            "minimum": 0
-          },
-          "end": {
-            "type": "integer",
-            "minimum": 0
-          }
-        },
-        "required": [
-          "kind",
-          "start",
-          "end"
-        ],
-        "description": "Probable personal data in a text (e-mail, phone, IBAN); a warning, never a block."
       },
       "AnswerOpenQuestionBody": {
         "type": "object",
@@ -10894,6 +11977,755 @@
           },
           "415": {
             "description": "Problem: `unsupported-media-type`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Problem: `validation-failed`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project}/models/{model}/elements/{elementId}/amendable": {
+      "get": {
+        "operationId": "getAmendable",
+        "tags": [
+          "amendments"
+        ],
+        "summary": "The fields of an element a model amendment can set (ETag `\"r<headRev>\"`)",
+        "description": "M6 §4.8 c: per field the element allows (call target, message or signal name, start or end name, process documentation), the value on the head and on the uploaded revision, whether it can be set and why not (`only-open-questions`: no open question names it, it is neither empty nor unresolved and no live amendment set it; `expression`, `cmmn-call`, …), its live amendment, the elements reading a message name and the suggestions (processes, names with their endpoints, labels), plus the element's amendment history. An endpoint that references a message or signal yields the field of that message or signal (every endpoint referencing it changes with it); a pool resolves to its process. `ETag: \"r<headRev>\"` is what the save sends as `If-Match`. A deleted model, or an element the head has no fact and no amendable field for, is 404 `not-found`.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": "^(?:prj_[0-7][0-9A-HJKMNP-TV-Z]{25}|[a-z0-9]+(?:-[a-z0-9]+)*)$",
+              "description": "Project id (`prj_…`) or project key.",
+              "example": "nordwind-handel"
+            },
+            "required": true,
+            "description": "Project id (`prj_…`) or project key.",
+            "name": "project",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/ModelId"
+            },
+            "required": true,
+            "description": "Model id (`mdl_` + ULID).",
+            "name": "model",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            },
+            "required": true,
+            "name": "elementId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The amendable fields",
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string",
+                  "description": "`\"r<headRev>\"`"
+                },
+                "required": true,
+                "description": "`\"r<headRev>\"`"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AmendableElement"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem: `unauthorized`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem: `insufficient-scope`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem: `not-found`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Problem: `validation-failed`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project}/models/{model}/amendments": {
+      "post": {
+        "operationId": "amendModel",
+        "tags": [
+          "amendments"
+        ],
+        "summary": "Amend fields of a model: a new amended head (`If-Match: \"r<headRev>\"`; `?dryRun=true` first)",
+        "description": "Records up to 20 amendments of one model (M6 §4.8 c) in one transaction under the project lock: the uploaded revision stays as it came, and analyzr writes an amended revision computed from its bytes by byte-preserving splices (never a bpmn-moddle round trip), checked by extracting it again; it becomes the head, with `source.kind: amendment`, its `upstream` and the plan of every live amendment. A new amendment of an element and op supersedes the live one. Events: `model.amended` (ids, elements and ops, no values), then the amended revision's `model.revised`. The new head sets off what any change from the tool does (rules, endpoint states, the relations task, the placement input); a manual link from the call to the target it now calls, and one to a `partner` whose key-tier proposal the amendment accepts, is retired by a human rejection. Each item is `recorded`, `unchanged` (identical to its live amendment) or `not-applicable` with the reason; a request with a `not-applicable` item writes nothing (422 `validation-failed`, `reason: 'amendment-not-applicable'`, the items in `items`). The answer carries the effect at the element and the cost (pairs to re-judge, a claimed relations task); `dryRun=true` computes the same and writes nothing. `If-Match: \"r<headRev>\"` is required (428 `precondition-required`) and checked under the lock (412 `revision-conflict` with `headRev`). Humans only and both permissions `review` and `write`: agent tokens get 403 `human-decision-required` with `reviewUrl`, a scope without both 403 `insufficient-scope`. A deleted model is 404 `not-found`.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": "^(?:prj_[0-7][0-9A-HJKMNP-TV-Z]{25}|[a-z0-9]+(?:-[a-z0-9]+)*)$",
+              "description": "Project id (`prj_…`) or project key.",
+              "example": "nordwind-handel"
+            },
+            "required": true,
+            "description": "Project id (`prj_…`) or project key.",
+            "name": "project",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/ModelId"
+            },
+            "required": true,
+            "description": "Model id (`mdl_` + ULID).",
+            "name": "model",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ]
+            },
+            "required": false,
+            "name": "dryRun",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "required": false,
+            "name": "if-match",
+            "in": "header"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AmendModelBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "A dry run, or `unchanged`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AmendModelResult"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "The amendments were recorded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AmendModelResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem: `unauthorized`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem: `insufficient-scope`, `human-decision-required`, `forbidden`, `demo-readonly`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem: `not-found`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Problem: `conflict`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Problem: `revision-conflict`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Problem: `validation-failed`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Problem: `precondition-required`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project}/models/{model}/amendments/withdrawal": {
+      "post": {
+        "operationId": "withdrawModelAmendments",
+        "tags": [
+          "amendments"
+        ],
+        "summary": "Withdraw every live amendment of a model in one step (humans only)",
+        "description": "„Alle Ergänzungen dieses Modells zurücknehmen“ (M6 §4.8 c): one withdrawal row per live amendment (reason `withdrawn`, a `model.amendment_withdrawn` event each) and one re-derivation from the uploaded revision, a new revision whose bytes equal the uploaded revision's. A deleted model keeps its amendments live until withdrawn; a withdrawal there records its rows only and writes no revision. Nothing live answers 200 `unchanged`. `If-Match: \"r<headRev>\"` (optional) names the head the human saw and is checked under the project lock (412 `revision-conflict` with `headRev`), so an amendment recorded meanwhile is not withdrawn unseen. `dryRun=true` answers what would be withdrawn and the `cost` of the new head (pairs to re-judge, a claimed relations task) and writes nothing. Permissions `review` and `write`, humans only.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": "^(?:prj_[0-7][0-9A-HJKMNP-TV-Z]{25}|[a-z0-9]+(?:-[a-z0-9]+)*)$",
+              "description": "Project id (`prj_…`) or project key.",
+              "example": "nordwind-handel"
+            },
+            "required": true,
+            "description": "Project id (`prj_…`) or project key.",
+            "name": "project",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/ModelId"
+            },
+            "required": true,
+            "description": "Model id (`mdl_` + ULID).",
+            "name": "model",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ]
+            },
+            "required": false,
+            "name": "dryRun",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "required": false,
+            "name": "if-match",
+            "in": "header"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A dry run, or nothing was live (`unchanged`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WithdrawAmendmentsResult"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "The amendments were withdrawn",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WithdrawAmendmentsResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem: `unauthorized`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem: `insufficient-scope`, `human-decision-required`, `forbidden`, `demo-readonly`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem: `not-found`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Problem: `revision-conflict`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Problem: `validation-failed`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project}/amendments": {
+      "get": {
+        "operationId": "listAmendments",
+        "tags": [
+          "amendments"
+        ],
+        "summary": "The model amendments of a project, oldest first, filtered by model and state",
+        "description": "Every amendment with its state: a live one's outcome on its model's head (`applied`, `in-source`, `conflict` with its reason) or how it ended (`withdrawn`, `superseded`); `modelDeleted` marks those of a deleted model. `modelKey` matches a model or a folder.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": "^(?:prj_[0-7][0-9A-HJKMNP-TV-Z]{25}|[a-z0-9]+(?:-[a-z0-9]+)*)$",
+              "description": "Project id (`prj_…`) or project key.",
+              "example": "nordwind-handel"
+            },
+            "required": true,
+            "description": "Project id (`prj_…`) or project key.",
+            "name": "project",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/ModelKey"
+            },
+            "required": false,
+            "description": "Immutable model key: lowercase slug segments separated by `/`.",
+            "name": "modelKey",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/AmendmentState"
+            },
+            "required": false,
+            "description": "State of a model amendment.",
+            "name": "state",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The amendments",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelAmendmentList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem: `unauthorized`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem: `insufficient-scope`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem: `not-found`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Problem: `validation-failed`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project}/amendments/export": {
+      "get": {
+        "operationId": "exportAmendments",
+        "tags": [
+          "amendments"
+        ],
+        "summary": "The change list for the source tool, as Markdown or CSV (`since=<seq>`)",
+        "description": "The amendments matching the filters, grouped per model (name and key), each with the pool or process and lane, the element's German type and name, the field, before → after, who, when and the state; a call target names its process and model, marked „Ziel nicht mehr in der Landschaft“ when no head process has that id; a shared message lists every element referencing it. Every export names the seq it reflects („Stand: Ereignis …“), and `since` lists only what was recorded or ended after it. analyzr writes nothing back to the source tool (decision 7). CSV: UTF-8 with a byte order mark, `;`-separated, CRLF, every field quoted, formula-like cells escaped.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": "^(?:prj_[0-7][0-9A-HJKMNP-TV-Z]{25}|[a-z0-9]+(?:-[a-z0-9]+)*)$",
+              "description": "Project id (`prj_…`) or project key.",
+              "example": "nordwind-handel"
+            },
+            "required": true,
+            "description": "Project id (`prj_…`) or project key.",
+            "name": "project",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/ModelKey"
+            },
+            "required": false,
+            "description": "Immutable model key: lowercase slug segments separated by `/`.",
+            "name": "modelKey",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/AmendmentState"
+            },
+            "required": false,
+            "description": "State of a model amendment.",
+            "name": "state",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/AmendmentExportFormat"
+            },
+            "required": false,
+            "description": "Format of the change list.",
+            "name": "format",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            },
+            "required": false,
+            "name": "since",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The change list",
+            "headers": {
+              "Content-Disposition": {
+                "schema": {
+                  "type": "string",
+                  "description": "`attachment; filename=\"ergaenzungen-<project key>.md\"` (or `.csv`); with filters, their values as an ASCII slug before the extension"
+                },
+                "required": true,
+                "description": "`attachment; filename=\"ergaenzungen-<project key>.md\"` (or `.csv`); with filters, their values as an ASCII slug before the extension"
+              }
+            },
+            "content": {
+              "text/markdown": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem: `unauthorized`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem: `insufficient-scope`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem: `not-found`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Problem: `validation-failed`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project}/amendments/{amendment}/withdrawal": {
+      "post": {
+        "operationId": "withdrawAmendment",
+        "tags": [
+          "amendments"
+        ],
+        "summary": "Withdraw one amendment („Ergänzung zurücknehmen“; humans only)",
+        "description": "Records the withdrawal (reason `withdrawn`, a `model.amendment_withdrawn` event naming the id and op) and re-derives the head from the uploaded revision with the remaining live amendments: a new revision, with none left one whose bytes equal the uploaded revision's. On a deleted model only the row is recorded, no revision. An amendment that ended before answers 200 `unchanged`. `If-Match: \"r<headRev>\"` (optional) names the head of the amendment's model the human saw and is checked under the project lock (412 `revision-conflict` with `headRev`). `dryRun=true` answers the `cost` of the new head (pairs to re-judge, a claimed relations task) and writes nothing. Permissions `review` and `write`, humans only.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": "^(?:prj_[0-7][0-9A-HJKMNP-TV-Z]{25}|[a-z0-9]+(?:-[a-z0-9]+)*)$",
+              "description": "Project id (`prj_…`) or project key.",
+              "example": "nordwind-handel"
+            },
+            "required": true,
+            "description": "Project id (`prj_…`) or project key.",
+            "name": "project",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/ModelAmendmentId"
+            },
+            "required": true,
+            "description": "Model amendment id (`mam_` + ULID).",
+            "name": "amendment",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ]
+            },
+            "required": false,
+            "name": "dryRun",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "required": false,
+            "name": "if-match",
+            "in": "header"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A dry run, or the amendment had ended before (`unchanged`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WithdrawAmendmentsResult"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "The amendment was withdrawn",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WithdrawAmendmentsResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem: `unauthorized`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem: `insufficient-scope`, `human-decision-required`, `forbidden`, `demo-readonly`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem: `not-found`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Problem: `revision-conflict`",
             "content": {
               "application/problem+json": {
                 "schema": {

@@ -9,8 +9,16 @@
  * found, and the use case answers 404.
  */
 import type {
+  AmendableDocument,
+  Amendment as LibraryAmendment,
+  AmendmentOutcome as LibraryAmendmentOutcome,
+  NormalizedAmendmentValue,
+} from '@analyzr/bpmn-facts';
+import type {
   AgentScope,
   AgentTokenId,
+  AmendmentOp,
+  AmendmentWithdrawalReason,
   AnalysisTaskId,
   AssertionId,
   AssertionKind,
@@ -28,6 +36,7 @@ import type {
   FactKind,
   Finding,
   MessageFlowInfo,
+  ModelAmendmentId,
   ModelId,
   ModelStage,
   NoLinkId,
@@ -657,6 +666,8 @@ export interface AgentTokenRepo {
 export interface ModelRepo {
   /** A live (not deleted) model. */
   findInProject(projectId: ProjectId, id: ModelId): Promise<ModelRecord | null>;
+  /** A model by id, deleted ones included (their amendments stay live, M6 S5c-2). */
+  findIncludingDeleted(projectId: ProjectId, id: ModelId): Promise<ModelRecord | null>;
   /** By key, deleted models included (an upload revives them). */
   findByKey(projectId: ProjectId, key: string): Promise<ModelRecord | null>;
   insert(m: { id: ModelId; projectId: ProjectId; key: string; name: string | null }): Promise<void>;
@@ -694,6 +705,15 @@ export interface RevisionRepo {
     id: RevisionId,
   ): Promise<RevisionFactsRecord | null>;
   maxRev(projectId: ProjectId, modelId: ModelId): Promise<number>;
+  /**
+   * The `content_hash` of every amended revision of the model (`source.kind`
+   * `amendment`, M6 S5c-2) whose bytes differ from its uploaded revision's:
+   * analyzr's own output, which an upload of the same bytes leaves
+   * `unchanged`. A re-derivation that applied nothing (a withdrawal with no
+   * amendment left to apply) holds the tool's export, which a later upload
+   * may bring back as a revert; it does not count.
+   */
+  amendedContentHashes(projectId: ProjectId, modelId: ModelId): Promise<string[]>;
   /** `facts_hash` of the head revision of every live model, by model key. */
   headHashes(projectId: ProjectId): Promise<Map<string, string>>;
   /** `facts_hash` and seq of the head revision of every live model, by model key. */
@@ -1205,6 +1225,66 @@ export interface OpenQuestionAnswerRepo {
   list(projectId: ProjectId): Promise<StoredOpenQuestionAnswer[]>;
 }
 
+/**
+ * A model amendment (`model_amendment`, M6 §4.8 c, S5c-2): humans only;
+ * `seq` of the `model.amended` event. Live while it has no withdrawal.
+ */
+export interface ModelAmendmentRecord {
+  id: ModelAmendmentId;
+  projectId: ProjectId;
+  modelId: ModelId;
+  /** The element whose field is written (for `message-name` the message or signal). */
+  elementId: string;
+  /** The endpoint the form was opened from, when the amendment is keyed by its message or signal. */
+  viaElementId: string | null;
+  op: AmendmentOp;
+  /** The value the base revision reads (`''` for no call target, `null` for no name or documentation). */
+  before: string | null;
+  after: string;
+  /** The uploaded revision `before` was read from. */
+  baseRevisionId: RevisionId;
+  supersedesId: ModelAmendmentId | null;
+  principalId: PrincipalId;
+  clientId: string | null;
+  sourceKind: 'human';
+  seq: number;
+}
+
+/** The end of an amendment (`model_amendment_withdrawal`): humans only. */
+export interface ModelAmendmentWithdrawalRecord {
+  amendmentId: ModelAmendmentId;
+  projectId: ProjectId;
+  reason: AmendmentWithdrawalReason;
+  principalId: PrincipalId;
+  sourceKind: 'human';
+  /** Seq of the `model.amendment_withdrawn` (withdrawn) or `model.amended` (superseded) event. */
+  seq: number;
+}
+
+/** An amendment as read back: with its model, the handle, the time and its end. */
+export interface StoredModelAmendment extends ModelAmendmentRecord {
+  modelKey: string;
+  /** The model's `deleted_seq`: set while it is deleted. */
+  modelDeletedSeq: number | null;
+  handle: string;
+  createdAt: Date;
+  withdrawal: {
+    reason: AmendmentWithdrawalReason;
+    seq: number;
+    principalId: PrincipalId;
+    handle: string;
+    createdAt: Date;
+  } | null;
+}
+
+export interface ModelAmendmentRepo {
+  insert(rows: readonly ModelAmendmentRecord[]): Promise<void>;
+  /** Ends live amendments (one row each). */
+  withdraw(rows: readonly ModelAmendmentWithdrawalRecord[]): Promise<void>;
+  /** Every amendment of the project, or of one model, oldest first (by seq, then id). */
+  list(projectId: ProjectId, filter?: { modelId?: ModelId }): Promise<StoredModelAmendment[]>;
+}
+
 export interface FindingRepo {
   replace(projectId: ProjectId, findings: readonly Finding[]): Promise<void>;
   list(projectId: ProjectId): Promise<Finding[]>;
@@ -1238,6 +1318,7 @@ export interface Tx {
   placementInputs: PlacementInputRepo;
   autoAcceptRules: AutoAcceptRuleRepo;
   openQuestionAnswers: OpenQuestionAnswerRepo;
+  amendments: ModelAmendmentRepo;
   findings: FindingRepo;
   events: EventRepo;
 }
@@ -1271,6 +1352,24 @@ export type ExtractFailure = { code: string; message: string };
 
 export type ExtractOutcome = { ok: true; value: Extracted } | { ok: false; error: ExtractFailure };
 
+/**
+ * The result of {@link AnalysisPort.amend}: the bytes with the applied
+ * amendments spliced in (the input bytes when none applies), one outcome
+ * per amendment in input order, and the facts of the result.
+ */
+export interface Amended {
+  xml: Uint8Array;
+  outcomes: LibraryAmendmentOutcome[];
+  extracted: Extracted;
+}
+
+export type AmendOutcome = { ok: true; value: Amended } | { ok: false; error: ExtractFailure };
+
+export type ReadAmendableOutcome =
+  { ok: true; value: AmendableDocument } | { ok: false; error: ExtractFailure };
+
+export type { AmendableDocument, LibraryAmendment, LibraryAmendmentOutcome };
+
 /** Output of the rule tier. */
 export interface RuleOutput {
   relations: DerivedRelation[];
@@ -1293,6 +1392,21 @@ export interface AnalysisPort {
   candidates(projectFacts: ProjectFacts, focusModelKey?: string): Candidate[];
   /** Validates proposed pairs against the head facts and computes their tier. */
   pairAssessor(projectFacts: ProjectFacts): (pair: PairQuery) => PairAssessment;
+  /**
+   * Model amendments (M6 §4.8 c): splices the amendments (in seq order) into
+   * `xml` byte-preserving and extracts the result; an amendment whose result
+   * would not read exactly the intended change is refused, the others are
+   * applied. Deterministic in its bytes.
+   */
+  amend(
+    xml: Uint8Array,
+    amendments: readonly LibraryAmendment[],
+    modelKey: string,
+  ): Promise<AmendOutcome>;
+  /** What an amendment of `xml` can key, beyond facts v1 (message ids, `caseRef`, expressions). */
+  readAmendable(xml: Uint8Array, modelKey: string): Promise<ReadAmendableOutcome>;
+  /** The value an amendment stores: sanitized like the field's fact, refused instead of cut. */
+  normalizeAmendmentValue(op: AmendmentOp, raw: string): NormalizedAmendmentValue;
 }
 
 export type { PairAssessment, PairQuery };

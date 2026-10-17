@@ -5,6 +5,7 @@ import { ModelId, ProjectId, RevisionId } from '../ids.ts';
 import { ApiProblem } from '../problem.ts';
 import { ModelKey } from '../refs.ts';
 import { orNull } from '../zod-utils.ts';
+import { AmendmentCounts, AmendmentPlanEntry, RevisionUpstream } from './amendment-core.ts';
 import { Sha256Hex, Timestamp, pageOf } from './common.ts';
 
 /**
@@ -58,12 +59,32 @@ export type Model = z.infer<typeof Model>;
 export const ModelPage = pageOf(Model, 'ModelPage');
 export type ModelPage = z.infer<typeof ModelPage>;
 
-/** Where a revision's bytes came from. */
+/**
+ * Where a revision's bytes came from: an upload, an import or a seed (the
+ * *uploaded* bytes), or `amendment` (M6 S5c-2, decision 25): bytes analyzr
+ * computed from the uploaded revision `upstream` by the amendments its plan
+ * marks `applied` (an *amended* revision). A `looseObject` over the stored
+ * jsonb: fields it does not declare pass through.
+ */
 export const RevisionSource = z
   .looseObject({
-    kind: z.enum(['upload', 'import', 'seed']),
+    kind: z.enum(['upload', 'import', 'seed', 'amendment']),
     /** Path of the file within the upload or import. */
     path: z.string().optional(),
+    /**
+     * The credential kind of the request that wrote the revision (M6 §3.3):
+     * `human` for the owner key or the web session, `agent` for an agent
+     * token; a credential kind, not a person. Set on amended revisions.
+     */
+    uploader: z.enum(['human', 'agent']).optional(),
+    /** An amended revision: the uploaded revision it is computed from. */
+    upstream: RevisionUpstream.optional(),
+    /**
+     * On a head with live amendments: every live amendment of the model with
+     * its outcome against `upstream` (an amended head) or against the
+     * revision itself (an uploaded head none applies to), in seq order.
+     */
+    amendments: z.array(AmendmentPlanEntry).optional(),
   })
   .meta({ id: 'RevisionSource', description: 'Origin of a revision.' });
 export type RevisionSource = z.infer<typeof RevisionSource>;
@@ -153,13 +174,31 @@ const resultWarnings = {
   warningCount: z.number().int().min(1).max(MAX_RESULT_WARNING_COUNT).optional(),
 };
 
-/** Outcome of `PUT …/models/by-key/{key}`: 201 `created`, 200 `revised` or `unchanged`. */
+/**
+ * The model's live amendments at an upload (M6 S5c-2), present only for a
+ * model with live amendments, so the results of every other model keep
+ * their shape.
+ */
+const resultAmendments = {
+  /** Applied to the incoming bytes, taken over by the source tool, or in conflict. */
+  amendments: AmendmentCounts.optional(),
+};
+
+/**
+ * Outcome of `PUT …/models/by-key/{key}`: 201 `created`, 200 `revised` or
+ * `unchanged`. `revision` is the model's head afterwards: for a model whose
+ * live amendments apply to the new bytes the amended revision, whose
+ * uploaded revision `uploadedRevisionId` names.
+ */
 export const PutModelResult = z
   .object({
     outcome: z.enum(['created', 'revised', 'unchanged']),
     model: Model,
     revision: Revision,
+    /** The uploaded revision, when `revision` is an amended revision computed from it. */
+    uploadedRevisionId: RevisionId.optional(),
     ...resultWarnings,
+    ...resultAmendments,
   })
   .meta({ id: 'PutModelResult', description: 'Result of uploading one BPMN file.' });
 export type PutModelResult = z.infer<typeof PutModelResult>;
@@ -178,6 +217,7 @@ export const ImportFileOutcome = z
     /** Set when `outcome` is `failed`. */
     problem: orNull(ApiProblem),
     ...resultWarnings,
+    ...resultAmendments,
   })
   .meta({ id: 'ImportFileOutcome', description: 'Outcome of one file of an import.' });
 export type ImportFileOutcome = z.infer<typeof ImportFileOutcome>;

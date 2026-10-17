@@ -6,11 +6,13 @@ import { useEffect, useRef, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import {
+  AMENDED_OVERLAY_TYPE,
   MARKERS,
   OVERLAY_TYPE,
   clickedId,
   focusViewbox,
   isInView,
+  resolveAmended,
   resolveElement,
   type CanvasHighlight,
   type DiagramElement,
@@ -28,14 +30,29 @@ export interface BpmnCanvasProps {
   highlights: readonly CanvasHighlight[];
   /** Element to scroll into view after highlighting. */
   focus?: string | null;
+  /**
+   * Elements an applied amendment wrote (M6 S5c-2): each gets the overlay
+   * „ergänzt“; a message or signal shows at every shape referencing it.
+   */
+  amended?: readonly string[];
   onElementClick?: (elementId: string) => void;
   onImportError?: (message: string) => void;
 }
+
+const NO_AMENDED: readonly string[] = [];
+
+/** The amended mark: lucide's pen-line, with the word for screen readers (static markup). */
+const AMENDED_MARK =
+  '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" ' +
+  'stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+  '<path d="M13 21h8"/><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/>' +
+  '</svg><span class="sr-only">ergänzt</span>';
 
 export default function BpmnCanvas({
   xml,
   highlights,
   focus,
+  amended = NO_AMENDED,
   onElementClick,
   onImportError,
 }: BpmnCanvasProps) {
@@ -119,6 +136,34 @@ export default function BpmnCanvas({
       overlays.remove({ type: OVERLAY_TYPE });
     };
   }, [highlights, imported, xml]);
+
+  // The mark „ergänzt“ on amended elements: a small pen on the shape's lower right corner,
+  // clear of the highlight labels above the shape („Befund“) on narrow events too.
+  useEffect(() => {
+    const v = viewer.current;
+    if (!v || imported !== xml || amended.length === 0) return;
+    const registry = v.get('elementRegistry');
+    const overlays = v.get('overlays');
+    const seen = new Set<string>();
+    for (const id of amended) {
+      for (const element of resolveAmended(registry, id)) {
+        if (seen.has(element.id)) continue;
+        seen.add(element.id);
+        const badge = document.createElement('span');
+        badge.className = 'analyzr-overlay';
+        badge.dataset['tone'] = 'amended';
+        badge.dataset['testid'] = 'amended-overlay';
+        badge.dataset['elementId'] = element.id;
+        badge.title = 'In analyzr ergänzt';
+        badge.innerHTML = AMENDED_MARK;
+        overlays.add(element, AMENDED_OVERLAY_TYPE, {
+          position: { bottom: 10, right: 10 },
+          html: badge,
+        });
+      }
+    }
+    return () => overlays.remove({ type: AMENDED_OVERLAY_TYPE });
+  }, [amended, imported, xml]);
 
   // Centre the focused element once per focus change (keeps the user's panning otherwise).
   useEffect(() => {

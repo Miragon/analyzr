@@ -7,8 +7,32 @@
  * - {@link assertSafeXml}: DOCTYPE/ENTITY rejection, UTF-8, size limit (run by `extractFacts`)
  * - {@link factFingerprint}, {@link factsHash}, {@link normalizeKey}: the hashing and
  *   normalization rules behind `fingerprint`, `facts_hash` and `key_norm`
+ * - {@link applyAmendments}, {@link readAmendable}: byte-preserving model amendments (M6 §4.8 c)
  */
 export { FACTS_VERSION } from './version.ts';
+export {
+  AMENDMENT_OPS,
+  AMENDMENT_VALUE_LIMITS,
+  applyAmendments,
+  escapeXmlValue,
+  isAmendmentExpression,
+  normalizeAmendmentValue,
+  readAmendable,
+} from './amend.ts';
+export type {
+  AmendResult,
+  AmendableDocument,
+  AmendableElementKind,
+  AmendableEndpoint,
+  AmendableField,
+  Amendment,
+  AmendmentOp,
+  AmendmentOutcome,
+  AmendmentRefusal,
+  AmendmentRefusalReason,
+  AmendmentValueProblem,
+  NormalizedAmendmentValue,
+} from './amend.ts';
 export { BpmnInputError } from './errors.ts';
 export type { BpmnInputErrorCode } from './errors.ts';
 export { DEFAULT_PARSE_LIMITS, assertSafeXml } from './input.ts';
@@ -23,6 +47,7 @@ export {
   MAX_DOCUMENTATION_LENGTH,
   MAX_KEY_LENGTH,
   MAX_LABEL_LENGTH,
+  sanitizeBlock,
   sanitizeLine,
 } from './sanitize.ts';
 export type { Sanitized } from './sanitize.ts';

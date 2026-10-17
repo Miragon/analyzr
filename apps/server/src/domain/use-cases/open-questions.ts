@@ -47,6 +47,7 @@ import {
 } from '@analyzr/contracts';
 
 import { sourceKindOf, type Actor } from '../actor.ts';
+import { readModelAmendments } from '../amendments/state.ts';
 import { decodeCursor } from '../cursor.ts';
 import { DomainError } from '../errors.ts';
 import { headFingerprints } from '../fingerprints.ts';
@@ -300,7 +301,13 @@ export async function loadOpenQuestionInput(
   for (const m of await tx.models.list(projectId, { limit: ALL })) {
     const head = revisionHeads.get(m.key);
     if (!head) continue;
-    models.set(m.key, { name: m.name, engine: m.engine, factsHash: head.factsHash, seq: head.seq });
+    models.set(m.key, {
+      modelId: m.id,
+      name: m.name,
+      engine: m.engine,
+      factsHash: head.factsHash,
+      seq: head.seq,
+    });
   }
   const relations = (await tx.relations.all(projectId)).filter((r) => r.status !== 'obsolete');
   const histories = byRelation<StoredAssertion>(await tx.assertions.listForProject(projectId));
@@ -313,6 +320,7 @@ export async function loadOpenQuestionInput(
     ...noLinks.map((n) => pairKey({ type: n.type, from: n.fromRef, to: n.toRef })),
   ]);
   const chain = await loadChain(tx, deps, projectId);
+  const amendments = await readModelAmendments(tx, projectId);
   return {
     projectFacts,
     models,
@@ -327,6 +335,7 @@ export async function loadOpenQuestionInput(
     chain: chain?.chain ?? null,
     submissions: await loadSubmissions(tx, deps, projectId, models, chain),
     answers: await tx.openQuestionAnswers.list(projectId),
+    ...(amendments.size > 0 ? { amendments } : {}),
   };
 }
 

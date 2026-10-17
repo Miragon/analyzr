@@ -77,6 +77,7 @@ export async function libraryInput(
       messageFlows: r.messageFlows,
     });
     heads.set(f.key, {
+      modelId: `mdl_${String(i).padStart(26, '0')}`,
       name: r.processes[0]?.name ?? null,
       engine: r.engine,
       factsHash: factsHash(r.facts),

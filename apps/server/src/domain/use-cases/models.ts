@@ -99,7 +99,10 @@ export function modelUseCases(deps: UseCaseDeps, ingestDeps: IngestDeps) {
     /**
      * `PUT …/models/by-key/{key}`: raw BPMN → `created` (new model),
      * `revised` (new revision, both with the extractor's warnings, see
-     * {@link resultWarnings}) or `unchanged` (same bytes as the head).
+     * {@link resultWarnings}) or `unchanged` (same bytes as the head, its
+     * uploaded revision or an amended revision). For a model with live
+     * amendments (M6 S5c-2) `revision` is the final head and the result
+     * carries `amendments` (and `uploadedRevisionId` when the head is amended).
      *
      * @throws {DomainError} `validation-failed`, `payload-too-large`, `bpmn-invalid`, policy errors
      */
@@ -131,7 +134,9 @@ export function modelUseCases(deps: UseCaseDeps, ingestDeps: IngestDeps) {
         outcome: result.outcome,
         model: toModel(view),
         revision: toRevision(result.revision),
+        ...(result.uploadedRevision ? { uploadedRevisionId: result.uploadedRevision.id } : {}),
         ...resultWarnings(result.warnings),
+        ...(result.amendments ? { amendments: result.amendments } : {}),
       };
     },
 
@@ -204,6 +209,8 @@ export function modelUseCases(deps: UseCaseDeps, ingestDeps: IngestDeps) {
         } else {
           outcome.outcome = r.outcome;
           Object.assign(outcome, resultWarnings(r.warnings));
+          // Only for a model with live amendments (M6 S5c-2): other results keep their shape.
+          if (r.amendments) outcome.amendments = r.amendments;
         }
       }
       return { files: outcomes };

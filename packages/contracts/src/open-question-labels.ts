@@ -39,6 +39,7 @@ export const OPEN_QUESTION_KIND_LABELS: Readonly<Record<OpenQuestionKind, string
   'undocumented-process': 'Prozess ohne Dokumentation',
   'isolated-process': 'Prozess ohne Verbindung',
   'descriptive-model': 'Beschreibendes Modell',
+  'amendment-conflict': 'Ergänzung nicht mehr anwendbar',
 };
 
 /** German label of each source. */
@@ -52,6 +53,7 @@ export const OPEN_QUESTION_SOURCE_LABELS: Readonly<Record<OpenQuestionSource, st
   summary: 'Zusammenfassung eines Agenten',
   unjudged: 'Nicht bewertete Paare',
   signal: 'Lückensignal',
+  amendment: 'Ergänzung',
 };
 
 /**
@@ -116,9 +118,38 @@ export const OPEN_QUESTION_ACTION_LABELS = {
   requeue: 'Erneut einplanen',
   /** `fix-link`. */
   fixLink: 'Link korrigieren',
+  /** `link` next to the primary `amend` on a call without a target (S5c-2). */
+  linkOnly: 'Nur verknüpfen …',
+  /** `amend` `call-target` on a call without a target. */
+  amendCallTarget: 'Aufrufziel eintragen …',
+  /** `amend` `call-target` on a call whose target names no process. */
+  amendCallTargetChange: 'Aufrufziel im Modell ändern …',
+  /** `amend` `message-name` on a message endpoint without a name. */
+  amendMessageName: 'Nachrichtennamen eintragen …',
+  /** `amend` `message-name` on a named message endpoint. */
+  amendMessageNameChange: 'Nachrichtennamen ändern …',
+  /** `amend` `message-name` on a signal endpoint without a name. */
+  amendSignalName: 'Signalnamen eintragen …',
+  /** `amend` `message-name` on a named signal endpoint. */
+  amendSignalNameChange: 'Signalnamen ändern …',
+  /** `amend` `event-name` on unnamed start or end events. */
+  amendEventName: 'Namen eintragen …',
+  /** `amend` `process-documentation`. */
+  amendDocumentation: 'Dokumentation ergänzen …',
+  /** `amend` on `amendment-conflict` (`value-changed`): the amendment again, over the tool's value. */
+  keepAmendment: 'Meine Ergänzung behalten',
+  /** `withdraw-amendment` on `amendment-conflict` (`value-changed`). */
+  takeSourceValue: 'Wert aus dem Quellsystem übernehmen',
+  /** `withdraw-amendment` on `amendment-conflict` (`element-missing`, `expression`). */
+  withdrawAmendment: 'Ergänzung zurücknehmen',
+  /** `withdraw-amendment` of every live amendment of the model. */
+  withdrawAllAmendments: 'Alle Ergänzungen dieses Modells zurücknehmen',
   /** `note`. */
   note: 'Notiz hinzufügen',
 } as const;
+
+/** The hint next to an `amend` whose value comes from a live amendment (S5c-2). */
+export const AMENDED_HINT = 'in analyzr ergänzt';
 
 /**
  * German label of each stored answer kind (M6 §4.5): the values of S5a's

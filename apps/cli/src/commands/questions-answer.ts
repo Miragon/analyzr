@@ -60,6 +60,7 @@ import { call, createApi } from '../api.ts';
 import { agentToken, ownerCredential, type CredentialOptions } from '../credentials.ts';
 import { CliError } from '../errors.ts';
 import type { CliIo } from '../io.ts';
+import { AMEND_VALUE_FLAGS } from './amend-flags.ts';
 import { oneLine } from './questions.ts';
 
 export interface AnswerOptions extends CredentialOptions {
@@ -176,16 +177,36 @@ export function answerEffect(question: Pick<OpenQuestion, 'kind' | 'subject'>): 
 
 /**
  * How to run an action (M6 §4.8 a): the CLI command for `link`, `place`,
- * `outside`, `note` and `requeue`; the web UI for the decisions, choosing
- * the valid copy and fixing a step's link.
+ * `outside`, `note`, `requeue` and (S5c-2) `amend` and `withdraw-amendment`;
+ * the web UI for the decisions, choosing the valid copy and fixing a step's
+ * link.
  */
 export function actionCommand(
   project: string,
   q: Pick<OpenQuestion, 'id' | 'subject'>,
-  a: Pick<OpenQuestionAction, 'type' | 'pick' | 'step'>,
+  a: Pick<OpenQuestionAction, 'type' | 'pick' | 'step' | 'amend' | 'withdraw'>,
 ): string {
   const p = `-p ${project}`;
   switch (a.type) {
+    case 'amend': {
+      // The field's flag, or nothing when the action brings the value (a kept amendment);
+      // `--element` picks one of several targets.
+      const targets = a.amend?.targets ?? [];
+      const [first] = targets;
+      const ops = new Set(targets.map((t) => t.op));
+      const value =
+        first !== undefined && ops.size === 1
+          ? `${AMEND_VALUE_FLAGS[first.op].flag} ${AMEND_VALUE_FLAGS[first.op].placeholder}`
+          : '<value flag>';
+      if (targets.length > 1) return `analyzr questions amend ${q.id} ${p} --element <id> ${value}`;
+      return first?.prefill === undefined
+        ? `analyzr questions amend ${q.id} ${p} ${value}`
+        : `analyzr questions amend ${q.id} ${p}`;
+    }
+    case 'withdraw-amendment':
+      return a.withdraw?.amendment === undefined
+        ? `analyzr amendments withdraw --model ${a.withdraw?.modelKey ?? '<key>'} ${p}`
+        : `analyzr amendments withdraw ${a.withdraw.amendment} ${p}`;
     case 'link':
       return a.pick === 'pair'
         ? `analyzr questions link ${q.id} ${p} --pair <from> <to>`

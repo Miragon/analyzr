@@ -1,7 +1,8 @@
 import type { Model } from '@analyzr/client';
+import { PenLineIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
 
-import { EngineBadge, StageBadge } from '@/components/badges';
+import { EngineBadge, StageBadge, ToneBadge } from '@/components/badges';
 import {
   Table,
   TableBody,
@@ -12,14 +13,21 @@ import {
 } from '@/components/ui/table';
 import { formatDateTime } from '@/lib/labels';
 
-/** Models of a project: key, engine, head revision, pipeline stage, open items. */
+/**
+ * Models of a project: key, engine, head revision (marked „ergänzt“ when
+ * amendments from analyzr wrote the head, M6 S5c-2), pipeline stage, open
+ * items.
+ */
 export function ModelsTable({
   models,
   renderKey,
+  amended,
 }: {
   models: readonly Model[];
   /** The key cell, e.g. a link into the model view. */
   renderKey?: (model: Model) => ReactNode;
+  /** Applied amendments per model id (only models with at least one). */
+  amended?: ReadonlyMap<string, number>;
 }) {
   return (
     <Table aria-label="Modelle">
@@ -45,7 +53,22 @@ export function ModelsTable({
             <TableCell>
               <EngineBadge engine={m.engine} />
             </TableCell>
-            <TableCell className="text-right tabular-nums">r{m.headRev}</TableCell>
+            <TableCell className="text-right tabular-nums">
+              <span className="inline-flex items-center justify-end gap-1.5">
+                {amended?.get(m.id) ? (
+                  <span data-testid="model-amended">
+                    <ToneBadge
+                      tone="info"
+                      icon={PenLineIcon}
+                      title={`${amended.get(m.id) === 1 ? 'Eine Ergänzung' : `${amended.get(m.id)} Ergänzungen`} aus analyzr im Kopf; das Original aus dem Quellsystem bleibt erhalten`}
+                    >
+                      ergänzt
+                    </ToneBadge>
+                  </span>
+                ) : null}
+                r{m.headRev}
+              </span>
+            </TableCell>
             <TableCell>
               <StageBadge stage={m.stage} />
             </TableCell>

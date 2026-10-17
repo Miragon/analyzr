@@ -9,11 +9,12 @@
  */
 import { z } from 'zod';
 
-import { OpenQuestionAnswerId, RelationId } from '../ids.ts';
+import { ModelAmendmentId, ModelId, OpenQuestionAnswerId, RelationId } from '../ids.ts';
 import { PERSONAL_DATA_KINDS } from '../personal-data.ts';
 import { ModelKey, Ref } from '../refs.ts';
 import { RelationType, SourceKind } from '../relations.ts';
 import { orNull, plainName, plainText } from '../zod-utils.ts';
+import { AmendmentOp, MAX_AMENDMENT_ITEMS } from './amendment-core.ts';
 import { TypedPair } from './analyses.ts';
 import { Cursor, DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT, Timestamp } from './common.ts';
 import { Placement } from './placements.ts';
@@ -44,6 +45,11 @@ import { MAX_VALUE_CHAIN_ID_CHARS } from './value-chains.ts';
  * - `undocumented-process`: a process without documentation;
  * - `isolated-process`: a process without any relation, `rule`, `key` or `lexical` candidate or message flow to another process;
  * - `descriptive-model`: no engine and no executable process (informational).
+ *
+ * Model amendments (M6 §4.8 c, S5c-2):
+ * - `amendment-conflict`: a live amendment the head's uploaded revision no longer fits
+ *   („Ergänzung nicht mehr anwendbar“: the element is gone, now holds an expression, or the
+ *   source tool changed the value).
  */
 export const OpenQuestionKind = z
   .enum([
@@ -66,11 +72,15 @@ export const OpenQuestionKind = z
     'undocumented-process',
     'isolated-process',
     'descriptive-model',
+    'amendment-conflict',
   ])
   .meta({ id: 'OpenQuestionKind', description: 'Kind of an open question.' });
 export type OpenQuestionKind = z.infer<typeof OpenQuestionKind>;
 
-/** Where an open question comes from (M6 §4.1; `signal` for the gap signals of §4.3). */
+/**
+ * Where an open question comes from (M6 §4.1; `signal` for the gap signals
+ * of §4.3; `amendment` for a live amendment in conflict, S5c-2).
+ */
 export const OpenQuestionSource = z
   .enum([
     'finding',
@@ -82,6 +92,7 @@ export const OpenQuestionSource = z
     'summary',
     'unjudged',
     'signal',
+    'amendment',
   ])
   .meta({ id: 'OpenQuestionSource', description: 'Source of an open question.' });
 export type OpenQuestionSource = z.infer<typeof OpenQuestionSource>;
@@ -294,11 +305,26 @@ export type OpenQuestionAnswer = z.infer<typeof OpenQuestionAnswer>;
  * - `outside`: mark the item „Liegt außerhalb der Landschaft“ (revocable);
  * - `requeue`: queue the analysed model again (`requeueAnalyses`, permission `write`);
  * - `fix-link`: correct the step's link on the chain page;
+ * - `amend`: set the fields {@link OpenQuestionAction.amend} names in the model
+ *   (`POST …/models/{model}/amendments`, S5c-2): a new amended revision;
+ * - `withdraw-amendment`: withdraw the amendment {@link OpenQuestionAction.withdraw}
+ *   names (`POST …/amendments/{a}/withdrawal`), or every live amendment of its model
+ *   (`POST …/models/{model}/amendments/withdrawal`);
  * - `note`: add a note (`POST …/open-questions/{q}/answers`).
- * Model amendments (`amend`, `withdraw-amendment`) come with S5c-2.
  */
 export const OpenQuestionActionType = z
-  .enum(['decide', 'link', 'place', 'choose-copy', 'outside', 'requeue', 'fix-link', 'note'])
+  .enum([
+    'decide',
+    'link',
+    'place',
+    'choose-copy',
+    'outside',
+    'requeue',
+    'fix-link',
+    'amend',
+    'withdraw-amendment',
+    'note',
+  ])
   .meta({ id: 'OpenQuestionActionType', description: 'Type of an action on an open question.' });
 export type OpenQuestionActionType = z.infer<typeof OpenQuestionActionType>;
 
@@ -355,6 +381,77 @@ export const OpenQuestionLinkProposal = z
 export type OpenQuestionLinkProposal = z.infer<typeof OpenQuestionLinkProposal>;
 
 /**
+ * One field an `amend` action sets: the element as the facts know it (a call
+ * activity, a start or end event, a process, or a message or signal endpoint,
+ * which the amendments route resolves to the message or signal it
+ * references), the op and a German label naming the element.
+ */
+export const OpenQuestionAmendTarget = z
+  .object({
+    elementId: z.string(),
+    op: AmendmentOp,
+    /** German, e.g. „Aufrufaktivität „Rechnung stellen““. */
+    label: z.string(),
+    /**
+     * The value the form starts with: the conflicting amendment's value for
+     * „Meine Ergänzung behalten“; absent otherwise.
+     */
+    prefill: z.string().optional(),
+  })
+  .meta({ id: 'OpenQuestionAmendTarget', description: 'One field an amend action sets.' });
+export type OpenQuestionAmendTarget = z.infer<typeof OpenQuestionAmendTarget>;
+
+/**
+ * What an `amend` action sets (M6 §4.8 a, S5c-2): the model, one form field
+ * per target (1 to {@link MAX_AMENDMENT_ITEMS}, saved in one request), and
+ * the live amendment it replaces, when the value comes from one.
+ */
+export const OpenQuestionAmend = z
+  .object({
+    modelId: ModelId,
+    modelKey: ModelKey,
+    targets: z.array(OpenQuestionAmendTarget).min(1).max(MAX_AMENDMENT_ITEMS),
+    replaces: ModelAmendmentId.optional(),
+  })
+  .meta({ id: 'OpenQuestionAmend', description: 'What an amend action sets.' });
+export type OpenQuestionAmend = z.infer<typeof OpenQuestionAmend>;
+
+/**
+ * What a `withdraw-amendment` action withdraws (M6 §4.8 a, S5c-2): the
+ * amendment, or, without one, every live amendment of the model
+ * („Alle Ergänzungen dieses Modells zurücknehmen“).
+ */
+/**
+ * The two values a `value-changed` conflict chooses between (M6 §4.8 a „A
+ * conflict's text shows the incoming value and analyzr's value side by
+ * side“): the field's German name, the source tool's value now, analyzr's
+ * value and the value before; `null` for none.
+ */
+export const OpenQuestionWithdrawCompare = z
+  .object({
+    field: z.string(),
+    incoming: z.string().nullable(),
+    after: z.string(),
+    before: z.string().nullable(),
+  })
+  .meta({
+    id: 'OpenQuestionWithdrawCompare',
+    description: 'The values a value-changed amendment conflict chooses between.',
+  });
+export type OpenQuestionWithdrawCompare = z.infer<typeof OpenQuestionWithdrawCompare>;
+
+export const OpenQuestionWithdraw = z
+  .object({
+    modelId: ModelId,
+    modelKey: ModelKey,
+    amendment: ModelAmendmentId.optional(),
+    /** A `value-changed` conflict's values, side by side. */
+    compare: OpenQuestionWithdrawCompare.optional(),
+  })
+  .meta({ id: 'OpenQuestionWithdraw', description: 'What a withdraw-amendment action withdraws.' });
+export type OpenQuestionWithdraw = z.infer<typeof OpenQuestionWithdraw>;
+
+/**
  * One action an open question offers (M6 §4.8 a), computed by the read model
  * with the item: its type, whether it is the item's primary action (at most
  * one is), its German label from code (the tab, the model view and the CLI
@@ -389,6 +486,15 @@ export const OpenQuestionAction = z
     step: z.string().optional(),
     /** What `decide` decides, and the calls `choose-copy` accepts or rejects. */
     decides: z.array(OpenQuestionDecisionItem).optional(),
+    /** The fields an `amend` action sets. */
+    amend: OpenQuestionAmend.optional(),
+    /** What a `withdraw-amendment` action withdraws. */
+    withdraw: OpenQuestionWithdraw.optional(),
+    /**
+     * A German hint next to the label, e.g. „in analyzr ergänzt“ on an
+     * `amend` whose value comes from a live amendment.
+     */
+    hint: z.string().optional(),
   })
   .meta({ id: 'OpenQuestionAction', description: 'An action an open question offers.' });
 export type OpenQuestionAction = z.infer<typeof OpenQuestionAction>;

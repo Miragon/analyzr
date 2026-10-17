@@ -5,6 +5,7 @@
  */
 import type { IngestDeps } from '../ingest.ts';
 import { agentTokenUseCases } from './agent-tokens.ts';
+import { amendmentUseCases } from './amendments.ts';
 import { analysisUseCases } from './analyses.ts';
 import { autoAcceptUseCases } from './auto-accept.ts';
 import type { UseCaseDeps } from './deps.ts';
@@ -19,6 +20,7 @@ import { valueChainUseCases } from './value-chains.ts';
 
 export type { UseCaseDeps } from './deps.ts';
 export { EVENT_KINDS, USAGE_KINDS, type EventKind, type UsageKind } from './landscape.ts';
+export type { ChangeListExport } from './amendments.ts';
 export type { ModelXml, UploadFile } from './models.ts';
 export type { OpenQuestionExport } from './open-questions.ts';
 export type { RulePrecondition } from './auto-accept.ts';
@@ -46,6 +48,7 @@ export function createUseCases(deps: UseCaseDeps) {
     ...placementUseCases(chainDeps),
     ...autoAcceptUseCases(deps),
     ...openQuestionUseCases(deps),
+    ...amendmentUseCases(chainDeps),
   };
 }
 

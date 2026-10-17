@@ -72,7 +72,8 @@ export async function importDirectory(
         body: { files: group.map((f) => new File([f.bytes], f.path)) },
       }),
     );
-    for (const f of result.files) {
+    // The generated client types typed ids (`mam_…` of `amendments`) as plain strings.
+    for (const f of result.files as ImportFileOutcome[]) {
       if (isSkippedXml(f)) skipped.push({ path: f.path, reason: 'not-bpmn' });
       else files.push(f);
     }
@@ -131,6 +132,24 @@ export function formatWarningCounts(
   return `${count} (${parts.join(', ')})`;
 }
 
+/**
+ * What became of a model's live amendments at the upload (M6 S5c-2, §4.8
+ * c): `2 applied, 1 already in the source, 1 conflict`, the groups that are
+ * not empty; `null` for a model without live amendments.
+ */
+export function amendmentsText(amendments: ImportFileOutcome['amendments']): string | null {
+  if (amendments === undefined) return null;
+  const { applied, inSource, conflicts } = amendments;
+  const parts = [
+    applied.count > 0 ? `${applied.count} applied` : null,
+    inSource.count > 0 ? `${inSource.count} already in the source` : null,
+    conflicts.count > 0
+      ? `${conflicts.count} ${conflicts.count === 1 ? 'conflict' : 'conflicts'}`
+      : null,
+  ].filter((p) => p !== null);
+  return parts.length === 0 ? null : parts.join(', ');
+}
+
 /** The reasons for skipping a file, in the order the summary names them. */
 const SKIP_REASONS: Record<SkippedFile['reason'], string> = {
   'not-bpmn': 'not BPMN',
@@ -165,8 +184,9 @@ function skippedWhy(s: SkippedFile): string {
 
 /**
  * The import as text: one line per file (with the extractor's warnings by
- * code), the skipped files and a summary. `verbose` also lists every
- * warning entry the result carries (≤ 20 per file).
+ * code and, for a model with live amendments, what became of them), the
+ * skipped files and a summary, then the amendments in conflict. `verbose`
+ * also lists every warning entry the result carries (≤ 20 per file).
  */
 export function formatImport(summary: ImportSummary, opts: { verbose?: boolean } = {}): string {
   const lines: string[] = [];
@@ -178,7 +198,10 @@ export function formatImport(summary: ImportSummary, opts: { verbose?: boolean }
     const warnings = f.warnings ?? [];
     const count = f.warningCount ?? warnings.length;
     const warned = count > 0 ? `  warnings: ${formatWarningCounts(warnings, count)}` : '';
-    lines.push(`  ${f.outcome.padEnd(9)} ${name}${why}${warned}`);
+    const amended = amendmentsText(f.amendments);
+    lines.push(
+      `  ${f.outcome.padEnd(9)} ${name}${why}${warned}${amended === null ? '' : `  amendments: ${amended}`}`,
+    );
     if (opts.verbose && count > 0) {
       const shown = warningDisplay(warnings, count);
       for (const w of shown.listed) {
@@ -194,6 +217,13 @@ export function formatImport(summary: ImportSummary, opts: { verbose?: boolean }
   lines.push(
     `${summary.project}: ${summary.files.length} files, ${c.created} created, ${c.revised} revised, ${c.unchanged} unchanged, ${c.failed} failed${skippedSuffix(summary)}`,
   );
+  // Amendments the new bytes no longer fit stay live and become open questions.
+  const conflicts = summary.files.reduce((n, f) => n + (f.amendments?.conflicts.count ?? 0), 0);
+  if (conflicts > 0) {
+    lines.push(
+      `${summary.project}: ${conflicts === 1 ? '1 amendment no longer applies' : `${conflicts} amendments no longer apply`}; see analyzr questions -p ${summary.project} --kind amendment-conflict`,
+    );
+  }
   return `${lines.join('\n')}\n`;
 }
 

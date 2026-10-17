@@ -182,19 +182,37 @@ describe('the actions of every kind', () => {
     const OUTSIDE_MARK = 'outside Liegt außerhalb der Landschaft';
     const LINK = 'link* Verknüpfen mit … [process]';
 
-    // call-target-unknown, every flavour: a target naming no process, none, an
-    // engine-null FEEL target (an amendment never, S5c-2 adds it elsewhere), a no-link.
+    // call-target-unknown, every flavour (S5c-2): a target naming no process and a no-link
+    // link first and amend second; no target amends first; an engine-null FEEL target is an
+    // expression in either dialect, so never an amendment.
+    const AMEND_CHANGE = 'amend Aufrufziel im Modell ändern …';
     for (const q of [
       at('call-target-unknown', CALL, 'finding'),
       at('call-target-unknown', CALL, 'no-link'),
-      at('call-target-unknown', LEER),
-      at('call-target-unknown', FEEL),
     ]) {
-      expect(lines(q), q.subject.id).toEqual([LINK, OUTSIDE_MARK, NOTE]);
+      expect(lines(q), q.subject.id).toEqual([LINK, AMEND_CHANGE, OUTSIDE_MARK, NOTE]);
     }
+    expect(lines(at('call-target-unknown', LEER))).toEqual([
+      'amend* Aufrufziel eintragen …',
+      'link Nur verknüpfen … [process]',
+      OUTSIDE_MARK,
+      NOTE,
+    ]);
+    expect(at('call-target-unknown', LEER).actions[0]?.amend).toEqual({
+      modelId: input.models.get('vertrieb/sonder')?.modelId,
+      modelKey: 'vertrieb/sonder',
+      targets: [
+        {
+          elementId: 'Call_Leer',
+          op: 'call-target',
+          label: 'Aufrufaktivität „Unbekannt aufrufen“',
+        },
+      ],
+    });
+    expect(lines(at('call-target-unknown', FEEL))).toEqual([LINK, OUTSIDE_MARK, NOTE]);
     // The agent's call proposal names its target first.
     expect(at('call-target-unknown', CALL, 'finding').actions[0]?.suggested).toEqual([R]);
-    expect(at('call-target-unknown', LEER).actions[0]?.suggested).toEqual([]);
+    expect(at('call-target-unknown', LEER).actions[1]?.suggested).toEqual([]);
     expect(isExpression('=ziel') && isExpression('${ziel}') && isExpression('#{z}')).toBe(true);
     expect(isExpression('P_Freigabe')).toBe(false);
     expect(lines(at('call-target-dynamic', DYN))).toEqual([
@@ -216,14 +234,26 @@ describe('the actions of every kind', () => {
         .map((r) => ({ type: 'relation', id: r.id, version: 1 })),
     });
 
-    // Named and nameless message endpoints: an endpoint picker.
-    for (const ref of [STORNO, NAMENLOS]) {
-      expect(lines(at('message-partner-missing', ref))).toEqual([
-        'link* Verknüpfen mit … [endpoint]',
-        OUTSIDE_MARK,
-        NOTE,
-      ]);
-    }
+    // Named and nameless message endpoints: an endpoint picker, and the name in the model.
+    expect(lines(at('message-partner-missing', STORNO))).toEqual([
+      'link* Verknüpfen mit … [endpoint]',
+      'amend Nachrichtennamen ändern …',
+      OUTSIDE_MARK,
+      NOTE,
+    ]);
+    expect(lines(at('message-partner-missing', NAMENLOS))).toEqual([
+      'amend* Nachrichtennamen eintragen …',
+      'link Verknüpfen mit … [endpoint]',
+      OUTSIDE_MARK,
+      NOTE,
+    ]);
+    expect(at('message-partner-missing', NAMENLOS).actions[0]?.amend?.targets).toEqual([
+      {
+        elementId: 'Event_Namenlos',
+        op: 'message-name',
+        label: 'Nachrichten-Zwischenereignis „Ohne Namen“',
+      },
+    ]);
 
     // Holds and agents' questions, on relations and placements: decide.
     const decide = items.filter((q) => q.kind === 'held' || q.kind === 'agent-question');
@@ -300,9 +330,21 @@ describe('the actions of every kind', () => {
         NOTE,
       ]);
     }
-    // In S5c-1 only the note (S5c-2 adds the amendment).
-    expect(lines(at('unlabelled-boundary', R))).toEqual(['note* Notiz hinzufügen']);
-    expect(lines(at('undocumented-process', N))).toEqual(['note* Notiz hinzufügen']);
+    // S5c-2: the names and the documentation in the model.
+    const boundary = at('unlabelled-boundary', R);
+    expect(lines(boundary)).toEqual(['amend* Namen eintragen …', NOTE]);
+    expect(boundary.actions[0]?.amend?.targets.map((t) => [t.elementId, t.op])).toEqual(
+      boundary.refs.filter((r) => r !== R).map((r) => [r.split('#')[1], 'event-name']),
+    );
+    const undocumented = at('undocumented-process', N);
+    expect(lines(undocumented)).toEqual(['amend* Dokumentation ergänzen …', NOTE]);
+    expect(undocumented.actions[0]?.amend?.targets).toEqual([
+      {
+        elementId: N.split('#')[1],
+        op: 'process-documentation',
+        label: expect.stringMatching(/^Prozess „.+“$/) as unknown,
+      },
+    ]);
     expect(lines(at('isolated-process', N))).toEqual([LINK, OUTSIDE_MARK, NOTE]);
     // Informational items: none.
     for (const q of items.filter(
@@ -314,12 +356,21 @@ describe('the actions of every kind', () => {
     const nameless = at('message-partner-missing', NAMENLOS);
     expect(
       actionsFor({ ...nameless, kind: 'message-without-name', source: 'signal' }, index).map(line),
-    ).toEqual(['link* Verknüpfen mit … [endpoint]', OUTSIDE_MARK, NOTE]);
+    ).toEqual([
+      'amend* Nachrichtennamen eintragen …',
+      'link Verknüpfen mit … [endpoint]',
+      OUTSIDE_MARK,
+      NOTE,
+    ]);
 
-    // Every kind of the contracts is here, and every item has at most one primary.
+    // Every kind of the contracts is here (amendment conflicts in their own test), and
+    // every item has at most one primary.
     expect(
       OpenQuestionKind.options.filter(
-        (k) => k !== 'message-without-name' && !items.some((q) => q.kind === k),
+        (k) =>
+          k !== 'message-without-name' &&
+          k !== 'amendment-conflict' &&
+          !items.some((q) => q.kind === k),
       ),
     ).toEqual([]);
     for (const q of items) {
@@ -327,6 +378,34 @@ describe('the actions of every kind', () => {
         q.actions.length === 0 ? 0 : 1,
       );
     }
+  });
+});
+
+describe('the amend form of unnamed starts and ends', () => {
+  it('lists the start events first, then the end events, each by id', async () => {
+    const EVENTS = `<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions ${DEFS} ${C7}>
+  <bpmn:process id="P_Ereignisse" name="Ereignisse" isExecutable="true">
+    <bpmn:documentation>Beginnt und endet ohne Namen.</bpmn:documentation>
+    <bpmn:endEvent id="A_End"/>
+    <bpmn:startEvent id="Z_Start"/>
+    <bpmn:endEvent id="B_End"/>
+  </bpmn:process>
+</bpmn:definitions>`;
+    const { index, items } = buildOpenQuestions(
+      await synthetic([{ key: 'test/ereignisse', bytes: EVENTS }]),
+    );
+    const boundary = items.find(
+      (q) => q.kind === 'unlabelled-boundary' && q.subject.id === 'test/ereignisse#P_Ereignisse',
+    );
+    if (!boundary) throw new Error('no unlabelled-boundary item');
+    // The item's refs are sorted by code point (ends first); the form asks for the start first.
+    const targets = actionsFor(boundary, index)[0]?.amend?.targets ?? [];
+    expect(targets.map((t) => [t.elementId, t.label])).toEqual([
+      ['Z_Start', 'Startereignis „Z_Start“'],
+      ['A_End', 'Endereignis „A_End“'],
+      ['B_End', 'Endereignis „B_End“'],
+    ]);
   });
 });
 

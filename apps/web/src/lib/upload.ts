@@ -1,4 +1,4 @@
-import type { ExtractWarning, ImportFileOutcome } from '@analyzr/client';
+import type { AmendmentCounts, ExtractWarning, ImportFileOutcome } from '@analyzr/client';
 // The shared file rule and key derivation (M6 S1): zod-free, the one runtime import from the contracts.
 import {
   BPMN_FILE_SUFFIXES,
@@ -285,6 +285,28 @@ export function warningDisplay(
     count,
     unlisted: Math.max(0, count - listed.length),
   };
+}
+
+/**
+ * What became of a model's amendments at an upload (M6 S5c-2), as the CLI
+ * says it: „2 Ergänzungen angewendet, 1 im Quellsystem übernommen, 1
+ * Konflikt“; `null` for a model without live amendments.
+ */
+export function amendmentCountsText(counts: AmendmentCounts | undefined): string | null {
+  if (!counts) return null;
+  const { applied, inSource, conflicts } = counts;
+  const parts = [
+    applied.count > 0
+      ? `${applied.count === 1 ? '1 Ergänzung' : `${applied.count} Ergänzungen`} angewendet`
+      : null,
+    inSource.count > 0 ? `${inSource.count} im Quellsystem übernommen` : null,
+    conflicts.count > 0
+      ? conflicts.count === 1
+        ? '1 Konflikt'
+        : `${conflicts.count} Konflikte`
+      : null,
+  ].filter((p): p is string => p !== null);
+  return parts.length === 0 ? null : parts.join(', ');
 }
 
 /** „1 Hinweis“, „3 Hinweise“. */

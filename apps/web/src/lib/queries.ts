@@ -11,6 +11,7 @@ import {
   getValueChainContent,
   getValueChainStep,
   listAgentTokens,
+  listAmendments,
   listAnalyses,
   listAutoAcceptRules,
   listAutoAccepted,
@@ -34,6 +35,7 @@ import type {
   AutoAcceptRuleList,
   Landscape,
   Model,
+  ModelAmendment,
   NoLink,
   OpenQuestion,
   Placement,
@@ -96,6 +98,8 @@ export const keys = {
   openQuestions: (project: string) => ['project', project, 'open-questions', 'all'] as const,
   modelOpenQuestions: (project: string, modelKey: string) =>
     ['project', project, 'open-questions', 'model', modelKey] as const,
+  // Model amendments (M6 S5c-2): the models table's mark.
+  amendments: (project: string) => ['project', project, 'amendments'] as const,
   // Revisions are immutable: keyed by revision id, cached for good.
   facts: (revisionId: string) => ['revision', revisionId, 'facts'] as const,
   content: (revisionId: string) => ['revision', revisionId, 'content'] as const,
@@ -440,4 +444,18 @@ export const modelOpenQuestionsQuery = (project: string, modelKey: string) =>
           }),
         ),
       ),
+  });
+
+// ------------------------------------------------------------ model amendments (M6 S5c-2)
+
+/**
+ * Every model amendment of the project with its state (oldest first): the
+ * models table marks the models whose head an amendment wrote, and the tab
+ * offers the change list once there is one.
+ */
+export const amendmentsQuery = (project: string) =>
+  queryOptions({
+    queryKey: keys.amendments(project),
+    queryFn: async (): Promise<ModelAmendment[]> =>
+      (await unwrap(listAmendments({ client: api, path: { project } }))).items,
   });

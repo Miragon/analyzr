@@ -32,6 +32,7 @@ import {
   type PlacementPage,
   type ProjectPage,
   type RelationPage,
+  type RevisionFacts,
   type ValueChainDetail,
 } from '@analyzr/contracts';
 import pg from 'pg';
@@ -77,18 +78,22 @@ async function json<T>(res: Response): Promise<T> {
 }
 
 function fill(path: string): string {
-  return path
-    .replace('{project}', PROJECT)
-    .replace('{model}', ids['model'] ?? '')
-    .replace('{revision}', ids['revision'] ?? '')
-    .replace('{relation}', ids['relation'] ?? '')
-    .replace('{analysis}', ids['analysis'] ?? '')
-    .replace('{token}', token.id)
-    .replace('{key}', 'main')
-    .replace('{rev}', '1')
-    .replace('{elementId}', ids['step'] ?? '')
-    .replace('{placement}', ids['placement'] ?? '')
-    .replace('{rule}', 'aar_01J9Z3N4X5Q6R7S8T9V0W1X2Y3');
+  return (
+    path
+      .replace('{project}', PROJECT)
+      .replace('{model}', ids['model'] ?? '')
+      .replace('{revision}', ids['revision'] ?? '')
+      .replace('{relation}', ids['relation'] ?? '')
+      .replace('{analysis}', ids['analysis'] ?? '')
+      .replace('{token}', token.id)
+      .replace('{key}', 'main')
+      .replace('{rev}', '1')
+      // A model element for the amendable fields (M6 S5c-2), a chain step otherwise.
+      .replace('/elements/{elementId}', `/elements/${ids['element'] ?? ''}`)
+      .replace('{elementId}', ids['step'] ?? '')
+      .replace('{placement}', ids['placement'] ?? '')
+      .replace('{rule}', 'aar_01J9Z3N4X5Q6R7S8T9V0W1X2Y3')
+  );
 }
 
 /** Rows that a write of any kind would change (events, assertions, tokens' last use). */
@@ -175,6 +180,12 @@ beforeAll(async () => {
   const model = models.items.find((m) => m.headRevisionId !== null);
   ids['model'] = model?.id ?? '';
   ids['revision'] = model?.headRevisionId ?? '';
+  const facts = await json<RevisionFacts>(
+    await t.asOwner(
+      `/api/v1/projects/${PROJECT}/models/${ids['model']}/revisions/${ids['revision']}/facts`,
+    ),
+  );
+  ids['element'] = facts.processes[0]?.processId ?? '';
   const relations = await json<RelationPage>(
     await t.asOwner(`/api/v1/projects/${PROJECT}/relations?limit=1`),
   );

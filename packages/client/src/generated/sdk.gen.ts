@@ -19,6 +19,9 @@ import type {
   AddRelationNoteData,
   AddRelationNoteErrors,
   AddRelationNoteResponses,
+  AmendModelData,
+  AmendModelErrors,
+  AmendModelResponses,
   AnswerOpenQuestionData,
   AnswerOpenQuestionErrors,
   AnswerOpenQuestionResponses,
@@ -66,9 +69,15 @@ import type {
   DeleteValueChainData,
   DeleteValueChainErrors,
   DeleteValueChainResponses,
+  ExportAmendmentsData,
+  ExportAmendmentsErrors,
+  ExportAmendmentsResponses,
   ExportOpenQuestionsData,
   ExportOpenQuestionsErrors,
   ExportOpenQuestionsResponses,
+  GetAmendableData,
+  GetAmendableErrors,
+  GetAmendableResponses,
   GetAnalysisSubmissionData,
   GetAnalysisSubmissionErrors,
   GetAnalysisSubmissionResponses,
@@ -132,6 +141,9 @@ import type {
   ListAgentTokensData,
   ListAgentTokensErrors,
   ListAgentTokensResponses,
+  ListAmendmentsData,
+  ListAmendmentsErrors,
+  ListAmendmentsResponses,
   ListAnalysesData,
   ListAnalysesErrors,
   ListAnalysesResponses,
@@ -207,6 +219,12 @@ import type {
   SubmitAnalysisData,
   SubmitAnalysisErrors,
   SubmitAnalysisResponses,
+  WithdrawAmendmentData,
+  WithdrawAmendmentErrors,
+  WithdrawAmendmentResponses,
+  WithdrawModelAmendmentsData,
+  WithdrawModelAmendmentsErrors,
+  WithdrawModelAmendmentsResponses,
   WithdrawOpenQuestionAnswerData,
   WithdrawOpenQuestionAnswerErrors,
   WithdrawOpenQuestionAnswerResponses,
@@ -434,6 +452,102 @@ export const importModels = <ThrowOnError extends boolean = false>(
       'Content-Type': null,
       ...options.headers,
     },
+  });
+
+/**
+ * The fields of an element a model amendment can set (ETag `"r<headRev>"`)
+ *
+ * M6 §4.8 c: per field the element allows (call target, message or signal name, start or end name, process documentation), the value on the head and on the uploaded revision, whether it can be set and why not (`only-open-questions`: no open question names it, it is neither empty nor unresolved and no live amendment set it; `expression`, `cmmn-call`, …), its live amendment, the elements reading a message name and the suggestions (processes, names with their endpoints, labels), plus the element's amendment history. An endpoint that references a message or signal yields the field of that message or signal (every endpoint referencing it changes with it); a pool resolves to its process. `ETag: "r<headRev>"` is what the save sends as `If-Match`. A deleted model, or an element the head has no fact and no amendable field for, is 404 `not-found`.
+ */
+export const getAmendable = <ThrowOnError extends boolean = false>(
+  options: Options<GetAmendableData, ThrowOnError>,
+): RequestResult<GetAmendableResponses, GetAmendableErrors, ThrowOnError> =>
+  (options.client ?? client).get<GetAmendableResponses, GetAmendableErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/projects/{project}/models/{model}/elements/{elementId}/amendable',
+    ...options,
+  });
+
+/**
+ * Amend fields of a model: a new amended head (`If-Match: "r<headRev>"`; `?dryRun=true` first)
+ *
+ * Records up to 20 amendments of one model (M6 §4.8 c) in one transaction under the project lock: the uploaded revision stays as it came, and analyzr writes an amended revision computed from its bytes by byte-preserving splices (never a bpmn-moddle round trip), checked by extracting it again; it becomes the head, with `source.kind: amendment`, its `upstream` and the plan of every live amendment. A new amendment of an element and op supersedes the live one. Events: `model.amended` (ids, elements and ops, no values), then the amended revision's `model.revised`. The new head sets off what any change from the tool does (rules, endpoint states, the relations task, the placement input); a manual link from the call to the target it now calls, and one to a `partner` whose key-tier proposal the amendment accepts, is retired by a human rejection. Each item is `recorded`, `unchanged` (identical to its live amendment) or `not-applicable` with the reason; a request with a `not-applicable` item writes nothing (422 `validation-failed`, `reason: 'amendment-not-applicable'`, the items in `items`). The answer carries the effect at the element and the cost (pairs to re-judge, a claimed relations task); `dryRun=true` computes the same and writes nothing. `If-Match: "r<headRev>"` is required (428 `precondition-required`) and checked under the lock (412 `revision-conflict` with `headRev`). Humans only and both permissions `review` and `write`: agent tokens get 403 `human-decision-required` with `reviewUrl`, a scope without both 403 `insufficient-scope`. A deleted model is 404 `not-found`.
+ */
+export const amendModel = <ThrowOnError extends boolean = false>(
+  options: Options<AmendModelData, ThrowOnError>,
+): RequestResult<AmendModelResponses, AmendModelErrors, ThrowOnError> =>
+  (options.client ?? client).post<AmendModelResponses, AmendModelErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/projects/{project}/models/{model}/amendments',
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  });
+
+/**
+ * Withdraw every live amendment of a model in one step (humans only)
+ *
+ * „Alle Ergänzungen dieses Modells zurücknehmen“ (M6 §4.8 c): one withdrawal row per live amendment (reason `withdrawn`, a `model.amendment_withdrawn` event each) and one re-derivation from the uploaded revision, a new revision whose bytes equal the uploaded revision's. A deleted model keeps its amendments live until withdrawn; a withdrawal there records its rows only and writes no revision. Nothing live answers 200 `unchanged`. `If-Match: "r<headRev>"` (optional) names the head the human saw and is checked under the project lock (412 `revision-conflict` with `headRev`), so an amendment recorded meanwhile is not withdrawn unseen. `dryRun=true` answers what would be withdrawn and the `cost` of the new head (pairs to re-judge, a claimed relations task) and writes nothing. Permissions `review` and `write`, humans only.
+ */
+export const withdrawModelAmendments = <ThrowOnError extends boolean = false>(
+  options: Options<WithdrawModelAmendmentsData, ThrowOnError>,
+): RequestResult<WithdrawModelAmendmentsResponses, WithdrawModelAmendmentsErrors, ThrowOnError> =>
+  (options.client ?? client).post<
+    WithdrawModelAmendmentsResponses,
+    WithdrawModelAmendmentsErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/projects/{project}/models/{model}/amendments/withdrawal',
+    ...options,
+  });
+
+/**
+ * The model amendments of a project, oldest first, filtered by model and state
+ *
+ * Every amendment with its state: a live one's outcome on its model's head (`applied`, `in-source`, `conflict` with its reason) or how it ended (`withdrawn`, `superseded`); `modelDeleted` marks those of a deleted model. `modelKey` matches a model or a folder.
+ */
+export const listAmendments = <ThrowOnError extends boolean = false>(
+  options: Options<ListAmendmentsData, ThrowOnError>,
+): RequestResult<ListAmendmentsResponses, ListAmendmentsErrors, ThrowOnError> =>
+  (options.client ?? client).get<ListAmendmentsResponses, ListAmendmentsErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/projects/{project}/amendments',
+    ...options,
+  });
+
+/**
+ * The change list for the source tool, as Markdown or CSV (`since=<seq>`)
+ *
+ * The amendments matching the filters, grouped per model (name and key), each with the pool or process and lane, the element's German type and name, the field, before → after, who, when and the state; a call target names its process and model, marked „Ziel nicht mehr in der Landschaft“ when no head process has that id; a shared message lists every element referencing it. Every export names the seq it reflects („Stand: Ereignis …“), and `since` lists only what was recorded or ended after it. analyzr writes nothing back to the source tool (decision 7). CSV: UTF-8 with a byte order mark, `;`-separated, CRLF, every field quoted, formula-like cells escaped.
+ */
+export const exportAmendments = <ThrowOnError extends boolean = false>(
+  options: Options<ExportAmendmentsData, ThrowOnError>,
+): RequestResult<ExportAmendmentsResponses, ExportAmendmentsErrors, ThrowOnError> =>
+  (options.client ?? client).get<ExportAmendmentsResponses, ExportAmendmentsErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/projects/{project}/amendments/export',
+    ...options,
+  });
+
+/**
+ * Withdraw one amendment („Ergänzung zurücknehmen“; humans only)
+ *
+ * Records the withdrawal (reason `withdrawn`, a `model.amendment_withdrawn` event naming the id and op) and re-derives the head from the uploaded revision with the remaining live amendments: a new revision, with none left one whose bytes equal the uploaded revision's. On a deleted model only the row is recorded, no revision. An amendment that ended before answers 200 `unchanged`. `If-Match: "r<headRev>"` (optional) names the head of the amendment's model the human saw and is checked under the project lock (412 `revision-conflict` with `headRev`). `dryRun=true` answers the `cost` of the new head (pairs to re-judge, a claimed relations task) and writes nothing. Permissions `review` and `write`, humans only.
+ */
+export const withdrawAmendment = <ThrowOnError extends boolean = false>(
+  options: Options<WithdrawAmendmentData, ThrowOnError>,
+): RequestResult<WithdrawAmendmentResponses, WithdrawAmendmentErrors, ThrowOnError> =>
+  (options.client ?? client).post<
+    WithdrawAmendmentResponses,
+    WithdrawAmendmentErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/projects/{project}/amendments/{amendment}/withdrawal',
+    ...options,
   });
 
 /**

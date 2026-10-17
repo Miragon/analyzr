@@ -13,6 +13,7 @@ import {
   type AutoAcceptRuleId,
   type Fact,
   type Finding,
+  type ModelAmendmentId,
   type ModelFacts,
   type ModelId,
   type ModelStage,
@@ -69,6 +70,7 @@ import type {
   RevisionRecord,
   StoredAssertion,
   StoredAutoAcceptRuleRevision,
+  StoredModelAmendment,
   StoredNoLink,
   StoredOpenQuestionAnswer,
   StoredPlacementAssertion,
@@ -881,6 +883,13 @@ function repos(db: Conn): Tx {
           .where(and(eq(s.model.projectId, projectId), eq(s.model.key, key)));
         return rows[0] ? toModel(rows[0]) : null;
       },
+      async findIncludingDeleted(projectId, id) {
+        const rows = await db
+          .select()
+          .from(s.model)
+          .where(and(eq(s.model.projectId, projectId), eq(s.model.id, id)));
+        return rows[0] ? toModel(rows[0]) : null;
+      },
       async insert(m) {
         await db.insert(s.model).values(m);
       },
@@ -994,6 +1003,22 @@ function repos(db: Conn): Tx {
             and(eq(s.modelRevision.projectId, projectId), eq(s.modelRevision.modelId, modelId)),
           );
         return rows[0]?.rev ?? 0;
+      },
+      async amendedContentHashes(projectId, modelId) {
+        const rows = await db
+          .selectDistinct({ contentHash: s.modelRevision.contentHash })
+          .from(s.modelRevision)
+          .where(
+            and(
+              eq(s.modelRevision.projectId, projectId),
+              eq(s.modelRevision.modelId, modelId),
+              sql`${s.modelRevision.source}->>'kind' = 'amendment'`,
+              // analyzr's own output only: a re-derivation that applied nothing (a withdrawal
+              // with nothing left) has the uploaded bytes, which a later upload may bring back.
+              sql`${s.modelRevision.contentHash} IS DISTINCT FROM ${s.modelRevision.source}->'upstream'->>'contentHash'`,
+            ),
+          );
+        return rows.map((r) => r.contentHash);
       },
       async headHashes(projectId) {
         const rows = await db
@@ -2243,6 +2268,86 @@ function repos(db: Conn): Tx {
               w.withdrawal === null
                 ? null
                 : {
+                    seq: w.withdrawal.seq,
+                    principalId: w.withdrawal.principalId as PrincipalId,
+                    handle: w.withdrawnBy ?? '',
+                    createdAt: w.withdrawal.createdAt,
+                  },
+          };
+          return stored;
+        });
+      },
+    },
+
+    amendments: {
+      async insert(rows) {
+        if (rows.length > 0) await db.insert(s.modelAmendment).values([...rows]);
+      },
+      async withdraw(rows) {
+        if (rows.length > 0) await db.insert(s.modelAmendmentWithdrawal).values([...rows]);
+      },
+      async list(projectId, filter = {}) {
+        const withdrawer = alias(s.principal, 'withdrawer');
+        const rows = await db
+          .select({
+            amendment: s.modelAmendment,
+            modelKey: s.model.key,
+            modelDeletedSeq: s.model.deletedSeq,
+            handle: s.principal.handle,
+            withdrawal: s.modelAmendmentWithdrawal,
+            withdrawnBy: withdrawer.handle,
+          })
+          .from(s.modelAmendment)
+          .innerJoin(
+            s.model,
+            and(
+              eq(s.model.projectId, s.modelAmendment.projectId),
+              eq(s.model.id, s.modelAmendment.modelId),
+            ),
+          )
+          .innerJoin(s.principal, eq(s.principal.id, s.modelAmendment.principalId))
+          .leftJoin(
+            s.modelAmendmentWithdrawal,
+            and(
+              eq(s.modelAmendmentWithdrawal.projectId, s.modelAmendment.projectId),
+              eq(s.modelAmendmentWithdrawal.amendmentId, s.modelAmendment.id),
+            ),
+          )
+          .leftJoin(withdrawer, eq(withdrawer.id, s.modelAmendmentWithdrawal.principalId))
+          .where(
+            and(
+              eq(s.modelAmendment.projectId, projectId),
+              filter.modelId === undefined
+                ? undefined
+                : eq(s.modelAmendment.modelId, filter.modelId),
+            ),
+          )
+          .orderBy(asc(s.modelAmendment.seq), asc(s.modelAmendment.id));
+        return rows.map(({ amendment: r, modelKey, modelDeletedSeq, handle, ...w }) => {
+          const stored: StoredModelAmendment = {
+            id: r.id as ModelAmendmentId,
+            projectId: r.projectId as ProjectId,
+            modelId: r.modelId as ModelId,
+            elementId: r.elementId,
+            viaElementId: r.viaElementId,
+            op: r.op,
+            before: r.before,
+            after: r.after,
+            baseRevisionId: r.baseRevisionId as RevisionId,
+            supersedesId: r.supersedesId as ModelAmendmentId | null,
+            principalId: r.principalId as PrincipalId,
+            clientId: r.clientId,
+            sourceKind: 'human',
+            seq: r.seq,
+            modelKey,
+            modelDeletedSeq,
+            handle,
+            createdAt: r.createdAt,
+            withdrawal:
+              w.withdrawal === null
+                ? null
+                : {
+                    reason: w.withdrawal.reason,
                     seq: w.withdrawal.seq,
                     principalId: w.withdrawal.principalId as PrincipalId,
                     handle: w.withdrawnBy ?? '',

@@ -9,7 +9,14 @@
  */
 import { createHash } from 'node:crypto';
 
-import { normalizeKey } from '@analyzr/bpmn-facts';
+import {
+  normalizeAmendmentValue,
+  normalizeKey,
+  type AmendableDocument,
+  type AmendableField,
+  type Amendment,
+  type AmendmentOutcome,
+} from '@analyzr/bpmn-facts';
 import { createPairAssessor, generateCandidates } from '@analyzr/relations';
 import {
   formatRef,
@@ -337,6 +344,122 @@ export function fakeRules(projectFacts: ProjectFacts): {
   return { relations, findings };
 }
 
+const isExpression = (v: string): boolean =>
+  /^\s*=/.test(v) || v.includes('${') || v.includes('#{');
+
+function specOf(xml: Uint8Array): FakeModelSpec {
+  const m = new RegExp(`<!-- ${MARKER} (.*) -->`).exec(new TextDecoder().decode(xml));
+  if (!m?.[1]) throw new Error('not a fake BPMN document');
+  return JSON.parse(m[1]) as FakeModelSpec;
+}
+
+/**
+ * `readAmendable` over a fake document (M6 S5c-2): calls (`ref` is the
+ * target), start and end events, processes, and message or signal endpoints
+ * keyed by themselves (the fake has no message elements).
+ */
+export function fakeAmendable(xml: Uint8Array): AmendableDocument {
+  const spec = specOf(xml);
+  const fields: AmendableField[] = [];
+  const endpoints: AmendableDocument['endpoints'] = [];
+  for (const p of spec.processes) {
+    fields.push({
+      elementId: p.id,
+      op: 'process-documentation',
+      element: 'process',
+      processId: p.id,
+      value: p.doc ?? null,
+      expression: false,
+      blocked:
+        p.doc === undefined ? null : { reason: 'has-documentation', message: 'has documentation' },
+    });
+    for (const e of p.elements ?? []) {
+      if (e.kind === 'call') {
+        const value = e.ref ?? '';
+        fields.push({
+          elementId: e.id,
+          op: 'call-target',
+          element: 'call',
+          processId: p.id,
+          value,
+          expression: isExpression(value),
+          caseRef: false,
+          blocked: isExpression(value) ? { reason: 'expression', message: 'expression' } : null,
+        });
+      } else if (e.kind === 'evt_start' || e.kind === 'evt_end') {
+        fields.push({
+          elementId: e.id,
+          op: 'event-name',
+          element: e.kind === 'evt_start' ? 'start-event' : 'end-event',
+          processId: p.id,
+          value: e.name ?? null,
+          expression: false,
+          blocked: null,
+        });
+      } else if (e.kind.startsWith('msg_') || e.kind.startsWith('sig_')) {
+        endpoints.push({
+          elementId: e.id,
+          kind: e.kind as AmendableDocument['endpoints'][number]['kind'],
+          processId: p.id,
+          reference: null,
+          name: e.ref ?? null,
+          expression: isExpression(e.ref ?? ''),
+          amendmentElementId: e.id,
+        });
+        fields.push({
+          elementId: e.id,
+          op: 'message-name',
+          element: 'endpoint',
+          processId: p.id,
+          value: e.ref ?? null,
+          expression: isExpression(e.ref ?? ''),
+          readers: [e.id],
+          blocked: null,
+        });
+      }
+    }
+  }
+  return { engine: spec.engine ?? null, fields, endpoints };
+}
+
+/** `applyAmendments` over a fake document: rewrites the spec (not byte-preserving). */
+export function fakeAmend(
+  xml: Uint8Array,
+  amendments: readonly Amendment[],
+): { xml: Uint8Array; outcomes: AmendmentOutcome[] } {
+  const spec = specOf(xml);
+  const outcomes: AmendmentOutcome[] = [];
+  let changed = false;
+  for (const a of amendments) {
+    const refused = (reason: 'element-missing' | 'has-documentation'): void => {
+      outcomes.push({ ...a, status: 'refused', reason, message: reason });
+    };
+    const process = spec.processes.find((p) => p.id === a.elementId);
+    const element = spec.processes
+      .flatMap((p) => p.elements ?? [])
+      .find((e) => e.id === a.elementId);
+    if (a.op === 'process-documentation') {
+      if (!process) refused('element-missing');
+      else if (process.doc !== undefined) refused('has-documentation');
+      else {
+        process.doc = a.after;
+        changed = true;
+        outcomes.push({ id: a.id, elementId: a.elementId, op: a.op, status: 'applied' });
+      }
+      continue;
+    }
+    if (!element) {
+      refused('element-missing');
+      continue;
+    }
+    if (a.op === 'event-name') element.name = a.after;
+    else element.ref = a.after;
+    changed = true;
+    outcomes.push({ id: a.id, elementId: a.elementId, op: a.op, status: 'applied' });
+  }
+  return { xml: changed ? new TextEncoder().encode(fakeBpmn(spec)) : xml, outcomes };
+}
+
 /** The AnalysisPort double: DOCTYPE → `doctype-forbidden`, no marker → `not-bpmn`. */
 export function fakeAnalysis(): AnalysisPort & { extractCalls: number } {
   const port = {
@@ -364,6 +487,31 @@ export function fakeAnalysis(): AnalysisPort & { extractCalls: number } {
     candidates: (projectFacts: ProjectFacts, focusModelKey?: string) =>
       generateCandidates(projectFacts, focusModelKey),
     pairAssessor: (projectFacts: ProjectFacts) => createPairAssessor(projectFacts),
+    readAmendable(xml: Uint8Array, _modelKey: string) {
+      try {
+        return Promise.resolve({ ok: true as const, value: fakeAmendable(xml) });
+      } catch {
+        return Promise.resolve({
+          ok: false as const,
+          error: { code: 'not-bpmn', message: 'not a BPMN 2.0 document' },
+        });
+      }
+    },
+    amend(xml: Uint8Array, amendments: readonly Amendment[], modelKey: string) {
+      try {
+        const out = fakeAmend(xml, amendments);
+        return Promise.resolve({
+          ok: true as const,
+          value: { ...out, extracted: extractFake(new TextDecoder().decode(out.xml), modelKey) },
+        });
+      } catch {
+        return Promise.resolve({
+          ok: false as const,
+          error: { code: 'not-bpmn', message: 'not a BPMN 2.0 document' },
+        });
+      }
+    },
+    normalizeAmendmentValue,
   };
   return port;
 }

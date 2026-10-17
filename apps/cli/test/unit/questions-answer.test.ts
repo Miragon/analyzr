@@ -15,6 +15,7 @@ import {
   type AnswerOpenQuestionResult,
   type AnswerSheetResult,
   type OpenQuestion,
+  type OpenQuestionAmendTarget,
   type OpenQuestionAnswer,
 } from '@analyzr/contracts';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -336,6 +337,38 @@ describe('analyzr questions answer <id> (one answer)', () => {
     for (const type of ['decide', 'choose-copy', 'fix-link'] as const) {
       expect(actionCommand('p', q, { type })).toBe('the web UI');
     }
+    // M6 S5c-2: amendments and their withdrawal in the CLI.
+    const target: OpenQuestionAmendTarget = {
+      elementId: 'Call_1',
+      op: 'call-target',
+      label: 'Aufrufaktivität',
+    };
+    const amend = (targets: OpenQuestionAmendTarget[]) => ({
+      type: 'amend' as const,
+      amend: { modelId: 'mdl_01JC0000000000000000000001', modelKey: 'm/x', targets },
+    });
+    expect(actionCommand('p', q, amend([target]))).toBe(
+      `analyzr questions amend ${Q1} -p p --call-target <target>`,
+    );
+    expect(actionCommand('p', q, amend([{ ...target, op: 'process-documentation' }]))).toBe(
+      `analyzr questions amend ${Q1} -p p --documentation <text>`,
+    );
+    expect(actionCommand('p', q, amend([{ ...target, prefill: 'Process_X' }]))).toBe(
+      `analyzr questions amend ${Q1} -p p`,
+    );
+    expect(actionCommand('p', q, amend([target, { ...target, elementId: 'Call_2' }]))).toBe(
+      `analyzr questions amend ${Q1} -p p --element <id> --call-target <target>`,
+    );
+    const withdraw = { modelId: 'mdl_01JC0000000000000000000001', modelKey: 'm/x' };
+    expect(
+      actionCommand('p', q, {
+        type: 'withdraw-amendment',
+        withdraw: { ...withdraw, amendment: 'mam_01JC0000000000000000000001' },
+      }),
+    ).toBe('analyzr amendments withdraw mam_01JC0000000000000000000001 -p p');
+    expect(actionCommand('p', q, { type: 'withdraw-amendment', withdraw })).toBe(
+      'analyzr amendments withdraw --model m/x -p p',
+    );
   });
 
   it('names the personal data it found, counted from 1', () => {

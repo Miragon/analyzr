@@ -106,6 +106,10 @@ const KIND_STYLES: Record<OpenQuestionKind, Style> = {
     tone: 'neutral',
     hint: 'Ein Modell ohne Engine und ohne ausführbaren Prozess: Die Regelstufe findet hier wenig.',
   },
+  'amendment-conflict': {
+    tone: 'warning',
+    hint: 'Eine Ergänzung aus analyzr passt nicht mehr zum Modell aus dem Quellsystem.',
+  },
 };
 
 /**
@@ -145,6 +149,7 @@ export const OPEN_QUESTION_KIND_ORDER: readonly OpenQuestionKind[] = [
   'isolated-process',
   'descriptive-model',
   'summary-note',
+  'amendment-conflict',
 ];
 
 /** Tone and hint of each source; the label is the server's. */
@@ -161,6 +166,10 @@ const SOURCE_STYLES: Record<OpenQuestionSource, Style> = {
   summary: { tone: 'neutral', hint: 'Die Zusammenfassung einer aktuellen Abgabe eines Agenten.' },
   unjudged: { tone: 'neutral', hint: 'Paare, die eine Analyse ohne Urteil gelassen hat.' },
   signal: { tone: 'neutral', hint: 'Von analyzr ohne LLM aus den Fakten erkannt.' },
+  amendment: {
+    tone: 'neutral',
+    hint: 'Eine Ergänzung in analyzr, die der nächste Import nicht mehr anwenden kann.',
+  },
 };
 
 /** Every source, presented (the server's labels, as in the export). */
@@ -181,6 +190,7 @@ export const OPEN_QUESTION_SOURCE_ORDER: readonly OpenQuestionSource[] = [
   'finding',
   'value-chain-finding',
   'signal',
+  'amendment',
 ];
 
 /** The states, as the Status filter names them (`answered`: a live outside mark, „Erledigt (außerhalb)“, M6 §4.8 b). */

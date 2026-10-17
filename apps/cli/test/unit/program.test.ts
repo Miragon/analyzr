@@ -30,12 +30,37 @@ describe('analyzr', () => {
       'mcp',
       'seed',
       'value-chain',
+      'amendments',
     ]) {
       expect(t.out()).toContain(cmd);
     }
     const models = testIo();
     expect(await runCli(['models', '--help'], models.io)).toBe(0);
-    for (const cmd of ['list', 'requeue', 'delete']) expect(models.out()).toContain(cmd);
+    for (const cmd of ['list', 'requeue', 'delete', 'amend', 'pull']) {
+      expect(models.out()).toContain(cmd);
+    }
+    const amend = testIo();
+    expect(await runCli(['models', 'amend', '--help'], amend.io)).toBe(0);
+    for (const flag of [
+      '--element',
+      '--call-target',
+      '--message-name',
+      '--name',
+      '--documentation',
+      '--partner',
+      '--dry-run',
+      '--yes',
+    ]) {
+      expect(amend.out()).toContain(flag);
+    }
+    const amendments = testIo();
+    expect(await runCli(['amendments', '--help'], amendments.io)).toBe(0);
+    for (const cmd of ['list', 'export', 'withdraw']) expect(amendments.out()).toContain(cmd);
+    const questions = testIo();
+    expect(await runCli(['questions', '--help'], questions.io)).toBe(0);
+    for (const cmd of ['answer', 'outside', 'link', 'place', 'amend']) {
+      expect(questions.out()).toContain(cmd);
+    }
     const imp = testIo();
     expect(await runCli(['import', '--help'], imp.io)).toBe(0);
     expect(imp.out().replace(/\s+/g, ' ')).toContain(
