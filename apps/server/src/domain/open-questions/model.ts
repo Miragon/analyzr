@@ -39,7 +39,7 @@ import type {
 import { processHomes } from '../value-chain/findings.ts';
 import { OUTSIDE } from '../value-chain/steps.ts';
 import type { ChainStructure } from '../value-chain/structure.ts';
-import { toOpenQuestionAnswer } from './answers.ts';
+import { isLiveMark, toOpenQuestionAnswer } from './answers.ts';
 
 // ------------------------------------------------------------------ input
 
@@ -121,7 +121,10 @@ export interface OpenQuestionInput {
   /** The live value chain with a head, if any. */
   chain: ChainInput | null;
   submissions: readonly SubmissionNote[];
-  /** Every recorded answer of the project, oldest first (M6 S5a); an item is `answered` while one names its id. */
+  /**
+   * Every recorded answer of the project, oldest first, with withdrawals (M6
+   * S5a, S5c-1); an item is `answered` while a live outside mark names its id.
+   */
   answers: readonly StoredOpenQuestionAnswer[];
 }
 
@@ -146,6 +149,18 @@ export interface Anchors {
   models?: readonly string[];
   /** The value chain as a whole: its open processes and every live step's open placements count. */
   chain?: boolean;
+}
+
+/** A message flow end outside every process (a black box) seen from inside its file. */
+export interface BoxFlow {
+  /** The flow's other end. */
+  inside: string;
+  /** The flow goes from the inside end to the box. */
+  outgoing: boolean;
+  /** The flow's name, else its message's name. */
+  name: string | null;
+  /** The relation anchor of the inside end ({@link OpenQuestionIndex.anchorOf}), if any. */
+  anchor: string | undefined;
 }
 
 /** One source's item before the id, `askWho` and `unlocks` are computed. */
@@ -199,6 +214,10 @@ export class OpenQuestionIndex {
   readonly openProcesses: ReadonlySet<string>;
   /** Pair keys of relations a decision settles. */
   readonly settled: ReadonlySet<string>;
+  /** Every relation that is not obsolete, at each of its two refs. */
+  readonly relationsAt = new Map<string, RelationRecord[]>();
+  /** The process (ref) of each pool a process fact names (`attrs.participantId`), by the pool's ref. */
+  readonly poolProcess = new Map<string, string>();
   /** Live step generations each process is accepted on. */
   private readonly homes: ReadonlyMap<string, readonly string[]>;
   private readonly orgUnitNames = new Map<string, string>();
@@ -211,6 +230,13 @@ export class OpenQuestionIndex {
       const list = this.answersById.get(a.questionId) ?? [];
       list.push(toOpenQuestionAnswer(a));
       this.answersById.set(a.questionId, list);
+    }
+    for (const r of input.relations) {
+      for (const ref of new Set([r.fromRef, r.toRef])) {
+        const list = this.relationsAt.get(ref);
+        if (list) list.push(r);
+        else this.relationsAt.set(ref, [r]);
+      }
     }
     for (const model of input.projectFacts.models) {
       const modelRefs = new Set<string>();
@@ -233,6 +259,9 @@ export class OpenQuestionIndex {
         if (f.kind === 'process') {
           const entry = this.processes.get(f.ref);
           if (entry) entry.fact = f;
+          if (f.attrs.participantId !== undefined) {
+            this.poolProcess.set(at(f.attrs.participantId), f.ref);
+          }
           continue;
         }
         if (f.processId === null) continue;
@@ -306,6 +335,58 @@ export class OpenQuestionIndex {
   /** The answers recorded for an item id, oldest first. */
   answersOf(id: string): readonly OpenQuestionAnswer[] {
     return this.answersById.get(id) ?? [];
+  }
+
+  /** The process (ref) a ref lies in: its own for a process ref; `undefined` when unknown. */
+  processOf(ref: string): string | undefined {
+    return this.processOfRef.get(ref) ?? (this.processes.has(ref) ? ref : undefined);
+  }
+
+  /**
+   * The ref that can carry a relation for a message flow end (M6 §4.8 a
+   * "Anchors of a pool's flows"): the end itself when it has a head fact,
+   * else its process (a flow node the facts name, through
+   * {@link processOfRef}; a pool, through the process fact naming it as its
+   * participant); `undefined` for an end without either (a flow between
+   * two boxes).
+   */
+  anchorOf(end: string): string | undefined {
+    if (this.factsAt(end).length > 0) return end;
+    return this.processOfRef.get(end) ?? this.poolProcess.get(end);
+  }
+
+  /** The message flows of a black box's file that end at it, as seen from their other end. */
+  boxFlows(box: string): BoxFlow[] {
+    const model = this.input.projectFacts.models.find((m) => m.modelKey === this.modelOf(box));
+    const out: BoxFlow[] = [];
+    for (const flow of model?.messageFlows ?? []) {
+      for (const [end, other, outgoing] of [
+        [flow.to, flow.from, true],
+        [flow.from, flow.to, false],
+      ] as const) {
+        if (end !== box) continue;
+        const anchor = other === box ? undefined : this.anchorOf(other);
+        out.push({ inside: other, outgoing, name: flow.name ?? flow.messageName, anchor });
+      }
+    }
+    return out;
+  }
+
+  /**
+   * The source version of an item by what it asks about (M6 §4.2, S5c-1):
+   * each ref with the kinds and fingerprints of its head facts (`-` without
+   * one), sorted, then the extras (what the question reads beyond the
+   * facts). A change elsewhere in the model keeps it; a change at these refs
+   * changes it.
+   */
+  factVersion(refs: Iterable<string>, extras: readonly string[] = []): string {
+    const facts = sorted(refs).map((ref) => {
+      const fps = this.factsAt(ref)
+        .map((f) => `${f.kind}:${f.fingerprint}`)
+        .sort(byCodePoint);
+      return `${ref}=${fps.length === 0 ? '-' : fps.join('+')}`;
+    });
+    return [facts.join(','), ...extras].join('|');
   }
 
   /** The model key of a ref. */
@@ -484,11 +565,19 @@ export function openQuestionId(
   return `q-${digest.slice(0, 16)}`;
 }
 
-/** A draft as an open question: `answered` while an answer names its id (M6 S5a). */
-export function finish(index: OpenQuestionIndex, draft: Draft): OpenQuestion {
+/**
+ * A draft as an open question: `answered` while a live outside mark names
+ * its id (M6 S5c-1), with its answers and its actions (`actionsOf`, the
+ * read model passes `actionsFor` of `actions.ts`).
+ */
+export function finish(
+  index: OpenQuestionIndex,
+  draft: Draft,
+  actionsOf: (item: OpenQuestion, index: OpenQuestionIndex) => OpenQuestion['actions'] = () => [],
+): OpenQuestion {
   const id = openQuestionId(draft.kind, draft.subject, draft.version);
   const answers = [...index.answersOf(id)];
-  return {
+  const item: OpenQuestion = {
     id,
     kind: draft.kind,
     source: draft.source,
@@ -502,9 +591,12 @@ export function finish(index: OpenQuestionIndex, draft: Draft): OpenQuestion {
     unlocks: index.unlocks(draft.anchors),
     refs: sorted(draft.refs) as Ref[],
     raisedBy: draft.raisedBy,
-    state: answers.length > 0 ? 'answered' : 'open',
+    state: answers.some(isLiveMark) ? 'answered' : 'open',
     answers,
+    actions: [],
   };
+  item.actions = actionsOf(item, index);
+  return item;
 }
 
 const KIND_RANK = new Map(OpenQuestionKind.options.map((k, i) => [k, i]));

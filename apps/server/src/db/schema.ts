@@ -12,8 +12,9 @@
  *   `no_link_withdrawal`, `value_chain_revision` and `placement_assertion`
  *   are append-only (triggers in migrations 0001_append_only.sql,
  *   0005_judge_once_triggers.sql and 0007_value_chain_triggers.sql), and so
- *   are `auto_accept_rule` and `auto_accept_rule_revision` (0010) and
- *   `open_question_answer` (0012);
+ *   are `auto_accept_rule` and `auto_accept_rule_revision` (0010),
+ *   `open_question_answer` (0012) and `open_question_answer_withdrawal`
+ *   (0014);
  *   `value_chain_step` only ever takes its tombstone (0007); `placement_input`
  *   is mutable memory (M4b).
  *
@@ -1255,6 +1256,8 @@ export const openQuestionAnswer = pgTable(
     createdAt: createdAt(),
   },
   (t): PgTableExtraConfigValue[] => [
+    // The target of the withdrawals' composite foreign key (M6 S5c-1, 0013).
+    unique('open_question_answer_project_id_unique').on(t.projectId, t.id),
     // A relation answer's note is an assertion of that relation (MATCH SIMPLE: others skip it).
     foreignKey({
       name: 'open_question_answer_relation_note_fk',
@@ -1278,10 +1281,11 @@ export const openQuestionAnswer = pgTable(
     index('open_question_answer_question_idx').on(t.projectId, t.questionId, t.seq),
     // Only humans answer (decision 4: agents propose, humans decide and answer).
     check('open_question_answer_humans_only', sql`${t.sourceKind} = 'human'`),
-    // The text lands in exactly one place: a note on a relation or placement, else the row.
+    // The text lands in exactly one place: a note on a relation or placement, else the row;
+    // an outside mark (M6 S5c-1, 0013) may have neither, never on a relation or placement.
     check(
       'open_question_answer_text_or_note',
-      sql`(${t.text} is null) <> (${t.noteAssertionId} is null) and (${t.noteAssertionId} is not null) = (${oneOf(t.subjectType, NOTE_SUBJECT_TYPES)})`,
+      sql`((${t.text} is null) <> (${t.noteAssertionId} is null) and (${t.noteAssertionId} is not null) = (${oneOf(t.subjectType, NOTE_SUBJECT_TYPES)})) or (${t.kind} = 'outside-landscape' and ${t.text} is null and ${t.noteAssertionId} is null and not (${oneOf(t.subjectType, NOTE_SUBJECT_TYPES)}))`,
     ),
     check(
       'open_question_answer_text_check',
@@ -1294,6 +1298,39 @@ export const openQuestionAnswer = pgTable(
       oneOf(t.subjectType, OPEN_QUESTION_SUBJECT_TYPES),
     ),
     check('open_question_answer_source_kind_check', oneOf(t.sourceKind, SourceKind.options)),
+  ],
+);
+
+/**
+ * The withdrawal of an outside mark (M6 §4.8 b, S5c-1: „Rückgängig“): one row
+ * ends one `open_question_answer` of kind `outside-landscape` (the domain
+ * checks the kind), humans only, append-only (triggers in 0014). Its `seq`
+ * is that of the `open_question.answer_withdrawn` event. A withdrawn mark no
+ * longer counts; marking again records a new answer row.
+ */
+export const openQuestionAnswerWithdrawal = pgTable(
+  'open_question_answer_withdrawal',
+  {
+    answerId: text()
+      .primaryKey()
+      .references(() => openQuestionAnswer.id),
+    projectId: text().notNull(),
+    principalId: text()
+      .notNull()
+      .references(() => principal.id),
+    /** Derived from the credential; humans only (check). */
+    sourceKind: text({ enum: values(SourceKind.options) }).notNull(),
+    /** Seq of the `open_question.answer_withdrawn` event. */
+    seq: seqColumn().notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    foreignKey({
+      name: 'open_question_answer_withdrawal_answer_fk',
+      columns: [t.projectId, t.answerId],
+      foreignColumns: [openQuestionAnswer.projectId, openQuestionAnswer.id],
+    }),
+    check('open_question_answer_withdrawal_humans_only', sql`${t.sourceKind} = 'human'`),
   ],
 );
 

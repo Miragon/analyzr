@@ -8,8 +8,11 @@ import { dismissToast, getToasts, subscribeToasts, type ToastTone } from '@/lib/
 /**
  * Toasts per modeler-tool-design §8/§9: bottom centre, surface card with a
  * coloured left edge and dot in the status colour plus text; success and
- * info close after ~2.8 s, errors after ~5 s. Never silent, never `alert()`.
+ * info close after ~2.8 s, errors after ~5 s, a toast with an action
+ * („Rückgängig“) after 15 s (hovering or focusing it pauses the timer).
+ * Never silent, never `alert()`.
  */
+const ACTION_DURATION = 15_000;
 const EDGE: Record<ToastTone, string> = {
   success: 'border-l-success',
   info: 'border-l-info',
@@ -32,8 +35,8 @@ export function Toaster() {
           key={t.id}
           data-testid="toast"
           data-tone={t.tone}
-          duration={t.tone === 'danger' ? 5000 : 2800}
-          type={t.tone === 'danger' ? 'foreground' : 'background'}
+          duration={t.action ? ACTION_DURATION : t.tone === 'danger' ? 5000 : 2800}
+          type={t.tone === 'danger' || t.action ? 'foreground' : 'background'}
           onOpenChange={(open) => {
             if (!open) dismissToast(t.id);
           }}
@@ -51,6 +54,16 @@ export function Toaster() {
               <ToastPrimitive.Description className="break-words text-muted-foreground">
                 {t.description}
               </ToastPrimitive.Description>
+            ) : null}
+            {t.action ? (
+              <ToastPrimitive.Action
+                altText={t.action.altText ?? t.action.label}
+                onClick={t.action.onAction}
+                className="mt-1 self-start rounded-md border bg-card px-2 py-0.5 text-xs font-semibold hover:border-primary hover:bg-accent focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+                data-testid="toast-action"
+              >
+                {t.action.label}
+              </ToastPrimitive.Action>
             ) : null}
           </div>
           <ToastPrimitive.Close

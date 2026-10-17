@@ -8,10 +8,12 @@
  * ids numbered in order of appearance, timestamps blanked; both differ per
  * run) and pinned by its SHA-256 in `__snapshots__/claims-nordwind-handel.json`.
  *
- * A second project, seeded the same way, first gets a text answer on every
- * open question whose subject is neither a relation nor a placement (S5a:
- * those reach no agent before S7): its claims must equal the first
- * project's.
+ * A second project, seeded the same way, first gets a note and an outside
+ * mark on every open question whose subject is neither a relation nor a
+ * placement (S5a, S5c-1: those reach no agent before S7), the mark through
+ * the actions route where the item offers it and through the sheet's
+ * „Liegt außerhalb der Landschaft“ elsewhere: its claims must equal the
+ * first project's.
  */
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
@@ -107,24 +109,39 @@ describe('claims of a seeded project without notes', () => {
     );
   }, 180_000);
 
-  it('stay byte-identical with text answers on the open questions', async () => {
+  it('stay byte-identical with notes and outside marks on the open questions', async () => {
     expect(Object.keys(golden).length).toBeGreaterThan(0);
-    // The same landscape with a text answer on every question about neither a relation
-    // nor a placement (findings, chain findings and signals on a seeded project).
+    // The same landscape with a note and an outside mark on every question about neither
+    // a relation nor a placement (findings, chain findings and signals on a seeded project).
     await seed('answered');
-    const page = (await (
-      await owner('/api/v1/projects/answered/open-questions?limit=200')
-    ).json()) as OpenQuestionPage;
+    const base = '/api/v1/projects/answered/open-questions';
+    const page = (await (await owner(`${base}?limit=200`)).json()) as OpenQuestionPage;
     const subjects = page.items.filter(
       (q) => q.subject.type !== 'relation' && q.subject.type !== 'placement',
     );
     expect(subjects.length).toBeGreaterThan(50);
-    const res = await post(owner, '/api/v1/projects/answered/open-questions/answers', {
+    const notes = await post(owner, `${base}/answers`, {
       rows: subjects.map((q) => ({ id: q.id, text: `Antwort zu ${q.subjectLabel}`, kind: '' })),
     });
-    expect(res.status).toBe(200);
+    expect(notes.status).toBe(200);
+    // The one-click mark where the item offers it, S5a's sheet column elsewhere.
+    const clickable = subjects.filter((q) => q.actions.some((a) => a.type === 'outside'));
+    expect(clickable.length).toBeGreaterThan(0);
+    for (const q of clickable) {
+      expect((await post(owner, `${base}/${q.id}/actions`, { type: 'outside' })).status).toBe(201);
+    }
+    const marks = await post(owner, `${base}/answers`, {
+      rows: subjects
+        .filter((q) => !clickable.includes(q))
+        .map((q) => ({
+          id: q.id,
+          text: `Außerhalb: ${q.subjectLabel}`,
+          kind: 'Liegt außerhalb der Landschaft',
+        })),
+    });
+    expect(marks.status).toBe(200);
     const after = (await (
-      await owner('/api/v1/projects/answered/open-questions?state=answered&limit=200')
+      await owner(`${base}?state=answered&limit=200`)
     ).json()) as OpenQuestionPage;
     expect(after.total).toBe(subjects.length);
     expect(await claimDigests('answered', keys)).toEqual(golden);

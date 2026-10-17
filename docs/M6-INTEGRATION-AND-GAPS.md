@@ -193,9 +193,19 @@ on 2026-10-17 in short form, and CONCEPT §11 notes it. The full records:
     Element existiert“: a field the tool changed since is not overwritten but asked about
     (`value-changed`), and a value the tool took over counts as carried over („im Quellsystem
     übernommen“) and is not written again (§4.8 c). It leaves process ids out of the first
-    amendments and adds process documentation, which the option text did not list. §10.9 asks the
-    owner to confirm the fields, the 24.2 extension and the refinement; S5c-2 waits for the answer,
-    S5c-1 does not.
+    amendments and adds process documentation, which the option text did not list. §10.9 asked
+    the owner to confirm the fields, the 24.2 extension, the refinement and the treatment of
+    linked diagrams. **Owner answers 2026-10-17** (AskUserQuestion, each the recommended option):
+    1. **Fields:** „Ohne Prozess-ID, mit Doku (Empfohlen)“: call target, message name, start/end
+       name and the documentation of a process that has none; „Gültige Kopie wählen“ for
+       duplicate process ids, the rename stays in the tool.
+    2. **Amended call targets:** „Ja, gilt als modelliert (Empfohlen)“: extends decision 24.2 as
+       §3.10 "Added with decision 25" says.
+    3. **Re-import:** „Nicht überschreiben (Empfohlen)“: a field the tool changed since becomes
+       „Ergänzung nicht mehr anwendbar“, a value the tool took over counts as carried over.
+    4. **Linked diagrams:** „Erst verknüpfen, Umbau später (Empfohlen)“: „Verknüpfen mit …“ from
+       the model view now (S5c-1), the conversion operation once a real or sandbox export
+       confirms the shape (§6, §10.4).
 
 ## 3. Part A: Integration toolkit
 
@@ -627,7 +637,7 @@ The owner agreed with option (a) for older revisions and with the decision-19 ex
 (decision 24.2). It ships as S2c; until then §3.9's renderer rule and the
 consultant-runs-the-import rule limit the risk.
 
-**Added with decision 25 (2026-10-17; extends decision 24.2; the owner may overrule, §10.9).**
+**Added with decision 25 (2026-10-17; extends decision 24.2; confirmed by the owner 2026-10-17, decision 25.2).**
 A call target set by a model amendment (S5c-2, §4.8 c) was picked by a human from the
 landscape's processes, so such a call counts as modelled whatever the class of the uploaded
 revision, and the rule tier keeps accepting it; the amended revision's other calls keep the class
@@ -997,7 +1007,7 @@ call of a CMMN case (`camunda:caseRef`, no `calledElement`) also arrives as „A
 | `unresolved-link` „Link nicht auflösbar“ | `fix-link` „Link korrigieren“: the chain page at the step (`?step=`) with its link editor | – | the chain save with its dry run and `If-Match` (existing, M4 S3) | the finding goes with the save |
 | `external-partner` „Externer Partner?“ (no-link coded `collaboration`) | `outside` „Liegt außerhalb der Landschaft“ | `link` „Verknüpfen mit …“ | an answer row; as for `link` above | `answered`; R1 |
 | `summary-note`, `descriptive-model` (informational) | none | – | – | with their source (a newer submission, a new revision) |
-| `unjudged` „Paare ohne Urteil“ | `requeue` „Erneut einplanen“ | `link` „Paar verknüpfen …“ (`pick: 'pair'`: one of the listed pairs) | `requeueAnalyses` for the analysed model (existing, permission `write`); as for `link` above | when every listed pair has a current judgement or a settling decision (existing rule, `submissionQuestions`) |
+| `unjudged` „Paare ohne Urteil“ | `requeue` „Erneut einplanen“ | `link` „Paar verknüpfen …“ (`pick: 'pair'`: one of the listed pairs) | `requeueAnalyses` for the analysed model (existing, permission `write`); as for `link` above | when every listed pair has a current judgement or a settling decision (existing rule, `submissionQuestions`), or (S5c-1) an accepted relation of any type between its two refs, so a manual link from „Paar verknüpfen …“ answers its pair |
 | `black-box-partner` „Pool ohne Prozess“ | `outside`, next to „Im Modell zeigen“ (the model view at `?element=<box>`, where the canvas highlights and names the pool) | `link` „Verknüpfen mit …“ (process picker): one relation per anchor of the box's flows (below), directed like its flow, in one transaction; offered while at least one anchor exists | an answer row; as for `link` above, per anchor | `answered`; R1 |
 | `unlabelled-boundary` „Start oder Ende ohne Namen“ | `amend` `event-name` „Namen eintragen …“, one target per unnamed none start or end event of the process (S5c-2; in S5c-1 only the note) | – | the amendment | the facts change |
 | `message-without-name` (off since S4, reserved) | `amend` `message-name` (S5c-2) | `link`, `outside` | as for `message-partner-missing` | the facts change |
@@ -1022,7 +1032,12 @@ endpoint fits.
 `call-target-dynamic`, `external-partner` or `black-box-partner` item once each of its anchors
 (the call, the coded end, the anchors of the box's flows) has an accepted relation of any type to
 a ref in another process (the rule `acceptManual` applies), decided by a human, an owner's rule
-or the rule tier. An agent's proposal does not count until a human or an owner's rule accepts
+or the rule tier. The relation counts in the direction a `link` writes (S5c-1's review round):
+leaving the call; leaving the coded end, or arriving at it when it only catches; along each of
+the box's flows (leaving the anchor of a flow to the box, arriving at the anchor of a flow from
+it); and a `call` never answers a pool or an external partner, since an accepted call into the
+process a pool's flow falls back to (decision 9 accepts unique calls at ingest) says nothing about
+the flow's partner. The pickers' suggestions and `link` follow the same rule. An agent's proposal does not count until a human or an owner's rule accepts
 it. R1 lives in the read model only; `visibleFindings`, „Befunde“ and the claim inputs'
 `findings` stay as they are (frozen for the live runs, §7). `message-partner-missing` and
 `isolated-process` already end with a relation (above). On the seeded projects of S4 no human or
@@ -1051,7 +1066,11 @@ proposal; an agent's proposal), `decideRelation` accepts that relation as the hu
 would leave it open); otherwise `acceptManual` writes a `manual` relation, accepted at once, the
 rationale German and from code: „Aus „Offene Fragen“: <Art> – <Frage, gekürzt>“, plus the note.
 The pickers list the targets of such live relations first, under „Vorgeschlagen“ (the action's
-`suggested`). It also delegates to `acceptManualPlacement` (rationale likewise), the bulk
+`suggested`). For a process picker the target is the process of the relation's other end, and a
+link to it accepts every live typed relation from the anchor (in the link's direction, R1) into
+that process; the action's `proposals` name them per target, so the picker's preview says which
+proposals it accepts, and its `exclude` names the anchors' processes, which a link would join to
+themselves (S5c-1's review round). It also delegates to `acceptManualPlacement` (rationale likewise), the bulk
 decision of `decideRelations` (all or nothing) and the answer row. It answers `{question:
 OpenQuestion | null, relations, placements, answer}`, the relations and placements it wrote or
 decided (for the undo below), with `question` null when the item is gone. `decide` uses the
@@ -1067,7 +1086,9 @@ relation, which today's safeguard `competing-call` does not see: it counts relat
 `human-involved` checks the same relation only. An owner's rule could then accept an agent's
 `call` proposal C → Q after a human linked C → P, and the call would have two accepted targets
 that nobody compared. S5c-1 counts accepted or held `manual` relations leaving a `call` element as
-competing calls, in the write paths, apply and the „Regeln“ preview. This tightens decision 19's
+competing calls, in the write paths, apply and the „Regeln“ preview (as delivered: only a manual
+relation to another target than the agent's call, since an agreeing link is no second target; the
+owner confirms this reading, HANDOFF §8, §8 "S5c-1 as delivered"). This tightens decision 19's
 agreed design („a call has one target“, never over a human decision) without changing it; live-run
 projects have no rules, and the `eval:replay` what-if (`eval/tools/src/auto-accept-whatif.ts`,
 its own code over recordings without human links) does not see it.
@@ -1179,7 +1200,8 @@ until re-anchoring, R2, ADR-0001), lets callers that meant it resolve to the oth
 decision 9 accepts them unseen, and needs an id rewrite across the file instead of one attribute.
 The duplicate gets „Gültige Kopie wählen“ instead (a); the rename belongs in the tool. Also not
 in v1: names of tasks, lanes and pools, message flows, deleting or adding elements. The owner's
-option text named „Prozess-ID“ and did not name documentation; §10.9 asks.
+option text named „Prozess-ID“ and did not name documentation; the owner confirmed both on
+2026-10-17 (decision 25.1, §10.9).
 
 **Collapsed subprocesses are not call activities.** In Signavio-style exports a link to another
 diagram is a collapsed `subProcess` with vendor metadata (`signavio:signavioMetaData
@@ -1188,8 +1210,9 @@ metaKey="linkedmodel"`, the synthetic fixture
 to verify, `plugins/analyzr-integrate/reference/signavio.md`) and no `calledElement`. Facts v1
 make no fact for it, so it raises no question and `call-target` cannot reach it: „Aufrufziel/Key“
 in v1 means call activities and leaves out the main call shape of descriptive exports
-(`eval:descriptive`: calls 9/9 → 0/9 from `descriptive` on, §3.11). Until the owner chooses
-(§10.9), the model view links such an element with „Verknüpfen mit …“ from its process (§4.8 a).
+(`eval:descriptive`: calls 9/9 → 0/9 from `descriptive` on, §3.11). As the owner chose
+(decision 25.4, §10.9), the model view links such an element with „Verknüpfen mit …“ from its
+process (§4.8 a, S5c-1); the conversion into a call activity waits for a real export (§6).
 
 **Storage.** Two append-only tables (migration 0015 generated, 0016 the triggers), with the
 `no_link`/`no_link_withdrawal` pattern:
@@ -1561,9 +1584,9 @@ draft (after the owner's rated draft run, M4b) are later work.
   CONCEPT principle 3 and §4 carry a forward note since decision 25; S5c-2's docs pass rewrites
   the places (§8 "S5c-2").
 - **Decision 9 as amended by 24.2 (S2c):** a unique static call in a derived revision is
-  proposed, not accepted; until S2c ships, decision 9 holds unchanged. Decision 25 adds, for the
-  owner to confirm (§10.9), that a call target a human set by amendment counts as modelled, so the
-  rule tier keeps accepting it (§3.10). **Decision 8:** stages are fixed.
+  proposed, not accepted; until S2c ships, decision 9 holds unchanged. Decision 25.2 adds
+  (confirmed by the owner 2026-10-17) that a call target a human set by amendment counts as
+  modelled, so the rule tier keeps accepting it (§3.10). **Decision 8:** stages are fixed.
   **Decision 10:** no assignee. **Decisions 4 and 5:** agents propose and draft, humans decide, no
   LLM credentials. This concept adds: the consultant runs every import (§3.1; not enforced by the
   policy, which lets any `analyzr:write` token ingest, §10.1), and every skill also ships as a
@@ -1627,8 +1650,8 @@ S6; after the owner's live runs S5b, S7 and facts v2 (§6, the reindex with judg
 first). S5c-1 comes first because it needs no BPMN writing and makes most items actionable at
 once with use cases that exist; S5c-2 follows because S2 builds on its revision shape (S2a's
 provenance follows `source.upstream`, S2b's `importImpact` plans amendments, S2c's trust rule
-reads the amended calls; §3.3, §3.10, "S2" below). S5c-2 starts once the owner has answered
-§10.9; S5c-1 does not wait for it.
+reads the amended calls; §3.3, §3.10, "S2" below). The owner answered §10.9 on 2026-10-17
+(decision 25.1–25.4), so S5c-2 follows S5c-1 directly.
 
 About seven weeks of agent work, plus the owner's runs; S5c adds about 12.5 days. Every slice runs
 all gates (AGENTS.md) before it is called done and records deviations here as "S<n> as
@@ -1832,8 +1855,8 @@ uploaded revisions only and its readers (`external-ids`, „Herkunft“, `extern
 follow an amended head's `source.upstream`; S2b's `importImpact` plans the re-application of live
 amendments per file with S5c-2's `planAmendments` (applied, in the source, conflicts) and computes
 the impact against the would-be amended head; S2c classifies an amended head by its uploaded
-revision and treats its applied `call-target` amendments as modelled (§3.10, pending the owner's
-confirmation, §10.9), and option (a)'s list leaves their calls out. Does not touch: facts, the claim
+revision and treats its applied `call-target` amendments as modelled (§3.10, decision 25.2),
+and option (a)'s list leaves their calls out. Does not touch: facts, the claim
 input, MCP (`RevisionSource` appears in no MCP output schema), procedures. Done when: provenance
 round trips through PUT, import and the web; a manifest's pinned keys win over paths; a checksum
 mismatch gives `manifest-sha-mismatch` and the file is imported; `external-id-moved` and
@@ -2353,8 +2376,94 @@ tools, prompts and snapshots, recordings and reports. Done when:
   subject that is neither a relation nor a placement; MCP snapshots, recordings, `eval:replay`
   and every report unchanged; all gates green.
 
-**S5c-2 "Model amendments"** (decision 25; live-run neutral; may land before the live runs;
-starts once the owner has answered §10.9). Scope: §4.8 c: `applyAmendments`, `readAmendable`
+**S5c-1 as delivered** (2026-10-17, branch `feat/integration-and-gaps`; every gate green, with a review round's fixes): `OpenQuestionAction` and
+`OpenQuestion.actions` in the contracts (labels in `@analyzr/contracts/open-question-labels`),
+the pure `apps/server/src/domain/open-questions/actions.ts` (`actionsFor`, R1, R1b, what a `link`
+writes or accepts, the rationales), items versioned by what they ask about (§4.2), `answered` as
+a live outside mark with `role` (`note` or `outside-mark`) and `withdrawal` on every answer, the
+routes `POST …/open-questions/{q}/actions` and `…/answers/{a}/withdrawal`, migrations 0013
+(generated: the relaxed check, the unique `(project_id, id)`, `open_question_answer_withdrawal`)
+and 0014 (its append-only and no-truncate triggers), `competing-call` counting manual relations
+from a call element in the write paths, apply and the preview, `AnswerOpenQuestionBody` without
+`kind`, the five-column CSV with S5a sheets still read, the client regenerated, the action row in
+the tab and the model view's section (pickers with „Vorgeschlagen“, the review's decision panels
+inline, the one-click outside mark, „Rückgängig“, „Im Modell zeigen“, „Notiz hinzufügen“),
+„Verknüpfen mit …“ on a collapsed subprocess, and `analyzr questions outside|link|place` with the
+list's primary action and suggested targets. The seeded dev project still lists 64 items (R1b
+keeps its duplicate: calls towards the copies wait). Live-run neutral: the claims of a seeded
+project are byte-identical before and after an outside mark on every subject that is neither a
+relation nor a placement (`claim-golden.test.ts`); no BPMN byte, fact, `FACTS_VERSION`,
+`visibleFindings`, `FindingKind`, claim input format, procedure, plugin, judgement basis,
+queueing, MCP tool, prompt or snapshot, recording or report changed.
+
+Deviations from §4.8 and choices the spec left open (after the review round):
+
+- **R1 counts by direction, and never a `call` for a pool or an external partner** (recorded in
+  §4.8 a "R1"). The literal "an accepted relation of any type" let an accepted rule-tier call into
+  the process a pool's flow falls back to hide the pool, and a manual relation into a call
+  activity hide its call target question. R1, the pickers' suggestions and `link` share one rule
+  (`answersAt`).
+- **A process picker's suggestion is a promise the link keeps.** The suggested target of a process
+  picker is the process of a live proposal's other end; a link to it accepts every live typed
+  relation from the anchor (in the link's direction) into that process instead of writing a
+  manual relation next to it. The action carries them as `proposals` (target, relation, type,
+  ends), so the preview names each („nimmt den Vorschlag „A“ → „B“ an“) and `analyzr questions
+  list` prints them under the suggestion; it carries `exclude`, the processes of the anchors, so
+  a pool's picker no longer offers the process that holds its flows (a link there was refused as
+  `same-process`, now said in German with the names).
+- **An `unjudged` pair counts as answered by an accepted relation of any type between its refs**
+  (§4.8 a's table): a manual relation from „Paar verknüpfen …“ settles only its own pair key, so
+  the pair stayed listed and a second click was `unchanged`. Read model only; judge-once still
+  assigns the typed pair.
+- **`place` on the step and process of an agent's proposal or a hold decides it.**
+  `acceptManualPlacement` accepts an existing placement with that natural key; the action reports
+  it as effect `decision` (no „Rückgängig“, which would have rejected the agent's proposal; the
+  toast leads to the placement on the chain page), as it does for accepted relation proposals.
+  `choose-copy`'s placements on `@outside` follow the same rule.
+- **`competing-call` counts a manual relation only to another target.** §4.8 a and §7 record
+  „accepted or held `manual` relations leaving a `call` element“; the code leaves out a manual
+  relation to the same target as the call (an agreeing link is no second target, decision 19's
+  „a call has one target“), so an owner's rule may still accept an agent's call that agrees with
+  the human's link, and the „Regeln“ preview counts a human's later manual link to another target
+  as a correction of the call. CONCEPT §3 step 5 says so; HANDOFF §8 asks the owner to confirm
+  this reading.
+- **„Rückgängig“ is all or nothing**: the relations a link wrote (a pool's anchors, a dynamic
+  call's targets) are rejected in one bulk decision with their versions (`decideRelations`), the
+  placement through `decidePlacement`.
+- **„Link korrigieren“ opens the chain page at the step in view mode**, where the step's link
+  shows as „nicht auflösbar“; its link editor is one click away in edit mode („Bearbeiten“), as
+  every chain edit is (§4.8 a said "with its link editor").
+- **The CLI names the places to undo or change**: each manual relation and each decided proposal
+  as the review screen's URL on the server's origin, a placement as the chain page's
+  `?placement=` URL; the web toast for a decided placement leads to the chain page.
+- **Note-only kinds** (`unlabelled-boundary`, `undocumented-process` until S5c-2) say that the
+  next import of the completed model ends them, not „ihre Aktion“; the tab's intro says „Die
+  meisten Fragen haben eine Aktion …“.
+- **Panels and forms**: the `decide` panel takes the focus and closes with Escape or „Abbrechen“
+  (focus back on its opener) like the pickers; „Verknüpfen mit …“ on a collapsed subprocess keeps
+  its button (`aria-expanded`, `aria-controls`), returns the focus to it and starts closed for
+  another element; the dynamic call's multi-select says when it shows only the first 60 matches;
+  the copy note and the subprocess note have the live personal-data warning, and an action's
+  toast names what the check found in its note.
+- **Not done**: the place pickers still list the process or step of a proposal waiting there
+  (picking it decides that proposal, reported as above).
+
+Verified (2026-10-17, after the review round, and again by a separate gate pass on the final
+tree): every gate (`pnpm format:check`, `pnpm -r typecheck`, `pnpm -r lint` with
+dependency-cruiser, `pnpm -r test` with Testcontainers, `pnpm eval:candidates`, `pnpm
+eval:replay`, `pnpm eval:placements`, `pnpm eval:descriptive`; `git diff --stat eval/reports`
+empty; MCP snapshots unchanged; the gate pass fixed one type error in the CLI e2e test's own
+types, nothing in the code); the entry chunk 208.0 KB gzip (ceiling 240 KB); Playwright in
+Chromium against a server run from source on a scratch PostgreSQL: `open-questions.spec.ts` 21
+passed (every action type in the tab, also „Link korrigieren“ and a requeue the flow now always
+has, and in the model view's section, where steps' items never show), the whole suite 67 passed
+and 21 skipped; `demo.spec.ts` 14 passed against a scratch demo image built from the tree (no
+action on the demo) ([DEVELOPMENT.md](DEVELOPMENT.md) "M6 S5c-1 (2026-10-17)"). Not checked:
+other browsers than Chromium, screen readers, 0013/0014 on a database that already holds S5a
+answers.
+
+**S5c-2 "Model amendments"** (decision 25 with the owner's answers 25.1–25.4 of 2026-10-17;
+live-run neutral; may land before the live runs). Scope: §4.8 c: `applyAmendments`, `readAmendable`
 and their checks in `@analyzr/bpmn-facts` (`src/amend.ts`), `AnalysisPort.amend` and
 `AnalysisPort.readAmendable`; `model_amendment` and `model_amendment_withdrawal` (migrations 0015
 with the unique constraints, 0016; typed id `mam_`); the amended revision (`RevisionSource.kind`
@@ -2471,8 +2580,8 @@ takes the tool's value; the tool's documentation always wins; amendments stay li
 model's deletion, which writes no revision; amendment writes need `review` and `write`; the cost
 is shown before every save; a manual link that an amendment's call or accepted message replaces is
 retired; no new MCP tool, and agents see amended heads like any revision; S5c-1 before S5c-2, both
-before S2. The v1 fields, the 24.2 extension and the re-import refinement are the owner's to
-confirm (§10.9), not taken here.
+before S2. The v1 fields, the 24.2 extension, the re-import refinement and the treatment of
+linked diagrams are the owner's (decision 25.1–25.4, §10.9), not taken here.
 
 ## 9. Out of scope
 
@@ -2541,8 +2650,9 @@ write-back or sync to the source tools (decision 7).
    only (precedents `tools/notices`, `apps/agent-sim`, `apps/demo`). Recommendation: confirm that
    reading. Otherwise S3b ships `inspect` alone as a dependency-free script and `normalize-bpmn`
    waits for an exception. S3b needs the answer.
-9. **Model amendments (decision 25.1): four points to confirm before S5c-2.** S5c-1 does not
-   wait for the answers.
+9. **Model amendments: four points to confirm before S5c-2. Decided 2026-10-17, each as
+   recommended (decision 25.1–25.4, §2):** „Ohne Prozess-ID, mit Doku“, „Ja, gilt als
+   modelliert“, „Nicht überschreiben“, „Erst verknüpfen, Umbau später“. The questions as asked:
    1. **The fields.** Your chosen option named „Aufrufziel/Key, Nachrichtenname, Start/Ende-Name,
       Prozess-ID“. This concept (§4.8 c) leaves the process id out and adds the documentation of
       a process that has none. Process id: it is the anchor of every relation and placement at

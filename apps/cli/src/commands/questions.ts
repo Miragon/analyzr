@@ -1,19 +1,24 @@
 /**
- * `analyzr questions` (M6 S4, §4.4): the open questions of a project, the
- * gaps that block links and placements, with any credential that has `read`.
+ * `analyzr questions` (M6 S4, §4.4; actions since S5c-1, §4.8 a): the open
+ * questions of a project, the gaps that block links and placements, with any
+ * credential that has `read`.
  *
  * - **text** (default) and **json** page through `GET …/open-questions` in
  *   list order (questions, then value chain findings, then informational
  *   items, each by `unlocks` descending): text prints one line per question
- *   (id, unlocks, kind, first model key, subject and question, the kind key
- *   and the texts as the server returns them, line breaks folded, `[answered]`
- *   after an answered one) and a count by kind; json prints every item.
- *   `analyzr questions list` is the same command; answers are recorded by
- *   `analyzr questions answer` (`questions-answer.ts`).
+ *   (id, unlocks, kind, first model key, the primary action's German label
+ *   and type, subject and question, the kind key and the texts as the server
+ *   returns them, line breaks folded, `[answered: outside the landscape]`
+ *   after a marked one), under it a line per action with the targets a live
+ *   proposal already names (the process name, from `GET …/landscape`, and
+ *   the ref), and a count by kind; json prints every item.
+ *   `analyzr questions list` is the same command; notes are recorded by
+ *   `analyzr questions answer` (`questions-answer.ts`), the actions by
+ *   `analyzr questions outside|link|place` (`questions-act.ts`).
  * - **md** and **csv** fetch `GET …/open-questions/export` and write its bytes
  *   verbatim: the Markdown grouped by contact hint, the CSV with its byte
- *   order mark and the answer columns for the customer (empty, or an
- *   answered item's latest answer and its kind).
+ *   order mark and the column `Antwort` for the customer (empty, or the
+ *   item's latest note).
  *
  * `--model` (a model key or folder), `--kind`, `--source`, `--ask-who` (a
  * lane, a step owner or a folder, exactly) and `--state` are the server's
@@ -22,7 +27,13 @@
 import { writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
-import { exportOpenQuestions, listOpenQuestions, type OpenQuestion } from '@analyzr/client';
+import {
+  exportOpenQuestions,
+  getLandscape,
+  listOpenQuestions,
+  type OpenQuestion,
+  type OpenQuestionAction,
+} from '@analyzr/client';
 import {
   MAX_ASK_WHO_FILTER_CHARS,
   MAX_PAGE_LIMIT,
@@ -51,7 +62,7 @@ export interface QuestionsOptions extends CredentialOptions {
   source?: string;
   /** A lane, a step owner or a folder, exactly (the contact hint). */
   askWho?: string;
-  /** `open` or `answered`. */
+  /** `open` or `answered` (a live outside mark). */
   state?: string;
   /** `text` (default), `md` (also `markdown`), `csv` or `json`. */
   format?: string;
@@ -146,6 +157,73 @@ export async function allQuestions(
   return items;
 }
 
+/**
+ * The current open question with this id: the pages of `GET
+ * …/open-questions` until it turns up (there is no route for one item).
+ *
+ * @throws {CliError} when no current item has the id (its id changes when
+ *   what it asks about changes)
+ */
+export async function findQuestion(api: Api, project: string, id: string): Promise<OpenQuestion> {
+  let cursor: string | undefined;
+  do {
+    const page = await call(
+      api,
+      `list the open questions of ${project}`,
+      listOpenQuestions({
+        client: api.client,
+        path: { project },
+        query: { limit: MAX_PAGE_LIMIT, ...(cursor === undefined ? {} : { cursor }) },
+      }),
+    );
+    const found = page.items.find((q) => q.id === id);
+    if (found) return found;
+    cursor = page.nextCursor ?? undefined;
+  } while (cursor !== undefined);
+  throw new CliError(
+    `${id} is no current open question of ${project}: a wrong id, or what it asks about changed, which changes the id; list them again with analyzr questions -p ${project}`,
+  );
+}
+
+/** A process as the server names it: its name, else its pool's name, else its id. */
+export interface ProcessEntry {
+  ref: string;
+  name: string;
+  modelKey: string;
+}
+
+/** The processes of the live models and their model keys (`GET …/landscape`). */
+export interface LandscapeProcesses {
+  processes: ProcessEntry[];
+  /** Every live model key, also of models without a process. */
+  modelKeys: Set<string>;
+}
+
+/** The processes of the project's live models, named as the server names them. */
+export async function landscapeProcesses(api: Api, project: string): Promise<LandscapeProcesses> {
+  const landscape = await call(
+    api,
+    `read the landscape of ${project}`,
+    getLandscape({ client: api.client, path: { project } }),
+  );
+  return {
+    processes: landscape.models.flatMap((m) =>
+      m.processes.map((p) => ({
+        ref: p.ref,
+        name: p.name ?? p.participantName ?? p.processId,
+        modelKey: m.key,
+      })),
+    ),
+    modelKeys: new Set(landscape.models.map((m) => m.key)),
+  };
+}
+
+/** `„Name“ (ref)` for a known process, else the ref alone (an element, a process not in the head). */
+export function targetLabel(ref: string, names: ReadonlyMap<string, string>): string {
+  const name = names.get(ref);
+  return name === undefined ? ref : `„${oneLine(name)}“ (${ref})`;
+}
+
 /** Text on one line: line breaks, tabs and other control characters become one space. */
 export function oneLine(text: string): string {
   return text.replace(/[\s\p{Cc}]+/gu, ' ').trim();
@@ -158,34 +236,85 @@ function modelColumn(q: OpenQuestion): string {
   return rest.length === 0 ? first : `${first} +${rest.length}`;
 }
 
+/** The primary action as the table shows it: its German label and its type; `-` for none. */
+export function primaryAction(q: Pick<OpenQuestion, 'actions'>): string {
+  const primary = q.actions.find((a) => a.primary);
+  return primary === undefined ? '-' : `${oneLine(primary.label)} (${primary.type})`;
+}
+
+/** The actions whose targets a live proposal already names (the pickers' „Vorgeschlagen“). */
+function withSuggestions(q: OpenQuestion): (OpenQuestionAction & { suggested: string[] })[] {
+  return q.actions.filter(
+    (a): a is OpenQuestionAction & { suggested: string[] } => (a.suggested?.length ?? 0) > 0,
+  );
+}
+
+/** Whether any item names suggested targets (then the table wants the process names). */
+export function hasSuggestions(items: readonly OpenQuestion[]): boolean {
+  return items.some((q) => withSuggestions(q).length > 0);
+}
+
+/** The marker after a question with a live outside mark (state `answered`). */
+const ANSWERED = '  [answered: outside the landscape]';
+
 /**
  * One line per question under a header: id, unlocks (the open decisions it
- * touches), kind, model, then subject and question (`[answered]` after an
- * answered one); columns aligned.
+ * touches), kind, model, the primary action, then subject and question
+ * (`[answered: outside the landscape]` after a marked one); columns aligned.
+ * Under a question, one line per action with suggested targets, each as
+ * `„Name“ (ref)` where `names` knows the process, else its ref, and below
+ * it the proposals a link to each target accepts.
  */
-export function formatQuestions(items: readonly OpenQuestion[]): string[] {
+export function formatQuestions(
+  items: readonly OpenQuestion[],
+  names: ReadonlyMap<string, string> = new Map(),
+): string[] {
   const rows = [
-    { id: 'id', unlocks: 'unlocks', kind: 'kind', model: 'model', question: 'subject: question' },
+    {
+      id: 'id',
+      unlocks: 'unlocks',
+      kind: 'kind',
+      model: 'model',
+      action: 'action',
+      question: 'subject: question',
+      suggestions: [] as string[],
+    },
     ...items.map((q) => ({
       id: q.id,
       unlocks: String(q.unlocks),
       kind: q.kind,
       model: modelColumn(q),
-      question: `${oneLine(q.subjectLabel)}: ${oneLine(q.text)}${q.state === 'answered' ? '  [answered]' : ''}`,
+      action: primaryAction(q),
+      question: `${oneLine(q.subjectLabel)}: ${oneLine(q.text)}${q.state === 'answered' ? ANSWERED : ''}`,
+      suggestions: withSuggestions(q).flatMap((a) => [
+        `      suggested for ${a.type}: ${a.suggested.map((ref) => targetLabel(ref, names)).join(', ')}`,
+        // What linking a suggested target accepts instead of writing a manual relation.
+        ...(a.proposals ?? []).map(
+          (p) =>
+            `        ${p.target}: accepts the ${p.type} proposal ${p.from} → ${p.to} (${p.relation})`,
+        ),
+      ]),
     })),
   ];
-  const width = (k: 'id' | 'unlocks' | 'kind' | 'model') =>
+  const width = (k: 'id' | 'unlocks' | 'kind' | 'model' | 'action') =>
     Math.max(...rows.map((r) => r[k].length));
-  const [id, unlocks, kind, model] = [width('id'), width('unlocks'), width('kind'), width('model')];
-  return rows.map(
-    (r) =>
-      `  ${r.id.padEnd(id)}  ${r.unlocks.padStart(unlocks)}  ${r.kind.padEnd(kind)}  ${r.model.padEnd(model)}  ${r.question}`,
-  );
+  const [id, unlocks, kind, model, action] = [
+    width('id'),
+    width('unlocks'),
+    width('kind'),
+    width('model'),
+    width('action'),
+  ];
+  return rows.flatMap((r) => [
+    `  ${r.id.padEnd(id)}  ${r.unlocks.padStart(unlocks)}  ${r.kind.padEnd(kind)}  ${r.model.padEnd(model)}  ${r.action.padEnd(action)}  ${r.question}`,
+    ...r.suggestions,
+  ]);
 }
 
 /**
  * `vc-seed: 3 open questions (black-box-partner 2, call-target-unknown 1)`:
- * by count, then kind; `…, 1 answered` when answers are recorded.
+ * by count, then kind; `…, 1 answered (outside the landscape)` when a live
+ * outside mark answers one.
  */
 export function summarizeQuestions(where: string, items: readonly OpenQuestion[]): string {
   const byKind = new Map<string, number>();
@@ -195,7 +324,7 @@ export function summarizeQuestions(where: string, items: readonly OpenQuestion[]
     .map(([k, n]) => `${k} ${n}`);
   const count = `${items.length} open question${items.length === 1 ? '' : 's'}`;
   const answered = items.filter((q) => q.state === 'answered').length;
-  return `${where}: ${count}${kinds.length === 0 ? '' : ` (${kinds.join(', ')})`}${answered === 0 ? '' : `, ${answered} answered`}`;
+  return `${where}: ${count}${kinds.length === 0 ? '' : ` (${kinds.join(', ')})`}${answered === 0 ? '' : `, ${answered} answered (outside the landscape)`}`;
 }
 
 /** The project and the filters for messages: `p (kind held, model finanzen)`. */
@@ -252,7 +381,14 @@ export async function questionsCommand(io: CliIo, opts: QuestionsOptions): Promi
     const where = scope(opts.project, filter);
     if (format === 'json') text = `${JSON.stringify(items, null, 2)}\n`;
     else if (items.length === 0) text = `no open questions in ${where}\n`;
-    else text = [...formatQuestions(items), summarizeQuestions(where, items), ''].join('\n');
+    else {
+      const names = hasSuggestions(items)
+        ? new Map(
+            (await landscapeProcesses(api, opts.project)).processes.map((p) => [p.ref, p.name]),
+          )
+        : new Map<string, string>();
+      text = [...formatQuestions(items, names), summarizeQuestions(where, items), ''].join('\n');
+    }
   }
 
   if (opts.output === undefined) {

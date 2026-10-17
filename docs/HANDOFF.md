@@ -85,10 +85,16 @@ and code are in English.
   an action (link, place, decide, „Liegt außerhalb der Landschaft“), text only as an optional
   note, and the consultant may fill in the fields a question names in the BPMN model (targeted
   amendments as amended revisions computed from the uploaded bytes, re-applied at every import,
-  exported as corrected BPMN and a change list; no modeler), now, before S2 (M6 §2, §4.8). Next per M6 §8's order: **S5c-1
-  "Actions"** (no BPMN writing), **S5c-2 "Model amendments"**, then S2 (provenance, manifest, dry
-  run) and the trust rule S2c, then S3c and S6; after the owner's live runs S5b, S7 and facts v2
-  as recommended (§7 "M6").
+  exported as corrected BPMN and a change list; no modeler), now, before S2 (M6 §2, §4.8).
+  **S5c-1 "Actions"** (done 2026-10-17 on the branch, with a
+  review round's fixes; M6 §8 "S5c-1 as delivered"): an action on every open question (link,
+  place, decide, choose the valid copy, the revocable outside mark, requeue, fix a step's link),
+  „Rückgängig“ after every manual relation, placement or mark an action wrote, notes without
+  kinds, the five-column CSV, `analyzr questions outside|link|place`; no BPMN writing; live-run
+  neutral; one refinement of decision 19's `competing-call` for the owner to confirm (§8). Next
+  per M6 §8's order: **S5c-2 "Model amendments"** (the owner answered M6 §10.9 on 2026-10-17), then
+  S2a/S2b (provenance, manifest, dry run) and the trust rule S2c, then S3c and S6; after the
+  owner's live runs S5b, S7 and facts v2 as recommended (§7 "M6").
 
 ## 2. Read in this order
 
@@ -255,11 +261,13 @@ and code are in English.
     source tool. The concept refines „while the element exists“: a field the tool changed since is
     not overwritten but asked about (`value-changed`), and a value the tool took over counts as
     carried over and is not written again. It also extends S2c's rule (decision 24.2): call
-    targets set by amendment count as modelled. Open, needed before S5c-2 (M6 §10.9): the fields of
-    v1 (without process ids, with missing process documentation), the 24.2 extension, the
-    re-import refinement, and how to treat Signavio's linked diagrams (collapsed subprocesses
-    without `calledElement`); the concept recommends yes, yes, keep, and a link from the model
-    view now with a conversion operation after a real export.
+    targets set by amendment count as modelled. **Answers 2026-10-17** (M6 §10.9, each the
+    recommended option): 25.1 the fields of v1 without process ids and with missing process
+    documentation („Ohne Prozess-ID, mit Doku“); 25.2 call targets set by amendment count as
+    modelled, extending 24.2 („Ja, gilt als modelliert“); 25.3 a field the tool changed is asked
+    about, not overwritten („Nicht überschreiben“); 25.4 Signavio's linked diagrams get a link
+    from the model view now and a conversion operation after a real export („Erst verknüpfen,
+    Umbau später“).
 
 **Taken during decision 20 by the implementing agent (the owner may overrule; details in
 DEVELOPMENT.md "Demo deployment (Fly.io)"):** the seed is made **while the image is built** and
@@ -377,7 +385,7 @@ overall, the holdout aggregate only with „< 5“ and a secondary suppression o
 
 | Path | Content |
 |---|---|
-| `packages/contracts` | zod schemas, API resources, OpenAPI 3.1 (contracts-first routes); zod-free subpaths the web may import (`paths` since M6 S1, `open-question-labels` since M6 S4, `open-question-csv` and `personal-data` since M6 S5a) |
+| `packages/contracts` | zod schemas, API resources, OpenAPI 3.1 (contracts-first routes); zod-free subpaths the web may import (`paths` since M6 S1, `open-question-labels` since M6 S4, `open-question-csv` and `personal-data` since M6 S5a; since M6 S5c-1 the labels also name the actions, states and answer roles, and `OpenQuestion.actions` and the action and withdrawal routes are in the API) |
 | `packages/client` | hey-api client generated from the OpenAPI document (drift test) |
 | `packages/bpmn-facts` | C7/C8 fact extraction, hostile-XML protection, `FACTS_VERSION` |
 | `packages/relations` | rule tier (unambiguous calls, key-tier proposals, findings), candidates for agents, `baseline-label/1`, pair assessor, and since M4 S2 `baseline-prefix/1` and the name-stem rule for placements (`placement.ts`) |
@@ -386,9 +394,9 @@ overall, the holdout aggregate only with „< 5“ and a secondary suppression o
 | `plugins/analyzr-integrate` | the second Claude Code plugin (M6 S3b, 0.1.0) for interactive, non-pipeline skills: `/analyzr-integrate:integrate-landscape <export> [--workspace <dir>]` turns a customer's BPMN 2.0 export into an import bundle `analyzr-import/1` and a German report in the consultant's workspace (keys pinned in `keymap.json`), never imports (the consultant does); reference notes per tool (unverified), the bundled scripts `inspect.mjs` and `normalize-bpmn.mjs` (generated) and their notices; a sha256 per plugin release in `tools/integrate/test/plugin.test.ts`; never loaded in live runs |
 | `tools/integrate` | `@analyzr/integrate` (M6 S3b, decision 24.8): the sources and tests of the integrate plugin's scripts (`inspect`, `normalize-bpmn` with `file`, `plan`, `bundle`, `inventory`), bundled by `pnpm --filter @analyzr/integrate generate` with a drift test; a synthetic Signavio-style export and its golden bundle, which the CLI and web tests import; imported by nothing in `apps/` or `packages/` |
 | `examples/agents` | reference setups: Claude Code (interactive and `run-headless.sh [--skill placements]`), Claude Desktop (configs + German start prompts for relations, placements and drafting a chain), Codex; documentation, not in the image |
-| `apps/server` | Hono server: domain (pure, dependency-cruiser enforced), Drizzle/PostgreSQL, REST `/api/v1`, MCP `/mcp` (stateless Streamable HTTP), local mode, agent tokens, pipeline, review; since M4 S1/S2 the value chain and placements (`src/domain/value-chain/`: storage, lifecycle, `prepareRevision`, rule proposals, findings; REST under `/value-chains`, six MCP tools; the web page since S3); since decision 19 the owner's auto-accept rules (`src/domain/auto-accept/`, seven owner-only routes and the ledger for every reviewer, no MCP); since M6 S4 the open questions (`src/domain/open-questions/`: one read model over findings, chain findings, holds, agents' questions, unsure verdicts, coded no-links, summaries and unjudged pairs plus the gap signals, computed on read; `GET …/open-questions` and `…/open-questions/export?format=markdown\|csv`, permission `read`; no MCP until S7); since M6 S5a the answers (the append-only `open_question_answer`, migrations 0011/0012; `POST …/open-questions/{q}/answers` and `…/open-questions/answers?dryRun=`, permission `review`, humans only; on a relation or placement a human note through the note use cases) |
-| `apps/cli` | `analyzr health / status / import / seed [--project --issue-tokens --token-name --value-chains] / models list\|requeue\|delete / questions [list] [--model --kind --source --ask-who --state --format text\|md\|csv\|json -o] / questions answer <id> --text [--kind] \| --from <csv> [--dry-run] / token create\|list\|revoke / value-chain push\|pull / rules list\|show\|add\|edit\|enable\|disable\|preview\|apply\|revoke / mcp` (stdio bridge) |
-| `apps/web` | projects, models, relations, findings, bpmn-js model view, upload, connect-an-agent, inbox, review screen; since M4 S3 the value chain page (`/projects/{key}/value-chain`: renderer viewer/modeler in a lazy chunk, placement review, save with dry run and conflict, drafts, link editing) and the step view; since decision 19 the tab „Regeln“ (auto-accept rules with live preview, apply, revoke) and the marks and filters of auto-accepted items in the review views; since M6 S4 the tab „Offene Fragen“ (every gap as a question, filters, Markdown and CSV export) and the model view's section of the same name, since M6 S5a with „Beantworten“ and „Antworten aus CSV übernehmen“ (a preview first) for reviewers |
+| `apps/server` | Hono server: domain (pure, dependency-cruiser enforced), Drizzle/PostgreSQL, REST `/api/v1`, MCP `/mcp` (stateless Streamable HTTP), local mode, agent tokens, pipeline, review; since M4 S1/S2 the value chain and placements (`src/domain/value-chain/`: storage, lifecycle, `prepareRevision`, rule proposals, findings; REST under `/value-chains`, six MCP tools; the web page since S3); since decision 19 the owner's auto-accept rules (`src/domain/auto-accept/`, seven owner-only routes and the ledger for every reviewer, no MCP); since M6 S4 the open questions (`src/domain/open-questions/`: one read model over findings, chain findings, holds, agents' questions, unsure verdicts, coded no-links, summaries and unjudged pairs plus the gap signals, computed on read; `GET …/open-questions` and `…/open-questions/export?format=markdown\|csv`, permission `read`; no MCP until S7); since M6 S5a the answers (the append-only `open_question_answer`, migrations 0011/0012; `POST …/open-questions/{q}/answers` and `…/open-questions/answers?dryRun=`, permission `review`, humans only; on a relation or placement a human note through the note use cases); since M6 S5c-1 the actions (`open-questions/actions.ts`, pure: each item's actions, R1 and R1b, what a link writes or accepts; `POST …/open-questions/{q}/actions` for link, place, choose copy and the outside mark, `…/answers/{a}/withdrawal`, permission `review`, humans only; the append-only `open_question_answer_withdrawal`, migrations 0013/0014; items versioned by what they ask about; the safeguard `competing-call` also counts a human's manual link from the call element to another target) |
+| `apps/cli` | `analyzr health / status / import / seed [--project --issue-tokens --token-name --value-chains] / models list\|requeue\|delete / questions [list] [--model --kind --source --ask-who --state --format text\|md\|csv\|json -o] / questions answer <id> --text \| --from <csv> [--dry-run] (notes; `--kind` refused since M6 S5c-1) / questions outside <id> [--note] [--undo <answer>] / questions link <id> --to <target>… \| --pair <from> <to> [--note] / questions place <id> --step <id>\|@outside \| --process <target> [--note] / token create\|list\|revoke / value-chain push\|pull / rules list\|show\|add\|edit\|enable\|disable\|preview\|apply\|revoke / mcp` (stdio bridge) |
+| `apps/web` | projects, models, relations, findings, bpmn-js model view, upload, connect-an-agent, inbox, review screen; since M4 S3 the value chain page (`/projects/{key}/value-chain`: renderer viewer/modeler in a lazy chunk, placement review, save with dry run and conflict, drafts, link editing) and the step view; since decision 19 the tab „Regeln“ (auto-accept rules with live preview, apply, revoke) and the marks and filters of auto-accepted items in the review views; since M6 S4 the tab „Offene Fragen“ (every gap as a question, filters, Markdown and CSV export) and the model view's section of the same name, since M6 S5a with „Antworten aus CSV übernehmen“ (a preview first) for reviewers, since M6 S5c-1 with an action on every question (pickers, inline decisions, the outside mark, „Rückgängig“) and „Notiz hinzufügen“ instead of S5a's „Beantworten“, and „Verknüpfen mit …“ on a collapsed subprocess in the model view |
 | `apps/agent-sim` | LLM-free reference agent that works the pipeline over MCP, both task kinds since M4 S5 |
 | `apps/demo` | `analyzr-demo seed\|serve\|check` (owner decision 20): seeds the read-only demo while its image is built, supervises PostgreSQL and the server in the container, checks a running demo from outside |
 | `eval/corpus` | test landscapes `nordwind-handel` (dev, 31 models, 17 C7/14 C8) and `stadtwerke-auental` (holdout, 26 models, 10 C7/16 C8) + `_sample`; every model deploys on Camunda 7.24.0 and 8.9.22 |
@@ -807,15 +815,17 @@ only), the append-only table `open_question_answer` (migrations 0011/0012); an a
 relation or placement is a human note through the existing note use cases (a held placement
 stays held, so its process is not due), every other answer keeps its text; claims of seeded
 projects pinned byte for byte. **Owner decision 25** (2026-10-17, §4) followed S5a: answer by
-action, amend the model where a question names a field, now and before S2 (M6 §4.8). **Next**,
-per M6 §8's order: **S5c-1 "Actions"** (about 4.5 d: an action on every open question from the
-server, the action route for link, place, choose copy and outside, a link accepting a live typed
-proposal before it writes a manual relation, items versioned by what they ask about so marks
-survive amendments elsewhere, the safeguard `competing-call` also counting manual relations from
-a call, the revocable outside mark with migrations 0013/0014, notes that no longer close items,
-the five-column CSV, the actions with undo in the tab and the model view,
-`analyzr questions outside|link|place`; no BPMN writing), then **S5c-2 "Model amendments"**
-(about 8 d: byte-preserving, deterministic `applyAmendments` in `@analyzr/bpmn-facts`,
+action, amend the model where a question names a field, now and before S2 (M6 §4.8). **S5c-1
+"Actions"** (**done 2026-10-17** on the branch, with a review
+round's fixes; M6 §8 "S5c-1 as delivered"; one refinement of decision 19's `competing-call` for
+the owner to confirm, §8 below): an action on every open question from the server, the action
+route for link, place, choose copy and outside, a link accepting a live typed proposal before it
+writes a manual relation, items versioned by what they ask about, `competing-call` also counting
+a human's manual link from a call element to another target, the revocable outside mark with
+migrations 0013/0014, notes that no longer close items, the five-column CSV, the actions with
+undo in the tab and the model view, „Verknüpfen mit …“ on a collapsed subprocess, `analyzr
+questions outside|link|place`; no BPMN writing; live-run neutral. **Next**, per M6 §8's order:
+**S5c-2 "Model amendments"** (the owner answered M6 §10.9 on 2026-10-17, decision 25.1–25.4; about 8 d: byte-preserving, deterministic `applyAmendments` in `@analyzr/bpmn-facts`,
 `model_amendment` with migrations 0015/0016, uploaded plus amended revisions with the plan on the
 head, re-application at every import with the question „Ergänzung nicht mehr anwendbar“,
 withdrawal, the cost of each save shown in its dry run, the change list and BPMN downloads, the
@@ -823,9 +833,7 @@ form at the question and „Ergänzen“ in the model view, `analyzr models amen
 amendments`), then S2a/S2b (provenance, manifest, dry run, built on S5c-2's revisions) and S2c,
 the trust rule of decision 24.2, then S3c (renderer and spec YAML, the ad-hoc converter path, the
 bundled CLI) and S6 (interviews); after the owner's live runs S5b, S7 and facts v2 as recommended
-(M6 §3.11 and §6: the reindex with judgement carry-over first). The owner's answers to M6 §10.9
-(the fields of v1, the 24.2 extension, the re-import refinement, linked diagrams) are needed
-before S5c-2, not before S5c-1. The owner's review of S1–S5a, ideally on a sandbox or anonymized export
+(M6 §3.11 and §6: the reindex with judgement carry-over first). The owner's review of S1–S5c-1, ideally on a sandbox or anonymized export
 (M6 §10.4), can run alongside. Nothing of M6 changes released procedures, claim inputs or the
 MCP surface before the owner's live runs.
 
@@ -901,7 +909,7 @@ Git/bpmiq.yml import, MCP App widget.
 | M6: sample exports | Sandbox instances or anonymized exports of ARIS, Signavio, ADONIS, Bizagi, Visio? | M6 §10.4 |
 | M6: answers re-queue | May S5b widen the relations judgement basis by human notes and queue tasks (after the live runs), and from S7 on also by subject notes and outside marks? | M6 §10.5 |
 | M6: erasure | One database per customer engagement for now, a purge use case with server mode? | M6 §10.6 |
-| M6: model amendments | Four points, needed before S5c-2: v1 without process ids (anchors of relations, placements and calls; „Gültige Kopie wählen“ instead) and with the documentation of undocumented processes, which your option text did not list? Call targets set by amendment count as modelled under S2c's trust rule (extends decision 24.2)? At a re-import a field the tool changed becomes a question instead of being overwritten, and a value the tool took over counts as carried over? Signavio's linked diagrams (collapsed subprocesses): a link from the model view now, a conversion operation after a real export? | M6 §10.9, decision 25 |
+| M6: `competing-call` and manual links | S5c-1 counts a human's accepted or held `manual` relation from a call element as a competing call only when it goes to another target: an agent's `call` proposal to the same target agrees with the human and is no second target, so an owner's rule may still accept it; the „Regeln“ preview counts a human's later manual link to another target as a correction of the call. Keep this reading of decision 19's „a call has one target“, or count every manual relation from the call element (then a rule never accepts the agreeing call either)? | M6 §8 "S5c-1 as delivered", decision 19 |
 
 ## 9. Working agreements and pitfalls
 

@@ -162,18 +162,28 @@ export function personalDataWarnings(text: string): PersonalDataMatch[] {
 }
 
 /**
- * The German warning for the found personal data, `null` without any:
- * „Der Text enthält vermutlich eine E-Mail-Adresse und 2 Telefonnummern. …“
+ * What the check found, in German, `null` without anything: „eine
+ * E-Mail-Adresse und 2 Telefonnummern“.
  */
-export function personalDataHint(warnings: readonly PersonalDataMatch[]): string | null {
+export function personalDataList(warnings: readonly PersonalDataMatch[]): string | null {
   if (warnings.length === 0) return null;
   const parts = PERSONAL_DATA_KINDS.flatMap((kind) => {
     const n = warnings.filter((w) => w.kind === kind).length;
     if (n === 0) return [];
     return [n === 1 ? `eine ${PERSONAL_DATA_LABELS[kind]}` : `${n} ${PLURAL[kind]}`];
   });
-  const list =
-    parts.length === 1 ? parts[0] : `${parts.slice(0, -1).join(', ')} und ${parts.at(-1) ?? ''}`;
+  return parts.length === 1
+    ? (parts[0] ?? null)
+    : `${parts.slice(0, -1).join(', ')} und ${parts.at(-1) ?? ''}`;
+}
+
+/**
+ * The German warning for the found personal data, `null` without any:
+ * „Der Text enthält vermutlich eine E-Mail-Adresse und 2 Telefonnummern. …“
+ */
+export function personalDataHint(warnings: readonly PersonalDataMatch[]): string | null {
+  const list = personalDataList(warnings);
+  if (list === null) return null;
   return (
     `Der Text enthält vermutlich ${list}. Prüf bitte, ob das wirklich gespeichert werden soll: ` +
     'keine Namen oder anderen personenbezogenen Daten.'

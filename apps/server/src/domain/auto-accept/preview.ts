@@ -48,6 +48,8 @@ import { currentStances, recomputeStatus, sameProcedure, type StanceView } from 
 import { recomputePlacementStatus } from '../value-chain/placement-state.ts';
 import { OUTSIDE } from '../value-chain/steps.ts';
 import {
+  CALL_TAKEN,
+  competesWithCall,
   evaluatePlacementAutoAccept,
   evaluateRelationAutoAccept,
   ruleMatches,
@@ -62,7 +64,22 @@ const byCodePoint = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 
 const isAgentProposal = (a: StanceView) => a.sourceKind === 'agent' && a.kind === 'proposal';
 const marked = (a: StanceView) => (a.autoAcceptRuleId ?? null) !== null;
 const asks = (a: HistoryView) => a.question !== null && a.question.trim() !== '';
-const CALL_TAKEN: ReadonlySet<string> = new Set(['proposed', 'held', 'accepted']);
+
+/**
+ * The relations that can compete with a call relation for its call element,
+ * by the element: every `call` and `manual` relation leaving it (a manual
+ * one competes when it goes to another target, M6 S5c-1; `competesWithCall`).
+ */
+function byCallElement<R extends { type: string; fromRef: string }>(
+  relations: readonly R[],
+): Map<string, R[]> {
+  const out = new Map<string, R[]>();
+  for (const r of relations) {
+    if (r.type !== 'call' && r.type !== 'manual') continue;
+    out.set(r.fromRef, [...(out.get(r.fromRef) ?? []), r]);
+  }
+  return out;
+}
 
 /** The relation side of a project as the preview and "apply" read it. */
 export interface RelationSide {
@@ -171,11 +188,7 @@ export function openRelationCandidates(
   rule: AutoAcceptRuleRev,
 ): OpenOutcome<OpenRelation> {
   const noLinks = liveNoLinkCounts(side.noLinks);
-  const callsFrom = new Map<string, { id: string; status: string }[]>();
-  for (const r of side.relations) {
-    if (r.type !== 'call') continue;
-    callsFrom.set(r.fromRef, [...(callsFrom.get(r.fromRef) ?? []), r]);
-  }
+  const callsFrom = byCallElement(side.relations);
   const accept: OpenRelation[] = [];
   const blocked = new Map<AutoAcceptBlockReason, number>();
   const ordered = [...side.relations]
@@ -207,8 +220,8 @@ export function openRelationCandidates(
       history,
       trigger: triggerOf(picked.trigger, picked.current),
       liveNoLinks: noLinks.get(naturalKey(relation.type, relation.fromRef, relation.toRef)) ?? 0,
-      competingCall: (callsFrom.get(relation.fromRef) ?? []).some(
-        (r) => r.id !== relation.id && CALL_TAKEN.has(r.status),
+      competingCall: (callsFrom.get(relation.fromRef) ?? []).some((r) =>
+        competesWithCall(relation, r),
       ),
       rules: [rule],
     });
@@ -416,7 +429,9 @@ const firesAlone =
  * call is accepted from then on (until a human decides it), so a later call
  * from the same element is a competing call and the rule never fires on it.
  * Calls with competitors are therefore replayed together, per minimum
- * confidence, in seq order.
+ * confidence, in seq order. A manual relation from the call element to
+ * another target competes as it stood then (M6 S5c-1), and a human's manual
+ * link after the proposal counts as a correction.
  */
 function replayRelations(
   side: RelationSide,
@@ -426,9 +441,17 @@ function replayRelations(
   const criteria = criteriaWithout(rule);
   const histories = new Map<string, StoredAssertion[]>();
   for (const r of side.relations) histories.set(r.id, sortedBySeq(side.histories.get(r.id) ?? []));
-  const callsFrom = new Map<string, string[]>();
+  const callsFrom = byCallElement(side.relations);
+  // Per call relation, the relations competing for its element (whatever their status then).
+  const competitorsOf = new Map<string, string[]>();
   for (const r of side.relations) {
-    if (r.type === 'call') callsFrom.set(r.fromRef, [...(callsFrom.get(r.fromRef) ?? []), r.id]);
+    if (r.type !== 'call') continue;
+    competitorsOf.set(
+      r.id,
+      (callsFrom.get(r.fromRef) ?? [])
+        .filter((o) => competesWithCall(r, { ...o, status: 'accepted' }))
+        .map((o) => o.id),
+    );
   }
   const noLinksOf = new Map<string, NoLinkHistoryRecord[]>();
   for (const n of side.noLinks) {
@@ -447,9 +470,7 @@ function replayRelations(
     const history = histories.get(relation.id) ?? [];
     const firstHuman = history.find((a) => a.sourceKind === 'human')?.seq ?? Infinity;
     const key = naturalKey(relation.type, relation.fromRef, relation.toRef);
-    const others = (relation.type === 'call' ? (callsFrom.get(relation.fromRef) ?? []) : []).filter(
-      (id) => id !== relation.id,
-    );
+    const others = competitorsOf.get(relation.id) ?? [];
     const candidates: Candidate[] = [];
     for (const p of history) {
       if (p.seq >= firstHuman) break;
@@ -482,8 +503,9 @@ function replayRelations(
   const firedAt = new Map<number, Set<string>>();
   for (const t of thresholds) {
     const fired = new Set<string>();
-    for (const ids of callsFrom.values()) {
-      if (ids.length < 2) continue;
+    for (const group of callsFrom.values()) {
+      const ids = group.filter((r) => r.type === 'call').map((r) => r.id);
+      if (!ids.some((id) => (competitorsOf.get(id) ?? []).length > 0)) continue;
       const firing = new Map<string, number>();
       const events = ids
         .flatMap((id) => (candidatesOf.get(id) ?? []).filter((c) => c.confidence >= t))
@@ -500,7 +522,7 @@ function replayRelations(
       };
       for (const c of events) {
         if (firing.has(c.id)) continue;
-        if (ids.some((id) => id !== c.id && takenAt(id, c.seq))) continue;
+        if ((competitorsOf.get(c.id) ?? []).some((id) => takenAt(id, c.seq))) continue;
         firing.set(c.id, c.seq);
       }
       for (const id of firing.keys()) fired.add(id);
@@ -510,12 +532,7 @@ function replayRelations(
 
   return replayed.map((relation) => {
     const history = histories.get(relation.id) ?? [];
-    const competitors =
-      relation.type === 'call'
-        ? (callsFrom.get(relation.fromRef) ?? [])
-            .filter((id) => id !== relation.id)
-            .map((id) => histories.get(id) ?? [])
-        : [];
+    const competitors = (competitorsOf.get(relation.id) ?? []).map((id) => histories.get(id) ?? []);
     const candidates = candidatesOf.get(relation.id) ?? [];
     return {
       fires:

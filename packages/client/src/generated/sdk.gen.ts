@@ -10,6 +10,9 @@ import {
   type TDataShape,
 } from './client/index.ts';
 import type {
+  ActOnOpenQuestionData,
+  ActOnOpenQuestionErrors,
+  ActOnOpenQuestionResponses,
   AddPlacementNoteData,
   AddPlacementNoteErrors,
   AddPlacementNoteResponses,
@@ -204,6 +207,9 @@ import type {
   SubmitAnalysisData,
   SubmitAnalysisErrors,
   SubmitAnalysisResponses,
+  WithdrawOpenQuestionAnswerData,
+  WithdrawOpenQuestionAnswerErrors,
+  WithdrawOpenQuestionAnswerResponses,
   WithdrawPlacementProposalData,
   WithdrawPlacementProposalErrors,
   WithdrawPlacementProposalResponses,
@@ -513,7 +519,7 @@ export const listNoLinks = <ThrowOnError extends boolean = false>(
 /**
  * Open questions: the gaps that block links and placements, from every source and the gap signals
  *
- * Computed on read, never stored (M6 §4.2): relation and value chain findings, holds (note, question, label), agents' questions on proposals waiting for review, current unsure placement verdicts, no-links coded `call-target` or `collaboration`, the summaries of current submissions and the pairs they left unjudged, and the gap signals over the head facts. Questions first, then the value chain findings (`process-without-step`, `step-without-process`, `unresolved-link`), then informational items (`summary-note`, `descriptive-model`), each group ordered by `unlocks` (descending), then subject, kind and id. `modelKey` matches a model or a folder (`finanzen` matches `finanzen/mahnwesen`); `askWho` matches a lane, one of the step owners or the folder exactly. An item is `answered` while an answer for its id exists (M6 S5a), with its `answers`; `state` filters by it.
+ * Computed on read, never stored (M6 §4.2): relation and value chain findings, holds (note, question, label), agents' questions on proposals waiting for review, current unsure placement verdicts, no-links coded `call-target` or `collaboration`, the summaries of current submissions and the pairs they left unjudged, and the gap signals over the head facts. Questions first, then the value chain findings (`process-without-step`, `step-without-process`, `unresolved-link`), then informational items (`summary-note`, `descriptive-model`), each group ordered by `unlocks` (descending), then subject, kind and id. `modelKey` matches a model or a folder (`finanzen` matches `finanzen/mahnwesen`); `askWho` matches a lane, one of the step owners or the folder exactly. Each item carries its `actions` (M6 §4.8 a: at most one primary, German labels from code) and its `answers` (notes and outside marks); it is `answered` while a live outside mark names its id (M6 S5c-1), and `state` filters by it. An item whose call, coded end or pool flows a human, an owner's rule or the rule tier linked by an accepted relation to another process leaves the list (R1), and so does a duplicated process id while no call towards its copies waits for a decision (R1b); `listFindings` keeps listing their findings.
  */
 export const listOpenQuestions = <ThrowOnError extends boolean = false>(
   options: Options<ListOpenQuestionsData, ThrowOnError>,
@@ -529,7 +535,7 @@ export const listOpenQuestions = <ThrowOnError extends boolean = false>(
 /**
  * The open questions as a Markdown or CSV download, with the filters of the list
  *
- * Every open question matching the filters, in list order, as an attachment. `markdown` (default): German headings, grouped by the contact hint (step owners, else folder, else lanes). `csv`: the questions without the informational items (`summary-note`, `descriptive-model`, which ask nothing), UTF-8 with a byte order mark, `;`-separated (what German spreadsheet programs open directly), CRLF, every field quoted, the columns `id`, `Art`, `Frage`, `Ansprechpartner-Hinweis`, `Antwort`, `Antwortart`; the last two are empty for the customer to fill in, or hold an answered item's latest answer and its kind (M6 S5a; read back, it is `unchanged`); the Markdown lists every answer. A cell starting with `=`, `+`, `-`, `@`, a tab, a carriage return or their full-width forms (also after a run of `'`) gets a leading `'`, so spreadsheets never run it as a formula. The file name carries the filters (`offene-fragen-<project key>-<filters>.csv`).
+ * Every open question matching the filters, in list order, as an attachment. `markdown` (default): German headings, grouped by the contact hint (step owners, else folder, else lanes). `csv`: the questions without the informational items (`summary-note`, `descriptive-model`, which ask nothing), UTF-8 with a byte order mark, `;`-separated (what German spreadsheet programs open directly), CRLF, every field quoted, the columns `id`, `Art`, `Frage`, `Ansprechpartner-Hinweis`, `Antwort`; `Antwort` is empty for the customer to fill in, or holds the item's latest note (M6 S5c-1; read back, it is `unchanged`); the Markdown lists every note and outside mark. A cell starting with `=`, `+`, `-`, `@`, a tab, a carriage return or their full-width forms (also after a run of `'`) gets a leading `'`, so spreadsheets never run it as a formula. The file name carries the filters (`offene-fragen-<project key>-<filters>.csv`).
  */
 export const exportOpenQuestions = <ThrowOnError extends boolean = false>(
   options: Options<ExportOpenQuestionsData, ThrowOnError>,
@@ -545,9 +551,9 @@ export const exportOpenQuestions = <ThrowOnError extends boolean = false>(
   });
 
 /**
- * Answer an open question (humans only)
+ * Add a note to an open question (humans only)
  *
- * Records the answer (M6 §4.5 S5a) in the append-only `open_question_answer`; the item is `answered` while an answer for its id exists. Where the text lands: on a relation (held, or proposed with an agent's question) a human note through the note use case, so the next claim of either model shows it (a hold stays until a human decides it); on a placement a human note through the placement note use case (on an agent's question the process becomes due, nothing is queued; a held placement keeps homing its process, so it is not due until a human decides the hold); anything else stays with the answer (shown and exported, it reaches no agent before M6 S7). A note holds the text only, not the kind. An answer identical to the id's latest answer (kind and text) answers 200 `unchanged` and writes nothing. The text is compared and stored with LF line breaks and in Unicode NFC, trimmed; it has at most 2000 characters; a deterministic check for e-mail addresses, phone numbers and IBANs returns `warnings` and never blocks. Owner or editor on an interactive client: agent tokens get 403 `human-decision-required` with `reviewUrl`. An id that names no current open question (its source changed, which changes the id) is 404 `not-found`.
+ * Records the note („Notiz hinzufügen“, M6 §4.8 b) in the append-only `open_question_answer`; a note informs and leaves the item `open` (only an outside mark makes it `answered`, `actOnOpenQuestion`). The body is `{text}` only: S5a's `kind` is gone and gets 422. Where the text lands: on a relation (held, or proposed with an agent's question) a human note through the note use case, so the next claim of either model shows it (a hold stays until a human decides it); on a placement a human note through the placement note use case (on an agent's question the process becomes due, nothing is queued; a held placement keeps homing its process, so it is not due until a human decides the hold); anything else stays with the answer (shown and exported, it reaches no agent before M6 S7). A note identical to the id's latest note answers 200 `unchanged` and writes nothing. The text is compared and stored with LF line breaks and in Unicode NFC, trimmed; it has at most 2000 characters; a deterministic check for e-mail addresses, phone numbers and IBANs returns `warnings` and never blocks. Owner or editor on an interactive client: agent tokens get 403 `human-decision-required` with `reviewUrl`. An id that names no current open question (its source changed, which changes the id) is 404 `not-found`.
  */
 export const answerOpenQuestion = <ThrowOnError extends boolean = false>(
   options: Options<AnswerOpenQuestionData, ThrowOnError>,
@@ -569,7 +575,7 @@ export const answerOpenQuestion = <ThrowOnError extends boolean = false>(
 /**
  * Record the answers of a filled-in sheet (`?dryRun=true` first; humans only)
  *
- * The rows of the CSV the export wrote (`id`, `Antwort`, `Antwortart`; `readAnswerSheet` in `@analyzr/contracts/open-question-csv` reads them), each answered as by `answerOpenQuestion`, all in one transaction. Rows with an empty answer are ignored (counted only); an id that names no current open question (also one whose source changed since the export) is listed `unknown` and never stored; a row with a text over 2000 characters, control characters, an unknown `Antwortart` or an id an earlier row answers is listed `invalid` and never stored; an answer identical to the item's latest one (kind and text; with an empty `Antwortart` the same text, whatever its kind) is `unchanged`. `row` is the position in `rows`. `dryRun=true` lists the same and stores nothing. At most 5000 rows and 4194304 bytes per call (413 `payload-too-large` above).
+ * The rows of the CSV the export wrote (`id`, `Antwort`; `readAnswerSheet` in `@analyzr/contracts/open-question-csv` reads them), each filled `Antwort` recorded as a note as by `answerOpenQuestion`, all in one transaction. A sheet exported before M6 S5c-1 still reads: its `Antwortart` „Liegt außerhalb der Landschaft“ (`outside-landscape`) records an outside mark with the text as its note, except on a relation or placement item (a note); „Antwort“, „Wird im Modell ergänzt“ and an empty cell record a note. Rows with an empty answer are ignored (counted only); an id that names no current open question (also one whose source changed since the export) is listed `unknown` and never stored; a row with a text over 2000 characters, control characters, an unknown `Antwortart` or an id an earlier row answers is listed `invalid` and never stored; a note identical to the item's latest note, or a mark on an item a live mark marks, is `unchanged`. `row` is the position in `rows`. `dryRun=true` lists the same and stores nothing. At most 5000 rows and 4194304 bytes per call (413 `payload-too-large` above).
  */
 export const answerOpenQuestions = <ThrowOnError extends boolean = false>(
   options: Options<AnswerOpenQuestionsData, ThrowOnError>,
@@ -586,6 +592,50 @@ export const answerOpenQuestions = <ThrowOnError extends boolean = false>(
       'Content-Type': 'application/json',
       ...options.headers,
     },
+  });
+
+/**
+ * Act on an open question: link, place, choose the valid copy, mark outside (humans)
+ *
+ * Runs one of the item's `actions` (M6 §4.8 a) in one transaction under the project lock, through the use cases that exist. `link`: per target a live typed relation between the anchor and the target (proposed or held: a rule-tier or key-tier proposal, an agent's) is accepted as the human's decision, else an accepted `manual` relation is written (a pool's flows: one per anchor, directed like its flow); the rationale is German and from code („Aus „Offene Fragen“: …“) plus the note. `place`: a manual placement, accepted at once. `choose-copy`: the calls towards the copies are accepted towards the valid copy and rejected towards the others, all or nothing with their versions (409 `conflict` otherwise); with `placeOthersOutside` the other copies without a home step go to `@outside`; the note is a note on the item. `outside`: an outside mark (an `open_question_answer` of kind `outside-landscape`, its text the note or null); while a live mark exists, 200 `unchanged`. The answer names the relations and placements written (`manual`: „Rückgängig“ rejects them through the decision routes) or decided, and the item as the list now shows it (`null` when the action took it off). An id that names no current item is 404 `not-found`; an action the item does not offer is 422 `validation-failed` with `reason: 'action-not-offered'`. Owner or editor on an interactive client: agent tokens get 403 `human-decision-required` with `reviewUrl`.
+ */
+export const actOnOpenQuestion = <ThrowOnError extends boolean = false>(
+  options: Options<ActOnOpenQuestionData, ThrowOnError>,
+): RequestResult<ActOnOpenQuestionResponses, ActOnOpenQuestionErrors, ThrowOnError> =>
+  (options.client ?? client).post<
+    ActOnOpenQuestionResponses,
+    ActOnOpenQuestionErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/projects/{project}/open-questions/{question}/actions',
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  });
+
+/**
+ * Withdraw an outside mark („Rückgängig“; humans only)
+ *
+ * Ends an outside mark of the item (M6 §4.8 b) with a row in the append-only `open_question_answer_withdrawal` and an `open_question.answer_withdrawn` event; the mark no longer counts, so the item is `open` again unless another live mark names it, and marking again records a new mark. A mark withdrawn before answers 200 `unchanged`. Only outside marks are withdrawn (a note is 422 `validation-failed` with `reason: 'not-an-outside-mark'`); an id that names no current item, or an answer of another item, is 404 `not-found`. Owner or editor on an interactive client: agent tokens get 403 `human-decision-required` with `reviewUrl`.
+ */
+export const withdrawOpenQuestionAnswer = <ThrowOnError extends boolean = false>(
+  options: Options<WithdrawOpenQuestionAnswerData, ThrowOnError>,
+): RequestResult<
+  WithdrawOpenQuestionAnswerResponses,
+  WithdrawOpenQuestionAnswerErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).post<
+    WithdrawOpenQuestionAnswerResponses,
+    WithdrawOpenQuestionAnswerErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/projects/{project}/open-questions/{question}/answers/{answer}/withdrawal',
+    ...options,
   });
 
 /**

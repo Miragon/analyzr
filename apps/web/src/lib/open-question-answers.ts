@@ -3,8 +3,11 @@ import type {
   AnswerSheetResult,
   AnswerSheetRowResult,
   OpenQuestion,
+  OpenQuestionAnswer,
   OpenQuestionAnswerKind,
+  OpenQuestionAnswerRole,
   OpenQuestionAnswerTarget,
+  OpenQuestionAction,
   OpenQuestionSubject,
 } from '@analyzr/client';
 // Zod-free subpaths of the contracts (M6 S5a), loaded with the lazy open-questions chunks only.
@@ -15,7 +18,7 @@ import {
   type CsvErrorCode,
 } from '@analyzr/contracts/open-question-csv';
 import {
-  OPEN_QUESTION_ANSWER_KIND_LABELS,
+  OPEN_QUESTION_ANSWER_ROLE_LABELS,
   OPEN_QUESTION_ANSWER_TARGET_LABELS,
 } from '@analyzr/contracts/open-question-labels';
 import {
@@ -29,37 +32,33 @@ import {
 import { MAX_ANSWER_CHARS, MAX_ANSWER_SHEET_BODY_BYTES, MAX_ANSWER_SHEET_ROWS } from './limits';
 
 /**
- * Answers to open questions (M6 §4.5, S5a), the web's side: the answer kinds
- * and where an answer's text lands, as the dialog „Beantworten“ and the
- * answered items say it; the reading of a filled-in sheet for „Antworten aus
- * CSV übernehmen“ and the German texts of its preview. Pure. Loaded with the
- * tab's page and the model view's section (both lazy), never with the entry.
+ * Notes on open questions (M6 §4.8 b, since S5c-1; S5a's answers), the web's
+ * side: where a note's text lands and what it does, as the dialog „Notiz
+ * hinzufügen“ says it; how a stored answer counts (a note, or the outside
+ * mark „Liegt außerhalb der Landschaft“); the reading of a filled-in sheet
+ * for „Antworten aus CSV übernehmen“ and the German texts of its preview.
+ * Pure. Loaded with the tab's page and the model view's section (both
+ * lazy), never with the entry.
  */
 
-/** The answer kinds, in the dialog's order (the contracts' order). */
-export const ANSWER_KIND_ORDER: readonly OpenQuestionAnswerKind[] = [
-  'answer',
-  'outside-landscape',
-  'will-be-modelled',
-];
+/** How each stored answer counts, as the item lists it: „Notiz“ or „Liegt außerhalb der Landschaft“. */
+export const ANSWER_ROLE_LABELS: Readonly<Record<OpenQuestionAnswerRole, string>> =
+  OPEN_QUESTION_ANSWER_ROLE_LABELS;
 
-/** The German label of each kind: the same as the CSV column `Antwortart` takes. */
-export const ANSWER_KIND_LABELS: Readonly<Record<OpenQuestionAnswerKind, string>> =
-  OPEN_QUESTION_ANSWER_KIND_LABELS;
-
-/** What each kind means, under the choice in the dialog. */
-export const ANSWER_KIND_HINTS: Readonly<Record<OpenQuestionAnswerKind, string>> = {
-  answer: 'Was die Klärung ergeben hat.',
-  'outside-landscape':
-    'Das Gefragte liegt außerhalb der modellierten Landschaft, etwa bei einem externen Partner. Die Frage gilt damit als beantwortet; einen Befund verwirft das nicht.',
-  'will-be-modelled':
-    'Das Fehlende wird im Modell ergänzt. Wirksam wird es, sobald das geänderte Modell importiert ist.',
+/**
+ * What a sheet row records, in the preview: a note (`answer`), or, from a
+ * sheet exported before S5c-1 with its `Antwortart`, the outside mark.
+ */
+export const SHEET_KIND_LABELS: Readonly<Record<OpenQuestionAnswerKind, string>> = {
+  answer: 'Notiz',
+  'outside-landscape': 'Liegt außerhalb der Landschaft',
+  'will-be-modelled': 'Notiz',
 };
 
 /**
- * Where the text of an answer on this subject lands (M6 §4.5 "Where the text
+ * Where the text of a note on this subject lands (M6 §4.5 "Where the text
  * lands"), as the server decides it: a human note on a relation or a
- * placement, else the answer itself.
+ * placement, else the question itself.
  */
 export function answerTargetOf(
   subject: Pick<OpenQuestionSubject, 'type'>,
@@ -75,79 +74,121 @@ export function answerTargetOf(
 export const ANSWER_TARGET_LABELS: Readonly<Record<OpenQuestionAnswerTarget, string>> =
   OPEN_QUESTION_ANSWER_TARGET_LABELS;
 
-/** The sentence about agents, where it applies (an answer on a relation, M6 §4.5). */
+/** The sentence about agents, where it applies (a note on a relation, M6 §4.5). */
 export const AGENTS_SENTENCE =
-  'Die Agenten berücksichtigen die Antwort, sobald das Paar neu bewertet wird.';
+  'Die Agenten berücksichtigen die Notiz, sobald das Paar neu bewertet wird.';
 
-/** A note holds the text only: the kind stays with the answer (claim inputs and the timeline show the text). */
-export const NOTE_TEXT_ONLY =
-  'Die Notiz enthält nur deinen Text, nicht die Antwortart; schreib ihn so, dass er für sich verständlich ist.';
+/** Notes are append-only (M6 §7: no erasure path), said next to the note field. */
+export const NOTE_PERMANENT = 'Eine gespeicherte Notiz lässt sich nicht mehr ändern oder löschen.';
 
-/** Answers are append-only (M6 §7: no erasure path), said next to every answer field. */
+/** Answers from a sheet are notes, append-only as well (said in the sheet dialog). */
 export const ANSWER_PERMANENT =
   'Eine gespeicherte Antwort lässt sich nicht mehr ändern oder löschen.';
 
+/** A note informs; the item stays open until its action ends it (M6 §4.8 b). */
+export const NOTE_KEEPS_OPEN = 'Die Frage bleibt offen; erledigt wird sie durch ihre Aktion.';
+
 /**
- * What the dialog says about where the answer goes and what it does (M6
- * §4.5), by the item's subject and kind: a relation's note reaches the
+ * A note informs; an item whose only action is the note (S5c-1:
+ * `unlabelled-boundary`, `undocumented-process`; S5c-2 adds their
+ * amendments) ends once the model comes in again with what was missing.
+ */
+export const NOTE_UNTIL_IMPORT =
+  'Die Frage bleibt offen, bis das Modell mit der Ergänzung neu importiert ist.';
+
+/** Whether an item has an action besides the note that can end it (items without `actions` count as having one). */
+export function endsByAction(question: {
+  actions?: readonly Pick<OpenQuestionAction, 'type'>[];
+}): boolean {
+  return question.actions === undefined || question.actions.some((a) => a.type !== 'note');
+}
+
+/** What a note leaves: the item open until its action, or for a note-only item the next import, ends it. */
+export function noteKeepsOpen(question: {
+  actions?: readonly Pick<OpenQuestionAction, 'type'>[];
+}): string {
+  return endsByAction(question) ? NOTE_KEEPS_OPEN : NOTE_UNTIL_IMPORT;
+}
+
+/**
+ * What the dialog says about where the note goes and what it does (M6 §4.5,
+ * §4.8 b), by the item's subject and kind: a relation's note reaches the
  * agents with the pair's next judgement (a held relation stays held); on a
  * placement an agent asked about, the note makes the process due (nothing
  * is queued); a held placement keeps homing its process, so no agent gets
- * it until the reviewer decides the hold; every other answer stays with the
+ * it until the reviewer decides the hold; every other note stays with the
  * question, and the dialog points at the path that works today: the
  * model's documentation and a new import (for steps and the chain, which
  * no model documents, the value chain itself or the missing model's import).
+ * A note never ends the item: its action does, or, for an item whose only
+ * action is the note, the model's next import.
  */
-export function answerEffectText(
-  question: Pick<OpenQuestion, 'kind'> & { subject: Pick<OpenQuestionSubject, 'type'> },
+export function noteEffectText(
+  question: Pick<OpenQuestion, 'kind'> & {
+    subject: Pick<OpenQuestionSubject, 'type'>;
+    actions?: readonly Pick<OpenQuestionAction, 'type'>[];
+  },
 ): string {
   const held = question.kind === 'held';
+  const keepsOpen = noteKeepsOpen(question);
   switch (question.subject.type) {
     case 'relation':
       return (
-        `Die Antwort wird als Notiz an der Relation gespeichert und steht auch im Prüfbildschirm. ${AGENTS_SENTENCE} ` +
-        (held ? 'Die Vormerkung bleibt; die Entscheidung triffst du. ' : '') +
-        NOTE_TEXT_ONLY
+        `Die Notiz wird an der Relation gespeichert und steht auch im Prüfbildschirm. ${AGENTS_SENTENCE} ` +
+        (held ? 'Die Vormerkung bleibt; die Entscheidung triffst du mit „Entscheiden“.' : keepsOpen)
       );
     case 'placement':
       return held
-        ? 'Die Antwort wird als Notiz an der Platzierung gespeichert. Die Platzierung bleibt vorgemerkt; ' +
-            `solange bekommt kein Agent den Prozess. Entscheide sie im Prüfbildschirm. ${NOTE_TEXT_ONLY}`
-        : 'Die Antwort wird als Notiz an der Platzierung gespeichert. Der Prozess wird damit fällig: ' +
-            'Der Platzierungsagent sieht die Antwort mit seiner nächsten Aufgabe zur Kette; eingeplant wird dadurch noch keine. ' +
-            NOTE_TEXT_ONLY;
+        ? 'Die Notiz wird an der Platzierung gespeichert. Die Platzierung bleibt vorgemerkt; ' +
+            'solange bekommt kein Agent den Prozess. Entscheide sie mit „Entscheiden“.'
+        : 'Die Notiz wird an der Platzierung gespeichert. Der Prozess wird damit fällig: ' +
+            'Der Platzierungsagent sieht die Notiz mit seiner nächsten Aufgabe zur Kette; eingeplant wird dadurch noch keine. ' +
+            keepsOpen;
     case 'step':
     case 'value-chain':
       return (
-        'Die Antwort wird bei der Frage gespeichert, angezeigt und exportiert; die Agenten sehen sie noch nicht. ' +
-        'Damit sie in die Analyse eingeht, passe die Wertschöpfungskette an oder platziere Prozesse auf ihr; ' +
-        'fehlt ein Modell, importiere es.'
+        'Die Notiz wird bei der Frage gespeichert, angezeigt und exportiert; die Agenten sehen sie noch nicht. ' +
+        `${keepsOpen} Fehlt ein Modell, importiere es.`
       );
     case 'ref':
     case 'process':
     case 'model':
       return (
-        'Die Antwort wird bei der Frage gespeichert, angezeigt und exportiert; die Agenten sehen sie noch nicht. ' +
-        'Damit sie in die Analyse eingeht, ergänze die Dokumentation des Modells und importiere es erneut: ' +
+        'Die Notiz wird bei der Frage gespeichert, angezeigt und exportiert; die Agenten sehen sie noch nicht. ' +
+        `${keepsOpen} Gehört das Fehlende ins Modell, ergänze es im Quellwerkzeug und importiere das Modell erneut: ` +
         'Ein neuer Stand plant das Modell neu ein.'
       );
   }
 }
 
-/** `3 Antworten`, `1 Antwort`. */
-export function answerCountText(n: number): string {
-  return n === 1 ? '1 Antwort' : `${n} Antworten`;
+/**
+ * The answers of an item in one line, by how they count: „2 Notizen“,
+ * „1 Notiz · Als außerhalb markiert“, „Markierung zurückgenommen“.
+ */
+export function answersSummaryText(
+  answers: readonly Pick<OpenQuestionAnswer, 'role' | 'withdrawal'>[],
+): string {
+  const notes = answers.filter((a) => a.role === 'note').length;
+  const marks = answers.filter((a) => a.role === 'outside-mark');
+  const live = marks.some((a) => a.withdrawal === null);
+  return [
+    notes === 0 ? null : notes === 1 ? '1 Notiz' : `${notes} Notizen`,
+    marks.length === 0 ? null : live ? 'Als außerhalb markiert' : 'Markierung zurückgenommen',
+  ]
+    .filter((p) => p !== null)
+    .join(' · ');
 }
 
 /**
- * The dialog's note on an item answered before: answers are append-only, so
- * a new one joins the earlier ones; `null` for an open item.
+ * The note on an item with notes before (the dialog: „Deine kommt hinzu“; a
+ * sheet row in the preview: „Diese kommt hinzu“): notes are append-only, so
+ * a new one joins the earlier ones; `null` without any.
  */
-export function answeredBeforeText(n: number): string | null {
+export function notesBeforeText(n: number, who: 'Deine' | 'Diese' = 'Deine'): string | null {
   if (n === 0) return null;
   return n === 1
-    ? 'Schon beantwortet. Deine Antwort kommt hinzu; die bisherige bleibt stehen.'
-    : `Schon ${n}-mal beantwortet. Deine Antwort kommt hinzu; die bisherigen bleiben stehen.`;
+    ? `Schon eine Notiz. ${who} kommt hinzu; die bisherige bleibt stehen.`
+    : `Schon ${n} Notizen. ${who} kommt hinzu; die bisherigen bleiben stehen.`;
 }
 
 /** `1.234 von 2.000 Zeichen` (the field's counter). */
@@ -178,7 +219,10 @@ export const SHEET_ACCEPT = '.csv,text/csv';
 /** Largest file the page reads at all; the request body has its own limit. */
 export const MAX_SHEET_FILE_BYTES = 4 * MAX_ANSWER_SHEET_BODY_BYTES;
 
-/** One row as the sheet route takes it: the cells `id`, `Antwort`, `Antwortart`, as written. */
+/**
+ * One row as the sheet route takes it: the cells `id`, `Antwort` and S5a's
+ * `Antwortart` (empty in the five-column sheet of S5c-1), as written.
+ */
 export interface SheetRow {
   id: string;
   text: string;
@@ -238,8 +282,8 @@ export function readSheetBytes(name: string, bytes: ArrayBuffer | Uint8Array): S
 
 /**
  * Reads a filled-in sheet (`readAnswerSheet` of the contracts, as the CLI):
- * a CSV with the export's columns `id` and `Antwort` (`Antwortart` may be
- * missing). Only rows with a filled `Antwort` are sent, at most
+ * a CSV with the export's columns `id` and `Antwort` (a sheet exported
+ * before S5c-1 still has `Antwortart`, which is read and sent as well). Only rows with a filled `Antwort` are sent, at most
  * {@link MAX_ANSWER_SHEET_ROWS} in a request body of at most
  * {@link MAX_ANSWER_SHEET_BODY_BYTES}; each keeps its row in the spreadsheet
  * (blank rows and the header counted), so {@link sheetResult} can say the
@@ -322,7 +366,7 @@ export const SHEET_REASON_TEXTS: Readonly<Record<AnswerSheetReason, string>> = {
   'too-long': `Die Antwort ist länger als ${de.format(MAX_ANSWER_CHARS)} Zeichen.`,
   'control-characters': 'Die Antwort enthält Steuerzeichen.',
   'unknown-kind':
-    'Die Antwortart ist keine von „Antwort“, „Liegt außerhalb der Landschaft“ und „Wird im Modell ergänzt“.',
+    'Die Antwortart dieser älteren CSV ist keine von „Antwort“, „Liegt außerhalb der Landschaft“ und „Wird im Modell ergänzt“.',
   'duplicate-id': 'Eine frühere Zeile beantwortet dieselbe Frage.',
 };
 

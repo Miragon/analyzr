@@ -1,7 +1,8 @@
 /**
- * The open-questions CSV (M6 §4.4, §4.5): its cell protection, the parser
- * and the reader of a filled-in sheet, shared by the server's export (which
- * writes the sheet) and every client that reads it back for
+ * The open-questions CSV (M6 §4.4, §4.5, five columns since S5c-1): its
+ * cell protection, the parser and the reader of a filled-in sheet, shared
+ * by the server's export (which writes the sheet) and every client that
+ * reads it back for
  * `POST /projects/{p}/open-questions/answers` (the CLI's `analyzr questions
  * answer --from`, the web's „Antworten aus CSV übernehmen“). Zod-free on
  * purpose: the web imports it at runtime as
@@ -158,7 +159,8 @@ export function parseOpenQuestionsCsv(text: string): {
 
 /**
  * One row of a filled-in sheet as `POST …/open-questions/answers` takes it:
- * the cells `id`, `Antwort` and `Antwortart`, as written.
+ * the cells `id`, `Antwort` and S5a's `Antwortart` (empty in the five-column
+ * sheet of M6 S5c-1), as written.
  */
 export interface AnswerSheetRow {
   id: string;
@@ -175,10 +177,12 @@ export interface ReadSheetRow extends AnswerSheetRow {
 /**
  * The rows of a filled-in sheet (the CSV the export wrote, saved again by a
  * spreadsheet program): the columns are found by their header names (`id`,
- * `Antwort`, and `Antwortart`, which may be missing), so moved or added
- * columns do not matter. Every non-blank row is returned with its row
- * number in the spreadsheet; the server ignores rows with an empty
- * `Antwort`, and clients send only the cells (`id`, `text`, `kind`).
+ * `Antwort`, and S5a's `Antwortart`, which the five-column sheet of M6
+ * S5c-1 no longer has; a sheet exported before still reads, its
+ * `Antwortart` as `kind`), so moved or added columns do not matter. Every
+ * non-blank row is returned with its row number in the spreadsheet; the
+ * server ignores rows with an empty `Antwort`, and clients send only the
+ * cells (`id`, `text`, `kind`).
  *
  * @throws {CsvError} when the CSV cannot be parsed or lacks the `id` or `Antwort` column
  */

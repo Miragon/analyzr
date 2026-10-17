@@ -1,16 +1,20 @@
 /**
  * The German labels of the open questions' kinds and sources (M6 §4.4), the
- * kinds that ask nothing themselves and the answer kinds (M6 §4.5), shared by the server's export (the
- * CSV's column `Art`, the Markdown headings) and the web's tab „Offene
- * Fragen“, so the sheet and the tab say the same. Zod-free on purpose: the
- * web imports it at runtime as `@analyzr/contracts/open-question-labels` from
- * its lazy open-questions chunks (the types below are erased).
+ * kinds that ask nothing themselves, the answer kinds and roles (M6 §4.5,
+ * §4.8 b), the states and the actions (M6 §4.8 a), shared by the server
+ * (the export's column `Art` and Markdown headings, the actions' labels) and
+ * the web's tab „Offene Fragen“ and model view, so the sheet, the tab and the
+ * CLI say the same. Zod-free on purpose: the web imports it at runtime as
+ * `@analyzr/contracts/open-question-labels` from its lazy open-questions
+ * chunks (the types below are erased).
  */
 import type {
   OpenQuestionAnswerKind,
+  OpenQuestionAnswerRole,
   OpenQuestionAnswerTarget,
   OpenQuestionKind,
   OpenQuestionSource,
+  OpenQuestionState,
 } from './api/open-questions.ts';
 
 /** German label of each kind. */
@@ -66,8 +70,60 @@ export function isInformationalKind(kind: OpenQuestionKind): boolean {
 }
 
 /**
- * German label of each answer kind: the values of the CSV column
- * `Antwortart` (`OPEN_QUESTION_ANSWER_KINDS`) and the dialog's choices.
+ * German label of each state (M6 §4.8 b): `answered` means a live outside
+ * mark, so the Status filter calls it „Erledigt (außerhalb)“.
+ */
+export const OPEN_QUESTION_STATE_LABELS: Readonly<Record<OpenQuestionState, string>> = {
+  open: 'Offen',
+  answered: 'Erledigt (außerhalb)',
+};
+
+/** German label of how a stored answer counts (M6 §4.8 b). */
+export const OPEN_QUESTION_ANSWER_ROLE_LABELS: Readonly<Record<OpenQuestionAnswerRole, string>> = {
+  note: 'Notiz',
+  'outside-mark': 'Liegt außerhalb der Landschaft',
+};
+
+/**
+ * The German labels of the actions (M6 §4.8 a), by what the action does:
+ * the read model puts them on each item's actions, so the tab, the model
+ * view and the CLI say the same.
+ */
+export const OPEN_QUESTION_ACTION_LABELS = {
+  /** `link`: a process or endpoint picker. */
+  link: 'Verknüpfen mit …',
+  /** `link` on `call-target-dynamic`: several possible targets. */
+  linkTargets: 'Mögliche Ziele verknüpfen …',
+  /** `link` on `unjudged`: one of the listed pairs. */
+  linkPair: 'Paar verknüpfen …',
+  /** `place`: a step picker for the item's process. */
+  place: 'Schritt wählen …',
+  /** `place` next to a proposed placement. */
+  placeOther: 'Anderen Schritt wählen …',
+  /** `place` on `@outside`. */
+  placeOutside: 'Gehört zu keinem Schritt',
+  /** `place` on a step item: a process picker. */
+  placeProcess: 'Prozess zuordnen …',
+  /** `decide` on a hold or an agent's question. */
+  decide: 'Entscheiden',
+  /** `decide` on a proposed placement. */
+  decideProposal: 'Vorschlag prüfen',
+  /** `choose-copy`. */
+  chooseCopy: 'Gültige Kopie wählen …',
+  /** `outside`. */
+  outside: 'Liegt außerhalb der Landschaft',
+  /** `requeue`. */
+  requeue: 'Erneut einplanen',
+  /** `fix-link`. */
+  fixLink: 'Link korrigieren',
+  /** `note`. */
+  note: 'Notiz hinzufügen',
+} as const;
+
+/**
+ * German label of each stored answer kind (M6 §4.5): the values of S5a's
+ * CSV column `Antwortart` (`OPEN_QUESTION_ANSWER_KINDS`), which sheets
+ * exported before S5c-1 still carry.
  */
 export const OPEN_QUESTION_ANSWER_KIND_LABELS: Readonly<Record<OpenQuestionAnswerKind, string>> = {
   answer: 'Antwort',

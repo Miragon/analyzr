@@ -1,8 +1,8 @@
 import type { OpenQuestion } from '@analyzr/client';
 import { useCallback, useState } from 'react';
 
-/** The dialog's state in its parent: the item being answered, kept while the dialog closes. */
-export interface AnswerDialogState {
+/** The dialog's state in its parent: the item a note is added to, kept while the dialog closes. */
+export interface NoteDialogState {
   question: OpenQuestion | null;
   open: boolean;
   /** Bumped on every opening, so each starts with an empty form. */
@@ -11,9 +11,9 @@ export interface AnswerDialogState {
   trigger: HTMLElement | null;
 }
 
-/** State and handlers of one answer dialog (the tab and the model view's section each have one). */
-export function useAnswerDialog() {
-  const [state, setState] = useState<AnswerDialogState>({
+/** State and handlers of one note dialog (the tab and the model view's section each have one). */
+export function useNoteDialog() {
+  const [state, setState] = useState<NoteDialogState>({
     question: null,
     open: false,
     round: 0,

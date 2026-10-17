@@ -1,24 +1,29 @@
 /**
- * `analyzr questions answer` (M6 S5a, §4.5): records answers to open
- * questions. Answering is a human act (permission `review`), so the command
- * takes the owner key only and refuses an agent token before any request.
+ * `analyzr questions answer` (M6 S5a, §4.5; notes since S5c-1, §4.8 b):
+ * records notes on open questions („Notiz hinzufügen“). Answering is a human
+ * act (permission `review`), so the command takes the owner key only and
+ * refuses an agent token before any request. A note informs and leaves the
+ * question open: the actions resolve it (`analyzr questions
+ * outside|link|place`, `questions-act.ts`; decisions in the web).
  *
- * - **One answer:** `analyzr questions answer <id> -p <project> --text <text>
- *   [--kind antwort|ausserhalb|ergaenzt]` posts to `POST
- *   …/open-questions/{id}/answers`. On a relation the text becomes a human
- *   note on it, on a placement a note on the placement, else it stays with
- *   the answer. An answer identical to a recorded one (kind and text) is
- *   `unchanged`.
+ * - **One note:** `analyzr questions answer <id> -p <project> --text <text>`
+ *   posts `{text}` to `POST …/open-questions/{id}/answers`. On a relation
+ *   the text becomes a human note on it, on a placement a note on the
+ *   placement, else it stays with the question. A note identical to the
+ *   item's latest note is `unchanged`. S5a's `--kind` is gone: it is
+ *   refused with the way to the outside mark.
  * - **A filled-in sheet:** `analyzr questions answer -p <project> --from
  *   <csv> [--dry-run]` reads the CSV the export wrote, saved again by a
  *   spreadsheet program (`readAnswerSheet`; UTF-8 only, so no umlaut is
  *   mangled), and sends the rows with a filled `Antwort` to `POST
  *   …/open-questions/answers` in one call (one transaction; `dryRun=true`
- *   previews). It prints each sent row's outcome under its row number in the
- *   spreadsheet (as the spreadsheet shows it: blank rows and the header
- *   counted). Unknown ids and invalid rows are
- *   listed and never stored, the rest is; the command exits 1 when a filled
- *   row is (or, in a dry run, would be) left out.
+ *   previews): each a note, while a sheet exported before S5c-1 still
+ *   carries `Antwortart`, whose „Liegt außerhalb der Landschaft“ the server
+ *   records as an outside mark. It prints each sent row's outcome under its
+ *   row number in the spreadsheet (as the spreadsheet shows it: blank rows
+ *   and the header counted). Unknown ids and invalid rows are listed and
+ *   never stored, the rest is; the command exits 1 when a filled row is (or,
+ *   in a dry run, would be) left out.
  *
  * Every flag and the sheet are checked before any request. The personal-data
  * check's warnings (e-mail, phone, IBAN) are printed with one hint; they never
@@ -34,7 +39,7 @@ import {
   type AnswerSheetResult,
   type AnswerSheetRowResult,
   type OpenQuestion,
-  type OpenQuestionAnswerKind,
+  type OpenQuestionAction,
   type OpenQuestionAnswerTarget,
   type PersonalDataWarning,
 } from '@analyzr/client';
@@ -45,7 +50,6 @@ import {
   MAX_ANSWER_SHEET_ROWS,
   OPEN_QUESTION_ANSWER_KINDS,
   OpenQuestionId,
-  answerKindFromCell,
   hasControlCharacters,
   normalizeAnswerText,
   readAnswerSheet,
@@ -61,9 +65,9 @@ import { oneLine } from './questions.ts';
 export interface AnswerOptions extends CredentialOptions {
   url: string;
   project: string;
-  /** The answer (one question). */
+  /** The note (one question). */
   text?: string;
-  /** `antwort` (default), `ausserhalb`, `ergaenzt`, an API value or a sheet label (one question). */
+  /** S5a's answer kind: gone since S5c-1, refused with the way to the outside mark. */
   kind?: string;
   /** A filled-in sheet: the CSV the export wrote. */
   from?: string;
@@ -72,29 +76,10 @@ export interface AnswerOptions extends CredentialOptions {
   json?: boolean;
 }
 
-/** The short names of `--kind`, beside the API values and the sheet's labels. */
-const KIND_ALIASES = new Map<string, OpenQuestionAnswerKind>([
-  ['antwort', 'answer'],
-  ['ausserhalb', 'outside-landscape'],
-  ['außerhalb', 'outside-landscape'],
-  ['ergaenzt', 'will-be-modelled'],
-  ['ergänzt', 'will-be-modelled'],
-]);
-
-/**
- * `--kind` → an answer kind: `antwort` (the default), `ausserhalb` or
- * `ergaenzt`, also the API values (`answer`, `outside-landscape`,
- * `will-be-modelled`) and the sheet's labels („Liegt außerhalb der
- * Landschaft“), case ignored; anything else is refused before any request.
- */
-export function parseAnswerKind(value: string | undefined): OpenQuestionAnswerKind {
-  if (value === undefined) return 'answer';
-  const alias = KIND_ALIASES.get(value.trim().toLocaleLowerCase('de'));
-  if (alias !== undefined) return alias;
-  const kind = value.trim() === '' ? null : answerKindFromCell(value);
-  if (kind !== null) return kind;
+/** S5a's `--kind`, refused before any request: every answer is a note since S5c-1. */
+function refuseKind(project: string, id: string | undefined): never {
   throw new CliError(
-    `unknown answer kind ${JSON.stringify(value)}; one of antwort (the default), ausserhalb (outside the landscape) or ergaenzt (will be modelled), also answer, outside-landscape, will-be-modelled or the sheet's labels`,
+    `--kind is gone since M6 S5c-1: every answer is a note, so drop it; to mark a question outside the landscape run analyzr questions outside ${id ?? '<id>'} -p ${project}`,
   );
 }
 
@@ -110,17 +95,25 @@ export function parseQuestionId(value: string): string {
 }
 
 /**
- * `--text` → the answer as the server stores it (`normalizeAnswerText`: LF
- * line breaks, NFC, trimmed), refused before any request when it cannot be.
+ * A note's text as the server stores it (`normalizeAnswerText`: LF line
+ * breaks, NFC, trimmed), refused before any request when it cannot be.
+ *
+ * @param flag the option that gave it, for the message (`--text`, `--note`)
  */
-export function parseAnswerText(value: string): string {
+export function parseNoteText(value: string, flag = '--text'): string {
   const text = normalizeAnswerText(value);
-  if (text === '') throw new CliError('the answer is empty: give it with --text');
+  if (text === '') {
+    throw new CliError(
+      flag === '--text'
+        ? 'the note is empty: give it with --text'
+        : `the note is empty: give a text with ${flag} or drop it`,
+    );
+  }
   if (text.length > MAX_ANSWER_CHARS) {
-    throw new CliError(`the answer has ${text.length} characters; at most ${MAX_ANSWER_CHARS}`);
+    throw new CliError(`the note has ${text.length} characters; at most ${MAX_ANSWER_CHARS}`);
   }
   if (hasControlCharacters(text)) {
-    throw new CliError('the answer contains control characters (tab and line breaks are fine)');
+    throw new CliError('the note contains control characters (tab and line breaks are fine)');
   }
   return text;
 }
@@ -131,9 +124,9 @@ const PERSONAL_DATA_NAMES: Readonly<Record<PersonalDataWarning['kind'], string>>
   iban: 'an IBAN',
 };
 
-/** What to remember about every warned answer, printed once. */
+/** What to remember about every warned note, printed once. */
 export const PERSONAL_DATA_NOTE =
-  'answers take no names or other personal data, and a recorded answer cannot be deleted';
+  'notes take no names or other personal data, and a recorded note cannot be deleted';
 
 /** `an e-mail address (characters 5–24) and a phone number (characters 30–41)`, counted from 1. */
 export function describePersonalData(warnings: readonly PersonalDataWarning[]): string {
@@ -151,11 +144,8 @@ function storedAs(target: OpenQuestionAnswerTarget, subjectId?: string): string 
   return subjectId === undefined ? `as a note on the ${what}` : `as a note on ${what} ${subjectId}`;
 }
 
-/** The note holds the text, never the kind. */
-const NOTE_TEXT_ONLY = 'the note holds your text, not the kind';
-
 /**
- * What a recorded answer does today (M6 §4.5 "Where the text lands", S5a),
+ * What a recorded note does today (M6 §4.5 "Where the text lands", S5a),
  * by the item's subject and kind: a relation's note reaches agents with the
  * pair's next judgement (a hold stays for a human to decide); on a placement
  * an agent asked about, the process is due, nothing is queued; a held
@@ -168,12 +158,12 @@ export function answerEffect(question: Pick<OpenQuestion, 'kind' | 'subject'>): 
   switch (question.subject.type) {
     case 'relation':
       return held
-        ? `agents take the note into account when the pair is judged again; the hold stays until a human decides it; ${NOTE_TEXT_ONLY}`
-        : `agents take the note into account when the pair is judged again; ${NOTE_TEXT_ONLY}`;
+        ? 'agents take the note into account when the pair is judged again; the hold stays until a human decides it'
+        : 'agents take the note into account when the pair is judged again';
     case 'placement':
       return held
-        ? `the placement stays held, so no agent gets the process: decide the hold in the review screen of the web UI; ${NOTE_TEXT_ONLY}`
-        : `the process is due again; nothing is queued (analyzr value-chain requeue queues the placement task); ${NOTE_TEXT_ONLY}`;
+        ? 'the placement stays held, so no agent gets the process: decide the hold in the review screen of the web UI'
+        : 'the process is due again; nothing is queued (analyzr value-chain requeue queues the placement task)';
     case 'step':
     case 'value-chain':
       return 'no agent sees it yet; to change the analysis, adjust the value chain or place processes on it, or import the missing model';
@@ -184,19 +174,71 @@ export function answerEffect(question: Pick<OpenQuestion, 'kind' | 'subject'>): 
   }
 }
 
-/** One answer as text: what happened, the question, the effect and any personal-data warning. */
+/**
+ * How to run an action (M6 §4.8 a): the CLI command for `link`, `place`,
+ * `outside`, `note` and `requeue`; the web UI for the decisions, choosing
+ * the valid copy and fixing a step's link.
+ */
+export function actionCommand(
+  project: string,
+  q: Pick<OpenQuestion, 'id' | 'subject'>,
+  a: Pick<OpenQuestionAction, 'type' | 'pick' | 'step'>,
+): string {
+  const p = `-p ${project}`;
+  switch (a.type) {
+    case 'link':
+      return a.pick === 'pair'
+        ? `analyzr questions link ${q.id} ${p} --pair <from> <to>`
+        : `analyzr questions link ${q.id} ${p} --to <target>`;
+    case 'place':
+      if (q.subject.type === 'step')
+        return `analyzr questions place ${q.id} ${p} --process <target>`;
+      return `analyzr questions place ${q.id} ${p} --step ${a.step ?? '<step>'}`;
+    case 'outside':
+      return `analyzr questions outside ${q.id} ${p}`;
+    case 'note':
+      return `analyzr questions answer ${q.id} ${p} --text <note>`;
+    case 'requeue':
+      return `analyzr models requeue ${q.subject.id} ${p}`;
+    case 'decide':
+    case 'choose-copy':
+    case 'fix-link':
+      return 'the web UI';
+  }
+}
+
+/**
+ * What resolves a question a note leaves open: its primary action, unless
+ * that is the note itself or the question is answered already (an outside
+ * mark).
+ */
+export function resolvedBy(
+  project: string,
+  q: Pick<OpenQuestion, 'id' | 'subject' | 'state' | 'actions'>,
+): string | null {
+  const primary = q.actions.find((a) => a.primary);
+  if (q.state === 'answered' || primary === undefined || primary.type === 'note') return null;
+  const how = actionCommand(project, q, primary);
+  return `a note leaves the question open; its action „${oneLine(primary.label)}“: ${how === 'the web UI' ? 'in the web UI' : how}`;
+}
+
+/** One note as text: what happened, the question, the effect, what resolves it, any warning. */
 export function formatAnswer(project: string, r: AnswerOpenQuestionResult): string {
   const { answer, question } = r;
   const lines = [
     r.result === 'recorded'
-      ? `${project}: answer to ${question.id} recorded (${answer.kind}), ${storedAs(answer.target, answer.note?.subjectId)}`
-      : `${project}: answer to ${question.id} unchanged: the same answer (${answer.kind}) is recorded already (${answer.id})`,
+      ? `${project}: note on ${question.id} recorded, ${storedAs(answer.target, answer.note?.subjectId)}`
+      : `${project}: note on ${question.id} unchanged: the latest note says the same (${answer.id})`,
     `  ${oneLine(question.subjectLabel)}: ${oneLine(question.text)}`,
   ];
-  if (r.result === 'recorded') lines.push(`  ${answerEffect(question)}`);
+  if (r.result === 'recorded') {
+    lines.push(`  ${answerEffect(question)}`);
+    const next = resolvedBy(project, question);
+    if (next !== null) lines.push(`  ${next}`);
+  }
   if (r.warnings.length > 0) {
     lines.push(
-      `  warning: the answer probably contains ${describePersonalData(r.warnings)}`,
+      `  warning: the note probably contains ${describePersonalData(r.warnings)}`,
       `  ${PERSONAL_DATA_NOTE}`,
     );
   }
@@ -280,13 +322,13 @@ function invalidWhy(r: AnswerSheetRowResult, sheet: Sheet): string {
     case 'too-long': {
       const length = filled?.cells.text.trim().length;
       return length === undefined
-        ? `the answer is longer than ${MAX_ANSWER_CHARS} characters`
-        : `the answer has ${length} characters; at most ${MAX_ANSWER_CHARS}`;
+        ? `the note is longer than ${MAX_ANSWER_CHARS} characters`
+        : `the note has ${length} characters; at most ${MAX_ANSWER_CHARS}`;
     }
     case 'control-characters':
-      return 'the answer contains control characters (tab and line breaks are fine)';
+      return 'the note contains control characters (tab and line breaks are fine)';
     case 'unknown-kind':
-      return `unknown Antwortart ${JSON.stringify(filled?.cells.kind ?? '')}; one of ${OPEN_QUESTION_ANSWER_KINDS.map((k) => `„${k}“`).join(', ')} or empty („Antwort“)`;
+      return `unknown Antwortart ${JSON.stringify(filled?.cells.kind ?? '')} (a column of sheets exported before M6 S5c-1); one of ${OPEN_QUESTION_ANSWER_KINDS.map((k) => `„${k}“`).join(', ')} or empty (a note)`;
     case 'duplicate-id': {
       const first = sheet.filled.find((f) => f.cells.id === r.id && f.row < r.row);
       return first === undefined
@@ -306,7 +348,10 @@ function rowDetail(r: AnswerSheetRowResult, sheet: Sheet): string {
   switch (r.outcome) {
     case 'recorded':
     case 'unchanged':
-      return `${r.kind ?? 'answer'}, ${storedAs(r.target ?? 'answer', r.answer?.note?.subjectId)}`;
+      // An S5a sheet's „Liegt außerhalb der Landschaft“ records an outside mark.
+      return r.kind === 'outside-landscape'
+        ? 'outside mark (the Antwortart of an earlier sheet), kept with the question'
+        : `note, ${storedAs(r.target ?? 'answer', r.answer?.note?.subjectId)}`;
     case 'unknown':
       return 'no current open question: a wrong id, or its source changed since the export';
     case 'invalid':
@@ -316,7 +361,7 @@ function rowDetail(r: AnswerSheetRowResult, sheet: Sheet): string {
 
 /**
  * The sheet's outcome as text: one line per filled row (row, id, outcome,
- * kind and where the text lands, or why it is left out) with its
+ * note or outside mark and where the text lands, or why it is left out) with its
  * personal-data warning, the counts, the hint once, and how to go on.
  */
 export function formatSheet(
@@ -348,7 +393,7 @@ export function formatSheet(
   );
   if (result.rows.some((r) => r.warnings.length > 0)) {
     lines.push(
-      `${dryRun ? 'check the warned answers before recording them' : 'check the warned answers'}: ${PERSONAL_DATA_NOTE}`,
+      `${dryRun ? 'check the warned notes before recording them' : 'check the warned notes'}: ${PERSONAL_DATA_NOTE}`,
     );
   }
   if (dryRun && c.recorded > 0) lines.push('run again without --dry-run to record them');
@@ -365,7 +410,7 @@ function refuseLeftOut(project: string, result: AnswerSheetResult): void {
   ].filter((p) => p !== null);
   const hint =
     unknown > 0
-      ? `; an id changes when its source changes: export the sheet again (analyzr questions -p ${project} --format csv) and carry the answers over`
+      ? `; an id changes when what it asks about changes: export the sheet again (analyzr questions -p ${project} --format csv) and carry the answers over`
       : '; correct them in the sheet and run again';
   throw new CliError(
     `${plural(unknown + invalid, 'row')} ${result.dryRun ? 'would not be' : 'not'} recorded (${parts.join(', ')})${hint}`,
@@ -418,8 +463,8 @@ async function answerSheet(io: CliIo, file: string, opts: AnswerOptions): Promis
 }
 
 /**
- * `analyzr questions answer <id> -p <project> --text <text> [--kind] [--json]`
- * or `analyzr questions answer -p <project> --from <csv> [--dry-run] [--json]`.
+ * `analyzr questions answer <id> -p <project> --text <text> [--json]` or
+ * `analyzr questions answer -p <project> --from <csv> [--dry-run] [--json]`.
  */
 export async function questionsAnswerCommand(
   io: CliIo,
@@ -431,11 +476,10 @@ export async function questionsAnswerCommand(
       'only humans answer open questions: analyzr questions answer uses the owner key (drop --token and unset ANALYZR_TOKEN)',
     );
   }
+  if (opts.kind !== undefined) refuseKind(opts.project, id);
   if (opts.from !== undefined) {
-    if (id !== undefined || opts.text !== undefined || opts.kind !== undefined) {
-      throw new CliError(
-        '--from takes the ids, answers and kinds from the sheet: drop <id>, --text and --kind',
-      );
+    if (id !== undefined || opts.text !== undefined) {
+      throw new CliError('--from takes the ids and notes from the sheet: drop <id> and --text');
     }
     await answerSheet(io, opts.from, opts);
     return;
@@ -443,12 +487,11 @@ export async function questionsAnswerCommand(
   if (opts.dryRun === true) throw new CliError('--dry-run previews a sheet: it needs --from <csv>');
   if (id === undefined || opts.text === undefined) {
     throw new CliError(
-      'give the question id and --text <answer>, or --from <csv> with a filled-in sheet',
+      'give the question id and --text <note>, or --from <csv> with a filled-in sheet',
     );
   }
   const question = parseQuestionId(id);
-  const text = parseAnswerText(opts.text);
-  const kind = parseAnswerKind(opts.kind);
+  const text = parseNoteText(opts.text);
   const api = createApi(io, opts.url, await ownerCredential(io, opts));
   const result = await call(
     api,
@@ -456,7 +499,7 @@ export async function questionsAnswerCommand(
     answerOpenQuestion({
       client: api.client,
       path: { project: opts.project, question },
-      body: { text, kind },
+      body: { text },
     }),
   );
   io.stdout(

@@ -1,8 +1,11 @@
 /**
- * `analyzr questions` against a fake REST API (M6 S4): the table and JSON
- * page through `GET …/open-questions` with any credential and the filters;
- * `md` and `csv` write the export's bytes verbatim (the CSV keeps its byte
- * order mark), to stdout or `-o`; flags are checked before any request.
+ * `analyzr questions` against a fake REST API (M6 S4, S5c-1): the table and
+ * JSON page through `GET …/open-questions` with any credential and the
+ * filters; the table shows each item's primary action and, under it, the
+ * targets a live proposal names (process names from `GET …/landscape`, read
+ * only when there are some); `md` and `csv` write the export's bytes
+ * verbatim (the CSV keeps its byte order mark), to stdout or `-o`; flags are
+ * checked before any request.
  */
 import { readFile, rm } from 'node:fs/promises';
 import path from 'node:path';
@@ -10,7 +13,12 @@ import path from 'node:path';
 import type { OpenQuestion } from '@analyzr/contracts';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { parseFormat, summarizeQuestions } from '../../src/commands/questions.ts';
+import {
+  formatQuestions,
+  parseFormat,
+  primaryAction,
+  summarizeQuestions,
+} from '../../src/commands/questions.ts';
 import { runCli } from '../../src/program.ts';
 import {
   AGENT_TOKEN,
@@ -58,6 +66,7 @@ function question(n: number, extra: Partial<OpenQuestion> = {}): OpenQuestion {
     raisedBy: { sourceKind: 'rule', handle: null, seq: 3 },
     state: 'open',
     answers: [],
+    actions: [],
     ...extra,
   };
 }
@@ -100,8 +109,8 @@ function pagedQuestions(all: readonly OpenQuestion[], seen: URL[] = []) {
 }
 
 const CSV =
-  '\uFEFF"id";"Art";"Frage";"Ansprechpartner-Hinweis";"Antwort";"Antwortart"\r\n' +
-  '"q-0000000000000001";"Aufrufziel unbekannt";"Welchen Prozess ruft „Brief versenden“ auf?";"Ordner: finanzen";"";""\r\n';
+  '\uFEFF"id";"Art";"Frage";"Ansprechpartner-Hinweis";"Antwort"\r\n' +
+  '"q-0000000000000001";"Aufrufziel unbekannt";"Welchen Prozess ruft „Brief versenden“ auf?";"Ordner: finanzen";""\r\n';
 const MARKDOWN = '# Offene Fragen: P\n\nProjekt `p`, Stand Ereignis 3: eine offene Frage.\n';
 
 function exporting(seen: URL[] = []) {
@@ -133,10 +142,10 @@ describe('analyzr questions (table and JSON)', () => {
     expect(t.err()).toBe('');
     expect(t.out()).toBe(
       [
-        '  id                  unlocks  kind                  model                   subject: question',
-        '  q-0000000000000001       12  call-target-unknown   finanzen/gutschrift     „Brief versenden“: Welchen Prozess ruft „Brief versenden“ auf?',
-        '  q-0000000000000002        3  held                  finanzen/gutschrift +1  „A“ → „B“: Wer verschickt die Mahnung?',
-        '  q-0000000000000003        1  step-without-process  -                       Versand: Welcher Prozess leistet den Schritt „Versand“?',
+        '  id                  unlocks  kind                  model                   action  subject: question',
+        '  q-0000000000000001       12  call-target-unknown   finanzen/gutschrift     -       „Brief versenden“: Welchen Prozess ruft „Brief versenden“ auf?',
+        '  q-0000000000000002        3  held                  finanzen/gutschrift +1  -       „A“ → „B“: Wer verschickt die Mahnung?',
+        '  q-0000000000000003        1  step-without-process  -                       -       Versand: Welcher Prozess leistet den Schritt „Versand“?',
         'p: 3 open questions (call-target-unknown 1, held 1, step-without-process 1)',
         '',
       ].join('\n'),
@@ -216,6 +225,134 @@ describe('analyzr questions (table and JSON)', () => {
     expect(summarizeQuestions('p', [question(1)])).toBe(
       'p: 1 open question (call-target-unknown 1)',
     );
+  });
+});
+
+describe('analyzr questions (actions in the table)', () => {
+  const BRIEF = 'finanzen/briefversand#Process_Briefversand';
+  const DRUCK = 'finanzen/druck#Event_Druckauftrag';
+  const ACTIONS = [
+    question(1, {
+      actions: [
+        {
+          type: 'link',
+          primary: true,
+          label: 'Verknüpfen mit …',
+          pick: 'process',
+          suggested: [BRIEF, DRUCK],
+        },
+        { type: 'outside', primary: false, label: 'Liegt außerhalb der Landschaft' },
+        { type: 'note', primary: false, label: 'Notiz hinzufügen' },
+      ],
+    }),
+    question(2, {
+      kind: 'black-box-partner',
+      source: 'signal',
+      subject: { type: 'ref', id: 'finanzen/gutschrift#Participant_Bank' },
+      subjectLabel: '„Bank“ in „finanzen/gutschrift“',
+      text: 'Ist „Bank“ ein externer Partner?',
+      state: 'answered',
+      actions: [
+        { type: 'outside', primary: true, label: 'Liegt außerhalb der Landschaft' },
+        { type: 'link', primary: false, label: 'Verknüpfen mit …', pick: 'process', suggested: [] },
+        { type: 'note', primary: false, label: 'Notiz hinzufügen' },
+      ],
+    }),
+    question(3, {
+      kind: 'undocumented-process',
+      source: 'signal',
+      subjectLabel: '„Gutschrift“',
+      text: 'Was leistet der Prozess „Gutschrift“?',
+      actions: [{ type: 'note', primary: true, label: 'Notiz hinzufügen' }],
+    }),
+  ];
+  const LANDSCAPE = {
+    projectId: 'prj_01JC0000000000000000000000',
+    seq: 7,
+    models: [
+      {
+        id: 'mdl_01JC0000000000000000000000',
+        key: 'finanzen/briefversand',
+        name: null,
+        stage: 'waiting_for_agent',
+        processes: [
+          {
+            ref: BRIEF,
+            processId: 'Process_Briefversand',
+            name: 'Briefversand über\nDruckdienstleister',
+            participantName: null,
+            isExecutable: true,
+          },
+        ],
+      },
+    ],
+    relations: [],
+    findings: [],
+  };
+
+  it('prints the primary action and, under the question, the suggested targets with their names and refs', async () => {
+    const api = fakeApi({
+      [LIST]: () => json({ items: ACTIONS, nextCursor: null, total: 3 }),
+      'GET /api/v1/projects/p/landscape': () => json(LANDSCAPE),
+    });
+    const t = owner(api.fetch);
+    expect(await runCli(['questions', '-p', 'p'], t.io)).toBe(0);
+    expect(api.seen.map((s) => s.path)).toEqual([
+      '/api/v1/projects/p/open-questions',
+      '/api/v1/projects/p/landscape',
+    ]);
+    expect(t.out()).toBe(
+      [
+        '  id                  unlocks  kind                  model                action                                    subject: question',
+        '  q-0000000000000001        1  call-target-unknown   finanzen/gutschrift  Verknüpfen mit … (link)                   „Brief versenden“: Welchen Prozess ruft „Brief versenden“ auf?',
+        `      suggested for link: „Briefversand über Druckdienstleister“ (${BRIEF}), ${DRUCK}`,
+        '  q-0000000000000002        1  black-box-partner     finanzen/gutschrift  Liegt außerhalb der Landschaft (outside)  „Bank“ in „finanzen/gutschrift“: Ist „Bank“ ein externer Partner?  [answered: outside the landscape]',
+        '  q-0000000000000003        1  undocumented-process  finanzen/gutschrift  Notiz hinzufügen (note)                   „Gutschrift“: Was leistet der Prozess „Gutschrift“?',
+        'p: 3 open questions (black-box-partner 1, call-target-unknown 1, undocumented-process 1), 1 answered (outside the landscape)',
+        '',
+      ].join('\n'),
+    );
+    // JSON carries the actions as the server sends them; no landscape needed.
+    const j = owner(
+      fakeApi({ [LIST]: () => json({ items: ACTIONS, nextCursor: null, total: 3 }) }).fetch,
+    );
+    expect(await runCli(['questions', '-p', 'p', '--format', 'json'], j.io)).toBe(0);
+    expect(JSON.parse(j.out())).toEqual(ACTIONS);
+  });
+
+  it('names the primary action, or none', () => {
+    expect(primaryAction(question(1))).toBe('-');
+    expect(primaryAction(ACTIONS[0] ?? question(9))).toBe('Verknüpfen mit … (link)');
+    // Without the landscape, suggested targets are listed by their refs.
+    expect(formatQuestions(ACTIONS.slice(0, 1))[2]).toBe(
+      `      suggested for link: ${BRIEF}, ${DRUCK}`,
+    );
+    // The proposals a link to a suggested target accepts, under it.
+    const [first] = ACTIONS;
+    if (!first) throw new Error('no item');
+    const withProposal: OpenQuestion = {
+      ...first,
+      actions: first.actions.map((a) =>
+        a.type === 'link'
+          ? {
+              ...a,
+              proposals: [
+                {
+                  target: BRIEF,
+                  relation: 'rel_01JC0000000000000000000009',
+                  type: 'call',
+                  from: first.subject.id as `${string}#${string}`,
+                  to: BRIEF,
+                },
+              ],
+            }
+          : a,
+      ),
+    };
+    expect(formatQuestions([withProposal]).slice(2, 4)).toEqual([
+      `      suggested for link: ${BRIEF}, ${DRUCK}`,
+      `        ${BRIEF}: accepts the call proposal ${first.subject.id} → ${BRIEF} (rel_01JC0000000000000000000009)`,
+    ]);
   });
 });
 

@@ -4,11 +4,23 @@
  */
 export type ToastTone = 'success' | 'info' | 'warning' | 'danger';
 
+/**
+ * One button in a toast, e.g. „Rückgängig“ after an action on an open
+ * question (M6 S5c-1); a toast with an action stays longer.
+ */
+export interface ToastAction {
+  label: string;
+  onAction: () => void;
+  /** What the action does, for screen readers (Radix announces it with the toast). */
+  altText?: string;
+}
+
 export interface ToastItem {
   id: number;
   tone: ToastTone;
   title: string;
   description?: string;
+  action?: ToastAction;
 }
 
 let items: ToastItem[] = [];

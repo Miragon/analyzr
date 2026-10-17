@@ -35,6 +35,15 @@ import { rootRoute } from './root';
 const BpmnCanvas = lazy(() => import('@/components/bpmn-canvas'));
 /** The section „Offene Fragen“ (M6 S4), loaded with the panel, never with the entry. */
 const ModelQuestions = lazy(() => import('@/components/open-questions/model-questions'));
+/**
+ * „Verknüpfen mit …“ on a selected collapsed subprocess (M6 S5c-1), from the
+ * same lazy module as the section, so it adds no chunk of its own.
+ */
+const SubprocessLink = lazy(() =>
+  import('@/components/open-questions/model-questions').then((m) => ({
+    default: m.SubprocessLink,
+  })),
+);
 
 interface ModelViewSearch {
   /** Selected relation (`rel_…`): its endpoints are highlighted. */
@@ -370,6 +379,18 @@ function ModelView() {
           ) : null}
         </div>
         <div className="flex-1 overflow-y-auto p-2">
+          {search.element && content.data && model ? (
+            <Suspense fallback={null}>
+              <SubprocessLink
+                key={search.element}
+                project={project}
+                modelKey={modelKey}
+                xml={content.data.xml}
+                elementId={search.element}
+                resolve={resolve}
+              />
+            </Suspense>
+          ) : null}
           {landscape.isPending ? (
             <Skeleton className="h-24 w-full" />
           ) : listed.length === 0 ? (

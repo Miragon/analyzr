@@ -6,8 +6,11 @@
  * tools/call list_processes) in the 2025-11-25 and the 2026-07-28 revision,
  * `analyzr value-chain push|pull` with the golden dev chain, `analyzr seed
  * --value-chains` (M4 S4), `analyzr questions` on the seeded chain project
- * (M6 S4), `analyzr questions answer` (one answer, a held relation's note,
- * the CSV round trip; M6 S5a), and the import hygiene of M6 S1 (`.xml`,
+ * (M6 S4), `analyzr questions answer` (one note, a held relation's note,
+ * the CSV round trip; M6 S5a, notes since S5c-1), `analyzr questions
+ * outside|link|place` (M6 S5c-1: targets by ref, model key and process name,
+ * an accepted proposal, placements on a step and on `@outside`, the outside
+ * mark and its withdrawal, an S5a sheet), and the import hygiene of M6 S1 (`.xml`,
  * skipped plain XML and sidecars, extractor warnings, the waiting tasks) with
  * `analyzr models list|requeue|delete`.
  */
@@ -287,6 +290,13 @@ describe('analyzr questions (M6 S4)', () => {
       source: string;
       unlocks: number;
       modelKeys: string[];
+      actions: {
+        type: string;
+        primary: boolean;
+        label: string;
+        suggested?: string[];
+        proposals?: unknown[];
+      }[];
     }[];
     const byKind: Record<string, number> = {};
     for (const q of items) byKind[q.kind] = (byKind[q.kind] ?? 0) + 1;
@@ -306,7 +316,19 @@ describe('analyzr questions (M6 S4)', () => {
     expect(table.out).toContain(
       'vc-seed: 64 open questions (process-without-step 32, step-without-process 12, message-partner-missing 9, black-box-partner 6, call-target-dynamic 2, call-target-unknown 2, duplicate-process-id 1)\n',
     );
-    expect(table.out.split('\n')).toHaveLength(64 + 3);
+    // One line per question, under it one per action with suggested targets and one per
+    // proposal a link to them accepts (M6 S5c-1).
+    const suggested = items.flatMap((q) => q.actions.filter((a) => (a.suggested ?? []).length > 0));
+    const proposals = suggested.flatMap((a) => a.proposals ?? []);
+    expect(table.out.split('\n')).toHaveLength(64 + 3 + suggested.length + proposals.length);
+    expect(table.out.split('\n')[0]).toMatch(/ {2}action +subject: question$/);
+    for (const q of items) {
+      const primary = q.actions.find((a) => a.primary);
+      if (!primary) throw new Error(`${q.id} (${q.kind}) has no primary action`);
+      expect(table.out).toMatch(
+        new RegExp(`\\n {2}${q.id} .* ${primary.label} \\(${primary.type}\\) `),
+      );
+    }
 
     const finanzen = await analyzr(
       ['questions', '-p', 'vc-seed', '--model', 'finanzen', '--format', 'json'],
@@ -331,9 +353,7 @@ describe('analyzr questions (M6 S4)', () => {
     const bytes = await readFile(csvFile);
     expect([...bytes.subarray(0, 3)]).toEqual([0xef, 0xbb, 0xbf]);
     const text = bytes.toString('utf8');
-    expect(text).toMatch(
-      /^\uFEFF"id";"Art";"Frage";"Ansprechpartner-Hinweis";"Antwort";"Antwortart"\r\n/,
-    );
+    expect(text).toMatch(/^\uFEFF"id";"Art";"Frage";"Ansprechpartner-Hinweis";"Antwort"\r\n/);
     expect(text.match(/\r\n"q-[0-9a-f]{16}";/g)).toHaveLength(64);
     for (const q of items) expect(text).toContain(`"${q.id}";`);
 
@@ -407,12 +427,12 @@ describe('analyzr questions answer (M6 S5a)', () => {
     return JSON.parse(r.out) as Item[];
   }
 
-  /** The sheet with `answer` and `kind` in the row of `id` (the export leaves both empty). */
-  function fill(sheet: string, id: string, answer: string, kind = ''): string {
+  /** The sheet with `answer` in the row of `id` (the five-column export leaves it empty). */
+  function fill(sheet: string, id: string, answer: string): string {
     const start = sheet.indexOf(`\r\n"${id}";`);
     expect(start).toBeGreaterThan(0);
-    const end = sheet.indexOf(';"";""\r\n', start);
-    return `${sheet.slice(0, end)};"${answer}";"${kind}"${sheet.slice(end + ';"";""'.length)}`;
+    const end = sheet.indexOf(';""\r\n', start);
+    return `${sheet.slice(0, end)};"${answer}"${sheet.slice(end + ';""'.length)}`;
   }
 
   it('answers one question, a held relation as a note on it, and a filled-in sheet', async () => {
@@ -452,7 +472,8 @@ describe('analyzr questions answer (M6 S5a)', () => {
     expect(refused.err).toContain('only humans answer open questions');
     expect(await list('--state', 'answered')).toEqual([]);
 
-    // One answer on the held relation: a human note on it; the item turns answered.
+    // One answer on the held relation: a human note on it; the item stays open (M6 S5c-1:
+    // a note informs, only an outside mark makes an item answered).
     const one = await analyzr([
       'questions',
       'answer',
@@ -478,7 +499,7 @@ describe('analyzr questions answer (M6 S5a)', () => {
         text: 'Ja, immer.',
         note: { type: 'relation', subjectId: relation.id },
       },
-      question: { id: held.id, state: 'answered' },
+      question: { id: held.id, state: 'open' },
       warnings: [],
     });
     const timeline = (await (await owner(`/relations/${relation.id}/assertions`)).json()) as {
@@ -492,36 +513,46 @@ describe('analyzr questions answer (M6 S5a)', () => {
     });
     const again = await analyzr(['questions', 'answer', held.id, '-p', P, '--text', 'Ja, immer.']);
     expect(again.code).toBe(0);
-    expect(again.out).toContain(`${P}: answer to ${held.id} unchanged: the same answer (answer)`);
+    expect(again.out).toContain(
+      `${P}: note on ${held.id} unchanged: the latest note says the same`,
+    );
 
     // A subject answer stays with the question; the personal-data check warns, never blocks.
     const text = 'Die Hausbank, Kontakt max.muster@example.org';
-    const kept = await analyzr([
+    const kept = await analyzr(['questions', 'answer', partner.id, '-p', P, '--text', text]);
+    expect(kept.err).toBe('');
+    expect(kept.code).toBe(0);
+    expect(kept.out).toMatch(
+      new RegExp(`^${P}: note on ${partner.id} recorded, kept with the question\\n`),
+    );
+    expect(kept.out).toContain(
+      `  warning: the note probably contains an e-mail address (characters ${text.indexOf('max') + 1}–${text.length})\n`,
+    );
+    // The answer kinds are gone (M6 S5c-1): the outside mark is an action of its own.
+    const kinded = await analyzr([
       'questions',
       'answer',
       partner.id,
       '-p',
       P,
       '--text',
-      text,
+      'x',
       '--kind',
       'ausserhalb',
     ]);
-    expect(kept.err).toBe('');
-    expect(kept.code).toBe(0);
-    expect(kept.out).toMatch(
-      new RegExp(
-        `^${P}: answer to ${partner.id} recorded \\(outside-landscape\\), kept with the question\\n`,
-      ),
+    expect(kinded.code).toBe(1);
+    expect(kinded.err).toContain(
+      `--kind is gone since M6 S5c-1: every answer is a note, so drop it; to mark a question outside the landscape run analyzr questions outside ${partner.id} -p ${P}`,
     );
-    expect(kept.out).toContain(
-      `  warning: the answer probably contains an e-mail address (characters ${text.indexOf('max') + 1}–${text.length})\n`,
+    const marked = await analyzr(['questions', 'outside', partner.id, '-p', P]);
+    expect(marked.err).toBe('');
+    expect(marked.code).toBe(0);
+    expect(marked.out).toMatch(
+      new RegExp(`^${P}: ${partner.id} marked outside the landscape \\(oqa_[0-9A-Z]{26}\\)\\n`),
     );
-    expect((await list('--state', 'answered')).map((q) => q.id).sort()).toEqual(
-      [held.id, partner.id].sort(),
-    );
+    expect((await list('--state', 'answered')).map((q) => q.id)).toEqual([partner.id]);
 
-    // The sheet of the open questions, filled in: two answers, an unknown id, a wrong kind.
+    // The sheet of the open questions, filled in: two answers, an unknown id, a long one.
     const exported = path.join(dir, 'antworten-export.csv');
     expect(
       (await analyzr(['questions', '-p', P, '--state', 'open', '--format', 'csv', '-o', exported]))
@@ -534,9 +565,9 @@ describe('analyzr questions answer (M6 S5a)', () => {
     if (!callTarget || !missing || !duplicate) throw new Error('the seeded findings changed');
     let sheet = await readFile(exported, 'utf8');
     sheet = fill(sheet, callTarget.id, 'Der Versand ruft den Prozess auf.');
-    sheet = fill(sheet, missing.id, 'Kommt im nächsten Release.', 'Wird im Modell ergänzt');
-    sheet = fill(sheet, duplicate.id, 'Egal.', 'vielleicht');
-    sheet += '"q-0000000000000000";"";"";"";"Gibt es nicht.";""\r\n';
+    sheet = fill(sheet, missing.id, 'Kommt im nächsten Release.');
+    sheet = fill(sheet, duplicate.id, 'x'.repeat(2001));
+    sheet += '"q-0000000000000000";"";"";"";"Gibt es nicht."\r\n';
     const sheetFile = path.join(dir, 'antworten.csv');
     await writeFile(sheetFile, sheet);
     const ids = [...sheet.matchAll(/\r\n"(q-[0-9a-f]{16})";/g)].map((m) => m[1]);
@@ -547,18 +578,16 @@ describe('analyzr questions answer (M6 S5a)', () => {
     expect(dry.code).toBe(1);
     expect(dry.out).toMatch(
       new RegExp(
-        `\\n? {2}row +${rowOf(callTarget.id)} {2}${callTarget.id} {2}would record {2}answer, kept with the question\\n`,
+        `\\n? {2}row +${rowOf(callTarget.id)} {2}${callTarget.id} {2}would record {2}note, kept with the question\\n`,
       ),
     );
     expect(dry.out).toMatch(
       new RegExp(
-        `row +${rowOf(missing.id)} {2}${missing.id} {2}would record {2}will-be-modelled, kept with the question\\n`,
+        `row +${rowOf(missing.id)} {2}${missing.id} {2}would record {2}note, kept with the question\\n`,
       ),
     );
     expect(dry.out).toMatch(
-      new RegExp(
-        `row +${rowOf(duplicate.id)} {2}${duplicate.id} {2}invalid +unknown Antwortart "vielleicht"`,
-      ),
+      new RegExp(`row +${rowOf(duplicate.id)} {2}${duplicate.id} {2}invalid +`),
     );
     expect(dry.out).toMatch(
       new RegExp(
@@ -566,10 +595,10 @@ describe('analyzr questions answer (M6 S5a)', () => {
       ),
     );
     expect(dry.out).toContain(
-      `${P}: ${sheetFile} (dry run, nothing recorded): 2 to record, 0 unchanged, 1 unknown, 1 invalid, ${ids.length - 4} rows without an answer\n`,
+      `${P}: ${sheetFile} (dry run, nothing recorded): 2 to record, 1 unchanged, 1 unknown, 1 invalid, ${ids.length - 5} rows without an answer\n`,
     );
     expect(dry.err).toContain('2 rows would not be recorded (1 unknown, 1 invalid)');
-    expect(await list('--state', 'answered')).toHaveLength(2);
+    expect(await list('--state', 'answered')).toHaveLength(1);
 
     // Recorded: the rest in one call, the unknown and invalid rows never; again: unchanged.
     const real = await analyzr(['questions', 'answer', '-p', P, '--from', sheetFile, '--json']);
@@ -578,27 +607,28 @@ describe('analyzr questions answer (M6 S5a)', () => {
     const result = JSON.parse(real.out) as SheetOutcome;
     expect(result).toMatchObject({
       dryRun: false,
-      counts: { recorded: 2, unchanged: 0, unknown: 1, invalid: 1, ignored: ids.length - 4 },
+      counts: { recorded: 2, unchanged: 1, unknown: 1, invalid: 1, ignored: ids.length - 5 },
     });
     expect(result.rows.map((r) => [r.row, r.id, r.outcome])).toEqual(
       [
         [rowOf(callTarget.id), callTarget.id, 'recorded'],
         [rowOf(missing.id), missing.id, 'recorded'],
+        // The held relation is still open: the export carries its note, read back unchanged.
+        [rowOf(held.id), held.id, 'unchanged'],
         [rowOf(duplicate.id), duplicate.id, 'invalid'],
         [ids.length + 1, 'q-0000000000000000', 'unknown'],
       ].sort((a, b) => Number(a[0]) - Number(b[0])),
     );
+    // Notes leave the items open; only the outside mark answers one.
     const answered = await list('--state', 'answered');
-    expect(answered.map((q) => q.id).sort()).toEqual(
-      [held.id, partner.id, callTarget.id, missing.id].sort(),
-    );
+    expect(answered.map((q) => q.id)).toEqual([partner.id]);
     const repeated = await analyzr(['questions', 'answer', '-p', P, '--from', sheetFile, '--json']);
     expect((JSON.parse(repeated.out) as SheetOutcome).counts).toMatchObject({
       recorded: 0,
-      unchanged: 2,
+      unchanged: 3,
     });
 
-    // The export carries the latest answers; read back, the whole sheet is unchanged.
+    // The export carries the latest notes; read back, the whole sheet is unchanged.
     const all = path.join(dir, 'antworten-alle.csv');
     expect((await analyzr(['questions', '-p', P, '--format', 'csv', '-o', all])).code).toBe(0);
     const roundTrip = await analyzr(['questions', 'answer', '-p', P, '--from', all, '--dry-run']);
@@ -606,8 +636,316 @@ describe('analyzr questions answer (M6 S5a)', () => {
     expect(roundTrip.code).toBe(0);
     expect(roundTrip.out).toContain(': 0 to record, 4 unchanged, 0 unknown, 0 invalid, ');
     const table = await analyzr(['questions', '-p', P, '--state', 'answered']);
-    expect(table.out.match(/ {2}\[answered\]\n/g)).toHaveLength(4);
-    expect(table.out).toMatch(/: 4 open questions \(.*\), 4 answered\n$/);
+    expect(table.out.match(/ {2}\[answered: outside the landscape\]\n/g)).toHaveLength(1);
+    expect(table.out).toMatch(/: 1 open question \(.*\), 1 answered \(outside the landscape\)\n$/);
+  });
+});
+
+describe('analyzr questions outside|link|place (M6 S5c-1)', () => {
+  const P = 'actions-e2e';
+  const FRAUD_CHECK = 'vertrieb/order-handling#Call_FraudCheck';
+  const KREDIT = 'finanzen/kreditpruefung#Process_Kreditpruefung';
+
+  interface Item {
+    id: string;
+    kind: string;
+    source: string;
+    subject: { type: string; id: string };
+    state: string;
+    answers: { id: string; role: string; text: string | null; withdrawal: unknown }[];
+    actions: { type: string; primary: boolean; label: string; suggested?: string[] }[];
+  }
+
+  async function rest(pathname: string, init: RequestInit = {}, secret?: string) {
+    const bearer = secret ?? (await readFile(keyFile, 'utf8')).trim();
+    return fetch(`${server.url}/api/v1/projects/${P}${pathname}`, {
+      ...init,
+      headers: {
+        authorization: `Bearer ${bearer}`,
+        'content-type': 'application/json',
+        ...init.headers,
+      },
+    });
+  }
+
+  async function list(...flags: string[]): Promise<Item[]> {
+    const r = await analyzr(['questions', '-p', P, '--format', 'json', ...flags]);
+    expect(r.err).toBe('');
+    expect(r.code).toBe(0);
+    return JSON.parse(r.out) as Item[];
+  }
+
+  const primary = (q: Item) => q.actions.find((a) => a.primary)?.type;
+
+  it('links, places and marks open questions as a human; agents are refused', async () => {
+    const seeded = await analyzr(['seed', 'nordwind-handel', '--project', P, '--value-chains']);
+    expect(seeded.err).toBe('');
+    expect(seeded.code).toBe(0);
+    const before = await list();
+    expect(before).toHaveLength(64);
+    const fraud = before.find((q) => q.source === 'finding' && q.subject.id === FRAUD_CHECK);
+    const otherCall = before.find(
+      (q) => q.kind === 'call-target-unknown' && q.subject.id !== FRAUD_CHECK,
+    );
+    const unplaced = before.filter(
+      (q) =>
+        q.kind === 'process-without-step' &&
+        primary(q) === 'place' &&
+        !q.subject.id.startsWith('finanzen/kreditpruefung#'),
+    );
+    const step = before.find((q) => q.kind === 'step-without-process' && primary(q) === 'place');
+    const [pool, otherPool] = before.filter((q) => q.kind === 'black-box-partner');
+    const [first, second, third, fourth] = unplaced;
+    if (
+      !fraud ||
+      !otherCall ||
+      !first ||
+      !second ||
+      !third ||
+      !fourth ||
+      !step ||
+      !pool ||
+      !otherPool
+    ) {
+      throw new Error('the seeded open questions changed');
+    }
+    const findings = async () =>
+      (await status()).projects.find((p) => p.key === P)?.findings['unresolved-call'];
+    const unresolved = await findings();
+
+    // Agents never act: refused before any request.
+    const token = await analyzr(['token', 'create', '-p', P, '--name', 'actions', '--json']);
+    const agentSecret = (JSON.parse(token.out) as { secret: string }).secret;
+    const agentEnv = { ANALYZR_TOKEN: agentSecret };
+    for (const argv of [
+      ['link', fraud.id, '--to', KREDIT],
+      ['place', first.id, '--step', '@outside'],
+      ['outside', pool.id],
+    ]) {
+      const refused = await analyzr(['questions', ...argv, '-p', P], agentEnv);
+      expect(refused.code, argv.join(' ')).toBe(1);
+      expect(refused.err).toContain('only humans act on open questions');
+    }
+
+    // An ambiguous target lists the candidates and sends nothing.
+    const twice = await analyzr([
+      'questions',
+      'link',
+      fraud.id,
+      '-p',
+      P,
+      '--to',
+      'Bestellfreigabe',
+    ]);
+    expect(twice.code).toBe(1);
+    expect(twice.err).toBe(
+      'analyzr: "Bestellfreigabe" matches 2 processes; name one by its ref:\n' +
+        '  „Bestellfreigabe“ (einkauf/archiv/bestellfreigabe-2019#Process_Bestellfreigabe)\n' +
+        '  „Bestellfreigabe“ (einkauf/bestellfreigabe#Process_Bestellfreigabe)\n' +
+        'nothing was sent\n',
+    );
+    const model = await analyzr([
+      'questions',
+      'link',
+      fraud.id,
+      '-p',
+      P,
+      '--to',
+      'finanzen/kreditpruefung',
+    ]);
+    expect(model.code).toBe(1);
+    expect(model.err).toContain(
+      'model finanzen/kreditpruefung has 2 processes; name one by its ref:',
+    );
+    expect((await list()).map((q) => q.id)).toEqual(before.map((q) => q.id));
+
+    // A process name: an accepted manual relation; the item goes, „Befunde“ keeps the finding (R1).
+    const linked = await analyzr([
+      'questions',
+      'link',
+      fraud.id,
+      '-p',
+      P,
+      '--to',
+      'kreditprüfung',
+      '--note',
+      'Laut Fachbereich Vertrieb.',
+    ]);
+    expect(linked.err).toBe('');
+    expect(linked.code).toBe(0);
+    const origin = server.url.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    expect(linked.out).toMatch(
+      new RegExp(
+        `^${P}: ${fraud.id} linked\n  .*\n  wrote the accepted manual relation ${FRAUD_CHECK} → ${KREDIT} \\(rel_[0-9A-Z]{26}\\)\n  the question is resolved and leaves the list\n  to undo, reject the manual relation in the review screen of the web UI:\n    ${origin}/projects/${P}/review/rel_[0-9A-Z]{26}\n$`,
+      ),
+    );
+    expect((await list()).some((q) => q.id === fraud.id)).toBe(false);
+    expect(await findings()).toBe(unresolved);
+
+    // An agent's proposal from the other call is suggested in the table, and the link accepts it.
+    const target = 'finanzen/mahnwesen#Process_Mahnwesen';
+    const proposed = await rest(
+      '/relations',
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          type: 'call',
+          from: otherCall.subject.id,
+          to: target,
+          confidence: 0.8,
+          rationale: 'Der Aufruf passt zum Zweck des Prozesses.',
+        }),
+      },
+      agentSecret,
+    );
+    expect(proposed.status, await proposed.clone().text()).toBe(200);
+    const proposal = ((await proposed.json()) as { relation: { id: string } }).relation;
+    const table = await analyzr(['questions', '-p', P, '--kind', 'call-target-unknown']);
+    expect(table.out).toContain(`  ${otherCall.id}  `);
+    expect(table.out).toContain(`      suggested for link: „Mahnwesen“ (${target})\n`);
+    const accepted = await analyzr([
+      'questions',
+      'link',
+      otherCall.id,
+      '-p',
+      P,
+      '--to',
+      'finanzen/mahnwesen',
+      '--json',
+    ]);
+    expect(accepted.err).toBe('');
+    expect(accepted.code).toBe(0);
+    expect(JSON.parse(accepted.out)).toMatchObject({
+      result: 'applied',
+      question: null,
+      relations: [
+        { effect: 'decision', relation: { id: proposal.id, type: 'call', status: 'accepted' } },
+      ],
+    });
+
+    // Placements: on a step of the chain, on @outside, and a process on a step without one.
+    const chain = (await (await rest('/value-chains/main')).json()) as {
+      steps: { elementId: string; depth: number }[];
+    };
+    const nested = chain.steps.find((s) => s.depth > 0)?.elementId;
+    if (!nested) throw new Error('the golden chain has no nested step');
+    const onStep = await analyzr(['questions', 'place', first.id, '-p', P, '--step', nested]);
+    expect(onStep.err).toBe('');
+    expect(onStep.code).toBe(0);
+    expect(onStep.out).toMatch(
+      new RegExp(
+        `^${P}: ${first.id}: placed „.+“ on step „.+“ \\(${nested}\\) \\(plc_[0-9A-Z]{26}\\)\n`,
+      ),
+    );
+    const outside = await analyzr(['questions', 'place', second.id, '-p', P, '--step', '@outside']);
+    expect(outside.code).toBe(0);
+    expect(outside.out).toMatch(
+      new RegExp(`^${P}: ${second.id}: placed „.+“ on no step \\(@outside\\)`),
+    );
+    const modelKey = third.subject.id.split('#')[0] ?? '';
+    const filled = await analyzr(['questions', 'place', step.id, '-p', P, '--process', modelKey]);
+    expect(filled.err).toBe('');
+    expect(filled.code).toBe(0);
+    expect(filled.out).toContain(`(${step.subject.id})`);
+    const placedIds = new Set((await list()).map((q) => q.id));
+    // The step's item goes, and so does the item of the process placed on it.
+    for (const q of [first, second, step, third]) expect(placedIds.has(q.id), q.kind).toBe(false);
+
+    // An action the item does not offer names the ones it does.
+    const wrong = await analyzr(['questions', 'outside', fourth.id, '-p', P]);
+    expect(wrong.code).toBe(1);
+    expect(wrong.err).toContain(
+      `${fourth.id} (process-without-step) offers no outside; its actions: Schritt wählen … (place), Gehört zu keinem Schritt (place), Notiz hinzufügen (note, analyzr questions answer)`,
+    );
+
+    // The outside mark: answered, a second click unchanged, undone, marked again.
+    const marked = await analyzr([
+      'questions',
+      'outside',
+      pool.id,
+      '-p',
+      P,
+      '--note',
+      'Die Hausbank.',
+    ]);
+    expect(marked.err).toBe('');
+    expect(marked.code).toBe(0);
+    const markId = /\((oqa_[0-9A-Z]{26})\)/.exec(marked.out)?.[1];
+    if (!markId) throw new Error(`no mark id in ${marked.out}`);
+    expect(marked.out).toContain(
+      `  undo with: analyzr questions outside ${pool.id} -p ${P} --undo ${markId}\n`,
+    );
+    expect((await list('--state', 'answered')).map((q) => q.id)).toEqual([pool.id]);
+    const again = await analyzr(['questions', 'outside', pool.id, '-p', P]);
+    expect(again.out).toContain(
+      `${P}: ${pool.id} unchanged: marked outside the landscape already (${markId})\n`,
+    );
+    const undone = await analyzr(['questions', 'outside', pool.id, '-p', P, '--undo', markId]);
+    expect(undone.err).toBe('');
+    expect(undone.code).toBe(0);
+    expect(undone.out).toContain(
+      `${P}: outside mark ${markId} on ${pool.id} withdrawn; the question is open again\n`,
+    );
+    expect(await list('--state', 'answered')).toEqual([]);
+    const undoneAgain = await analyzr(['questions', 'outside', pool.id, '-p', P, '--undo', markId]);
+    expect(undoneAgain.out).toContain('unchanged: withdrawn before');
+    expect((await analyzr(['questions', 'outside', pool.id, '-p', P])).code).toBe(0);
+    const remarked = (await list('--state', 'answered')).find((q) => q.id === pool.id);
+    expect(remarked?.answers.map((a) => [a.role, a.text, a.withdrawal === null])).toEqual([
+      ['outside-mark', 'Die Hausbank.', false],
+      ['outside-mark', null, true],
+    ]);
+    // A note leaves the state as it is.
+    const note = await analyzr([
+      'questions',
+      'answer',
+      otherPool.id,
+      '-p',
+      P,
+      '--text',
+      'Ein Dienstleister.',
+    ]);
+    expect(note.code).toBe(0);
+    expect(note.out).toContain(
+      `  a note leaves the question open; its action „Liegt außerhalb der Landschaft“: analyzr questions outside ${otherPool.id} -p ${P}\n`,
+    );
+    expect((await list('--state', 'answered')).map((q) => q.id)).toEqual([pool.id]);
+  });
+
+  it('reads a sheet of S5a with Antwortart: the outside mark on a pool, a note on a held relation', async () => {
+    const proposed = (await (await rest('/relations?status=proposed&limit=200')).json()) as {
+      items: { id: string }[];
+    };
+    const [relation] = proposed.items;
+    if (!relation) throw new Error('the rule tier proposed no relation');
+    const hold = await rest(`/relations/${relation.id}/decision`, {
+      method: 'POST',
+      body: JSON.stringify({ verdict: 'hold', note: 'Klären.', question: 'Gilt das immer?' }),
+    });
+    expect(hold.status).toBe(200);
+    const items = await list('--state', 'open');
+    const held = items.find((q) => q.kind === 'held' && q.subject.id === relation.id);
+    const pool = items.find((q) => q.kind === 'black-box-partner' && q.answers.length === 0);
+    if (!held || !pool) throw new Error('no held relation or unanswered pool');
+    const outside = 'Liegt außerhalb der Landschaft';
+    const sheet =
+      '﻿"id";"Art";"Frage";"Ansprechpartner-Hinweis";"Antwort";"Antwortart"\r\n' +
+      `"${pool.id}";"";"";"";"Extern.";"${outside}"\r\n` +
+      `"${held.id}";"";"";"";"Ja, immer.";"${outside}"\r\n`;
+    const file = path.join(dir, 'antworten-s5a.csv');
+    await writeFile(file, sheet);
+    const r = await analyzr(['questions', 'answer', '-p', P, '--from', file]);
+    expect(r.err).toBe('');
+    expect(r.code).toBe(0);
+    expect(r.out).toContain(
+      `  row 2  ${pool.id}  recorded  outside mark (the Antwortart of an earlier sheet), kept with the question\n`,
+    );
+    expect(r.out).toContain(
+      `  row 3  ${held.id}  recorded  note, as a note on relation ${relation.id}\n`,
+    );
+    const after = await list();
+    expect(after.find((q) => q.id === pool.id)?.state).toBe('answered');
+    expect(after.find((q) => q.id === held.id)?.state).toBe('open');
   });
 });
 

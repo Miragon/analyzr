@@ -8,7 +8,6 @@ import {
   InfoIcon,
   LocateIcon,
   MapIcon,
-  MessageSquareReplyIcon,
   SearchCheckIcon,
   TagIcon,
   UsersIcon,
@@ -23,9 +22,9 @@ import { Principal } from '@/components/review/provenance';
 import { Button } from '@/components/ui/button';
 import { formatDateTime } from '@/lib/labels';
 import {
-  ANSWER_KIND_LABELS,
+  ANSWER_ROLE_LABELS,
   ANSWER_TARGET_LABELS,
-  answerCountText,
+  answersSummaryText,
 } from '@/lib/open-question-answers';
 import {
   OPEN_QUESTION_KINDS,
@@ -40,6 +39,8 @@ import {
   type QuestionLink,
 } from '@/lib/open-questions';
 import { splitRef, type RefResolver } from '@/lib/refs';
+
+import { QuestionActions, type QuestionActor } from './question-actions';
 
 /** Refs listed per item; the export and the API have them all. */
 const LISTED_REFS = 6;
@@ -132,9 +133,10 @@ function RaisedBy({ q }: { q: OpenQuestion }) {
 }
 
 /**
- * The answers of an item (M6 S5a), oldest first: kind, who answered and
- * when (the event seq as its title), where the text is (a note on the
- * relation or placement, or the question itself), the text as plain text.
+ * The answers of an item, oldest first (M6 S5a; S5c-1): notes and outside
+ * marks, each with who recorded it and when (the event seq as its title),
+ * where a note is (on the relation or placement, or at the question), its
+ * text as plain text; a withdrawn mark says so.
  */
 function Answers({ q, compact }: { q: OpenQuestion; compact: boolean }) {
   return (
@@ -142,19 +144,24 @@ function Answers({ q, compact }: { q: OpenQuestion; compact: boolean }) {
       className="flex flex-col gap-1.5 rounded-lg border-l-2 border-success bg-success-soft/40 py-1.5 pr-2 pl-3"
       data-testid="question-answers"
     >
-      <span className="text-xs text-muted-foreground">{answerCountText(q.answers.length)}</span>
-      <ul className="flex flex-col gap-2" aria-label="Antworten">
+      <span className="text-xs text-muted-foreground">{answersSummaryText(q.answers)}</span>
+      <ul className="flex flex-col gap-2" aria-label="Notizen und Markierungen">
         {q.answers.map((a) => (
           <li
             key={a.id}
-            className="flex min-w-0 flex-col gap-0.5"
+            className={cn('flex min-w-0 flex-col gap-0.5', a.withdrawal && 'opacity-70')}
             data-testid="question-answer"
             data-answer-kind={a.kind}
+            data-role={a.role}
             data-target={a.target}
+            data-withdrawn={a.withdrawal !== null}
           >
             <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
-              <span className="font-medium text-foreground" data-testid="question-answer-kind">
-                {ANSWER_KIND_LABELS[a.kind]}
+              <span
+                className={cn('font-medium text-foreground', a.withdrawal && 'line-through')}
+                data-testid="question-answer-kind"
+              >
+                {ANSWER_ROLE_LABELS[a.role]}
               </span>
               <Principal sourceKind={a.sourceKind} handle={a.by} />
               <time
@@ -165,11 +172,21 @@ function Answers({ q, compact }: { q: OpenQuestion; compact: boolean }) {
               >
                 {formatDateTime(a.at)}
               </time>
-              <span>{ANSWER_TARGET_LABELS[a.target]}</span>
+              {a.role === 'note' ? <span>{ANSWER_TARGET_LABELS[a.target]}</span> : null}
+              {a.withdrawal ? (
+                <span data-testid="question-answer-withdrawn">
+                  zurückgenommen von {a.withdrawal.by},{' '}
+                  <time dateTime={a.withdrawal.at} title={`Projektstand s${a.withdrawal.seq}`}>
+                    {formatDateTime(a.withdrawal.at)}
+                  </time>
+                </span>
+              ) : null}
             </span>
-            <div data-testid="question-answer-text">
-              <PlainText text={a.text} className={cn(compact ? 'text-xs' : 'text-sm')} />
-            </div>
+            {a.text !== null ? (
+              <div data-testid="question-answer-text">
+                <PlainText text={a.text} className={cn(compact ? 'text-xs' : 'text-sm')} />
+              </div>
+            ) : null}
           </li>
         ))}
       </ul>
@@ -182,8 +199,9 @@ function Answers({ q, compact }: { q: OpenQuestion; compact: boolean }) {
  * agent texts verbatim as plain text with who said them; the contact hint;
  * the links to the model view, the review screen or the value chain page;
  * the refs. `compact` (the model view's panel) leaves out the refs list.
- * An answered item (M6 S5a) says so and shows its answers; `onAnswer`
- * (reviewers only) adds „Beantworten“.
+ * Its notes and outside marks are listed; an item marked „außerhalb“ says
+ * „Erledigt (außerhalb)“. `actor` (reviewers only) adds the action row (M6
+ * §4.8 a, S5c-1): the primary action, „Weitere Aktionen“, the panels.
  */
 export function QuestionItem({
   q,
@@ -191,7 +209,7 @@ export function QuestionItem({
   resolve,
   compact = false,
   currentModel,
-  onAnswer,
+  actor,
 }: {
   q: OpenQuestion;
   project: string;
@@ -199,16 +217,20 @@ export function QuestionItem({
   compact?: boolean;
   /** The model in view: a link to it without an element leads nowhere new and is left out. */
   currentModel?: string;
-  /** Opens the answer dialog from its button; without it (viewers, the read-only demo) no „Beantworten“. */
-  onAnswer?: (q: OpenQuestion, trigger: HTMLElement) => void;
+  /** The actions' handlers; without it (viewers, the read-only demo) no action is shown. */
+  actor?: QuestionActor;
 }) {
   const subjectId = useId();
   const kind = OPEN_QUESTION_KINDS[q.kind];
   const source = OPEN_QUESTION_SOURCES[q.source];
   const verbatim = isVerbatim(q);
   const hint = askWhoText(q.askWho);
+  // A step's own chain link is left out where „Link korrigieren“ leads there already.
+  const fixesLink = actor !== undefined && q.actions.some((a) => a.type === 'fix-link');
   const links = questionLinks(q).filter(
-    (l) => !(l.to === 'model' && l.modelKey === currentModel && l.element === undefined),
+    (l) =>
+      !(l.to === 'model' && l.modelKey === currentModel && l.element === undefined) &&
+      !(fixesLink && l.to === 'chain' && l.step === q.subject.id),
   );
   const refs = compact ? [] : extraRefs(q);
   const shown = refs.slice(0, LISTED_REFS);
@@ -225,8 +247,9 @@ export function QuestionItem({
       data-source={q.source}
       data-unlocks={q.unlocks}
       data-state={q.state}
+      tabIndex={-1}
       className={cn(
-        'flex min-w-0 flex-col gap-2',
+        'flex min-w-0 flex-col gap-2 outline-none focus-visible:ring-3 focus-visible:ring-ring/50',
         compact ? 'rounded-lg border p-2.5' : 'rounded-xl border bg-card p-4',
       )}
     >
@@ -253,7 +276,7 @@ export function QuestionItem({
           <ToneBadge
             tone="success"
             icon={CircleCheckIcon}
-            title="Mindestens eine Antwort ist gespeichert"
+            title="Als außerhalb der Landschaft markiert: erledigt, solange die Markierung gilt"
           >
             <span data-testid="question-state">{OPEN_QUESTION_STATES.answered}</span>
           </ToneBadge>
@@ -370,7 +393,24 @@ export function QuestionItem({
         )}
       </div>
 
-      {links.length > 0 || onAnswer ? (
+      {actor && (q.actions.length > 0 || q.state === 'answered') ? (
+        <QuestionActions
+          q={q}
+          project={project}
+          resolve={resolve}
+          describedBy={subjectId}
+          actor={actor}
+          links={links.map((link, i) => (
+            <QuestionLinkButton
+              key={`${link.to}:${i}`}
+              project={project}
+              link={link}
+              variant="ghost"
+              describedBy={subjectId}
+            />
+          ))}
+        />
+      ) : links.length > 0 ? (
         <div className="flex flex-wrap gap-2">
           {links.map((link, i) => (
             <QuestionLinkButton
@@ -381,19 +421,6 @@ export function QuestionItem({
               describedBy={subjectId}
             />
           ))}
-          {onAnswer ? (
-            <Button
-              variant="outline"
-              size="sm"
-              className="ml-auto"
-              onClick={(event) => onAnswer(q, event.currentTarget)}
-              aria-describedby={subjectId}
-              data-testid="question-answer-button"
-            >
-              <MessageSquareReplyIcon data-icon="inline-start" />
-              Beantworten
-            </Button>
-          ) : null}
         </div>
       ) : null}
     </li>

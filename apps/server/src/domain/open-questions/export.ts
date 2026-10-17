@@ -1,17 +1,18 @@
 /**
  * The export of open questions (M6 §4.4): Markdown for reading and
  * interviews, grouped by the contact hint, and a CSV the customer fills in
- * and S5a reads back. German headings and labels. Pure. The CSV's cell
+ * and the sheet route reads back as notes (five columns since S5c-1). German headings and labels. Pure. The CSV's cell
  * protection and its parser are shared with the clients that read a filled
  * sheet back (`@analyzr/contracts/open-question-csv`).
  */
 import {
   CSV_BOM,
   CSV_SEPARATOR,
-  OPEN_QUESTION_ANSWER_KIND_LABELS,
+  OPEN_QUESTION_ANSWER_ROLE_LABELS,
   OPEN_QUESTION_CSV_COLUMNS,
   OPEN_QUESTION_KIND_LABELS,
   OPEN_QUESTION_SOURCE_LABELS,
+  OPEN_QUESTION_STATE_LABELS,
   isInformationalKind,
   protectCell,
   type OpenQuestion,
@@ -20,6 +21,8 @@ import {
   type OpenQuestionFilter,
   type OpenQuestionSource,
 } from '@analyzr/contracts';
+
+import { latestNote } from './answers.ts';
 
 export {
   CSV_BOM,
@@ -120,9 +123,7 @@ function filterText(filter: OpenQuestionFilter): string | null {
     filter.askWho === undefined
       ? null
       : `Ansprechpartner-Hinweis „${escapeMarkdown(filter.askWho)}“`,
-    filter.state === undefined
-      ? null
-      : `Status ${filter.state === 'open' ? 'offen' : 'beantwortet'}`,
+    filter.state === undefined ? null : `Status „${OPEN_QUESTION_STATE_LABELS[filter.state]}“`,
   ].filter((p) => p !== null);
   return parts.length === 0 ? null : parts.join(', ');
 }
@@ -170,9 +171,13 @@ export function renderOpenQuestionsMarkdown(
       if (q.label !== null) lines.push(`- Vormerkung: ${escapeMarkdown(q.label)}`);
       if (isInformationalKind(q.kind)) lines.push('- Zur Information, keine Antwort nötig');
       for (const a of q.answers) {
+        const withdrawn =
+          a.withdrawal === null
+            ? ''
+            : `, zurückgenommen von ${escapeMarkdown(a.withdrawal.by)} (Ereignis ${a.withdrawal.seq})`;
         lines.push(
-          `- Antwort (${OPEN_QUESTION_ANSWER_KIND_LABELS[a.kind]}, ${escapeMarkdown(a.by)}, ` +
-            `Ereignis ${a.seq}): ${escapeMarkdown(a.text)}`,
+          `- ${OPEN_QUESTION_ANSWER_ROLE_LABELS[a.role]} (${escapeMarkdown(a.by)}, ` +
+            `Ereignis ${a.seq}${withdrawn})${a.text === null ? '' : `: ${escapeMarkdown(a.text)}`}`,
         );
       }
       lines.push(
@@ -203,10 +208,11 @@ function questionCell(q: OpenQuestion): string {
 }
 
 /**
- * The CSV export: {@link OPEN_QUESTION_CSV_COLUMNS}, one row per question in
- * list order, `Antwort` and `Antwortart` empty for the customer to fill in,
- * or, for an answered item, its latest answer (so a sheet read back again
- * records nothing twice: the identical answer is `unchanged`).
+ * The CSV export (five columns since M6 S5c-1):
+ * {@link OPEN_QUESTION_CSV_COLUMNS}, one row per question in list order,
+ * `Antwort` empty for the customer to fill in, or the item's latest note (so
+ * a sheet read back again records nothing twice: the identical note is
+ * `unchanged`; an outside mark is no note and stays out of the sheet).
  * Informational items (`summary-note`, `descriptive-model`) ask nothing, so
  * the sheet the customer fills in leaves them out (the Markdown and the list
  * keep them).
@@ -216,17 +222,13 @@ export function renderOpenQuestionsCsv(items: readonly OpenQuestion[]): string {
     [...OPEN_QUESTION_CSV_COLUMNS],
     ...items
       .filter((q) => !isInformationalKind(q.kind))
-      .map((q) => {
-        const latest = q.answers.at(-1);
-        return [
-          q.id,
-          OPEN_QUESTION_KIND_LABELS[q.kind],
-          questionCell(q),
-          askWhoText(q.askWho),
-          latest?.text ?? '',
-          latest ? OPEN_QUESTION_ANSWER_KIND_LABELS[latest.kind] : '',
-        ];
-      }),
+      .map((q) => [
+        q.id,
+        OPEN_QUESTION_KIND_LABELS[q.kind],
+        questionCell(q),
+        askWhoText(q.askWho),
+        latestNote(q)?.text ?? '',
+      ]),
   ];
   return `${CSV_BOM}${rows.map((r) => r.map(quoteCell).join(CSV_SEPARATOR)).join('\r\n')}\r\n`;
 }
@@ -266,7 +268,7 @@ export function exportFilename(
     filter.kind,
     filter.source,
     filter.askWho,
-    filter.state === undefined ? undefined : filter.state === 'open' ? 'offen' : 'beantwortet',
+    filter.state === undefined ? undefined : filter.state === 'open' ? 'offen' : 'erledigt',
   ]
     .filter((p) => p !== undefined)
     .map(slug)

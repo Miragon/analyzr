@@ -1,25 +1,29 @@
 /**
- * `analyzr questions answer` against a fake REST API (M6 S5a, §4.5): one
- * answer with `<id> --text [--kind]`, a filled-in sheet with `--from [--dry-run]`
- * (only the filled rows are sent; outcomes under their spreadsheet rows; exit
- * 1 when a filled row is left out), the owner key only, and every flag and
- * the sheet checked before any request.
+ * `analyzr questions answer` against a fake REST API (M6 S5a, §4.5; notes
+ * since S5c-1, §4.8 b): one note with `<id> --text` (S5a's `--kind` refused
+ * with the way to the outside mark), a filled-in sheet with `--from
+ * [--dry-run]` (five columns, or S5a's six with `Antwortart`; only the filled
+ * rows are sent; outcomes under their spreadsheet rows; exit 1 when a filled
+ * row is left out), the owner key only, and every flag and the sheet checked
+ * before any request.
  */
 import { rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
-import type {
-  AnswerOpenQuestionResult,
-  AnswerSheetResult,
-  OpenQuestion,
-  OpenQuestionAnswer,
+import {
+  OPEN_QUESTION_CSV_COLUMNS,
+  type AnswerOpenQuestionResult,
+  type AnswerSheetResult,
+  type OpenQuestion,
+  type OpenQuestionAnswer,
 } from '@analyzr/contracts';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import {
+  actionCommand,
   describePersonalData,
-  parseAnswerKind,
-  parseAnswerText,
+  parseNoteText,
+  resolvedBy,
   sheetResult,
 } from '../../src/commands/questions-answer.ts';
 import { runCli } from '../../src/program.ts';
@@ -72,6 +76,7 @@ function question(extra: Partial<OpenQuestion> = {}): OpenQuestion {
     raisedBy: { sourceKind: 'human', handle: 'owner', seq: 9 },
     state: 'open',
     answers: [],
+    actions: [],
     ...extra,
   };
 }
@@ -81,6 +86,7 @@ function answer(extra: Partial<OpenQuestionAnswer> = {}): OpenQuestionAnswer {
     id: 'oqa_1',
     questionId: Q1,
     kind: 'answer',
+    role: 'note',
     target: 'relation-note',
     text: 'Finanzen, immer.',
     note: { type: 'relation', subjectId: 'rel_1', assertionId: 'asr_1' },
@@ -88,10 +94,12 @@ function answer(extra: Partial<OpenQuestionAnswer> = {}): OpenQuestionAnswer {
     sourceKind: 'human',
     seq: 12,
     at: '2026-10-16T10:00:00.000Z',
+    withdrawal: null,
     ...extra,
   };
 }
 
+/** The note's result: a note leaves the item's state as it was. */
 function answered(
   a: OpenQuestionAnswer,
   result: 'recorded' | 'unchanged' = 'recorded',
@@ -100,47 +108,51 @@ function answered(
   const body: AnswerOpenQuestionResult = {
     result,
     answer: a,
-    question: question({ state: 'answered', answers: [a], ...extra }),
+    question: question({ answers: [a], ...extra }),
     warnings: [],
   };
   return body;
 }
 
+const DECIDE: OpenQuestion['actions'] = [
+  {
+    type: 'decide',
+    primary: true,
+    label: 'Entscheiden',
+    decides: [{ type: 'relation', id: 'rel_1', version: 2 }],
+  },
+  { type: 'note', primary: false, label: 'Notiz hinzufügen' },
+];
+const LINK: OpenQuestion['actions'] = [
+  { type: 'link', primary: true, label: 'Verknüpfen mit …', pick: 'process', suggested: [] },
+  { type: 'outside', primary: false, label: 'Liegt außerhalb der Landschaft' },
+  { type: 'note', primary: false, label: 'Notiz hinzufügen' },
+];
+
 describe('analyzr questions answer <id> (one answer)', () => {
-  it('posts the trimmed text and the kind with the owner key and says where the text landed', async () => {
+  it('posts the trimmed text, and nothing else, with the owner key and says where the note landed', async () => {
     const bodies: unknown[] = [];
     const api = fakeApi({
       [ONE]: async (req) => {
         bodies.push(await req.json());
-        return json(answered(answer()), 201);
+        return json(answered(answer(), 'recorded', { actions: DECIDE }), 201);
       },
     });
     const t = owner(api.fetch);
     expect(
-      await runCli(
-        [
-          'questions',
-          'answer',
-          Q1,
-          '-p',
-          'p',
-          '--text',
-          '  Finanzen, immer.\n',
-          '--kind',
-          'antwort',
-        ],
-        t.io,
-      ),
+      await runCli(['questions', 'answer', Q1, '-p', 'p', '--text', '  Finanzen, immer.\n'], t.io),
     ).toBe(0);
     expect(api.seen).toHaveLength(1);
     expect(api.seen[0]?.authorization).toBe(`Bearer ${OWNER_KEY}`);
-    expect(bodies).toEqual([{ text: 'Finanzen, immer.', kind: 'answer' }]);
+    // Since M6 S5c-1 the server takes no kind: an answer is a note.
+    expect(bodies).toEqual([{ text: 'Finanzen, immer.' }]);
     expect(t.err()).toBe('');
     expect(t.out()).toBe(
       [
-        `p: answer to ${Q1} recorded (answer), as a note on relation rel_1`,
+        `p: note on ${Q1} recorded, as a note on relation rel_1`,
         '  „A“ → „B“: Wer verschickt die Mahnung?',
-        '  agents take the note into account when the pair is judged again; the hold stays until a human decides it; the note holds your text, not the kind',
+        '  agents take the note into account when the pair is judged again; the hold stays until a human decides it',
+        '  a note leaves the question open; its action „Entscheiden“: in the web UI',
         '',
       ].join('\n'),
     );
@@ -148,7 +160,6 @@ describe('analyzr questions answer <id> (one answer)', () => {
 
   it('prints a placement note, a kept answer, an unchanged one and the personal-data warning', async () => {
     const placement = answer({
-      kind: 'will-be-modelled',
       target: 'placement-note',
       note: { type: 'placement', subjectId: 'plc_1', assertionId: 'pas_1' },
     });
@@ -161,17 +172,10 @@ describe('analyzr questions answer <id> (one answer)', () => {
         [ONE]: () => json(answered(placement, 'recorded', onPlacement('agent-question')), 201),
       }).fetch,
     );
-    expect(
-      await runCli(
-        ['questions', 'answer', Q1, '-p', 'p', '--text', 'x', '--kind', 'ergänzt'],
-        p.io,
-      ),
-    ).toBe(0);
+    expect(await runCli(['questions', 'answer', Q1, '-p', 'p', '--text', 'x'], p.io)).toBe(0);
+    expect(p.out()).toContain(`p: note on ${Q1} recorded, as a note on placement plc_1\n`);
     expect(p.out()).toContain(
-      `p: answer to ${Q1} recorded (will-be-modelled), as a note on placement plc_1\n`,
-    );
-    expect(p.out()).toContain(
-      '  the process is due again; nothing is queued (analyzr value-chain requeue queues the placement task); the note holds your text, not the kind\n',
+      '  the process is due again; nothing is queued (analyzr value-chain requeue queues the placement task)\n',
     );
     // A held placement keeps homing its process: nothing becomes due.
     const h = owner(
@@ -180,7 +184,7 @@ describe('analyzr questions answer <id> (one answer)', () => {
     );
     expect(await runCli(['questions', 'answer', Q1, '-p', 'p', '--text', 'x'], h.io)).toBe(0);
     expect(h.out()).toContain(
-      '  the placement stays held, so no agent gets the process: decide the hold in the review screen of the web UI; the note holds your text, not the kind\n',
+      '  the placement stays held, so no agent gets the process: decide the hold in the review screen of the web UI\n',
     );
     expect(h.out()).not.toContain('due');
     // A step: the value chain is the way in.
@@ -202,11 +206,12 @@ describe('analyzr questions answer <id> (one answer)', () => {
     );
 
     const text = 'Liegt bei der Bank, Kontakt max.muster@example.org oder +49 30 1234567.';
-    const kept = answer({ kind: 'outside-landscape', target: 'answer', note: null, text });
+    const kept = answer({ target: 'answer', note: null, text });
     const warned: AnswerOpenQuestionResult = {
       ...answered(kept, 'recorded', {
         kind: 'call-target-unknown',
         subject: { type: 'ref', id: 'finanzen/gutschrift#Call_Brief' },
+        actions: LINK,
       }),
       warnings: [
         { kind: 'email', start: 28, end: 50 },
@@ -214,19 +219,15 @@ describe('analyzr questions answer <id> (one answer)', () => {
       ],
     };
     const k = owner(fakeApi({ [ONE]: () => json(warned, 201) }).fetch);
-    expect(
-      await runCli(
-        ['questions', 'answer', Q1, '-p', 'p', '--text', text, '--kind', 'AUSSERHALB'],
-        k.io,
-      ),
-    ).toBe(0);
+    expect(await runCli(['questions', 'answer', Q1, '-p', 'p', '--text', text], k.io)).toBe(0);
     expect(k.out()).toBe(
       [
-        `p: answer to ${Q1} recorded (outside-landscape), kept with the question`,
+        `p: note on ${Q1} recorded, kept with the question`,
         '  „A“ → „B“: Wer verschickt die Mahnung?',
         '  no agent sees it yet; to change the analysis, change the model (e.g. its documentation) and import it again',
-        '  warning: the answer probably contains an e-mail address (characters 29–50) and a phone number (characters 57–70)',
-        '  answers take no names or other personal data, and a recorded answer cannot be deleted',
+        `  a note leaves the question open; its action „Verknüpfen mit …“: analyzr questions link ${Q1} -p p --to <target>`,
+        '  warning: the note probably contains an e-mail address (characters 29–50) and a phone number (characters 57–70)',
+        '  notes take no names or other personal data, and a recorded note cannot be deleted',
         '',
       ].join('\n'),
     );
@@ -237,7 +238,7 @@ describe('analyzr questions answer <id> (one answer)', () => {
     ).toBe(0);
     expect(same.out()).toBe(
       [
-        `p: answer to ${Q1} unchanged: the same answer (answer) is recorded already (oqa_1)`,
+        `p: note on ${Q1} unchanged: the latest note says the same (oqa_1)`,
         '  „A“ → „B“: Wer verschickt die Mahnung?',
         '',
       ].join('\n'),
@@ -279,29 +280,62 @@ describe('analyzr questions answer <id> (one answer)', () => {
     expect(demo.out()).toBe('');
   });
 
-  it('takes the short kinds, the API values and the sheet labels; refuses others', () => {
-    expect(parseAnswerKind(undefined)).toBe('answer');
-    for (const [value, kind] of [
-      ['antwort', 'answer'],
-      ['Antwort', 'answer'],
-      ['answer', 'answer'],
-      ['ausserhalb', 'outside-landscape'],
-      ['außerhalb', 'outside-landscape'],
-      ['outside-landscape', 'outside-landscape'],
-      ['Liegt  außerhalb der Landschaft', 'outside-landscape'],
-      ['ergaenzt', 'will-be-modelled'],
-      ['ergänzt', 'will-be-modelled'],
-      ['will-be-modelled', 'will-be-modelled'],
-      ['wird im modell ergänzt', 'will-be-modelled'],
-    ] as const) {
-      expect(parseAnswerKind(value), value).toBe(kind);
+  it("refuses S5a's --kind with the way to the outside mark; normalizes the note as the server stores it", async () => {
+    const none = fakeApi({});
+    for (const kind of ['antwort', 'ausserhalb', 'ergänzt', '']) {
+      const t = owner(none.fetch);
+      expect(
+        await runCli(['questions', 'answer', Q1, '-p', 'p', '--text', 'x', '--kind', kind], t.io),
+        kind,
+      ).toBe(1);
+      expect(t.err()).toBe(
+        `analyzr: --kind is gone since M6 S5c-1: every answer is a note, so drop it; to mark a question outside the landscape run analyzr questions outside ${Q1} -p p\n`,
+      );
     }
-    for (const value of ['', ' ', 'vielleicht', 'constructor', '__proto__']) {
-      expect(() => parseAnswerKind(value), value).toThrow(/^unknown answer kind /);
-    }
-    expect(parseAnswerText('  a\tb\nc  ')).toBe('a\tb\nc');
+    expect(none.seen).toHaveLength(0);
+    expect(parseNoteText('  a\tb\nc  ')).toBe('a\tb\nc');
     // as the server stores it: LF line breaks, composed umlauts
-    expect(parseAnswerText('Zeile 1\r\nZeile 2\rerga\u0308nzt')).toBe('Zeile 1\nZeile 2\nergänzt');
+    expect(parseNoteText('Zeile 1\r\nZeile 2\rerga\u0308nzt')).toBe('Zeile 1\nZeile 2\nergänzt');
+    expect(() => parseNoteText(' ', '--note')).toThrow(
+      'the note is empty: give a text with --note or drop it',
+    );
+  });
+
+  it('says what resolves a question a note leaves open', () => {
+    const q = question({ actions: LINK });
+    expect(resolvedBy('p', q)).toBe(
+      `a note leaves the question open; its action „Verknüpfen mit …“: analyzr questions link ${Q1} -p p --to <target>`,
+    );
+    // Answered (an outside mark), or only the note: nothing to add.
+    expect(resolvedBy('p', { ...q, state: 'answered' })).toBeNull();
+    expect(
+      resolvedBy('p', question({ actions: [{ type: 'note', primary: true, label: 'Notiz' }] })),
+    ).toBeNull();
+    expect(resolvedBy('p', question())).toBeNull();
+    const step = question({ subject: { type: 'step', id: 'step-versand' } });
+    const model = question({ subject: { type: 'model', id: 'finanzen/gutschrift' } });
+    expect(actionCommand('p', step, { type: 'place', pick: 'process' })).toBe(
+      `analyzr questions place ${Q1} -p p --process <target>`,
+    );
+    expect(actionCommand('p', q, { type: 'place', step: '@outside' })).toBe(
+      `analyzr questions place ${Q1} -p p --step @outside`,
+    );
+    expect(actionCommand('p', q, { type: 'place', pick: 'step' })).toBe(
+      `analyzr questions place ${Q1} -p p --step <step>`,
+    );
+    expect(actionCommand('p', q, { type: 'link', pick: 'pair' })).toBe(
+      `analyzr questions link ${Q1} -p p --pair <from> <to>`,
+    );
+    expect(actionCommand('p', q, { type: 'outside' })).toBe(`analyzr questions outside ${Q1} -p p`);
+    expect(actionCommand('p', q, { type: 'note' })).toBe(
+      `analyzr questions answer ${Q1} -p p --text <note>`,
+    );
+    expect(actionCommand('p', model, { type: 'requeue' })).toBe(
+      'analyzr models requeue finanzen/gutschrift -p p',
+    );
+    for (const type of ['decide', 'choose-copy', 'fix-link'] as const) {
+      expect(actionCommand('p', q, { type })).toBe('the web UI');
+    }
   });
 
   it('names the personal data it found, counted from 1', () => {
@@ -344,22 +378,19 @@ describe('analyzr questions answer (refused before any request)', () => {
     const cases: [string[], string][] = [
       [['q-1', '--text', 'x'], 'not an open question id: "q-1" (q- and 16 hex characters'],
       [[Q1.toUpperCase(), '--text', 'x'], 'not an open question id: '],
-      [[Q1, '--text', '  \n '], 'the answer is empty: give it with --text'],
-      [[Q1, '--text', 'x'.repeat(2001)], 'the answer has 2001 characters; at most 2000'],
-      [[Q1, '--text', 'a\u0007b'], 'the answer contains control characters'],
-      [
-        [Q1, '--text', 'x', '--kind', 'vielleicht'],
-        'unknown answer kind "vielleicht"; one of antwort',
-      ],
-      [[Q1], 'give the question id and --text <answer>, or --from <csv>'],
-      [['--text', 'x'], 'give the question id and --text <answer>, or --from <csv>'],
+      [[Q1, '--text', '  \n '], 'the note is empty: give it with --text'],
+      [[Q1, '--text', 'x'.repeat(2001)], 'the note has 2001 characters; at most 2000'],
+      [[Q1, '--text', 'a\u0007b'], 'the note contains control characters'],
+      [[Q1, '--text', 'x', '--kind', 'vielleicht'], '--kind is gone since M6 S5c-1'],
+      [[Q1], 'give the question id and --text <note>, or --from <csv>'],
+      [['--text', 'x'], 'give the question id and --text <note>, or --from <csv>'],
       [[Q1, '--text', 'x', '--dry-run'], '--dry-run previews a sheet: it needs --from <csv>'],
-      [[Q1, '--from', 'a.csv'], '--from takes the ids, answers and kinds from the sheet'],
+      [[Q1, '--from', 'a.csv'], '--from takes the ids and notes from the sheet: drop <id>'],
+      [['--from', 'a.csv', '--text', 'x'], '--from takes the ids and notes from the sheet'],
       [
-        ['--from', 'a.csv', '--text', 'x'],
-        '--from takes the ids, answers and kinds from the sheet',
+        ['--from', 'a.csv', '--kind', 'antwort'],
+        '--kind is gone since M6 S5c-1: every answer is a note, so drop it; to mark a question outside the landscape run analyzr questions outside <id> -p p',
       ],
-      [['--from', 'a.csv', '--kind', 'antwort'], '--from takes the ids'],
       [['--from', 'missing.csv'], 'missing.csv is not a file'],
     ];
     for (const [flags, message] of cases) {
@@ -377,6 +408,7 @@ describe('analyzr questions answer (refused before any request)', () => {
   });
 });
 
+/** The header of an S5a sheet (six columns, with `Antwortart`), which still reads. */
 const HEADER = '"id";"Art";"Frage";"Ansprechpartner-Hinweis";"Antwort";"Antwortart"';
 
 /** A sheet as a spreadsheet saves the export again: byte order mark, `;`, CRLF. */
@@ -391,7 +423,7 @@ async function sheetFile(name: string, content: string | Uint8Array): Promise<st
   return name;
 }
 
-describe('analyzr questions answer --from (a filled-in sheet)', () => {
+describe("analyzr questions answer --from (a filled-in sheet, S5a's six columns)", () => {
   const SHEET_CSV = csv(
     [Q1, 'Gehalten', 'Wer verschickt die Mahnung?', 'Ordner: finanzen', '', ''],
     [
@@ -492,20 +524,20 @@ describe('analyzr questions answer --from (a filled-in sheet)', () => {
     });
     expect(t.out()).toBe(
       [
-        `  row 3  ${Q2}  would record  outside-landscape, kept with the question`,
+        `  row 3  ${Q2}  would record  outside mark (the Antwortart of an earlier sheet), kept with the question`,
         '      warning: probably contains an e-mail address (characters 19–33)',
-        `  row 4  ${Q3}  unchanged     answer, as a note on relation rel_7`,
+        `  row 4  ${Q3}  unchanged     note, as a note on relation rel_7`,
         '  row 5  q-0000000000000000  unknown       no current open question: a wrong id, or its source changed since the export',
-        `  row 6  ${Q1}  invalid       unknown Antwortart "vielleicht"; one of „Antwort“, „Liegt außerhalb der Landschaft“, „Wird im Modell ergänzt“ or empty („Antwort“)`,
+        `  row 6  ${Q1}  invalid       unknown Antwortart "vielleicht" (a column of sheets exported before M6 S5c-1); one of „Antwort“, „Liegt außerhalb der Landschaft“, „Wird im Modell ergänzt“ or empty (a note)`,
         `  row 7  ${Q3}  invalid       row 4 answers the same question`,
         'p: antworten.csv (dry run, nothing recorded): 1 to record, 1 unchanged, 1 unknown, 2 invalid, 2 rows without an answer',
-        'check the warned answers before recording them: answers take no names or other personal data, and a recorded answer cannot be deleted',
+        'check the warned notes before recording them: notes take no names or other personal data, and a recorded note cannot be deleted',
         'run again without --dry-run to record them',
         '',
       ].join('\n'),
     );
     expect(t.err()).toBe(
-      'analyzr: 3 rows would not be recorded (1 unknown, 2 invalid); an id changes when its source changes: export the sheet again (analyzr questions -p p --format csv) and carry the answers over\n',
+      'analyzr: 3 rows would not be recorded (1 unknown, 2 invalid); an id changes when what it asks about changes: export the sheet again (analyzr questions -p p --format csv) and carry the answers over\n',
     );
   });
 
@@ -539,12 +571,12 @@ describe('analyzr questions answer --from (a filled-in sheet)', () => {
     const text = owner(sheetApi().fetch);
     expect(await runCli(['questions', 'answer', '-p', 'p', '--from', file], text.io)).toBe(1);
     expect(text.out()).toContain(
-      `  row 3  ${Q2}  recorded   outside-landscape, kept with the question\n`,
+      `  row 3  ${Q2}  recorded   outside mark (the Antwortart of an earlier sheet), kept with the question\n`,
     );
     expect(text.out()).toContain(
       'p: antworten-json.csv: 1 recorded, 1 unchanged, 1 unknown, 2 invalid, 2 rows without an answer\n',
     );
-    expect(text.out()).toContain('check the warned answers: answers take no names');
+    expect(text.out()).toContain('check the warned notes: notes take no names');
     expect(text.out()).not.toContain('--dry-run');
   });
 
@@ -579,7 +611,7 @@ describe('analyzr questions answer --from (a filled-in sheet)', () => {
     expect(seen[0]?.body).toEqual({ rows: [{ id: Q2, text: 'Ja', kind: '' }] });
     expect(t.out()).toBe(
       [
-        `  row 2  ${Q2}  recorded  answer, kept with the question`,
+        `  row 2  ${Q2}  recorded  note, kept with the question`,
         'p: komma.csv: 1 recorded, 0 unchanged, 0 unknown, 0 invalid, 1 row without an answer',
         '',
       ].join('\n'),
@@ -709,16 +741,67 @@ describe('analyzr questions answer --from (a filled-in sheet)', () => {
   });
 });
 
+describe('analyzr questions answer --from (the five-column sheet of S5c-1)', () => {
+  it('sends each filled Antwort as a note with an empty kind and prints it as a note', async () => {
+    const header = OPEN_QUESTION_CSV_COLUMNS.map((c) => `"${c}"`).join(';');
+    const file = await sheetFile(
+      'fuenf.csv',
+      `\uFEFF${header}\r\n"${Q2}";"Pool ohne Prozess";"Ist „Bank“ extern?";"Ordner: finanzen";"Ja, die Hausbank."\r\n"${Q3}";"Aufrufziel unbekannt";"Welcher Prozess?";"";""\r\n`,
+    );
+    const seen: unknown[] = [];
+    const api = fakeApi({
+      [SHEET]: async (req) => {
+        seen.push(await req.json());
+        return json({
+          dryRun: true,
+          counts: { recorded: 1, unchanged: 0, unknown: 0, invalid: 0, ignored: 0 },
+          rows: [
+            { row: 1, id: Q2, outcome: 'recorded', kind: 'answer', target: 'answer', warnings: [] },
+          ],
+        } satisfies AnswerSheetResult);
+      },
+    });
+    const t = owner(api.fetch);
+    expect(
+      await runCli(['questions', 'answer', '-p', 'p', '--from', file, '--dry-run'], t.io),
+    ).toBe(0);
+    expect(seen).toEqual([{ rows: [{ id: Q2, text: 'Ja, die Hausbank.', kind: '' }] }]);
+    expect(t.out()).toBe(
+      [
+        `  row 2  ${Q2}  would record  note, kept with the question`,
+        'p: fuenf.csv (dry run, nothing recorded): 1 to record, 0 unchanged, 0 unknown, 0 invalid, 1 row without an answer',
+        'run again without --dry-run to record them',
+        '',
+      ].join('\n'),
+    );
+  });
+});
+
 describe('analyzr questions (subcommands)', () => {
-  it('lists by default and with list; answer has its own help', async () => {
+  it('lists by default and with list; answer and the actions have their own help', async () => {
     const help = testIo();
     expect(await runCli(['questions', '--help'], help.io)).toBe(0);
     expect(help.out()).toMatch(/list \[options\]/);
     expect(help.out()).toMatch(/answer \[options\] \[id\]/);
+    for (const cmd of ['outside', 'link', 'place']) {
+      expect(help.out()).toMatch(new RegExp(`${cmd} \\[options\\] <id>`));
+    }
     const answerHelp = testIo();
     expect(await runCli(['questions', 'answer', '--help'], answerHelp.io)).toBe(0);
-    for (const flag of ['--text', '--kind', '--from', '--dry-run', '--json']) {
+    for (const flag of ['--text', '--from', '--dry-run', '--json']) {
       expect(answerHelp.out()).toContain(flag);
+    }
+    // S5a's --kind is gone from the help (and refused with a hint).
+    expect(answerHelp.out()).not.toContain('--kind');
+    const flags: Record<string, string[]> = {
+      outside: ['--note', '--undo', '--json'],
+      link: ['--to', '--pair', '--note', '--json'],
+      place: ['--step', '--process', '--note', '--json'],
+    };
+    for (const [cmd, expected] of Object.entries(flags)) {
+      const h = testIo();
+      expect(await runCli(['questions', cmd, '--help'], h.io), cmd).toBe(0);
+      for (const flag of expected) expect(h.out(), `${cmd} ${flag}`).toContain(flag);
     }
 
     const page = () => json({ items: [question()], nextCursor: null, total: 1 });
@@ -743,7 +826,11 @@ describe('analyzr questions (subcommands)', () => {
       }).fetch,
     );
     expect(await runCli(['questions', '-p', 'p'], t.io)).toBe(0);
-    expect(t.out()).toContain('„A“ → „B“: Wer verschickt die Mahnung?  [answered]\n');
-    expect(t.out()).toContain('p: 2 open questions (call-target-unknown 1, held 1), 1 answered\n');
+    expect(t.out()).toContain(
+      '„A“ → „B“: Wer verschickt die Mahnung?  [answered: outside the landscape]\n',
+    );
+    expect(t.out()).toContain(
+      'p: 2 open questions (call-target-unknown 1, held 1), 1 answered (outside the landscape)\n',
+    );
   });
 });

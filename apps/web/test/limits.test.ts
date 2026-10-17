@@ -21,6 +21,7 @@ describe('constants copied from @analyzr/contracts', () => {
 
   it('match the answer limits (M6 S5a)', () => {
     expect(limits.MAX_ANSWER_CHARS).toBe(contracts.MAX_ANSWER_CHARS);
+    expect(limits.MAX_LINK_TARGETS).toBe(contracts.MAX_LINK_TARGETS);
     expect(limits.MAX_ANSWER_SHEET_ROWS).toBe(contracts.MAX_ANSWER_SHEET_ROWS);
     expect(limits.MAX_ANSWER_SHEET_BODY_BYTES).toBe(contracts.MAX_ANSWER_SHEET_BODY_BYTES);
   });
@@ -127,20 +128,25 @@ describe('constants copied from @analyzr/contracts', () => {
     const states = [...contracts.OpenQuestionState.options].sort();
     expect(Object.keys(oq.OPEN_QUESTION_STATES).sort()).toEqual(states);
     expect([...oq.OPEN_QUESTION_STATE_ORDER].sort()).toEqual(states);
-    // answers (M6 S5a): every kind, target and sheet reason has its German text
+    // answers (M6 S5a, S5c-1): every stored kind (a sheet row's), role, target and sheet reason
+    // has its German text
     const answers = await import('../src/lib/open-question-answers');
-    expect([...answers.ANSWER_KIND_ORDER]).toEqual([...contracts.OpenQuestionAnswerKind.options]);
-    expect(Object.keys(answers.ANSWER_KIND_LABELS).sort()).toEqual(
+    expect(Object.keys(answers.SHEET_KIND_LABELS).sort()).toEqual(
       [...contracts.OpenQuestionAnswerKind.options].sort(),
     );
-    expect(Object.keys(answers.ANSWER_KIND_HINTS).sort()).toEqual(
-      [...contracts.OpenQuestionAnswerKind.options].sort(),
+    expect(Object.keys(answers.ANSWER_ROLE_LABELS).sort()).toEqual(
+      [...contracts.OpenQuestionAnswerRole.options].sort(),
     );
     expect(Object.keys(answers.ANSWER_TARGET_LABELS).sort()).toEqual(
       [...contracts.OpenQuestionAnswerTarget.options].sort(),
     );
     expect(Object.keys(answers.SHEET_REASON_TEXTS).sort()).toEqual(
       [...contracts.AnswerSheetReason.options].sort(),
+    );
+    // actions (M6 S5c-1): every action type has an icon and a way to run in the row
+    const actionTypes = [...contracts.OpenQuestionActionType.options].sort();
+    expect(actionTypes).toEqual(
+      ['choose-copy', 'decide', 'fix-link', 'link', 'note', 'outside', 'place', 'requeue'].sort(),
     );
     // the verbatim sources each name who said the text
     for (const source of ['hold', 'agent-question', 'unsure', 'no-link', 'summary'] as const) {

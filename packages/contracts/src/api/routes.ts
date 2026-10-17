@@ -84,10 +84,14 @@ import {
   MAX_ANSWER_SHEET_BODY_BYTES,
   MAX_ANSWER_SHEET_ROWS,
   OPEN_QUESTION_CSV_COLUMNS,
+  OpenQuestionActionBody,
+  OpenQuestionActionResult,
+  OpenQuestionAnswerParam,
   OpenQuestionExportQuery,
   OpenQuestionPage,
   OpenQuestionParam,
   OpenQuestionQuery,
+  WithdrawOpenQuestionAnswerResult,
 } from './open-questions.ts';
 import { CreateProjectBody, Project, ProjectPage } from './projects.ts';
 import {
@@ -158,6 +162,7 @@ const placementParams = chainParams.extend({ placement: PlacementId });
 const projectAnalysisParams = ProjectParam.extend({ analysis: AnalysisTaskId });
 const autoAcceptRuleParams = ProjectParam.extend({ rule: AutoAcceptRuleId });
 const openQuestionParams = ProjectParam.extend(OpenQuestionParam.shape);
+const openQuestionAnswerParams = ProjectParam.extend(OpenQuestionAnswerParam.shape);
 
 function jsonBody<T extends z.ZodType>(schema: T) {
   return { required: true, content: { [JSON_TYPE]: { schema } } };
@@ -576,8 +581,13 @@ export const apiRoutes = withDemoReadOnly({
       '`descriptive-model`), each group ordered by `unlocks` (descending), then subject, kind ' +
       'and id. `modelKey` matches a model ' +
       'or a folder (`finanzen` matches `finanzen/mahnwesen`); `askWho` matches a lane, one of the ' +
-      'step owners or the folder exactly. An item is `answered` while an answer for its id ' +
-      'exists (M6 S5a), with its `answers`; `state` filters by it.',
+      'step owners or the folder exactly. Each item carries its `actions` (M6 §4.8 a: at most ' +
+      'one primary, German labels from code) and its `answers` (notes and outside marks); it is ' +
+      '`answered` while a live outside mark names its id (M6 S5c-1), and `state` filters by it. ' +
+      "An item whose call, coded end or pool flows a human, an owner's rule or the rule tier " +
+      'linked by an accepted relation to another process leaves the list (R1), and so does a ' +
+      'duplicated process id while no call towards its copies waits for a decision (R1b); ' +
+      '`listFindings` keeps listing their findings.',
     request: { params: projectParams, query: OpenQuestionQuery },
     responses: {
       200: json(OpenQuestionPage, 'A page of open questions'),
@@ -596,9 +606,9 @@ export const apiRoutes = withDemoReadOnly({
       'lanes). `csv`: the questions without the informational items (`summary-note`, ' +
       '`descriptive-model`, which ask nothing), UTF-8 with a byte order mark, `;`-separated (what ' +
       'German spreadsheet programs open directly), CRLF, every field quoted, the columns ' +
-      `${OPEN_QUESTION_CSV_COLUMNS.map((c) => `\`${c}\``).join(', ')}; the last two are empty for ` +
-      "the customer to fill in, or hold an answered item's latest answer and its kind (M6 S5a; " +
-      'read back, it is `unchanged`); the Markdown lists every answer. A cell starting with `=`, ' +
+      `${OPEN_QUESTION_CSV_COLUMNS.map((c) => `\`${c}\``).join(', ')}; \`Antwort\` is empty for ` +
+      "the customer to fill in, or holds the item's latest note (M6 S5c-1; read back, it is " +
+      '`unchanged`); the Markdown lists every note and outside mark. A cell starting with `=`, ' +
       '`+`, `-`, `@`, a tab, a carriage return ' +
       "or their full-width forms (also after a run of `'`) gets a leading `'`, so spreadsheets " +
       'never run it as a formula. The file name carries the filters (`offene-fragen-<project ' +
@@ -629,17 +639,19 @@ export const apiRoutes = withDemoReadOnly({
     path: `${API_PREFIX}/projects/{project}/open-questions/{question}/answers`,
     operationId: 'answerOpenQuestion',
     tags: ['open-questions'],
-    summary: 'Answer an open question (humans only)',
+    summary: 'Add a note to an open question (humans only)',
     description:
-      'Records the answer (M6 §4.5 S5a) in the append-only `open_question_answer`; the item is ' +
-      '`answered` while an answer for its id exists. Where the text lands: on a relation (held, ' +
+      'Records the note („Notiz hinzufügen“, M6 §4.8 b) in the append-only ' +
+      '`open_question_answer`; a note informs and leaves the item `open` (only an outside mark ' +
+      "makes it `answered`, `actOnOpenQuestion`). The body is `{text}` only: S5a's `kind` is " +
+      'gone and gets 422. Where the text lands: on a relation (held, ' +
       "or proposed with an agent's question) a human note through the note use case, so the " +
       'next claim of either model shows it (a hold stays until a human decides it); on a ' +
       "placement a human note through the placement note use case (on an agent's question the " +
       'process becomes due, nothing is queued; a held placement keeps homing its process, so ' +
       'it is not due until a human decides the hold); anything else stays with the answer ' +
-      '(shown and exported, it reaches no agent before M6 S7). A note holds the text only, ' +
-      "not the kind. An answer identical to the id's latest answer (kind and text) answers " +
+      '(shown and exported, it reaches no agent before M6 S7). A note identical to the ' +
+      "id's latest note answers " +
       '200 `unchanged` and writes nothing. The text is compared and stored with LF line breaks ' +
       `and in Unicode NFC, trimmed; it has at most ${MAX_ANSWER_CHARS} characters; a ` +
       'deterministic check for e-mail ' +
@@ -649,8 +661,8 @@ export const apiRoutes = withDemoReadOnly({
       'changes the id) is 404 `not-found`.',
     request: { params: openQuestionParams, body: jsonBody(AnswerOpenQuestionBody) },
     responses: {
-      200: json(AnswerOpenQuestionResult, 'An identical answer was recorded earlier'),
-      201: json(AnswerOpenQuestionResult, 'The answer was recorded'),
+      200: json(AnswerOpenQuestionResult, 'An identical note was recorded earlier'),
+      201: json(AnswerOpenQuestionResult, 'The note was recorded'),
       ...problems(...READ_PROBLEMS, 'human-decision-required', 'forbidden'),
     },
   },
@@ -661,15 +673,19 @@ export const apiRoutes = withDemoReadOnly({
     tags: ['open-questions'],
     summary: 'Record the answers of a filled-in sheet (`?dryRun=true` first; humans only)',
     description:
-      'The rows of the CSV the export wrote (`id`, `Antwort`, `Antwortart`; ' +
-      '`readAnswerSheet` in `@analyzr/contracts/open-question-csv` reads them), each answered ' +
-      'as by `answerOpenQuestion`, all in one transaction. Rows with an empty answer are ' +
+      'The rows of the CSV the export wrote (`id`, `Antwort`; `readAnswerSheet` in ' +
+      '`@analyzr/contracts/open-question-csv` reads them), each filled `Antwort` recorded as a ' +
+      'note as by `answerOpenQuestion`, all in one transaction. A sheet exported before M6 ' +
+      'S5c-1 still reads: its `Antwortart` „Liegt außerhalb der Landschaft“ ' +
+      '(`outside-landscape`) records an outside mark with the text as its note, except on a ' +
+      'relation or placement item (a note); „Antwort“, „Wird im Modell ergänzt“ and an empty ' +
+      'cell record a note. Rows with an empty answer are ' +
       'ignored (counted only); an id that names no current open question (also one whose ' +
       'source changed since the export) is listed `unknown` and never stored; a row with a ' +
       `text over ${MAX_ANSWER_CHARS} characters, control characters, an unknown ` +
-      '`Antwortart` or an id an earlier row answers is listed `invalid` and never stored; an ' +
-      "answer identical to the item's latest one (kind and text; with an empty `Antwortart` " +
-      'the same text, whatever its kind) is `unchanged`. `row` is the position in `rows`. ' +
+      '`Antwortart` or an id an earlier row answers is listed `invalid` and never stored; a ' +
+      "note identical to the item's latest note, or a mark on an item a live mark marks, is " +
+      '`unchanged`. `row` is the position in `rows`. ' +
       '`dryRun=true` lists the same and ' +
       `stores nothing. At most ${MAX_ANSWER_SHEET_ROWS} rows and ` +
       `${MAX_ANSWER_SHEET_BODY_BYTES} bytes per call (413 \`payload-too-large\` above).`,
@@ -681,6 +697,59 @@ export const apiRoutes = withDemoReadOnly({
     responses: {
       200: json(AnswerSheetResult, 'What the sheet stored or would store'),
       ...problems(...READ_PROBLEMS, 'human-decision-required', 'forbidden', 'payload-too-large'),
+    },
+  },
+  actOnOpenQuestion: {
+    method: 'post',
+    path: `${API_PREFIX}/projects/{project}/open-questions/{question}/actions`,
+    operationId: 'actOnOpenQuestion',
+    tags: ['open-questions'],
+    summary: 'Act on an open question: link, place, choose the valid copy, mark outside (humans)',
+    description:
+      "Runs one of the item's `actions` (M6 §4.8 a) in one transaction under the project " +
+      'lock, through the use cases that exist. `link`: per target a live typed relation ' +
+      'between the anchor and the target (proposed or held: a rule-tier or key-tier proposal, ' +
+      "an agent's) is accepted as the human's decision, else an accepted `manual` relation is " +
+      "written (a pool's flows: one per anchor, directed like its flow); the rationale is " +
+      'German and from code („Aus „Offene Fragen“: …“) plus the note. `place`: a manual ' +
+      'placement, accepted at once. `choose-copy`: the calls towards the copies are accepted ' +
+      'towards the valid copy and rejected towards the others, all or nothing with their ' +
+      'versions (409 `conflict` otherwise); with `placeOthersOutside` the other copies without ' +
+      'a home step go to `@outside`; the note is a note on the item. `outside`: an outside mark ' +
+      '(an `open_question_answer` of kind `outside-landscape`, its text the note or null); ' +
+      'while a live mark exists, 200 `unchanged`. The answer names the relations and ' +
+      'placements written (`manual`: „Rückgängig“ rejects them through the decision routes) or ' +
+      'decided, and the item as the list now shows it (`null` when the action took it off). ' +
+      'An id that names no current item is 404 `not-found`; an action the item does not offer ' +
+      "is 422 `validation-failed` with `reason: 'action-not-offered'`. Owner or editor on an " +
+      'interactive client: agent tokens get 403 `human-decision-required` with `reviewUrl`.',
+    request: { params: openQuestionParams, body: jsonBody(OpenQuestionActionBody) },
+    responses: {
+      200: json(OpenQuestionActionResult, 'Nothing to write (`unchanged`)'),
+      201: json(OpenQuestionActionResult, 'The action was applied'),
+      ...problems(...READ_PROBLEMS, 'human-decision-required', 'forbidden', 'conflict'),
+    },
+  },
+  withdrawOpenQuestionAnswer: {
+    method: 'post',
+    path: `${API_PREFIX}/projects/{project}/open-questions/{question}/answers/{answer}/withdrawal`,
+    operationId: 'withdrawOpenQuestionAnswer',
+    tags: ['open-questions'],
+    summary: 'Withdraw an outside mark („Rückgängig“; humans only)',
+    description:
+      'Ends an outside mark of the item (M6 §4.8 b) with a row in the append-only ' +
+      '`open_question_answer_withdrawal` and an `open_question.answer_withdrawn` event; the ' +
+      'mark no longer counts, so the item is `open` again unless another live mark names it, ' +
+      'and marking again records a new mark. A mark withdrawn before answers 200 `unchanged`. ' +
+      'Only outside marks are withdrawn (a note is 422 `validation-failed` with `reason: ' +
+      "'not-an-outside-mark'`); an id that names no current item, or an answer of another item, " +
+      'is 404 `not-found`. Owner or editor on an interactive client: agent tokens get 403 ' +
+      '`human-decision-required` with `reviewUrl`.',
+    request: { params: openQuestionAnswerParams },
+    responses: {
+      200: json(WithdrawOpenQuestionAnswerResult, 'The mark was withdrawn before'),
+      201: json(WithdrawOpenQuestionAnswerResult, 'The mark was withdrawn'),
+      ...problems(...READ_PROBLEMS, 'human-decision-required', 'forbidden'),
     },
   },
 

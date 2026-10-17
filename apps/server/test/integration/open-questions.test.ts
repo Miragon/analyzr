@@ -6,9 +6,9 @@
  * no-links, pairs left unjudged, an unsure verdict, a placement question).
  * Requires: every source of M6 §4.1 maps to items with the expected kinds;
  * every relation and value chain finding is an item; ids stay stable across
- * reads and change exactly when their source changes; filters and pages
- * agree; the CSV and Markdown exports round trip, the CSV with its empty
- * answer columns and its formula protection. Prints the counts per kind and
+ * reads and change exactly when what they ask about changes (M6 S5c-1);
+ * filters and pages agree; the CSV and Markdown exports round trip, the CSV
+ * with its empty answer column and its formula protection. Prints the counts per kind and
  * per gap signal (M6 §8 "S4 as delivered").
  */
 import { readFile } from 'node:fs/promises';
@@ -420,8 +420,9 @@ describe('open questions on nordwind-handel', () => {
     expect(unjudged.refs.length).toBeGreaterThan(0);
     expect(unjudged.text).toMatch(/^Gehören diese Paare zusammen\? Die Analyse von /);
 
-    // Ids: stable across reads; new for the changed model's items and the new hold,
-    // the same for everything else that did not change.
+    // Ids: stable across reads; new for the items about what changed (the renamed fraud
+    // check) and the new hold, the same for everything else, also the other items of the
+    // changed model (M6 S5c-1: items are versioned by what they ask about).
     expect(await listAll()).toEqual(after);
     const seededFinding = seeded.find(
       (q) => q.source === 'finding' && q.subject.id === FRAUD_CHECK,
@@ -429,23 +430,26 @@ describe('open questions on nordwind-handel', () => {
     const afterFinding = after.find((q) => q.source === 'finding' && q.subject.id === FRAUD_CHECK);
     expect(afterFinding?.id).toBeDefined();
     expect(afterFinding?.id).not.toBe(seededFinding?.id);
-    // Findings and signals still there: a new id exactly for the changed model's.
+    // Findings and signals still there: a new id exactly for the renamed call's.
     const key = (q: OpenQuestion) => `${q.source} ${q.kind} ${q.subject.type} ${q.subject.id}`;
     const now = new Map(after.map((q) => [key(q), q.id]));
     let kept = 0;
+    let inOrder = 0;
     for (const q of seeded.filter((x) => x.source === 'finding' || x.source === 'signal')) {
       const id = now.get(key(q));
       if (id === undefined) continue;
       kept++;
-      if (q.modelKeys.includes(ORDER)) expect(id, key(q)).not.toBe(q.id);
+      if (q.subject.id === FRAUD_CHECK) expect(id, key(q)).not.toBe(q.id);
       else expect(id, key(q)).toBe(q.id);
+      if (q.modelKeys.includes(ORDER) && q.subject.id !== FRAUD_CHECK) inOrder++;
     }
     expect(kept).toBeGreaterThan(10);
+    expect(inOrder).toBeGreaterThan(0);
     expect(after.find((q) => q.subject.id === CARRIER)?.id).toBe(
       seeded.find((q) => q.subject.id === CARRIER)?.id,
     );
     // The exports round trip: every question in list order (the informational items
-    // ask nothing, so the sheet leaves them out), the answer columns empty, the hold's
+    // ask nothing, so the sheet leaves them out), the answer column empty, the hold's
     // question (it starts with "=") protected in the file and exact when read back.
     const questions = after.filter((q) => !isInformationalKind(q.kind));
     const csvRes = await t.asToken(viewer.secret, `${BASE}/export?format=csv`);
@@ -455,16 +459,14 @@ describe('open questions on nordwind-handel', () => {
       `attachment; filename="offene-fragen-${P}.csv"`,
     );
     const csv = new TextDecoder('utf-8', { ignoreBOM: true }).decode(await csvRes.arrayBuffer());
-    expect(
-      csv.startsWith(
-        '\uFEFF"id";"Art";"Frage";"Ansprechpartner-Hinweis";"Antwort";"Antwortart"\r\n',
-      ),
-    ).toBe(true);
+    expect(csv.startsWith('\uFEFF"id";"Art";"Frage";"Ansprechpartner-Hinweis";"Antwort"\r\n')).toBe(
+      true,
+    );
     expect(csv).toContain(`"'=Gilt diese Verbindung in jedem Fall?`);
     const parsed = parseOpenQuestionsCsv(csv);
     expect(parsed.header).toEqual([...OPEN_QUESTION_CSV_COLUMNS]);
     expect(parsed.rows.map((r) => r[0])).toEqual(questions.map((q) => q.id));
-    expect(parsed.rows.every((r) => r.length === 6 && r[4] === '' && r[5] === '')).toBe(true);
+    expect(parsed.rows.every((r) => r.length === 5 && r[4] === '')).toBe(true);
     for (const [i, row] of parsed.rows.entries()) {
       expect(row[2]?.startsWith(questions[i]?.text ?? '?')).toBe(true);
     }

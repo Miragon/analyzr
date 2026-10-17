@@ -9,6 +9,7 @@ import type {
 import {
   OPEN_QUESTION_KIND_LABELS,
   OPEN_QUESTION_SOURCE_LABELS,
+  OPEN_QUESTION_STATE_LABELS,
   isInformationalKind,
 } from '@analyzr/contracts/open-question-labels';
 
@@ -182,10 +183,9 @@ export const OPEN_QUESTION_SOURCE_ORDER: readonly OpenQuestionSource[] = [
   'signal',
 ];
 
-export const OPEN_QUESTION_STATES: Record<OpenQuestionState, string> = {
-  open: 'Offen',
-  answered: 'Beantwortet',
-};
+/** The states, as the Status filter names them (`answered`: a live outside mark, „Erledigt (außerhalb)“, M6 §4.8 b). */
+export const OPEN_QUESTION_STATES: Readonly<Record<OpenQuestionState, string>> =
+  OPEN_QUESTION_STATE_LABELS;
 
 export const OPEN_QUESTION_STATE_ORDER: readonly OpenQuestionState[] = ['open', 'answered'];
 

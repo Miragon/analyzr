@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { ArrowRightIcon } from 'lucide-react';
-import { useMemo } from 'react';
+import { useCallback, useMemo, useRef } from 'react';
 
 import { Skeleton } from '@/components/ui/skeleton';
 import { errorMessage } from '@/lib/api';
@@ -10,16 +10,22 @@ import { useProjectPermissions } from '@/lib/permissions';
 import { modelOpenQuestionsQuery } from '@/lib/queries';
 import type { RefResolver } from '@/lib/refs';
 
-import { AnswerDialog } from './answer-dialog';
+import { NoteDialog } from './note-dialog';
+import type { QuestionActor } from './question-actions';
 import { QuestionItem } from './question-item';
-import { useAnswerDialog } from './use-answer-dialog';
+import { useActionFocus } from './use-action-focus';
+import { useNoteDialog } from './use-note-dialog';
+
+export { default as SubprocessLink } from './subprocess-link';
 
 /**
  * The section „Offene Fragen“ of the model view (M6 §4.4): the questions
- * touching this model, in list order, compact, with their answers and, for
- * reviewers, „Beantworten“ (M6 S5a), and a link to the tab filtered by the
- * model. Loaded lazily with the model view's panel, so the entry chunk
- * carries none of it.
+ * touching this model, in list order, compact, with their notes and marks
+ * and, for reviewers, their actions (M6 §4.8 a, S5c-1: the primary action,
+ * „Weitere Aktionen“, the panels, „Notiz hinzufügen“), and a link to the tab
+ * filtered by the model. Loaded lazily with the model view's panel, so the
+ * entry chunk carries none of it; the model view takes `SubprocessLink`
+ * from this module too, so both share one lazy chunk.
  */
 export default function ModelQuestions({
   project,
@@ -33,12 +39,20 @@ export default function ModelQuestions({
   const query = useQuery(modelOpenQuestionsQuery(project, modelKey));
   const items = useMemo(() => questionsOfModel(query.data ?? [], modelKey), [query.data, modelKey]);
   const { canReview } = useProjectPermissions(project);
-  const answering = useAnswerDialog();
+  const noting = useNoteDialog();
+  const list = useRef<HTMLUListElement>(null);
+  const ids = useMemo(() => items.map((q) => q.id), [items]);
+  const acted = useActionFocus(
+    ids,
+    list,
+    useCallback(() => document.getElementById('model-open-questions'), []),
+  );
+  const actor = useMemo<QuestionActor>(() => ({ note: noting.open, acted }), [noting.open, acted]);
 
   return (
     <section aria-labelledby="model-open-questions" data-testid="model-open-questions">
       <div className="flex items-center gap-2 px-2 pb-1">
-        <h3 id="model-open-questions" className="text-sm font-semibold">
+        <h3 id="model-open-questions" tabIndex={-1} className="text-sm font-semibold outline-none">
           Offene Fragen{query.data ? ` (${items.length})` : ''}
         </h3>
         {items.length > 0 ? (
@@ -64,7 +78,7 @@ export default function ModelQuestions({
           Zu diesem Modell ist keine Frage offen.
         </p>
       ) : (
-        <ul className="flex flex-col gap-1.5" aria-label="Offene Fragen dieses Modells">
+        <ul ref={list} className="flex flex-col gap-1.5" aria-label="Offene Fragen dieses Modells">
           {items.map((q) => (
             <QuestionItem
               key={q.id}
@@ -73,13 +87,18 @@ export default function ModelQuestions({
               resolve={resolve}
               compact
               currentModel={modelKey}
-              {...(canReview ? { onAnswer: answering.open } : {})}
+              {...(canReview ? { actor } : {})}
             />
           ))}
         </ul>
       )}
       {canReview ? (
-        <AnswerDialog project={project} state={answering.state} onClose={answering.close} />
+        <NoteDialog
+          project={project}
+          state={noting.state}
+          onClose={noting.close}
+          fallbackFocusId="model-open-questions"
+        />
       ) : null}
     </section>
   );

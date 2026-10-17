@@ -20,13 +20,13 @@ import { Spinner } from '@/components/ui/spinner';
 import { ApiError, errorMessage } from '@/lib/api';
 import { useAnswerSheet } from '@/lib/open-question-actions';
 import {
-  ANSWER_KIND_LABELS,
   ANSWER_PERMANENT,
   ANSWER_TARGET_LABELS,
   MAX_SHEET_FILE_BYTES,
   SHEET_ACCEPT,
+  SHEET_KIND_LABELS,
   SHEET_REASON_TEXTS,
-  answeredBeforeText,
+  notesBeforeText,
   emptySheetResult,
   readSheetBytes,
   sheetGroups,
@@ -52,10 +52,13 @@ interface Preview {
 const tooLarge = (error: unknown) => error instanceof ApiError && error.status === 413;
 
 /**
- * „Antworten aus CSV übernehmen“ (M6 §4.5 "Bulk answers"): the reviewer picks
- * the CSV the export wrote, filled in by the customer (UTF-8 only, as the
- * CLI reads it); the dry run of `POST …/open-questions/answers` with the
- * filled rows previews what would be stored (the rows with kind and target,
+ * „Antworten aus CSV übernehmen“ (M6 §4.5 "Bulk answers"; since S5c-1 every
+ * filled `Antwort` is a note, §4.8 b): the reviewer picks the CSV the export
+ * wrote, filled in by the customer (UTF-8 only, as the CLI reads it); a
+ * sheet exported before S5c-1 with its column `Antwortart` still reads. The
+ * dry run of `POST …/open-questions/answers` with the filled rows previews
+ * what would be stored (each row as a note, or an old sheet's outside mark,
+ * and where it lands,
  * ids that name no current question, rows that cannot be stored, the
  * personal-data hint once), each under its row in the spreadsheet, and only
  * „… speichern“ stores the sheet, in one transaction. When rows were left
@@ -194,9 +197,10 @@ export function AnswerSheetDialog({
         <DialogHeader>
           <DialogTitle>Antworten aus CSV übernehmen</DialogTitle>
           <DialogDescription>
-            Nimm die Datei aus „Als CSV exportieren“, in der die Spalten „Antwort“ und „Antwortart“
-            ausgefüllt sind. Zuerst siehst du, was gespeichert würde; gespeichert wird erst nach
-            deiner Bestätigung. Zeilen ohne Antwort bleiben unberührt. {ANSWER_PERMANENT}
+            Nimm die Datei aus „Als CSV exportieren“, in der die Spalte „Antwort“ ausgefüllt ist.
+            Jede Antwort wird als Notiz an ihrer Frage gespeichert; erledigt wird eine Frage durch
+            ihre Aktion. Zuerst siehst du, was gespeichert würde; gespeichert wird erst nach deiner
+            Bestätigung. Zeilen ohne Antwort bleiben unberührt. {ANSWER_PERMANENT}
           </DialogDescription>
         </DialogHeader>
 
@@ -241,9 +245,9 @@ export function AnswerSheetDialog({
               }}
             />
             <FieldDescription>
-              Die Spalten „id“, „Antwort“ und „Antwortart“ des Exports; als Antwortart gilt
-              „Antwort“, „Liegt außerhalb der Landschaft“ oder „Wird im Modell ergänzt“, leer heißt
-              „Antwort“.
+              Die Spalten „id“ und „Antwort“ des Exports. Eine ältere Datei mit der Spalte
+              „Antwortart“ geht auch: „Liegt außerhalb der Landschaft“ markiert die Frage dann als
+              außerhalb, alles andere wird eine Notiz.
             </FieldDescription>
           </Field>
 
@@ -332,9 +336,9 @@ function SheetPreview({
   const cells = new Map(preview.filled.map((f) => [f.line, f.cells]));
   const textOf = (row: AnswerSheetRowResult) => cells.get(row.row)?.text.trim() ?? '';
   const subjectOf = (row: AnswerSheetRowResult) => items.get(row.id.trim())?.subjectLabel;
-  // Earlier answers of a question: a new one joins them (in the preview, before storing).
+  // Earlier notes of a question: a new one joins them (in the preview, before storing).
   const answersOf = (row: AnswerSheetRowResult) =>
-    dryRun ? (items.get(row.id.trim())?.answers.length ?? 0) : 0;
+    dryRun ? (items.get(row.id.trim())?.answers.filter((a) => a.role === 'note').length ?? 0) : 0;
   return (
     <div className="flex flex-col gap-3" data-testid="answer-sheet-preview">
       <p className="text-sm" data-testid="answer-sheet-summary">
@@ -470,10 +474,10 @@ function AnswerRow({
   row: AnswerSheetRowResult;
   subject: string | undefined;
   text: string;
-  /** Answers the question has already: the new one joins them (append-only). */
+  /** Notes the question has already: the new one joins them (append-only). */
   answersBefore?: number;
 }) {
-  const before = answeredBeforeText(answersBefore);
+  const before = row.kind === 'outside-landscape' ? null : notesBeforeText(answersBefore, 'Diese');
   return (
     <>
       <RowHead row={row} subject={subject} />
@@ -482,9 +486,13 @@ function AnswerRow({
           <CircleCheckIcon className="size-3.5 text-success" aria-hidden />
         ) : null}
         {row.kind ? (
-          <span className="font-medium text-foreground">{ANSWER_KIND_LABELS[row.kind]}</span>
+          <span className="font-medium text-foreground" data-testid="answer-sheet-row-kind">
+            {SHEET_KIND_LABELS[row.kind]}
+          </span>
         ) : null}
-        {row.target ? <span>{ANSWER_TARGET_LABELS[row.target]}</span> : null}
+        {row.target && row.kind !== 'outside-landscape' ? (
+          <span>{ANSWER_TARGET_LABELS[row.target]}</span>
+        ) : null}
         {row.warnings.length > 0 ? (
           <span
             className="inline-flex items-center gap-1 text-warning"

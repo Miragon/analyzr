@@ -31,6 +31,7 @@ import { currentStances, sameProcedure } from '../status.ts';
 import { placementKey } from '../value-chain/placement-state.ts';
 import type { PlacementContext } from '../value-chain/placements.ts';
 import {
+  competesWithCall,
   evaluatePlacementAutoAccept,
   evaluateRelationAutoAccept,
   triggerOf,
@@ -114,9 +115,6 @@ export interface RelationTrigger {
 const isAgentProposal = (a: { sourceKind: string; kind: string }) =>
   a.sourceKind === 'agent' && a.kind === 'proposal';
 
-/** Statuses of a call relation that leave no room for another target of the same call element. */
-const CALL_TAKEN: ReadonlySet<string> = new Set(['proposed', 'held', 'accepted']);
-
 /**
  * Evaluates the relation proposals this write recorded against the
  * project's enabled relation rules and records the acceptances, in natural
@@ -149,19 +147,20 @@ export async function autoAcceptRelations(
     const key = naturalKey(n.type, n.fromRef, n.toRef);
     noLinks.set(key, (noLinks.get(key) ?? 0) + 1);
   }
-  // Calls need every call relation of the project (an ad-hoc context holds only its own).
+  // Calls need every call and manual relation of the project (an ad-hoc context holds
+  // only its own): a manual relation from the call element competes too (M6 S5c-1).
   let calls: Map<string, RelationRecord> | null = null;
-  const callsFrom = async (fromRef: string, self: RelationRecord): Promise<boolean> => {
+  const competing = async (self: RelationRecord): Promise<boolean> => {
     if (!calls) {
       calls = new Map();
       for (const r of await ctx.tx.relations.all(ctx.projectId)) {
-        if (r.type === 'call') calls.set(r.id, r);
+        if (r.type === 'call' || r.type === 'manual') calls.set(r.id, r);
       }
     }
-    for (const r of ctx.relations.values()) if (r.type === 'call') calls.set(r.id, r);
-    return [...calls.values()].some(
-      (r) => r.fromRef === fromRef && r.id !== self.id && CALL_TAKEN.has(r.status),
-    );
+    for (const r of ctx.relations.values()) {
+      if (r.type === 'call' || r.type === 'manual') calls.set(r.id, r);
+    }
+    return [...calls.values()].some((r) => competesWithCall(self, r));
   };
 
   const accepted: RelationRecord[] = [];
@@ -191,7 +190,7 @@ export async function autoAcceptRelations(
       history,
       trigger: triggerOf(a, current),
       liveNoLinks: noLinks.get(key) ?? 0,
-      competingCall: relation.type === 'call' && (await callsFrom(relation.fromRef, relation)),
+      competingCall: relation.type === 'call' && (await competing(relation)),
       rules,
     });
     if (!verdict.accept) continue;

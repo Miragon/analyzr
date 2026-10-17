@@ -25,12 +25,7 @@ import {
   isInformationalKind,
   readAnswerSheet,
   type OpenQuestionAnswerId,
-  type PlacementAssertionId,
-  type PlacementId,
-  type PrincipalId,
   type ProjectId,
-  type Ref,
-  type ValueChainId,
 } from '@analyzr/contracts';
 import { landscapeVariants } from '@analyzr/eval-tools/descriptive';
 import { describe, expect, it } from 'vitest';
@@ -52,7 +47,6 @@ import { checkSheet, sameAnswer } from '../../src/domain/open-questions/answers.
 import {
   POSITION_SHAPE,
   rankGroup,
-  type ChainInput,
   type OpenQuestionInput,
 } from '../../src/domain/open-questions/model.ts';
 import {
@@ -76,18 +70,12 @@ import {
 import type {
   DoneChainTask,
   OpenQuestionAnswerRecord,
-  PlacementRecord,
   RelationRecord,
-  StoredNoLink,
   StoredOpenQuestionAnswer,
-  StoredPlacementAssertion,
   Tx,
 } from '../../src/domain/ports.ts';
 import { pairKey } from '../../src/domain/judgements.ts';
 import { recomputeStatus } from '../../src/domain/status.ts';
-import { prepareRevision } from '../../src/domain/value-chain/document.ts';
-import { valueChainFindings } from '../../src/domain/value-chain/findings.ts';
-import { OUTSIDE } from '../../src/domain/value-chain/steps.ts';
 import { CORPUS_DIR, corpusFiles } from '../support/corpus.ts';
 import {
   AT,
@@ -97,12 +85,29 @@ import {
   libraryInput,
   relationId,
 } from '../support/open-questions.ts';
-import { chain } from '../support/value-chain.ts';
+import {
+  A,
+  AGENT,
+  AGENT_2,
+  AUFTRAG,
+  CALL,
+  DEFS,
+  HUMAN,
+  N,
+  R,
+  RECHNUNG,
+  START_RECHNUNG,
+  STORNO,
+  TASK_NOTIZ,
+  TASK_RECHNUNG,
+  noLink,
+  placement,
+  placementAssertionId,
+  placementId,
+  synthetic,
+} from '../support/open-questions-synthetic.ts';
 
 const ID = /^q-[0-9a-f]{16}$/;
-const HUMAN = `prn_${'0'.repeat(21)}HUMAN` as PrincipalId;
-const AGENT = `prn_${'0'.repeat(21)}AGENT` as PrincipalId;
-const AGENT_2 = `prn_${'0'.repeat(19)}AGENTTWO` as PrincipalId;
 
 // ------------------------------------------------------------ nordwind-handel
 
@@ -160,31 +165,43 @@ describe('nordwind-handel as imported', () => {
     );
   });
 
-  it('gives new ids exactly to the items of a model whose facts changed', async () => {
+  it('versions items by what they ask about, not by the whole model (S5c-1)', async () => {
     const input = await libraryInput(await corpusFiles('nordwind-handel'));
     const before = openQuestions(input);
+    // A new facts_hash alone (another element of the model changed): every id stays.
     const models = new Map(input.models);
     const head = models.get('vertrieb/order-handling');
     if (!head) throw new Error('model missing');
     models.set('vertrieb/order-handling', { ...head, factsHash: 'f'.repeat(64) });
-    const after = openQuestions({ ...input, models });
+    expect(openQuestions({ ...input, models }).map((q) => q.id)).toEqual(before.map((q) => q.id));
+    // A changed fact at the fraud check (its label, say): only its item gets a new id.
+    const call = 'vertrieb/order-handling#Call_FraudCheck';
+    const projectFacts = {
+      models: input.projectFacts.models.map((m) => ({
+        ...m,
+        facts: m.facts.map((f) => (f.ref === call ? { ...f, fingerprint: '0'.repeat(12) } : f)),
+      })),
+    };
+    const after = openQuestions({ ...input, projectFacts });
     expect(after.map((q) => q.subject)).toEqual(before.map((q) => q.subject));
     for (const [i, q] of after.entries()) {
-      const was = before[i];
-      if (q.modelKeys.includes('vertrieb/order-handling')) expect(q.id).not.toBe(was?.id);
-      else expect(q.id).toBe(was?.id);
+      if (q.subject.id === call) expect(q.id).not.toBe(before[i]?.id);
+      else expect(q.id, `${q.kind} ${q.subject.id}`).toBe(before[i]?.id);
     }
-    // Its unresolved call, its unmatched catch and its black-box pool.
-    expect(
-      after.filter((q) => q.modelKeys.includes('vertrieb/order-handling')).map((q) => q.kind),
-    ).toEqual(
-      expect.arrayContaining([
-        'call-target-unknown',
-        'message-partner-missing',
-        'black-box-partner',
-      ]),
-    );
-    expect(after.filter((q) => q.modelKeys.includes('vertrieb/order-handling'))).toHaveLength(3);
+    // A pool's item changes with its flows' inside ends.
+    const pool = before.find((q) => q.subject.id === 'logistik/shipping#Participant_Carrier');
+    const inside = pool?.refs.find((r) => r !== pool.subject.id);
+    if (!pool || inside === undefined) throw new Error('no pool with flows');
+    const moved = openQuestions({
+      ...input,
+      projectFacts: {
+        models: input.projectFacts.models.map((m) => ({
+          ...m,
+          facts: m.facts.map((f) => (f.ref === inside ? { ...f, fingerprint: '1'.repeat(12) } : f)),
+        })),
+      },
+    });
+    expect(moved.find((q) => q.subject.id === pool.subject.id)?.id).not.toBe(pool.id);
   });
 });
 
@@ -248,323 +265,6 @@ describe('the gap signals', () => {
 
 // ------------------------------------------------------- synthetic landscape
 
-const DEFS =
-  'xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" id="Defs" targetNamespace="http://example.org/bpmn"';
-const C7 = 'xmlns:camunda="http://camunda.org/schema/1.0/bpmn"';
-
-const AUFTRAG = `<?xml version="1.0" encoding="UTF-8"?>
-<bpmn:definitions ${DEFS} ${C7}>
-  <bpmn:message id="Msg_RA" name="RechnungAngefordert"/>
-  <bpmn:message id="Msg_Storno" name="AuftragStorniert"/>
-  <bpmn:process id="P_Auftrag" name="Auftragsabwicklung" isExecutable="true">
-    <bpmn:documentation>Nimmt Aufträge an und lässt sie berechnen.</bpmn:documentation>
-    <bpmn:laneSet id="LaneSet_1">
-      <bpmn:lane id="Lane_Innendienst" name="Vertriebsinnendienst">
-        <bpmn:flowNodeRef>Task_Rechnung</bpmn:flowNodeRef>
-        <bpmn:flowNodeRef>Call_Pruefung</bpmn:flowNodeRef>
-      </bpmn:lane>
-      <bpmn:lane id="Lane_Leitung" name="Vertriebsleitung">
-        <bpmn:flowNodeRef>Event_Storno</bpmn:flowNodeRef>
-      </bpmn:lane>
-    </bpmn:laneSet>
-    <bpmn:startEvent id="Start_Auftrag" name="Auftrag eingegangen"/>
-    <bpmn:sendTask id="Task_Rechnung" name="Rechnung anfordern" messageRef="Msg_RA"/>
-    <bpmn:callActivity id="Call_Pruefung" name="Bonität prüfen" calledElement="P_Bonitaet"/>
-    <bpmn:intermediateThrowEvent id="Event_Storno" name="Auftrag storniert">
-      <bpmn:messageEventDefinition id="MED_Storno" messageRef="Msg_Storno"/>
-    </bpmn:intermediateThrowEvent>
-    <bpmn:endEvent id="End_Auftrag" name="Auftrag erledigt"/>
-  </bpmn:process>
-</bpmn:definitions>`;
-
-const RECHNUNG = `<?xml version="1.0" encoding="UTF-8"?>
-<bpmn:definitions ${DEFS} ${C7}>
-  <bpmn:message id="Msg_RA" name="RechnungAngefordert"/>
-  <bpmn:process id="P_Rechnung" name="Rechnungsstellung" isExecutable="true">
-    <bpmn:documentation>Stellt Rechnungen aus.</bpmn:documentation>
-    <bpmn:startEvent id="Start_Rechnung" name="Rechnung angefordert">
-      <bpmn:messageEventDefinition id="MED_RA" messageRef="Msg_RA"/>
-    </bpmn:startEvent>
-    <bpmn:endEvent id="End_Rechnung"/>
-  </bpmn:process>
-</bpmn:definitions>`;
-
-const NOTIZ = `<?xml version="1.0" encoding="UTF-8"?>
-<bpmn:definitions ${DEFS}>
-  <bpmn:collaboration id="Collab_1">
-    <bpmn:participant id="Participant_Notiz" name="Ablage" processRef="Notizablage"/>
-    <bpmn:participant id="Participant_Bank" name="Bank"/>
-    <bpmn:messageFlow id="Flow_Bank" name="Überweisung" sourceRef="Task_Notiz" targetRef="Participant_Bank"/>
-  </bpmn:collaboration>
-  <bpmn:process id="Notizablage" name="Notizen" isExecutable="false">
-    <bpmn:task id="Task_Notiz" name="Notiz schreiben"/>
-  </bpmn:process>
-</bpmn:definitions>`;
-
-const A = 'vertrieb/auftrag#P_Auftrag' as Ref;
-const R = 'finanzen/rechnung#P_Rechnung' as Ref;
-const N = 'archiv/notiz#Notizablage' as Ref;
-const TASK_RECHNUNG = 'vertrieb/auftrag#Task_Rechnung' as Ref;
-const START_RECHNUNG = 'finanzen/rechnung#Start_Rechnung' as Ref;
-const CALL = 'vertrieb/auftrag#Call_Pruefung' as Ref;
-const STORNO = 'vertrieb/auftrag#Event_Storno' as Ref;
-const TASK_NOTIZ = 'archiv/notiz#Task_Notiz' as Ref;
-
-const placementId = (n: number): PlacementId => `plc_${String(n).padStart(26, '0')}`;
-const placementAssertionId = (n: number): PlacementAssertionId =>
-  `pas_${String(n).padStart(26, '0')}`;
-const CHAIN_ID: ValueChainId = `vch_${'0'.repeat(26)}`;
-
-function placement(
-  n: number,
-  elementId: string,
-  processRef: Ref,
-  status: PlacementRecord['status'],
-): PlacementRecord {
-  return {
-    id: placementId(n),
-    projectId: PROJECT,
-    valueChainId: CHAIN_ID,
-    elementId,
-    generation: 1,
-    processRef,
-    status,
-    endpointState: 'ok',
-    tier: 'lexical',
-    confidence: 0.7,
-    version: 1,
-    stepFp: null,
-    processFp: null,
-    createdAt: AT,
-    updatedAt: AT,
-  };
-}
-
-function placementAssertion(
-  n: number,
-  placement: PlacementId,
-  over: Partial<StoredPlacementAssertion>,
-): StoredPlacementAssertion {
-  return {
-    id: placementAssertionId(n),
-    projectId: PROJECT,
-    placementId: placement,
-    seq: 100 + n,
-    kind: 'proposal',
-    verdict: null,
-    sourceKind: 'agent',
-    principalId: AGENT,
-    clientId: null,
-    declared: null,
-    submissionId: null,
-    tier: 'lexical',
-    confidence: 0.7,
-    rationale: null,
-    evidence: null,
-    question: null,
-    label: null,
-    linkedPlacementId: null,
-    stepFp: null,
-    processFp: null,
-    stepHash: null,
-    processHash: null,
-    handle: 'agent:sim',
-    createdAt: AT,
-    ...over,
-  };
-}
-
-function noLink(n: number, from: Ref, to: Ref, reason: string): StoredNoLink {
-  return {
-    id: `nlk_${String(n).padStart(26, '0')}`,
-    projectId: PROJECT,
-    type: 'message',
-    fromRef: from,
-    toRef: to,
-    fromModel: from.split('#')[0] ?? '',
-    toModel: to.split('#')[0] ?? '',
-    fromHash: 'a',
-    toHash: 'b',
-    reason,
-    sourceKind: 'agent',
-    principalId: AGENT,
-    clientId: null,
-    declared: { procedure: { id: 'analyzr-relations', version: '0.2.0' }, llmModel: null },
-    submissionId: `sbm_${'0'.repeat(26)}`,
-    modelId: `mdl_${'0'.repeat(26)}`,
-    seq: 200 + n,
-    handle: 'agent:claude',
-    origin: from.split('#')[0] ?? '',
-    current: true,
-    createdAt: AT,
-  };
-}
-
-const STRUCTURE = prepareRevision(
-  chain({
-    name: 'Kette',
-    steps: [
-      { id: 'step-vertrieb', name: 'Vertrieb' },
-      { id: 'step-eingang', name: 'Auftragseingang', parent: 'step-vertrieb' },
-      { id: 'step-finanzen', name: 'Finanzen' },
-      { id: 'step-ablage', name: 'Ablage', link: 'analyzr:process/x/fehlt#P' },
-    ],
-    orgUnits: [
-      { id: 'org-vertrieb', name: 'Vertrieb & Service', owns: ['step-vertrieb'] },
-      { id: 'org-fibu', name: 'Finanzbuchhaltung', owns: ['step-finanzen'] },
-    ],
-  }),
-).structure;
-
-/** The synthetic landscape, held, asked, no-linked, placed and summarized. */
-async function synthetic(): Promise<OpenQuestionInput> {
-  const base = await libraryInput([
-    { key: 'vertrieb/auftrag', bytes: AUFTRAG },
-    { key: 'finanzen/rechnung', bytes: RECHNUNG },
-    { key: 'archiv/notiz', bytes: NOTIZ },
-  ]);
-  // The key-tier message pair, held by a human (note, question, label).
-  const relations = base.relations.map((r): RelationRecord =>
-    r.fromRef === TASK_RECHNUNG && r.toRef === START_RECHNUNG ? { ...r, status: 'held' } : r,
-  );
-  const held = relations.find((r) => r.status === 'held');
-  if (!held) throw new Error('the key pair is missing');
-  // An agent's lexical call proposal with a question, and another agent's without one.
-  const asked: RelationRecord = {
-    ...held,
-    id: relationId(90),
-    type: 'call',
-    fromRef: CALL,
-    toRef: R,
-    status: 'proposed',
-    tier: 'lexical',
-  };
-  const histories = new Map(base.histories);
-  histories.set(held.id, [
-    ...(histories.get(held.id) ?? []),
-    assertion({
-      id: assertionId(50),
-      relationId: held.id,
-      seq: 50,
-      kind: 'decision',
-      verdict: 'hold',
-      sourceKind: 'human',
-      principalId: HUMAN,
-      handle: 'owner',
-      rationale: 'Mit Finanzen klären, ob die Anforderung als Nachricht kommt.',
-      question: '=Kommt die Anforderung immer als Nachricht?',
-      label: 'mit Fachbereich Finanzen klären',
-    }),
-  ]);
-  histories.set(asked.id, [
-    assertion({
-      id: assertionId(60),
-      relationId: asked.id,
-      seq: 60,
-      sourceKind: 'agent',
-      principalId: AGENT,
-      handle: 'agent:claude',
-      tier: 'lexical',
-      confidence: 0.5,
-      question: 'Prüft „Rechnungsstellung“ (finanzen/rechnung) die Bonität für „Bonität prüfen“?',
-    }),
-    assertion({
-      id: assertionId(61),
-      relationId: asked.id,
-      seq: 61,
-      sourceKind: 'agent',
-      principalId: AGENT_2,
-      handle: 'agent:codex',
-      tier: 'lexical',
-      confidence: 0.6,
-    }),
-  ]);
-  const placements = [
-    placement(1, 'step-eingang', A, 'accepted'),
-    placement(2, 'step-finanzen', R, 'held'),
-    placement(3, 'step-ablage', N, 'proposed'),
-  ];
-  const chainInput: ChainInput = {
-    key: 'main',
-    headSeq: 40,
-    structure: STRUCTURE,
-    live: new Map([...STRUCTURE.steps.map((s) => [s.elementId, 1] as const), [OUTSIDE, 1]]),
-    placements,
-    histories: new Map([
-      [
-        placements[1]?.id ?? '',
-        [
-          placementAssertion(1, placementId(2), {}),
-          placementAssertion(2, placementId(2), {
-            kind: 'decision',
-            verdict: 'hold',
-            sourceKind: 'human',
-            principalId: HUMAN,
-            handle: 'owner',
-            rationale: 'Gehört die Rechnungsstellung zu Finanzen oder zum Vertrieb?',
-          }),
-        ],
-      ],
-      [
-        placements[2]?.id ?? '',
-        [placementAssertion(3, placementId(3), { question: 'Ist „Notizen“ wirklich Ablage?' })],
-      ],
-    ]),
-    findings: valueChainFindings({
-      structure: STRUCTURE,
-      live: new Map([...STRUCTURE.steps.map((s) => [s.elementId, 1] as const), [OUTSIDE, 1]]),
-      processes: [A, R, N],
-      placements,
-      calls: [],
-    }),
-    open: [N, R],
-    unsure: [
-      {
-        process: R,
-        reason: 'Kein Schritt passt eindeutig.',
-        inputHash: 'h-rechnung',
-        handle: 'agent:sim',
-        seq: 70,
-      },
-    ],
-  };
-  const unjudged = { type: 'message' as const, from: STORNO, to: START_RECHNUNG };
-  const judgedCall = { type: 'call' as const, from: CALL, to: R };
-  return {
-    ...base,
-    relations: [...relations, asked],
-    histories,
-    judged: new Set([pairKey(judgedCall)]),
-    noLinks: [
-      noLink(1, CALL, N, 'call-target: „Notizen“ prüft keine Bonität.'),
-      noLink(2, CALL, R, 'call-target: „Rechnungsstellung“ ist kein Prüfprozess.'),
-      noLink(3, STORNO, TASK_NOTIZ, 'collaboration: Die Stornierung geht an die Bank.'),
-      noLink(4, STORNO, START_RECHNUNG, 'no-evidence: Nichts verbindet die beiden.'),
-    ],
-    chain: chainInput,
-    submissions: [
-      {
-        kind: 'relations',
-        subject: 'vertrieb/auftrag',
-        submissionId: `sbm_${'1'.repeat(26)}`,
-        handle: 'agent:claude',
-        seq: 80,
-        summary: 'Die Bonitätsprüfung fehlt als Modell.',
-        uncovered: { count: 4, pairs: [unjudged, judgedCall] },
-      },
-      {
-        kind: 'placement',
-        subject: 'main',
-        submissionId: `sbm_${'2'.repeat(26)}`,
-        handle: 'agent:sim',
-        seq: 90,
-        summary: 'Ablage passt nur bedingt.',
-        uncovered: null,
-      },
-    ],
-  };
-}
-
 describe('every source of §4.1 on a synthetic landscape', () => {
   it('maps each source with its kind, subject, text and raiser', async () => {
     const items = openQuestions(await synthetic());
@@ -575,7 +275,8 @@ describe('every source of §4.1 on a synthetic landscape', () => {
       held: 2,
       'agent-question': 2,
       'placement-unsure': 1,
-      'process-without-step': 2,
+      // Rechnungsstellung's placement is held: its hold asks it, one question per process.
+      'process-without-step': 1,
       'step-without-process': 2,
       'unresolved-link': 1,
       'external-partner': 1,
@@ -899,9 +600,7 @@ describe('the export', () => {
     const items = openQuestions(await synthetic());
     const csv = renderOpenQuestionsCsv(items);
     expect(
-      csv.startsWith(
-        `${CSV_BOM}"id";"Art";"Frage";"Ansprechpartner-Hinweis";"Antwort";"Antwortart"\r\n`,
-      ),
+      csv.startsWith(`${CSV_BOM}"id";"Art";"Frage";"Ansprechpartner-Hinweis";"Antwort"\r\n`),
     ).toBe(true);
     expect(csv.endsWith('\r\n')).toBe(true);
     // The hold's question starts with "=": a leading apostrophe, so no formula runs.
@@ -914,10 +613,10 @@ describe('the export', () => {
     expect(rows.map((r) => r[0])).toEqual(questions.map((q) => q.id));
     for (const [i, row] of rows.entries()) {
       const q = questions[i] as OpenQuestion;
-      expect(row).toHaveLength(6);
+      expect(row).toHaveLength(5);
       expect(row[1]).toBe(OPEN_QUESTION_KIND_LABELS[q.kind]);
       expect(row[2]?.startsWith(q.text)).toBe(true);
-      expect(row.slice(4)).toEqual(['', '']);
+      expect(row[4]).toBe('');
     }
     const held = rows.find((r) => r[2]?.startsWith('=Kommt'));
     expect(held?.[2]).toBe(
@@ -1312,7 +1011,7 @@ describe('the export, after review', () => {
   });
 });
 
-// --------------------------------------------------------------- answers (S5a)
+// ------------------------------------------------- notes and outside marks (S5a, S5c-1)
 
 const HUMAN_ACTOR: Actor = {
   principalId: HUMAN,
@@ -1353,37 +1052,53 @@ function stored(
     answerText: `Antwort ${n}`,
     handle: 'owner',
     createdAt: AT,
+    withdrawal: null,
     ...over,
   };
 }
 
-describe('answers on the items', () => {
-  it('turns an item answered while an answer names its id, with the answers', async () => {
+/** A withdrawal of a stored mark. */
+const withdrawal = (seq: number) => ({ seq, principalId: HUMAN, handle: 'owner', createdAt: AT });
+
+describe('notes and outside marks on the items', () => {
+  it('turns an item answered only while a live outside mark names its id', async () => {
     const input = await synthetic();
     const items = openQuestions(input);
     const heldRelation = items.find((q) => q.kind === 'held' && q.subject.type === 'relation');
     const heldPlacement = items.find((q) => q.kind === 'held' && q.subject.type === 'placement');
     const finding = items.find((q) => q.source === 'finding');
-    if (!heldRelation || !heldPlacement || !finding) throw new Error('missing items');
+    const pool = items.find((q) => q.kind === 'black-box-partner');
+    const step = items.find((q) => q.kind === 'step-without-process');
+    if (!heldRelation || !heldPlacement || !finding || !pool || !step) {
+      throw new Error('missing items');
+    }
     const answers = [
+      // S5a's rows: notes on relations and placements, also its outside rows there.
       stored(1, heldRelation),
-      stored(2, heldPlacement),
-      stored(3, finding, { kind: 'outside-landscape' }),
+      stored(2, heldPlacement, { kind: 'outside-landscape' }),
+      // A note and S5a's „Wird im Modell ergänzt“: notes, the item stays open.
+      stored(3, finding),
       stored(4, finding, { kind: 'will-be-modelled' }),
+      // An outside mark with a note, and one without: answered.
+      stored(5, pool, { kind: 'outside-landscape' }),
+      stored(6, step, { kind: 'outside-landscape', text: null, answerText: null }),
+      // A withdrawn mark no longer counts.
+      stored(7, finding, { kind: 'outside-landscape', withdrawal: withdrawal(1100) }),
       // An answer to an item whose source changed since: it answers nothing now.
-      stored(5, finding, { questionId: 'q-00000000000000ff' }),
+      stored(8, finding, { questionId: 'q-00000000000000ff', kind: 'outside-landscape' }),
     ];
     const answered = openQuestions({ ...input, answers });
     for (const q of answered) expect(OpenQuestion.parse(q)).toEqual(q);
     expect(answered.map((q) => q.id)).toEqual(items.map((q) => q.id));
     const byId = new Map(answered.map((q) => [q.id, q]));
     expect(byId.get(heldRelation.id)).toMatchObject({
-      state: 'answered',
+      state: 'open',
       answers: [
         {
           id: answerId(1),
           questionId: heldRelation.id,
           kind: 'answer',
+          role: 'note',
           target: 'relation-note',
           text: 'Antwort 1',
           note: {
@@ -1395,59 +1110,86 @@ describe('answers on the items', () => {
           sourceKind: 'human',
           seq: 1001,
           at: AT.toISOString(),
+          withdrawal: null,
         },
       ],
     });
-    expect(byId.get(heldPlacement.id)?.answers).toMatchObject([
-      {
-        target: 'placement-note',
-        note: { type: 'placement', assertionId: placementAssertionId(902) },
-      },
-    ]);
-    expect(byId.get(finding.id)?.answers).toMatchObject([
-      { kind: 'outside-landscape', target: 'answer', note: null, text: 'Antwort 3' },
-      { kind: 'will-be-modelled', text: 'Antwort 4' },
-    ]);
+    expect(byId.get(heldPlacement.id)).toMatchObject({
+      state: 'open',
+      answers: [
+        {
+          kind: 'outside-landscape',
+          role: 'note',
+          target: 'placement-note',
+          note: { type: 'placement', assertionId: placementAssertionId(902) },
+        },
+      ],
+    });
+    expect(byId.get(finding.id)).toMatchObject({
+      state: 'open',
+      answers: [
+        { kind: 'answer', role: 'note', target: 'answer', note: null, text: 'Antwort 3' },
+        { kind: 'will-be-modelled', role: 'note', text: 'Antwort 4' },
+        {
+          kind: 'outside-landscape',
+          role: 'outside-mark',
+          withdrawal: { by: 'owner', seq: 1100, at: AT.toISOString() },
+        },
+      ],
+    });
+    expect(byId.get(pool.id)).toMatchObject({
+      state: 'answered',
+      answers: [{ role: 'outside-mark', text: 'Antwort 5', withdrawal: null }],
+    });
+    expect(byId.get(step.id)).toMatchObject({
+      state: 'answered',
+      answers: [{ role: 'outside-mark', text: null }],
+    });
     // Everything else as before; the state filter separates them.
-    const others = answered.filter(
-      (q) => ![heldRelation.id, heldPlacement.id, finding.id].includes(q.id),
-    );
-    expect(others).toEqual(
-      items.filter((q) => ![heldRelation.id, heldPlacement.id, finding.id].includes(q.id)),
-    );
-    expect(others.every((q) => q.state === 'open' && q.answers.length === 0)).toBe(true);
+    const touched = [heldRelation.id, heldPlacement.id, finding.id, pool.id, step.id];
+    const others = answered.filter((q) => !touched.includes(q.id));
+    expect(others).toEqual(items.filter((q) => !touched.includes(q.id)));
     expect(filterOpenQuestions(answered, { state: 'answered' }).map((q) => q.id)).toEqual(
-      items
-        .filter((q) => [heldRelation.id, heldPlacement.id, finding.id].includes(q.id))
-        .map((q) => q.id),
+      items.filter((q) => [pool.id, step.id].includes(q.id)).map((q) => q.id),
     );
-    expect(filterOpenQuestions(answered, { state: 'open' })).toEqual(others);
+    expect(filterOpenQuestions(answered, { state: 'open' })).toHaveLength(items.length - 2);
   });
 
-  it("opens a subject answer's item again when its source changes", async () => {
+  it('keeps a mark across a change elsewhere in the model, and opens the item at its subject', async () => {
     const input = await synthetic();
     const finding = openQuestions(input).find(
-      (q) => q.source === 'finding' && q.modelKeys.includes('vertrieb/auftrag'),
+      (q) => q.source === 'finding' && q.subject.id === CALL,
     );
-    if (!finding) throw new Error('no finding in vertrieb/auftrag');
-    const answers = [stored(1, finding)];
+    if (!finding) throw new Error('no finding at the call');
+    const answers = [stored(1, finding, { kind: 'outside-landscape' })];
     expect(openQuestions({ ...input, answers }).find((q) => q.id === finding.id)?.state).toBe(
       'answered',
     );
+    // A new facts_hash alone (another element of the model changed): the same id.
     const models = new Map(input.models);
     const head = models.get('vertrieb/auftrag');
     if (!head) throw new Error('no head');
     models.set('vertrieb/auftrag', { ...head, factsHash: 'f'.repeat(64) });
-    const changed = openQuestions({ ...input, models, answers });
+    expect(
+      openQuestions({ ...input, models, answers }).find((q) => q.id === finding.id)?.state,
+    ).toBe('answered');
+    // A changed fact at the subject (the call's fingerprint): a new id, open again.
+    const projectFacts = {
+      models: input.projectFacts.models.map((m) => ({
+        ...m,
+        facts: m.facts.map((f) => (f.ref === CALL ? { ...f, fingerprint: 'f'.repeat(12) } : f)),
+      })),
+    };
+    const changed = openQuestions({ ...input, projectFacts, answers });
     expect(changed.some((q) => q.id === finding.id)).toBe(false);
-    const again = changed.find(
-      (q) =>
-        q.source === 'finding' && q.subject.id === finding.subject.id && q.kind === finding.kind,
-    );
-    expect(again).toMatchObject({ state: 'open', answers: [] });
+    expect(
+      changed.find(
+        (q) => q.source === 'finding' && q.subject.id === CALL && q.kind === finding.kind,
+      ),
+    ).toMatchObject({ state: 'open', answers: [] });
   });
 
-  it('shows the answers in both exports; the sheet read back changes nothing', async () => {
+  it('shows notes and marks in the Markdown, the latest note in the five-column CSV', async () => {
     const input = await synthetic();
     const items = openQuestions(input);
     const finding = items.find((q) => q.source === 'finding');
@@ -1456,20 +1198,26 @@ describe('answers on the items', () => {
       ...input,
       answers: [
         stored(1, finding, { answerText: 'Erst so.' }),
-        stored(2, finding, { kind: 'outside-landscape', answerText: '=Dann so.' }),
+        stored(2, finding, { answerText: '=Dann so.' }),
+        stored(3, finding, { kind: 'outside-landscape', answerText: 'Extern.' }),
+        stored(4, finding, {
+          kind: 'outside-landscape',
+          text: null,
+          answerText: null,
+          withdrawal: withdrawal(1200),
+        }),
       ],
     });
     const csv = renderOpenQuestionsCsv(answered);
-    // The latest answer and its kind, protected against formulas like every cell.
-    expect(csv).toContain(`"'=Dann so.";"Liegt außerhalb der Landschaft"`);
+    expect(csv.split('\r\n')[0]).toBe(
+      `${CSV_BOM}"id";"Art";"Frage";"Ansprechpartner-Hinweis";"Antwort"`,
+    );
+    // The latest note, protected against formulas like every cell; the mark is no note.
+    expect(csv).toContain(`;"'=Dann so."\r\n`);
+    expect(csv).not.toContain('Extern.');
     const sheet = readAnswerSheet(csv);
     expect(sheet.filter((r) => r.text !== '')).toEqual([
-      {
-        id: finding.id,
-        text: '=Dann so.',
-        kind: 'Liegt außerhalb der Landschaft',
-        line: expect.any(Number) as unknown,
-      },
+      { id: finding.id, text: '=Dann so.', kind: '', line: expect.any(Number) as unknown },
     ]);
     const checked = checkSheet(sheet, new Map(answered.map((q) => [q.id, q])));
     expect(checked.counts).toMatchObject({ recorded: 0, unchanged: 1, ignored: sheet.length - 1 });
@@ -1477,12 +1225,15 @@ describe('answers on the items', () => {
       projectName: 'P',
       projectKey: 'p',
       seq: 1,
-      filter: {},
+      filter: { state: 'answered' },
     });
-    expect(md).toContain('- Antwort (Antwort, owner, Ereignis 1001): Erst so.\n');
+    expect(md).toContain('- Notiz (owner, Ereignis 1001): Erst so.\n');
+    expect(md).toContain('- Notiz (owner, Ereignis 1002): \\=Dann so.\n');
+    expect(md).toContain('- Liegt außerhalb der Landschaft (owner, Ereignis 1003): Extern.\n');
     expect(md).toContain(
-      '- Antwort (Liegt außerhalb der Landschaft, owner, Ereignis 1002): \\=Dann so.\n',
+      '- Liegt außerhalb der Landschaft (owner, Ereignis 1004, zurückgenommen von owner (Ereignis 1200))\n',
     );
+    expect(md).toContain('Filter: Status „Erledigt (außerhalb)“.');
   });
 });
 
@@ -1518,8 +1269,9 @@ describe('a filled-in sheet', () => {
     expect(
       checked.rows.map((r) => [r.row, r.outcome, r.reason ?? r.kind ?? null, r.warnings.length]),
     ).toEqual([
+      // Every filled Antwort is a note, also S5a's „Wird im Modell ergänzt“.
       [1, 'recorded', 'answer', 1],
-      [2, 'recorded', 'will-be-modelled', 0],
+      [2, 'recorded', 'answer', 0],
       [3, 'invalid', 'too-long', 0],
       [4, 'invalid', 'control-characters', 0],
       [5, 'unchanged', 'answer', 0],
@@ -1530,10 +1282,10 @@ describe('a filled-in sheet', () => {
     ]);
     // What gets recorded: trimmed texts on the current items, with where they land.
     expect(
-      checked.record.map((r) => [r.draft.question.id, r.draft.kind, r.draft.text.length]),
+      checked.record.map((r) => [r.draft.question.id, r.draft.kind, r.draft.text?.length]),
     ).toEqual([
       [a.id, 'answer', 'Ja, über a@b.de.'.length],
-      [b.id, 'will-be-modelled', 2000],
+      [b.id, 'answer', 2000],
     ]);
     expect(checked.rows[0]?.target).toBe(
       a.subject.type === 'relation'
@@ -1549,16 +1301,57 @@ describe('a filled-in sheet', () => {
     ).toMatchObject([{ outcome: 'invalid', reason: 'unknown-kind' }]);
   });
 
-  it('compares with the latest answer only: going back to an earlier one records it again', async () => {
+  it("reads an S5a sheet's Antwortart: outside marks where the item can carry one", async () => {
+    const input = await synthetic();
+    const items = openQuestions(input);
+    const finding = items.find((q) => q.source === 'finding');
+    const pool = items.find((q) => q.kind === 'black-box-partner');
+    const heldRelation = items.find((q) => q.kind === 'held' && q.subject.type === 'relation');
+    if (!finding || !pool || !heldRelation) throw new Error('missing items');
+    const marked = openQuestions({
+      ...input,
+      answers: [stored(1, pool, { kind: 'outside-landscape', answerText: 'Bank.' })],
+    });
+    const current = new Map(marked.map((q) => [q.id, q]));
+    const checked = checkSheet(
+      [
+        { id: finding.id, text: 'Ein Dienstleister.', kind: 'Liegt außerhalb der Landschaft' },
+        // A live mark already: unchanged, whatever the text.
+        { id: pool.id, text: 'Die Hausbank.', kind: 'outside-landscape' },
+        // On a relation: a note.
+        { id: heldRelation.id, text: 'Extern.', kind: 'liegt AUSSERHALB der landschaft' },
+      ],
+      current,
+    );
+    expect(checked.rows.map((r) => [r.outcome, r.kind, r.target])).toEqual([
+      ['recorded', 'outside-landscape', 'answer'],
+      ['unchanged', 'outside-landscape', 'answer'],
+      ['invalid', undefined, undefined],
+    ]);
+    // „außerhalb“ spelled with ss does not name the kind; with ß it does.
+    expect(
+      checkSheet(
+        [{ id: heldRelation.id, text: 'Extern.', kind: 'Liegt außerhalb der Landschaft' }],
+        current,
+      ).rows,
+    ).toMatchObject([{ outcome: 'recorded', kind: 'answer', target: 'relation-note' }]);
+    expect(checked.rows[1]?.answer?.id).toBe(answerId(1));
+    expect(checked.record.map((r) => [r.draft.kind, r.draft.text])).toEqual([
+      ['outside-landscape', 'Ein Dienstleister.'],
+    ]);
+  });
+
+  it('compares a note with the latest note only: going back to an earlier one records it again', async () => {
     const input = await synthetic();
     const finding = openQuestions(input).find((q) => q.source === 'finding');
     if (!finding) throw new Error('no finding');
-    // x, then y: y is the current answer (the export and the list show it).
+    // x, then y, then a mark: y is the latest note (the export shows it).
     const answered = openQuestions({
       ...input,
       answers: [
         stored(1, finding, { answerText: 'x' }),
-        stored(2, finding, { kind: 'outside-landscape', answerText: 'y' }),
+        stored(2, finding, { answerText: 'y' }),
+        stored(3, finding, { kind: 'outside-landscape', answerText: 'z' }),
       ],
     });
     const current = new Map(answered.map((q) => [q.id, q]));
@@ -1569,19 +1362,15 @@ describe('a filled-in sheet', () => {
     expect(checkSheet([{ id: item.id, text: 'x', kind: 'Antwort' }], current).rows).toMatchObject([
       { outcome: 'recorded', kind: 'answer' },
     ]);
-    // y again: unchanged, with the latest answer.
-    expect(sameAnswer({ question: item, kind: 'outside-landscape', text: 'y' })?.id).toBe(
-      answerId(2),
+    // y again: unchanged, with the latest note; the mark's text is no note.
+    expect(sameAnswer({ question: item, kind: 'answer', text: 'y' })?.id).toBe(answerId(2));
+    expect(sameAnswer({ question: item, kind: 'answer', text: 'z' })).toBeUndefined();
+    // A second mark: unchanged while the live one stands, whatever its text.
+    expect(sameAnswer({ question: item, kind: 'outside-landscape', text: null })?.id).toBe(
+      answerId(3),
     );
-    // y with another kind: a new answer.
-    expect(sameAnswer({ question: item, kind: 'answer', text: 'y' })).toBeUndefined();
-    expect(
-      checkSheet([{ id: item.id, text: 'y', kind: 'Wird im Modell ergänzt' }], current).rows,
-    ).toMatchObject([{ outcome: 'recorded', kind: 'will-be-modelled' }]);
-    // An empty Antwortart (or none: a sheet without the column) with the latest text is
-    // unchanged whatever the latest kind, so a re-saved export records nothing twice.
     expect(checkSheet([{ id: item.id, text: ' y ', kind: '' }], current).rows).toMatchObject([
-      { outcome: 'unchanged', answer: { id: answerId(2), kind: 'outside-landscape' } },
+      { outcome: 'unchanged', answer: { id: answerId(2), kind: 'answer' } },
     ]);
   });
 
@@ -1648,9 +1437,10 @@ describe('where an answer lands (the use case on a stand-in transaction)', () =>
           const note = written.find((w) => w.row['id'] === row.noteAssertionId)?.row;
           answers.push({
             ...row,
-            answerText: row.text ?? String(note?.['rationale']),
+            answerText: row.text ?? (note ? String(note['rationale']) : null),
             handle: 'owner',
             createdAt: AT,
+            withdrawal: null,
           });
           return Promise.resolve();
         },
@@ -1660,18 +1450,20 @@ describe('where an answer lands (the use case on a stand-in transaction)', () =>
     return { tx: tx as unknown as Tx, written, events };
   }
 
-  it('records a note on a relation or placement and a text otherwise, each with its event', async () => {
+  it('records a note on a relation or placement, a text otherwise, a mark with or without a note', async () => {
     const input = await synthetic();
     const items = openQuestions(input);
     const relation = items.find((q) => q.kind === 'held' && q.subject.type === 'relation');
     const placementItem = items.find((q) => q.subject.type === 'placement');
     const finding = items.find((q) => q.source === 'finding');
-    if (!relation || !placementItem || !finding) throw new Error('missing items');
+    const pool = items.find((q) => q.kind === 'black-box-partner');
+    if (!relation || !placementItem || !finding || !pool) throw new Error('missing items');
     const { tx, written, events } = standIn(input);
     const recorded = await recordAnswers(tx, PROJECT, HUMAN_ACTOR, [
       { question: relation, kind: 'answer', text: 'Ja, als Nachricht.' },
-      { question: placementItem, kind: 'will-be-modelled', text: 'Kommt ins Modell.' },
+      { question: placementItem, kind: 'answer', text: 'Kommt ins Modell.' },
       { question: finding, kind: 'outside-landscape', text: 'Extern.' },
+      { question: pool, kind: 'outside-landscape', text: null },
     ]);
     expect(
       written.map((w) => [w.table, w.row['kind'], w.row['rationale'] ?? w.row['text']]),
@@ -1679,8 +1471,9 @@ describe('where an answer lands (the use case on a stand-in transaction)', () =>
       ['relation_assertion', 'note', 'Ja, als Nachricht.'],
       ['open_question_answer', 'answer', null],
       ['placement_assertion', 'note', 'Kommt ins Modell.'],
-      ['open_question_answer', 'will-be-modelled', null],
+      ['open_question_answer', 'answer', null],
       ['open_question_answer', 'outside-landscape', 'Extern.'],
+      ['open_question_answer', 'outside-landscape', null],
     ]);
     expect(written[0]?.row).toMatchObject({ sourceKind: 'human', relationId: relation.subject.id });
     expect(written[1]?.row).toMatchObject({
@@ -1691,10 +1484,12 @@ describe('where an answer lands (the use case on a stand-in transaction)', () =>
     });
     expect(written[3]?.row['noteAssertionId']).toBe(written[2]?.row['id']);
     expect(written[4]?.row['noteAssertionId']).toBeNull();
+    expect(written[5]?.row).toMatchObject({ text: null, noteAssertionId: null });
     expect(events.map((e) => e.type)).toEqual([
       'relation.noted',
       'open_question.answered',
       'placement.noted',
+      'open_question.answered',
       'open_question.answered',
       'open_question.answered',
     ]);
@@ -1705,11 +1500,18 @@ describe('where an answer lands (the use case on a stand-in transaction)', () =>
       subject: finding.subject,
       target: 'answer',
     });
-    expect(recorded.map((a) => [a.target, a.text, a.seq])).toEqual([
-      ['relation-note', 'Ja, als Nachricht.', 5002],
-      ['placement-note', 'Kommt ins Modell.', 5004],
-      ['answer', 'Extern.', 5005],
+    expect(recorded.map((a) => [a.role, a.target, a.text, a.seq])).toEqual([
+      ['note', 'relation-note', 'Ja, als Nachricht.', 5002],
+      ['note', 'placement-note', 'Kommt ins Modell.', 5004],
+      ['outside-mark', 'answer', 'Extern.', 5005],
+      ['outside-mark', 'answer', null, 5006],
     ]);
+    // Never a mark on a relation or placement (they are decided instead).
+    await expect(
+      recordAnswers(tx, PROJECT, HUMAN_ACTOR, [
+        { question: relation, kind: 'outside-landscape', text: null },
+      ]),
+    ).rejects.toThrow(/outside mark on a relation or placement/);
   });
 
   it('lets only humans answer', async () => {

@@ -1914,6 +1914,12 @@
             "items": {
               "$ref": "#/components/schemas/OpenQuestionAnswer"
             }
+          },
+          "actions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OpenQuestionAction"
+            }
           }
         },
         "required": [
@@ -1931,7 +1937,8 @@
           "refs",
           "raisedBy",
           "state",
-          "answers"
+          "answers",
+          "actions"
         ],
         "description": "A gap in the landscape, as a question."
       },
@@ -2083,11 +2090,17 @@
           "kind": {
             "$ref": "#/components/schemas/OpenQuestionAnswerKind"
           },
+          "role": {
+            "$ref": "#/components/schemas/OpenQuestionAnswerRole"
+          },
           "target": {
             "$ref": "#/components/schemas/OpenQuestionAnswerTarget"
           },
           "text": {
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "note": {
             "anyOf": [
@@ -2114,19 +2127,31 @@
           },
           "at": {
             "$ref": "#/components/schemas/Timestamp"
+          },
+          "withdrawal": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OpenQuestionAnswerWithdrawal"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
           "id",
           "questionId",
           "kind",
+          "role",
           "target",
           "text",
           "note",
           "by",
           "sourceKind",
           "seq",
-          "at"
+          "at",
+          "withdrawal"
         ],
         "description": "An answer to an open question."
       },
@@ -2144,6 +2169,14 @@
           "will-be-modelled"
         ],
         "description": "Kind of an answer to an open question."
+      },
+      "OpenQuestionAnswerRole": {
+        "type": "string",
+        "enum": [
+          "note",
+          "outside-mark"
+        ],
+        "description": "How a stored answer counts."
       },
       "OpenQuestionAnswerTarget": {
         "type": "string",
@@ -2177,6 +2210,195 @@
           "assertionId"
         ],
         "description": "The note an answer was recorded as."
+      },
+      "OpenQuestionAnswerWithdrawal": {
+        "type": "object",
+        "properties": {
+          "by": {
+            "type": "string"
+          },
+          "seq": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "at": {
+            "$ref": "#/components/schemas/Timestamp"
+          }
+        },
+        "required": [
+          "by",
+          "seq",
+          "at"
+        ],
+        "description": "The withdrawal of an outside mark."
+      },
+      "OpenQuestionAction": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/OpenQuestionActionType"
+          },
+          "primary": {
+            "type": "boolean"
+          },
+          "label": {
+            "type": "string"
+          },
+          "pick": {
+            "$ref": "#/components/schemas/OpenQuestionPick"
+          },
+          "multiple": {
+            "type": "boolean"
+          },
+          "suggested": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Ref"
+            }
+          },
+          "proposals": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OpenQuestionLinkProposal"
+            }
+          },
+          "exclude": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Ref"
+            }
+          },
+          "choices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Ref"
+            }
+          },
+          "pairs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TypedPair"
+            }
+          },
+          "step": {
+            "type": "string"
+          },
+          "decides": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OpenQuestionDecisionItem"
+            }
+          }
+        },
+        "required": [
+          "type",
+          "primary",
+          "label"
+        ],
+        "description": "An action an open question offers."
+      },
+      "OpenQuestionActionType": {
+        "type": "string",
+        "enum": [
+          "decide",
+          "link",
+          "place",
+          "choose-copy",
+          "outside",
+          "requeue",
+          "fix-link",
+          "note"
+        ],
+        "description": "Type of an action on an open question."
+      },
+      "OpenQuestionPick": {
+        "type": "string",
+        "enum": [
+          "process",
+          "endpoint",
+          "step",
+          "pair"
+        ],
+        "description": "The picker an action needs."
+      },
+      "OpenQuestionLinkProposal": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "$ref": "#/components/schemas/Ref"
+          },
+          "relation": {
+            "$ref": "#/components/schemas/RelationId"
+          },
+          "type": {
+            "$ref": "#/components/schemas/RelationType"
+          },
+          "from": {
+            "$ref": "#/components/schemas/Ref"
+          },
+          "to": {
+            "$ref": "#/components/schemas/Ref"
+          }
+        },
+        "required": [
+          "target",
+          "relation",
+          "type",
+          "from",
+          "to"
+        ],
+        "description": "A live proposal a link to a suggested target accepts."
+      },
+      "TypedPair": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "call",
+              "message",
+              "signal",
+              "trigger"
+            ]
+          },
+          "from": {
+            "$ref": "#/components/schemas/Ref"
+          },
+          "to": {
+            "$ref": "#/components/schemas/Ref"
+          }
+        },
+        "required": [
+          "type",
+          "from",
+          "to"
+        ],
+        "description": "A typed pair of endpoints."
+      },
+      "OpenQuestionDecisionItem": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "relation",
+              "placement"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "type",
+          "id",
+          "version"
+        ],
+        "description": "A relation or placement an action decides."
       },
       "OpenQuestionExportFormat": {
         "type": "string",
@@ -2252,15 +2474,13 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 2000
-          },
-          "kind": {
-            "$ref": "#/components/schemas/OpenQuestionAnswerKind"
           }
         },
         "required": [
           "text"
         ],
-        "description": "An answer to an open question."
+        "additionalProperties": false,
+        "description": "A note on an open question."
       },
       "AnswerSheetResult": {
         "type": "object",
@@ -2409,6 +2629,537 @@
           "text"
         ],
         "description": "One row of a filled-in answer sheet."
+      },
+      "OpenQuestionActionResult": {
+        "type": "object",
+        "properties": {
+          "result": {
+            "type": "string",
+            "enum": [
+              "applied",
+              "unchanged"
+            ]
+          },
+          "question": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OpenQuestion"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "relations": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "effect": {
+                  "$ref": "#/components/schemas/OpenQuestionActionEffect"
+                },
+                "relation": {
+                  "$ref": "#/components/schemas/Relation"
+                }
+              },
+              "required": [
+                "effect",
+                "relation"
+              ]
+            }
+          },
+          "placements": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "effect": {
+                  "$ref": "#/components/schemas/OpenQuestionActionEffect"
+                },
+                "placement": {
+                  "$ref": "#/components/schemas/Placement"
+                }
+              },
+              "required": [
+                "effect",
+                "placement"
+              ]
+            }
+          },
+          "answer": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OpenQuestionAnswer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PersonalDataWarning"
+            }
+          }
+        },
+        "required": [
+          "result",
+          "question",
+          "relations",
+          "placements",
+          "answer",
+          "warnings"
+        ],
+        "description": "What an action on an open question did."
+      },
+      "OpenQuestionActionEffect": {
+        "type": "string",
+        "enum": [
+          "manual",
+          "decision"
+        ],
+        "description": "How an action touched a subject."
+      },
+      "Placement": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/PlacementId"
+          },
+          "valueChainId": {
+            "$ref": "#/components/schemas/ValueChainId"
+          },
+          "elementId": {
+            "type": "string"
+          },
+          "generation": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "stepName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "stepLive": {
+            "type": "boolean"
+          },
+          "process": {
+            "$ref": "#/components/schemas/Ref"
+          },
+          "processName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/RelationStatus"
+          },
+          "endpointState": {
+            "$ref": "#/components/schemas/EndpointState"
+          },
+          "endpoints": {
+            "type": "object",
+            "properties": {
+              "step": {
+                "$ref": "#/components/schemas/EndpointState"
+              },
+              "process": {
+                "$ref": "#/components/schemas/EndpointState"
+              }
+            },
+            "required": [
+              "step",
+              "process"
+            ]
+          },
+          "tier": {
+            "$ref": "#/components/schemas/PlacementTier"
+          },
+          "confidence": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 1
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "source": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SourceKind"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "provenance": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PlacementProvenance"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "updatedAt": {
+            "$ref": "#/components/schemas/Timestamp"
+          }
+        },
+        "required": [
+          "id",
+          "valueChainId",
+          "elementId",
+          "generation",
+          "stepName",
+          "stepLive",
+          "process",
+          "processName",
+          "status",
+          "endpointState",
+          "endpoints",
+          "tier",
+          "confidence",
+          "version",
+          "source",
+          "provenance",
+          "updatedAt"
+        ],
+        "description": "A process placed on a value chain step."
+      },
+      "PlacementId": {
+        "type": "string",
+        "pattern": "^plc_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "description": "Placement id (`plc_` + ULID).",
+        "example": "plc_01J9Z3N4X5Q6R7S8T9V0W1X2Y3"
+      },
+      "ValueChainId": {
+        "type": "string",
+        "pattern": "^vch_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "description": "Value chain id (`vch_` + ULID).",
+        "example": "vch_01J9Z3N4X5Q6R7S8T9V0W1X2Y3"
+      },
+      "PlacementTier": {
+        "type": "string",
+        "enum": [
+          "key",
+          "lexical",
+          "semantic",
+          "manual"
+        ],
+        "description": "Evidence tier of a placement: `key` (rule tier: a step link or an equal name), `lexical`, `semantic`, `manual`."
+      },
+      "PlacementProvenance": {
+        "type": "object",
+        "properties": {
+          "assertionId": {
+            "$ref": "#/components/schemas/PlacementAssertionId"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/AssertionKind"
+          },
+          "verdict": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Verdict"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sourceKind": {
+            "$ref": "#/components/schemas/SourceKind"
+          },
+          "principalId": {
+            "$ref": "#/components/schemas/PrincipalId"
+          },
+          "handle": {
+            "type": "string"
+          },
+          "clientId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "procedure": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DeclaredProcedure"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "llmModel": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tier": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PlacementTier"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "confidence": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 1
+          },
+          "rationale": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "question": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "label": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "at": {
+            "$ref": "#/components/schemas/Timestamp"
+          }
+        },
+        "required": [
+          "assertionId",
+          "kind",
+          "verdict",
+          "sourceKind",
+          "principalId",
+          "handle",
+          "clientId",
+          "procedure",
+          "llmModel",
+          "tier",
+          "confidence",
+          "rationale",
+          "question",
+          "label",
+          "at"
+        ],
+        "description": "The assertion a placement status rests on."
+      },
+      "PlacementAssertionId": {
+        "type": "string",
+        "pattern": "^pas_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "description": "Placement assertion id (`pas_` + ULID).",
+        "example": "pas_01J9Z3N4X5Q6R7S8T9V0W1X2Y3"
+      },
+      "OpenQuestionActionBody": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/LinkActionBody"
+          },
+          {
+            "$ref": "#/components/schemas/PlaceActionBody"
+          },
+          {
+            "$ref": "#/components/schemas/ChooseCopyActionBody"
+          },
+          {
+            "$ref": "#/components/schemas/OutsideActionBody"
+          }
+        ],
+        "discriminator": {
+          "propertyName": "type",
+          "mapping": {
+            "link": "#/components/schemas/LinkActionBody",
+            "place": "#/components/schemas/PlaceActionBody",
+            "choose-copy": "#/components/schemas/ChooseCopyActionBody",
+            "outside": "#/components/schemas/OutsideActionBody"
+          }
+        },
+        "description": "An action on an open question."
+      },
+      "LinkActionBody": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "link"
+            ]
+          },
+          "targets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Ref"
+            },
+            "maxItems": 10,
+            "default": []
+          },
+          "pair": {
+            "type": "object",
+            "properties": {
+              "from": {
+                "$ref": "#/components/schemas/Ref"
+              },
+              "to": {
+                "$ref": "#/components/schemas/Ref"
+              }
+            },
+            "required": [
+              "from",
+              "to"
+            ]
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 2000
+          }
+        },
+        "required": [
+          "type"
+        ],
+        "description": "Link the item to the picked targets."
+      },
+      "PlaceActionBody": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "place"
+            ]
+          },
+          "step": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "process": {
+            "$ref": "#/components/schemas/Ref"
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 2000
+          }
+        },
+        "required": [
+          "type",
+          "step"
+        ],
+        "description": "Place the process on a step."
+      },
+      "ChooseCopyActionBody": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "choose-copy"
+            ]
+          },
+          "process": {
+            "$ref": "#/components/schemas/Ref"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "$ref": "#/components/schemas/RelationId"
+                },
+                "version": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              },
+              "required": [
+                "id",
+                "version"
+              ]
+            },
+            "minItems": 1,
+            "maxItems": 500
+          },
+          "placeOthersOutside": {
+            "type": "boolean"
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 2000
+          }
+        },
+        "required": [
+          "type",
+          "process",
+          "items",
+          "placeOthersOutside"
+        ],
+        "description": "Choose the valid copy of a process id."
+      },
+      "OutsideActionBody": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "outside"
+            ]
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 2000
+          }
+        },
+        "required": [
+          "type"
+        ],
+        "description": "Mark the item as outside the landscape."
+      },
+      "WithdrawOpenQuestionAnswerResult": {
+        "type": "object",
+        "properties": {
+          "result": {
+            "type": "string",
+            "enum": [
+              "withdrawn",
+              "unchanged"
+            ]
+          },
+          "answer": {
+            "$ref": "#/components/schemas/OpenQuestionAnswer"
+          },
+          "question": {
+            "$ref": "#/components/schemas/OpenQuestion"
+          }
+        },
+        "required": [
+          "result",
+          "answer",
+          "question"
+        ],
+        "description": "The withdrawn outside mark and its question."
       },
       "RelationAssertionList": {
         "type": "object",
@@ -2991,12 +3742,6 @@
           "updatedAt"
         ],
         "description": "A value chain of a project."
-      },
-      "ValueChainId": {
-        "type": "string",
-        "pattern": "^vch_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
-        "description": "Value chain id (`vch_` + ULID).",
-        "example": "vch_01J9Z3N4X5Q6R7S8T9V0W1X2Y3"
       },
       "ValueChainKey": {
         "type": "string",
@@ -3619,22 +4364,6 @@
         ],
         "description": "A placement in the chain overview."
       },
-      "PlacementId": {
-        "type": "string",
-        "pattern": "^plc_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
-        "description": "Placement id (`plc_` + ULID).",
-        "example": "plc_01J9Z3N4X5Q6R7S8T9V0W1X2Y3"
-      },
-      "PlacementTier": {
-        "type": "string",
-        "enum": [
-          "key",
-          "lexical",
-          "semantic",
-          "manual"
-        ],
-        "description": "Evidence tier of a placement: `key` (rule tier: a step link or an equal name), `lexical`, `semantic`, `manual`."
-      },
       "ValueChainFinding": {
         "type": "object",
         "properties": {
@@ -3980,236 +4709,6 @@
           "placements"
         ],
         "description": "The drill-down of one value chain step."
-      },
-      "Placement": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "$ref": "#/components/schemas/PlacementId"
-          },
-          "valueChainId": {
-            "$ref": "#/components/schemas/ValueChainId"
-          },
-          "elementId": {
-            "type": "string"
-          },
-          "generation": {
-            "type": "integer",
-            "minimum": 1
-          },
-          "stepName": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "stepLive": {
-            "type": "boolean"
-          },
-          "process": {
-            "$ref": "#/components/schemas/Ref"
-          },
-          "processName": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "status": {
-            "$ref": "#/components/schemas/RelationStatus"
-          },
-          "endpointState": {
-            "$ref": "#/components/schemas/EndpointState"
-          },
-          "endpoints": {
-            "type": "object",
-            "properties": {
-              "step": {
-                "$ref": "#/components/schemas/EndpointState"
-              },
-              "process": {
-                "$ref": "#/components/schemas/EndpointState"
-              }
-            },
-            "required": [
-              "step",
-              "process"
-            ]
-          },
-          "tier": {
-            "$ref": "#/components/schemas/PlacementTier"
-          },
-          "confidence": {
-            "type": [
-              "number",
-              "null"
-            ],
-            "minimum": 0,
-            "maximum": 1
-          },
-          "version": {
-            "type": "integer",
-            "minimum": 1
-          },
-          "source": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/SourceKind"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "provenance": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/PlacementProvenance"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "updatedAt": {
-            "$ref": "#/components/schemas/Timestamp"
-          }
-        },
-        "required": [
-          "id",
-          "valueChainId",
-          "elementId",
-          "generation",
-          "stepName",
-          "stepLive",
-          "process",
-          "processName",
-          "status",
-          "endpointState",
-          "endpoints",
-          "tier",
-          "confidence",
-          "version",
-          "source",
-          "provenance",
-          "updatedAt"
-        ],
-        "description": "A process placed on a value chain step."
-      },
-      "PlacementProvenance": {
-        "type": "object",
-        "properties": {
-          "assertionId": {
-            "$ref": "#/components/schemas/PlacementAssertionId"
-          },
-          "kind": {
-            "$ref": "#/components/schemas/AssertionKind"
-          },
-          "verdict": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/Verdict"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "sourceKind": {
-            "$ref": "#/components/schemas/SourceKind"
-          },
-          "principalId": {
-            "$ref": "#/components/schemas/PrincipalId"
-          },
-          "handle": {
-            "type": "string"
-          },
-          "clientId": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "procedure": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/DeclaredProcedure"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "llmModel": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "tier": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/PlacementTier"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "confidence": {
-            "type": [
-              "number",
-              "null"
-            ],
-            "minimum": 0,
-            "maximum": 1
-          },
-          "rationale": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "question": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "label": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "at": {
-            "$ref": "#/components/schemas/Timestamp"
-          }
-        },
-        "required": [
-          "assertionId",
-          "kind",
-          "verdict",
-          "sourceKind",
-          "principalId",
-          "handle",
-          "clientId",
-          "procedure",
-          "llmModel",
-          "tier",
-          "confidence",
-          "rationale",
-          "question",
-          "label",
-          "at"
-        ],
-        "description": "The assertion a placement status rests on."
-      },
-      "PlacementAssertionId": {
-        "type": "string",
-        "pattern": "^pas_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
-        "description": "Placement assertion id (`pas_` + ULID).",
-        "example": "pas_01J9Z3N4X5Q6R7S8T9V0W1X2Y3"
       },
       "ValueChainFindingList": {
         "type": "object",
@@ -6848,32 +7347,6 @@
           "pairs"
         ],
         "description": "Assigned pairs a submission left unjudged."
-      },
-      "TypedPair": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "enum": [
-              "call",
-              "message",
-              "signal",
-              "trigger"
-            ]
-          },
-          "from": {
-            "$ref": "#/components/schemas/Ref"
-          },
-          "to": {
-            "$ref": "#/components/schemas/Ref"
-          }
-        },
-        "required": [
-          "type",
-          "from",
-          "to"
-        ],
-        "description": "A typed pair of endpoints."
       },
       "SubmitAnalysisBody": {
         "type": "object",
@@ -11008,7 +11481,7 @@
           "open-questions"
         ],
         "summary": "Open questions: the gaps that block links and placements, from every source and the gap signals",
-        "description": "Computed on read, never stored (M6 §4.2): relation and value chain findings, holds (note, question, label), agents' questions on proposals waiting for review, current unsure placement verdicts, no-links coded `call-target` or `collaboration`, the summaries of current submissions and the pairs they left unjudged, and the gap signals over the head facts. Questions first, then the value chain findings (`process-without-step`, `step-without-process`, `unresolved-link`), then informational items (`summary-note`, `descriptive-model`), each group ordered by `unlocks` (descending), then subject, kind and id. `modelKey` matches a model or a folder (`finanzen` matches `finanzen/mahnwesen`); `askWho` matches a lane, one of the step owners or the folder exactly. An item is `answered` while an answer for its id exists (M6 S5a), with its `answers`; `state` filters by it.",
+        "description": "Computed on read, never stored (M6 §4.2): relation and value chain findings, holds (note, question, label), agents' questions on proposals waiting for review, current unsure placement verdicts, no-links coded `call-target` or `collaboration`, the summaries of current submissions and the pairs they left unjudged, and the gap signals over the head facts. Questions first, then the value chain findings (`process-without-step`, `step-without-process`, `unresolved-link`), then informational items (`summary-note`, `descriptive-model`), each group ordered by `unlocks` (descending), then subject, kind and id. `modelKey` matches a model or a folder (`finanzen` matches `finanzen/mahnwesen`); `askWho` matches a lane, one of the step owners or the folder exactly. Each item carries its `actions` (M6 §4.8 a: at most one primary, German labels from code) and its `answers` (notes and outside marks); it is `answered` while a live outside mark names its id (M6 S5c-1), and `state` filters by it. An item whose call, coded end or pool flows a human, an owner's rule or the rule tier linked by an accepted relation to another process leaves the list (R1), and so does a duplicated process id while no call towards its copies waits for a decision (R1b); `listFindings` keeps listing their findings.",
         "parameters": [
           {
             "schema": {
@@ -11152,7 +11625,7 @@
           "open-questions"
         ],
         "summary": "The open questions as a Markdown or CSV download, with the filters of the list",
-        "description": "Every open question matching the filters, in list order, as an attachment. `markdown` (default): German headings, grouped by the contact hint (step owners, else folder, else lanes). `csv`: the questions without the informational items (`summary-note`, `descriptive-model`, which ask nothing), UTF-8 with a byte order mark, `;`-separated (what German spreadsheet programs open directly), CRLF, every field quoted, the columns `id`, `Art`, `Frage`, `Ansprechpartner-Hinweis`, `Antwort`, `Antwortart`; the last two are empty for the customer to fill in, or hold an answered item's latest answer and its kind (M6 S5a; read back, it is `unchanged`); the Markdown lists every answer. A cell starting with `=`, `+`, `-`, `@`, a tab, a carriage return or their full-width forms (also after a run of `'`) gets a leading `'`, so spreadsheets never run it as a formula. The file name carries the filters (`offene-fragen-<project key>-<filters>.csv`).",
+        "description": "Every open question matching the filters, in list order, as an attachment. `markdown` (default): German headings, grouped by the contact hint (step owners, else folder, else lanes). `csv`: the questions without the informational items (`summary-note`, `descriptive-model`, which ask nothing), UTF-8 with a byte order mark, `;`-separated (what German spreadsheet programs open directly), CRLF, every field quoted, the columns `id`, `Art`, `Frage`, `Ansprechpartner-Hinweis`, `Antwort`; `Antwort` is empty for the customer to fill in, or holds the item's latest note (M6 S5c-1; read back, it is `unchanged`); the Markdown lists every note and outside mark. A cell starting with `=`, `+`, `-`, `@`, a tab, a carriage return or their full-width forms (also after a run of `'`) gets a leading `'`, so spreadsheets never run it as a formula. The file name carries the filters (`offene-fragen-<project key>-<filters>.csv`).",
         "parameters": [
           {
             "schema": {
@@ -11299,8 +11772,8 @@
         "tags": [
           "open-questions"
         ],
-        "summary": "Answer an open question (humans only)",
-        "description": "Records the answer (M6 §4.5 S5a) in the append-only `open_question_answer`; the item is `answered` while an answer for its id exists. Where the text lands: on a relation (held, or proposed with an agent's question) a human note through the note use case, so the next claim of either model shows it (a hold stays until a human decides it); on a placement a human note through the placement note use case (on an agent's question the process becomes due, nothing is queued; a held placement keeps homing its process, so it is not due until a human decides the hold); anything else stays with the answer (shown and exported, it reaches no agent before M6 S7). A note holds the text only, not the kind. An answer identical to the id's latest answer (kind and text) answers 200 `unchanged` and writes nothing. The text is compared and stored with LF line breaks and in Unicode NFC, trimmed; it has at most 2000 characters; a deterministic check for e-mail addresses, phone numbers and IBANs returns `warnings` and never blocks. Owner or editor on an interactive client: agent tokens get 403 `human-decision-required` with `reviewUrl`. An id that names no current open question (its source changed, which changes the id) is 404 `not-found`.",
+        "summary": "Add a note to an open question (humans only)",
+        "description": "Records the note („Notiz hinzufügen“, M6 §4.8 b) in the append-only `open_question_answer`; a note informs and leaves the item `open` (only an outside mark makes it `answered`, `actOnOpenQuestion`). The body is `{text}` only: S5a's `kind` is gone and gets 422. Where the text lands: on a relation (held, or proposed with an agent's question) a human note through the note use case, so the next claim of either model shows it (a hold stays until a human decides it); on a placement a human note through the placement note use case (on an agent's question the process becomes due, nothing is queued; a held placement keeps homing its process, so it is not due until a human decides the hold); anything else stays with the answer (shown and exported, it reaches no agent before M6 S7). A note identical to the id's latest note answers 200 `unchanged` and writes nothing. The text is compared and stored with LF line breaks and in Unicode NFC, trimmed; it has at most 2000 characters; a deterministic check for e-mail addresses, phone numbers and IBANs returns `warnings` and never blocks. Owner or editor on an interactive client: agent tokens get 403 `human-decision-required` with `reviewUrl`. An id that names no current open question (its source changed, which changes the id) is 404 `not-found`.",
         "parameters": [
           {
             "schema": {
@@ -11338,7 +11811,7 @@
         },
         "responses": {
           "200": {
-            "description": "An identical answer was recorded earlier",
+            "description": "An identical note was recorded earlier",
             "content": {
               "application/json": {
                 "schema": {
@@ -11348,7 +11821,7 @@
             }
           },
           "201": {
-            "description": "The answer was recorded",
+            "description": "The note was recorded",
             "content": {
               "application/json": {
                 "schema": {
@@ -11407,7 +11880,7 @@
           "open-questions"
         ],
         "summary": "Record the answers of a filled-in sheet (`?dryRun=true` first; humans only)",
-        "description": "The rows of the CSV the export wrote (`id`, `Antwort`, `Antwortart`; `readAnswerSheet` in `@analyzr/contracts/open-question-csv` reads them), each answered as by `answerOpenQuestion`, all in one transaction. Rows with an empty answer are ignored (counted only); an id that names no current open question (also one whose source changed since the export) is listed `unknown` and never stored; a row with a text over 2000 characters, control characters, an unknown `Antwortart` or an id an earlier row answers is listed `invalid` and never stored; an answer identical to the item's latest one (kind and text; with an empty `Antwortart` the same text, whatever its kind) is `unchanged`. `row` is the position in `rows`. `dryRun=true` lists the same and stores nothing. At most 5000 rows and 4194304 bytes per call (413 `payload-too-large` above).",
+        "description": "The rows of the CSV the export wrote (`id`, `Antwort`; `readAnswerSheet` in `@analyzr/contracts/open-question-csv` reads them), each filled `Antwort` recorded as a note as by `answerOpenQuestion`, all in one transaction. A sheet exported before M6 S5c-1 still reads: its `Antwortart` „Liegt außerhalb der Landschaft“ (`outside-landscape`) records an outside mark with the text as its note, except on a relation or placement item (a note); „Antwort“, „Wird im Modell ergänzt“ and an empty cell record a note. Rows with an empty answer are ignored (counted only); an id that names no current open question (also one whose source changed since the export) is listed `unknown` and never stored; a row with a text over 2000 characters, control characters, an unknown `Antwortart` or an id an earlier row answers is listed `invalid` and never stored; a note identical to the item's latest note, or a mark on an item a live mark marks, is `unchanged`. `row` is the position in `rows`. `dryRun=true` lists the same and stores nothing. At most 5000 rows and 4194304 bytes per call (413 `payload-too-large` above).",
         "parameters": [
           {
             "schema": {
@@ -11489,6 +11962,229 @@
           },
           "413": {
             "description": "Problem: `payload-too-large`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Problem: `validation-failed`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project}/open-questions/{question}/actions": {
+      "post": {
+        "operationId": "actOnOpenQuestion",
+        "tags": [
+          "open-questions"
+        ],
+        "summary": "Act on an open question: link, place, choose the valid copy, mark outside (humans)",
+        "description": "Runs one of the item's `actions` (M6 §4.8 a) in one transaction under the project lock, through the use cases that exist. `link`: per target a live typed relation between the anchor and the target (proposed or held: a rule-tier or key-tier proposal, an agent's) is accepted as the human's decision, else an accepted `manual` relation is written (a pool's flows: one per anchor, directed like its flow); the rationale is German and from code („Aus „Offene Fragen“: …“) plus the note. `place`: a manual placement, accepted at once. `choose-copy`: the calls towards the copies are accepted towards the valid copy and rejected towards the others, all or nothing with their versions (409 `conflict` otherwise); with `placeOthersOutside` the other copies without a home step go to `@outside`; the note is a note on the item. `outside`: an outside mark (an `open_question_answer` of kind `outside-landscape`, its text the note or null); while a live mark exists, 200 `unchanged`. The answer names the relations and placements written (`manual`: „Rückgängig“ rejects them through the decision routes) or decided, and the item as the list now shows it (`null` when the action took it off). An id that names no current item is 404 `not-found`; an action the item does not offer is 422 `validation-failed` with `reason: 'action-not-offered'`. Owner or editor on an interactive client: agent tokens get 403 `human-decision-required` with `reviewUrl`.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": "^(?:prj_[0-7][0-9A-HJKMNP-TV-Z]{25}|[a-z0-9]+(?:-[a-z0-9]+)*)$",
+              "description": "Project id (`prj_…`) or project key.",
+              "example": "nordwind-handel"
+            },
+            "required": true,
+            "description": "Project id (`prj_…`) or project key.",
+            "name": "project",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/OpenQuestionId"
+            },
+            "required": true,
+            "description": "Id of an open question: `q-` + 16 hex characters.",
+            "name": "question",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OpenQuestionActionBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Nothing to write (`unchanged`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpenQuestionActionResult"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "The action was applied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpenQuestionActionResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem: `unauthorized`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem: `insufficient-scope`, `human-decision-required`, `forbidden`, `demo-readonly`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem: `not-found`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Problem: `conflict`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Problem: `validation-failed`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project}/open-questions/{question}/answers/{answer}/withdrawal": {
+      "post": {
+        "operationId": "withdrawOpenQuestionAnswer",
+        "tags": [
+          "open-questions"
+        ],
+        "summary": "Withdraw an outside mark („Rückgängig“; humans only)",
+        "description": "Ends an outside mark of the item (M6 §4.8 b) with a row in the append-only `open_question_answer_withdrawal` and an `open_question.answer_withdrawn` event; the mark no longer counts, so the item is `open` again unless another live mark names it, and marking again records a new mark. A mark withdrawn before answers 200 `unchanged`. Only outside marks are withdrawn (a note is 422 `validation-failed` with `reason: 'not-an-outside-mark'`); an id that names no current item, or an answer of another item, is 404 `not-found`. Owner or editor on an interactive client: agent tokens get 403 `human-decision-required` with `reviewUrl`.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": "^(?:prj_[0-7][0-9A-HJKMNP-TV-Z]{25}|[a-z0-9]+(?:-[a-z0-9]+)*)$",
+              "description": "Project id (`prj_…`) or project key.",
+              "example": "nordwind-handel"
+            },
+            "required": true,
+            "description": "Project id (`prj_…`) or project key.",
+            "name": "project",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/OpenQuestionId"
+            },
+            "required": true,
+            "description": "Id of an open question: `q-` + 16 hex characters.",
+            "name": "question",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/OpenQuestionAnswerId"
+            },
+            "required": true,
+            "description": "Answer to an open question (`oqa_` + ULID).",
+            "name": "answer",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The mark was withdrawn before",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WithdrawOpenQuestionAnswerResult"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "The mark was withdrawn",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WithdrawOpenQuestionAnswerResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem: `unauthorized`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem: `insufficient-scope`, `human-decision-required`, `forbidden`, `demo-readonly`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem: `not-found`",
             "content": {
               "application/problem+json": {
                 "schema": {

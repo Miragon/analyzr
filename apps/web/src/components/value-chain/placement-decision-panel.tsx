@@ -84,35 +84,34 @@ function Panel({
   function run(outcome: PlacementOutcome, body: PlacementDecisionBody) {
     if (busy) return;
     setConflict(null);
-    decide.mutate(
-      { placementId: placement.id, body },
-      {
-        onSuccess: (result) => {
+    // `mutateAsync`, not `mutate`'s callbacks: those are dropped when the panel unmounts
+    // first (in „Offene Fragen“ the decided item leaves the list with the refetch).
+    decide.mutateAsync({ placementId: placement.id, body }).then(
+      (result) => {
+        setForm(null);
+        const target = result.corrected ?? result.placement;
+        toast({
+          tone: 'success',
+          title: TITLES[outcome],
+          description:
+            outcome === 'correct'
+              ? `${processName} liegt jetzt auf „${placementStepLabel(target)}“.`
+              : `${processName} → ${placementStepLabel(result.placement)}`,
+        });
+        onDecided?.(outcome, result);
+      },
+      (error: unknown) => {
+        const c = conflictOf(error, version, 'placement');
+        if (c) {
+          setConflict(c);
           setForm(null);
-          const target = result.corrected ?? result.placement;
+        } else {
           toast({
-            tone: 'success',
-            title: TITLES[outcome],
-            description:
-              outcome === 'correct'
-                ? `${processName} liegt jetzt auf „${placementStepLabel(target)}“.`
-                : `${processName} → ${placementStepLabel(result.placement)}`,
+            tone: 'danger',
+            title: 'Entscheidung nicht gespeichert',
+            description: errorMessage(error),
           });
-          onDecided?.(outcome, result);
-        },
-        onError: (error) => {
-          const c = conflictOf(error, version, 'placement');
-          if (c) {
-            setConflict(c);
-            setForm(null);
-          } else {
-            toast({
-              tone: 'danger',
-              title: 'Entscheidung nicht gespeichert',
-              description: errorMessage(error),
-            });
-          }
-        },
+        }
       },
     );
   }

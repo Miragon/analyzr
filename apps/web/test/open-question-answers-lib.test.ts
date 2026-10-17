@@ -1,6 +1,7 @@
 /**
- * The web's side of answers (M6 S5a, `src/lib/open-question-answers.ts`):
- * where an answer lands and what the dialog says about it, the reading of a
+ * The web's side of notes and answers (M6 S5a, S5c-1,
+ * `src/lib/open-question-answers.ts`): where a note lands and what the
+ * dialog says about it, how stored answers count, the reading of a
  * filled-in sheet and the German texts of its preview.
  */
 import type { AnswerSheetRowResult, OpenQuestionSubjectType } from '@analyzr/client';
@@ -9,14 +10,17 @@ import { describe, expect, it } from 'vitest';
 
 import {
   AGENTS_SENTENCE,
-  ANSWER_KIND_HINTS,
-  ANSWER_KIND_LABELS,
-  ANSWER_KIND_ORDER,
+  ANSWER_ROLE_LABELS,
   ANSWER_TARGET_LABELS,
-  NOTE_TEXT_ONLY,
-  answerEffectText,
-  answeredBeforeText,
+  NOTE_KEEPS_OPEN,
+  NOTE_UNTIL_IMPORT,
+  SHEET_KIND_LABELS,
   answerTargetOf,
+  answersSummaryText,
+  endsByAction,
+  noteEffectText,
+  noteKeepsOpen,
+  notesBeforeText,
   charCountText,
   decodeSheet,
   personalDataFindings,
@@ -56,70 +60,104 @@ describe('where an answer lands', () => {
     ]);
   });
 
-  it('says the agents sentence for relations only, and points elsewhere at the path that works today', () => {
+  it('says the agents sentence for relations only, and that a note leaves the item open', () => {
     for (const type of SUBJECTS) {
-      const text = answerEffectText({ kind: 'call-target-unknown', subject: { type } });
+      const text = noteEffectText({ kind: 'call-target-unknown', subject: { type } });
       expect(text.includes(AGENTS_SENTENCE)).toBe(type === 'relation');
-      // a note holds the text only; the dialog says so where the answer becomes one
-      expect(text.includes(NOTE_TEXT_ONLY)).toBe(type === 'relation' || type === 'placement');
+      expect(text).toContain(NOTE_KEEPS_OPEN);
       if (['ref', 'process', 'model'].includes(type)) {
-        expect(text).toContain('ergänze die Dokumentation des Modells und importiere es erneut');
+        expect(text).toContain('ergänze es im Quellwerkzeug und importiere das Modell erneut');
       }
       if (type === 'step' || type === 'value-chain') {
-        expect(text).toContain('passe die Wertschöpfungskette an');
-        expect(text).toContain('fehlt ein Modell, importiere es');
+        expect(text).toContain('Fehlt ein Modell, importiere es.');
       }
     }
+    expect(AGENTS_SENTENCE).toBe(
+      'Die Agenten berücksichtigen die Notiz, sobald das Paar neu bewertet wird.',
+    );
+  });
+
+  it('says how a note-only item ends: with the next import, not by an action (S5c-1)', () => {
+    const noteOnly = [{ type: 'note' as const }];
+    const text = noteEffectText({
+      kind: 'undocumented-process',
+      subject: { type: 'process' },
+      actions: noteOnly,
+    });
+    expect(text).toContain(NOTE_UNTIL_IMPORT);
+    expect(text).not.toContain(NOTE_KEEPS_OPEN);
+    expect(endsByAction({ actions: noteOnly })).toBe(false);
+    expect(noteKeepsOpen({ actions: [{ type: 'outside' }, { type: 'note' }] })).toBe(
+      NOTE_KEEPS_OPEN,
+    );
+    expect(NOTE_UNTIL_IMPORT).toBe(
+      'Die Frage bleibt offen, bis das Modell mit der Ergänzung neu importiert ist.',
+    );
   });
 
   it("makes the process due on an agent's placement question only; a held placement stays held", () => {
-    const asked = answerEffectText({ kind: 'agent-question', subject: { type: 'placement' } });
+    const asked = noteEffectText({ kind: 'agent-question', subject: { type: 'placement' } });
     expect(asked).toContain('Der Prozess wird damit fällig');
     expect(asked).toContain('eingeplant wird dadurch noch keine');
     // A held placement homes its process: it never becomes due, no agent gets it.
-    const held = answerEffectText({ kind: 'held', subject: { type: 'placement' } });
+    const held = noteEffectText({ kind: 'held', subject: { type: 'placement' } });
     expect(held).not.toContain('fällig');
     expect(held).not.toContain('Platzierungsagent');
     expect(held).toContain(
-      'Die Platzierung bleibt vorgemerkt; solange bekommt kein Agent den Prozess. Entscheide sie im Prüfbildschirm.',
+      'Die Platzierung bleibt vorgemerkt; solange bekommt kein Agent den Prozess. Entscheide sie mit „Entscheiden“.',
     );
-    expect(answerEffectText({ kind: 'held', subject: { type: 'relation' } })).toContain(
-      'Die Vormerkung bleibt; die Entscheidung triffst du.',
+    expect(noteEffectText({ kind: 'held', subject: { type: 'relation' } })).toContain(
+      'Die Vormerkung bleibt; die Entscheidung triffst du mit „Entscheiden“.',
     );
-    expect(
-      answerEffectText({ kind: 'agent-question', subject: { type: 'relation' } }),
-    ).not.toContain('Vormerkung');
+    expect(noteEffectText({ kind: 'agent-question', subject: { type: 'relation' } })).not.toContain(
+      'Vormerkung',
+    );
   });
 
-  it('says what „Liegt außerhalb der Landschaft“ does: answered, no finding dismissed', () => {
-    expect(ANSWER_KIND_HINTS['outside-landscape']).toContain(
-      'Die Frage gilt damit als beantwortet; einen Befund verwirft das nicht.',
-    );
-    expect(ANSWER_KIND_HINTS['outside-landscape']).not.toContain('schließt');
+  it('names how stored answers count: notes, and the outside mark (S5c-1)', () => {
+    expect(ANSWER_ROLE_LABELS).toEqual({
+      note: 'Notiz',
+      'outside-mark': 'Liegt außerhalb der Landschaft',
+    });
+    // a sheet row records a note, or (an S5a sheet's „Liegt außerhalb …“) the mark
+    expect(SHEET_KIND_LABELS).toEqual({
+      answer: 'Notiz',
+      'outside-landscape': 'Liegt außerhalb der Landschaft',
+      'will-be-modelled': 'Notiz',
+    });
     // the contracts' terms are the web's: Relation, Platzierung
     expect(ANSWER_TARGET_LABELS).toEqual({
       'relation-note': 'als Notiz an der Relation',
       'placement-note': 'als Notiz an der Platzierung',
       answer: 'bei der Frage',
     });
-  });
-
-  it('lists the three kinds with the sheet’s labels', () => {
-    expect(ANSWER_KIND_ORDER.map((k) => ANSWER_KIND_LABELS[k])).toEqual([
-      'Antwort',
-      'Liegt außerhalb der Landschaft',
-      'Wird im Modell ergänzt',
-    ]);
+    const at = '2026-10-17T10:00:00.000Z';
+    expect(answersSummaryText([])).toBe('');
+    expect(
+      answersSummaryText([
+        { role: 'note', withdrawal: null },
+        { role: 'note', withdrawal: null },
+      ]),
+    ).toBe('2 Notizen');
+    expect(
+      answersSummaryText([
+        { role: 'note', withdrawal: null },
+        { role: 'outside-mark', withdrawal: null },
+      ]),
+    ).toBe('1 Notiz · Als außerhalb markiert');
+    expect(
+      answersSummaryText([{ role: 'outside-mark', withdrawal: { by: 'owner', seq: 9, at } }]),
+    ).toBe('Markierung zurückgenommen');
     expect(charCountText(1234)).toBe('1.234 von 2.000 Zeichen');
   });
 
-  it('says that a new answer joins the earlier ones', () => {
-    expect(answeredBeforeText(0)).toBeNull();
-    expect(answeredBeforeText(1)).toBe(
-      'Schon beantwortet. Deine Antwort kommt hinzu; die bisherige bleibt stehen.',
+  it('says that a new note joins the earlier ones', () => {
+    expect(notesBeforeText(0)).toBeNull();
+    expect(notesBeforeText(1)).toBe(
+      'Schon eine Notiz. Deine kommt hinzu; die bisherige bleibt stehen.',
     );
-    expect(answeredBeforeText(3)).toBe(
-      'Schon 3-mal beantwortet. Deine Antwort kommt hinzu; die bisherigen bleiben stehen.',
+    expect(notesBeforeText(3, 'Diese')).toBe(
+      'Schon 3 Notizen. Diese kommt hinzu; die bisherigen bleiben stehen.',
     );
   });
 

@@ -1151,7 +1151,8 @@ export interface AutoAcceptRuleRepo {
 /**
  * An answer to an open question (`open_question_answer`, M6 S5a): the text
  * in `text`, or, for a relation or placement subject, the human note it was
- * recorded as (`noteAssertionId`).
+ * recorded as (`noteAssertionId`); an outside mark (kind
+ * `outside-landscape`, S5c-1) may have neither.
  */
 export interface OpenQuestionAnswerRecord {
   id: OpenQuestionAnswerId;
@@ -1170,17 +1171,37 @@ export interface OpenQuestionAnswerRecord {
   seq: number;
 }
 
-/** An answer as read back: with its text resolved (a note answer's note text), the handle and the time. */
+/**
+ * The withdrawal of an outside mark (`open_question_answer_withdrawal`, M6
+ * S5c-1): humans only; `seq` of the `open_question.answer_withdrawn` event.
+ */
+export interface OpenQuestionAnswerWithdrawalRecord {
+  answerId: OpenQuestionAnswerId;
+  projectId: ProjectId;
+  principalId: PrincipalId;
+  sourceKind: 'human';
+  seq: number;
+}
+
+/**
+ * An answer as read back: with its text resolved (a note answer's note
+ * text; `null` for an outside mark without a note), the handle, the time
+ * and its withdrawal.
+ */
 export interface StoredOpenQuestionAnswer extends OpenQuestionAnswerRecord {
   /** `text`, or the text of the note it was recorded as. */
-  answerText: string;
+  answerText: string | null;
   handle: string;
   createdAt: Date;
+  /** The withdrawal of an outside mark, with the withdrawing principal's handle. */
+  withdrawal: { seq: number; principalId: PrincipalId; handle: string; createdAt: Date } | null;
 }
 
 export interface OpenQuestionAnswerRepo {
   insert(row: OpenQuestionAnswerRecord): Promise<void>;
-  /** Every answer of the project, oldest first, with the note texts resolved. */
+  /** Records a withdrawal (an outside mark's „Rückgängig“). */
+  withdraw(row: OpenQuestionAnswerWithdrawalRecord): Promise<void>;
+  /** Every answer of the project, oldest first, with the note texts and withdrawals resolved. */
   list(projectId: ProjectId): Promise<StoredOpenQuestionAnswer[]>;
 }
 

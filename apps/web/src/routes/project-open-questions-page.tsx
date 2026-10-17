@@ -1,12 +1,14 @@
 import { exportOpenQuestions, type OpenQuestionExportFormat } from '@analyzr/client';
 import { useQuery } from '@tanstack/react-query';
 import { CircleCheckIcon, FileDownIcon, FilterXIcon, SearchXIcon } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 
-import { AnswerDialog } from '@/components/open-questions/answer-dialog';
 import { AnswerSheetDialog } from '@/components/open-questions/answer-sheet-dialog';
+import { NoteDialog } from '@/components/open-questions/note-dialog';
+import type { QuestionActor } from '@/components/open-questions/question-actions';
 import { QuestionItem } from '@/components/open-questions/question-item';
-import { useAnswerDialog } from '@/components/open-questions/use-answer-dialog';
+import { useActionFocus } from '@/components/open-questions/use-action-focus';
+import { useNoteDialog } from '@/components/open-questions/use-note-dialog';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import {
@@ -111,7 +113,7 @@ function ExportButtons({ project, filters }: { project: string; filters: OpenQue
           data-format={format}
           title={
             format === 'csv'
-              ? 'Die Fragen mit den Spalten „Antwort“ und „Antwortart“ zum Ausfüllen (bei beantworteten Fragen steht die letzte Antwort darin), ohne die Hinweise zur Information'
+              ? 'Die Fragen mit der Spalte „Antwort“ zum Ausfüllen (steht an einer Frage schon eine Notiz, die letzte), ohne die Hinweise zur Information'
               : 'Nach Ansprechpartner-Hinweis gruppiert, zum Lesen und für Gespräche'
           }
         >
@@ -170,9 +172,11 @@ function FacetSelect({
  * informational items, each by the open decisions it touches), filtered by
  * kind, model or folder, contact hint, source and state (in the URL), and the
  * export of exactly the filtered list as Markdown or CSV. Every role reads
- * it; reviewers (editors and owners, never on the read-only demo) answer
- * each item with „Beantworten“ and take a filled-in CSV back with „Antworten
- * aus CSV übernehmen“ (M6 §4.5, S5a).
+ * it; reviewers (editors and owners, never on the read-only demo) act on
+ * each item (M6 §4.8 a, S5c-1: its primary action, „Weitere Aktionen“, the
+ * panels, „Rückgängig“ in the toast), add notes and take a filled-in CSV
+ * back with „Antworten aus CSV übernehmen“ (S5a); after an action the focus
+ * moves to the next item.
  */
 export function OpenQuestionsPage() {
   const { project } = projectOpenQuestionsRoute.useParams();
@@ -182,14 +186,22 @@ export function OpenQuestionsPage() {
   const models = useQuery(modelsQuery(project));
   const { resolve } = useProjectFacts(project, models.data);
   const { canReview } = useProjectPermissions(project);
-  const answering = useAnswerDialog();
+  const noting = useNoteDialog();
   const [shown, setShown] = useState(PAGE);
+  const list = useRef<HTMLUListElement>(null);
 
   const filters = useMemo(() => parseOpenQuestionFilters({ ...search }), [search]);
   const all = useMemo(() => questions.data ?? [], [questions.data]);
   const items = useMemo(() => filterOpenQuestions(all, filters), [all, filters]);
   const facets = useMemo(() => openQuestionFacets(all, filters), [all, filters]);
   const filtered = hasFilters(filters);
+  const visibleIds = useMemo(() => items.slice(0, shown).map((q) => q.id), [items, shown]);
+  const acted = useActionFocus(
+    visibleIds,
+    list,
+    useCallback(() => document.getElementById('oq-count'), []),
+  );
+  const actor = useMemo<QuestionActor>(() => ({ note: noting.open, acted }), [noting.open, acted]);
 
   const set = (patch: Partial<OpenQuestionsSearch>) => {
     const next: OpenQuestionsSearch = { ...search, ...patch };
@@ -229,7 +241,7 @@ export function OpenQuestionsPage() {
       Ansprechpartner-Hinweis nennt Lanes, Organisationseinheiten und Ordner: ein Hinweis, keine
       Zuständigkeit.
       {canReview
-        ? ' Mit „Beantworten“ hältst du eine Antwort fest, mit „Antworten aus CSV übernehmen“ die Antworten aus der ausgefüllten CSV.'
+        ? ' Die meisten Fragen haben eine Aktion, die sie erledigt: verknüpfen, platzieren, entscheiden oder als außerhalb der Landschaft markieren; was eine Aktion angelegt hat, nimmst du mit „Rückgängig“ zurück. Die übrigen erledigt ein neuer Import des ergänzten Modells. Mit „Notiz hinzufügen“ hältst du fest, was du weißt, mit „Antworten aus CSV übernehmen“ die Antworten aus der ausgefüllten CSV (als Notizen).'
         : null}
     </p>
   );
@@ -383,14 +395,14 @@ export function OpenQuestionsPage() {
           </EmptyContent>
         </Empty>
       ) : (
-        <ul className="flex flex-col gap-3" aria-label="Offene Fragen">
+        <ul ref={list} className="flex flex-col gap-3" aria-label="Offene Fragen">
           {visible.map((q) => (
             <QuestionItem
               key={q.id}
               q={q}
               project={project}
               resolve={resolve}
-              {...(canReview ? { onAnswer: answering.open } : {})}
+              {...(canReview ? { actor } : {})}
             />
           ))}
         </ul>
@@ -406,10 +418,10 @@ export function OpenQuestionsPage() {
         </Button>
       ) : null}
       {canReview ? (
-        <AnswerDialog
+        <NoteDialog
           project={project}
-          state={answering.state}
-          onClose={answering.close}
+          state={noting.state}
+          onClose={noting.close}
           fallbackFocusId="oq-count"
         />
       ) : null}

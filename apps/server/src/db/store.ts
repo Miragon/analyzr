@@ -2181,16 +2181,30 @@ function repos(db: Conn): Tx {
       async insert(row) {
         await db.insert(s.openQuestionAnswer).values(row);
       },
+      async withdraw(row) {
+        await db.insert(s.openQuestionAnswerWithdrawal).values(row);
+      },
       async list(projectId) {
+        const withdrawer = alias(s.principal, 'withdrawer');
         const rows = await db
           .select({
             answer: s.openQuestionAnswer,
             handle: s.principal.handle,
             relationNote: s.relationAssertion.rationale,
             placementNote: s.placementAssertion.rationale,
+            withdrawal: s.openQuestionAnswerWithdrawal,
+            withdrawnBy: withdrawer.handle,
           })
           .from(s.openQuestionAnswer)
           .innerJoin(s.principal, eq(s.principal.id, s.openQuestionAnswer.principalId))
+          .leftJoin(
+            s.openQuestionAnswerWithdrawal,
+            and(
+              eq(s.openQuestionAnswerWithdrawal.projectId, s.openQuestionAnswer.projectId),
+              eq(s.openQuestionAnswerWithdrawal.answerId, s.openQuestionAnswer.id),
+            ),
+          )
+          .leftJoin(withdrawer, eq(withdrawer.id, s.openQuestionAnswerWithdrawal.principalId))
           .leftJoin(
             s.relationAssertion,
             and(
@@ -2209,7 +2223,7 @@ function repos(db: Conn): Tx {
           )
           .where(eq(s.openQuestionAnswer.projectId, projectId))
           .orderBy(asc(s.openQuestionAnswer.seq), asc(s.openQuestionAnswer.id));
-        return rows.map(({ answer: r, handle, relationNote, placementNote }) => {
+        return rows.map(({ answer: r, handle, relationNote, placementNote, ...w }) => {
           const stored: StoredOpenQuestionAnswer = {
             id: r.id as OpenQuestionAnswerId,
             projectId: r.projectId as ProjectId,
@@ -2222,9 +2236,18 @@ function repos(db: Conn): Tx {
             principalId: r.principalId as PrincipalId,
             sourceKind: 'human',
             seq: r.seq,
-            answerText: r.text ?? relationNote ?? placementNote ?? '',
+            answerText: r.text ?? relationNote ?? placementNote ?? null,
             handle,
             createdAt: r.createdAt,
+            withdrawal:
+              w.withdrawal === null
+                ? null
+                : {
+                    seq: w.withdrawal.seq,
+                    principalId: w.withdrawal.principalId as PrincipalId,
+                    handle: w.withdrawnBy ?? '',
+                    createdAt: w.withdrawal.createdAt,
+                  },
           };
           return stored;
         });

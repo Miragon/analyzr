@@ -76,7 +76,8 @@ async function requireReview(
   }
 }
 
-interface DecisionFields {
+/** The fields of a human decision on a relation. */
+export interface DecisionFields {
   verdict: Verdict;
   rationale: string | null;
   question: string | null;
@@ -125,8 +126,12 @@ export async function recordRelationNote(
   return note;
 }
 
-/** Records a human decision on a relation and refreshes its derived state. */
-async function recordDecision(
+/**
+ * Records a human decision on a relation and refreshes its derived state, in
+ * the caller's transaction (the project lock held). Used by the decision
+ * routes and by the actions on open questions (M6 S5c-1).
+ */
+export async function recordDecision(
   tx: Tx,
   projectId: ProjectId,
   actor: Actor,
@@ -170,9 +175,12 @@ async function recordDecision(
 
 /**
  * The accepted manual relation for `from → to` (created if new), linked to
- * `linked`. Both refs must be head facts in different processes.
+ * `linked`, in the caller's transaction (the project lock held). Both refs
+ * must be head facts in different processes. Used by `correct`, `POST
+ * …/relations` (kind `manual`) and the `link` action on open questions (M6
+ * S5c-1).
  */
-async function acceptManual(
+export async function acceptManual(
   tx: Tx,
   projectId: ProjectId,
   actor: Actor,

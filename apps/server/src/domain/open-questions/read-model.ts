@@ -12,6 +12,7 @@ import type {
 } from '@analyzr/contracts';
 
 import { encodeCursor } from '../cursor.ts';
+import { actionsFor, resolvedByLink, resolvedCopies } from './actions.ts';
 import {
   OpenQuestionIndex,
   comparePositions,
@@ -39,13 +40,24 @@ export interface OpenQuestionOptions {
 /**
  * Every open question of the input, in list order: questions, then the
  * value chain's findings, then informational items, each group by
- * `unlocks` descending, then subject id, kind (enum order) and id. An id occurs once (the first draft wins, which only matters
- * for drafts identical in kind, subject and source version).
+ * `unlocks` descending, then subject id, kind (enum order) and id. An id
+ * occurs once (the first draft wins, which only matters for drafts
+ * identical in kind, subject and source version). Items an accepted link
+ * resolved (R1) and duplicated process ids without a call waiting for a
+ * decision (R1b) are left out (M6 §4.8 a).
  */
 export function openQuestions(
   input: OpenQuestionInput,
   options: OpenQuestionOptions = {},
 ): OpenQuestion[] {
+  return buildOpenQuestions(input, options).items;
+}
+
+/** {@link openQuestions} with the index it was computed over (the action use case reads both). */
+export function buildOpenQuestions(
+  input: OpenQuestionInput,
+  options: OpenQuestionOptions = {},
+): { index: OpenQuestionIndex; items: OpenQuestion[] } {
   const ix = new OpenQuestionIndex(input);
   const drafts = [
     ...findingQuestions(ix),
@@ -59,10 +71,15 @@ export function openQuestions(
   ];
   const byId = new Map<string, OpenQuestion>();
   for (const d of drafts) {
-    const q = finish(ix, d);
+    if (resolvedByLink(ix, d)) continue;
+    if (d.kind === 'duplicate-process-id' && resolvedCopies(ix, d.refs)) continue;
+    const q = finish(ix, d, actionsFor);
     if (!byId.has(q.id)) byId.set(q.id, q);
   }
-  return [...byId.values()].sort((a, b) => comparePositions(positionOf(a), positionOf(b)));
+  return {
+    index: ix,
+    items: [...byId.values()].sort((a, b) => comparePositions(positionOf(a), positionOf(b))),
+  };
 }
 
 /** How many items each gap signal yields on the input (every signal, shipped or not). */

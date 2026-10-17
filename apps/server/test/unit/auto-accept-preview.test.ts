@@ -104,7 +104,7 @@ function ra(
 function relationSide(
   rels: {
     id: string;
-    type?: 'call' | 'message';
+    type?: 'call' | 'message' | 'manual';
     from?: string;
     to?: string;
     history: StoredAssertion[];
@@ -345,6 +345,55 @@ describe('history replay (relations)', () => {
       expect(curve[i]?.wouldAccept).toBeLessThanOrEqual(curve[i - 1]?.wouldAccept ?? 0);
     }
     expect(curve[0]?.wouldAccept).toBe(30);
+  });
+});
+
+describe('a human manual link from the call element competes (M6 S5c-1)', () => {
+  it('blocks an agent call to another target now and as of its proposal; the same target passes', () => {
+    // The human linked a#Call → b#P (a manual relation, accepted), then an agent proposed
+    // the call a#Call → b#Q.
+    const manual = ra('m1', OWNER, 'decision', { tier: 'manual' });
+    const other = relationSide([
+      { id: 'm1', type: 'manual', from: 'a#Call', to: 'b#P', history: [manual] },
+      { id: 'cq', type: 'call', from: 'a#Call', to: 'b#Q', history: [ra('cq', AGENT, 'proposal')] },
+    ]);
+    const open = openRelationCandidates(other, rule());
+    // The history counts items a human decided after the proposal: here the human rejects cq.
+    const decidedLater = (r: RelationSide): RelationSide => ({
+      ...r,
+      histories: new Map(
+        [...r.histories].map(([id, h]) =>
+          id === 'cq' ? [id, [...h, ra('cq', OWNER, 'decision', { verdict: 'reject' })]] : [id, h],
+        ),
+      ),
+    });
+    expect(open.accept).toEqual([]);
+    expect(Object.fromEntries(open.blocked)).toEqual({ 'competing-call': 1 });
+    // As of its proposal the manual link stood: the rule would never have fired.
+    expect(
+      replayHistory({ kind: 'relation', relations: decidedLater(other) }, rule()).history,
+    ).toMatchObject({ decided: 1, wouldAccept: 0 });
+    // The agent's call to the human's own target agrees with the human: no competition.
+    const same = relationSide([
+      { id: 'm1', type: 'manual', from: 'a#Call', to: 'b#P', history: [manual] },
+      { id: 'cp', type: 'call', from: 'a#Call', to: 'b#P', history: [ra('cp', AGENT, 'proposal')] },
+    ]);
+    expect(openRelationCandidates(same, rule()).accept.map((o) => o.relation.id)).toEqual(['cp']);
+    // A manual link rejected („Rückgängig“) before the proposal competes no more.
+    const undone = relationSide([
+      {
+        id: 'm1',
+        type: 'manual',
+        from: 'a#Call',
+        to: 'b#P',
+        history: [manual, ra('m1', OWNER, 'decision', { verdict: 'reject' })],
+      },
+      { id: 'cq', type: 'call', from: 'a#Call', to: 'b#Q', history: [ra('cq', AGENT, 'proposal')] },
+    ]);
+    expect(openRelationCandidates(undone, rule()).accept.map((o) => o.relation.id)).toEqual(['cq']);
+    expect(
+      replayHistory({ kind: 'relation', relations: decidedLater(undone) }, rule()).history,
+    ).toMatchObject({ decided: 1, wouldAccept: 1, rejected: 1 });
   });
 });
 

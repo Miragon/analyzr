@@ -10,6 +10,7 @@ import {
   type FindingKind,
   type OpenQuestionKind,
   type SourceKind,
+  type TypedPair,
   type ValueChainFinding,
 } from '@analyzr/contracts';
 import { quoteDe } from '@analyzr/relations';
@@ -39,7 +40,12 @@ const FINDING_KINDS: Readonly<Record<FindingKind, OpenQuestionKind>> = {
   'unmatched-catch': 'message-partner-missing',
 };
 
-/** The rule tier's findings (`visibleFindings`): one question each. */
+/**
+ * The rule tier's findings (`visibleFindings`): one question each, versioned
+ * by what it asks about (M6 §4.2, S5c-1): the facts at its refs (the call,
+ * the endpoint, the copies of a duplicated process id with their process
+ * facts), so a change elsewhere in the model keeps the id.
+ */
 export function findingQuestions(ix: OpenQuestionIndex): Draft[] {
   return ix.input.findings.map((f): Draft => {
     const models = sorted(f.refs.map((r) => ix.modelOf(r)));
@@ -49,7 +55,7 @@ export function findingQuestions(ix: OpenQuestionIndex): Draft[] {
     const base = {
       kind: FINDING_KINDS[f.kind],
       source: 'finding' as const,
-      version: ix.factsVersion(models),
+      version: ix.factVersion(f.refs),
       modelKeys: models,
       refs: f.refs,
       raisedBy,
@@ -113,13 +119,19 @@ function isSignalFinding(ix: OpenQuestionIndex, ref: string, detail: string): bo
   return /^(?:Ein )?Signal\b/.test(detail);
 }
 
-/** The value chain's findings (M4 §3.4): one question each. */
+/**
+ * The value chain's findings (M4 §3.4): one question each, versioned by what
+ * it asks about (`process-without-step`: the process fact, since S5c-1; a
+ * step finding: the step's fingerprint, with the link). A process whose
+ * placement is held asks nothing here (M6 §4.8 a): the hold's own item asks
+ * it, one question per process.
+ */
 export function chainFindingQuestions(ix: OpenQuestionIndex): Draft[] {
   const chain = ix.input.chain;
   if (!chain) return [];
   return chain.findings.flatMap((f: ValueChainFinding): Draft[] => {
     if (f.kind === 'process-without-step') {
-      if (f.process === null) return [];
+      if (f.process === null || f.state === 'held') return [];
       const model = ix.modelOf(f.process);
       return [
         {
@@ -127,7 +139,7 @@ export function chainFindingQuestions(ix: OpenQuestionIndex): Draft[] {
           source: 'value-chain-finding',
           subject: { type: 'process', id: f.process },
           subjectLabel: quoteDe(ix.processName(f.process)),
-          version: ix.factsVersion([model]),
+          version: ix.factVersion([f.process]),
           modelKeys: [model],
           text: `Zu welchem Schritt der Wertschöpfungskette gehört ${quoteDe(ix.processName(f.process))}? ${f.detail}`,
           refs: [f.process],
@@ -351,7 +363,11 @@ export function noLinkCode(reason: string): string | null {
  * "nothing connects" and "information missing", so it stays out), one
  * question per kind and subject: the call of a `call-target` no-link, and
  * for `collaboration` the end with a message flow in its own file (else the
- * `from` end). The text lists the distinct reasons verbatim.
+ * `from` end). The text lists the distinct reasons verbatim. Versioned by
+ * the subject's facts, not the no-link ids (M6 §4.2, S5c-1), so a
+ * re-judgement that stores new no-links with the same code keeps the item
+ * (and its outside mark); the prefix keeps a no-link `call-target-unknown`
+ * apart from the finding on the same call.
  */
 export function noLinkQuestions(ix: OpenQuestionIndex): Draft[] {
   const flowEnds = new Set<string>();
@@ -385,7 +401,7 @@ export function noLinkQuestions(ix: OpenQuestionIndex): Draft[] {
       source: 'no-link',
       subject: { type: 'ref', id: subject },
       subjectLabel: quoteDe(ix.elementName(subject)),
-      version: sorted(items.map((n) => n.id)).join(','),
+      version: `no-link|${ix.factVersion([subject])}`,
       modelKeys: refs.map((r) => ix.modelOf(r)),
       text: sorted(items.map((n) => n.reason.trim())).join('\n'),
       refs,
@@ -401,6 +417,44 @@ export function noLinkQuestions(ix: OpenQuestionIndex): Draft[] {
 
 /** Pairs listed in a question's text; the refs carry them all. */
 const LISTED_PAIRS = 5;
+
+/**
+ * Whether an accepted relation of any type joins the pair's two refs, in
+ * either direction: a human's link (a `manual` relation from „Paar
+ * verknüpfen …“, M6 S5c-1) answers the pair, although it settles only its
+ * own pair key and judge-once still assigns the typed pair. Read model only.
+ */
+function linkedPair(ix: OpenQuestionIndex, p: TypedPair): boolean {
+  return (ix.relationsAt.get(p.from) ?? []).some(
+    (r) =>
+      r.status === 'accepted' &&
+      ((r.fromRef === p.from && r.toRef === p.to) || (r.fromRef === p.to && r.toRef === p.from)),
+  );
+}
+
+/**
+ * The pairs a current relations submission left unjudged that still have no
+ * current judgement, settling decision or accepted relation between their
+ * refs, with both ends in the head facts.
+ */
+function stillUncovered(ix: OpenQuestionIndex, pairs: readonly TypedPair[]): TypedPair[] {
+  return pairs.filter((p) => {
+    const key = pairKey(p);
+    return (
+      !ix.input.judged.has(key) &&
+      !ix.settled.has(key) &&
+      !linkedPair(ix, p) &&
+      ix.factsAt(p.from).length > 0 &&
+      ix.factsAt(p.to).length > 0
+    );
+  });
+}
+
+/** The still uncovered pairs of the current relations submission of a model (the `unjudged` item's pairs). */
+export function openUncoveredPairs(ix: OpenQuestionIndex, modelKey: string): TypedPair[] {
+  const s = ix.input.submissions.find((x) => x.kind === 'relations' && x.subject === modelKey);
+  return s?.uncovered ? stillUncovered(ix, s.uncovered.pairs) : [];
+}
 
 /**
  * The summaries of current submissions (decision 24.9: shown read-only) and
@@ -434,15 +488,7 @@ export function submissionQuestions(ix: OpenQuestionIndex): Draft[] {
     }
     if (!relations || !s.uncovered) continue;
     // Still unjudged, unsettled and with both ends in the head facts.
-    const open = s.uncovered.pairs.filter((p) => {
-      const key = pairKey(p);
-      return (
-        !ix.input.judged.has(key) &&
-        !ix.settled.has(key) &&
-        ix.factsAt(p.from).length > 0 &&
-        ix.factsAt(p.to).length > 0
-      );
-    });
+    const open = stillUncovered(ix, s.uncovered.pairs);
     if (open.length === 0) continue;
     const listed = open
       .slice(0, LISTED_PAIRS)

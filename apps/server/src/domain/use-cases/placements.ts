@@ -79,7 +79,10 @@ async function findPlacement(
 }
 
 /** The live generation of a head step (or `@outside`), or 422 `unknown-step`. */
-function liveStep(state: ChainState, step: string): { elementId: string; generation: number } {
+export function liveStep(
+  state: ChainState,
+  step: string,
+): { elementId: string; generation: number } {
   const generation = state.live.get(step);
   if (generation === undefined || (step !== OUTSIDE && !state.structure.byId.has(step))) {
     throw new DomainError('validation-failed', `${step} is not a step of the value chain`, {

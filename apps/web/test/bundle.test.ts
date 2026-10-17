@@ -16,8 +16,9 @@ import { build, type Plugin, type UserConfig } from 'vite';
  *    schema-model in the web chunks.
  * 2. The entry chunk and its static imports hold none of them, nor the chain
  *    page, its components or the step view: those load with their routes;
- *    nor the open-questions page, its components and libs (M6 S4 and S5a,
- *    the tab's route chunk and the model view's lazy section).
+ *    nor the open-questions page, its components and libs (M6 S4, S5a and
+ *    S5c-1, the tab's route chunk and the model view's lazy section, which
+ *    also carries the collapsed subprocess's „Verknüpfen mit …“).
  *    Of `@analyzr/contracts`, only the zod-free `paths.ts` (the upload's file
  *    rule, M6 S1), `open-question-labels.ts` (M6 S4), `open-question-csv.ts`
  *    and `personal-data.ts` (M6 S5a: the answer sheet's reader and the
@@ -52,7 +53,13 @@ const BUDGET = 40 * 1024;
  * shared chunks, which gzip separately; either of S4's two lazy imports alone
  * does it (201.5 KB in 2 chunks without both, 206.2 or 207.6 KB with one).
  * Before the next lazy route, `build.rolldownOptions.output.codeSplitting`
- * groups or a newer rolldown may win that back.
+ * groups or a newer rolldown may win that back. 207.9 KB after M6 S5c-1
+ * (2026-10-17): the toast's action button and the model view's second lazy
+ * import of the open-questions section's module (the collapsed subprocess's
+ * „Verknüpfen mit …“, same chunk); the action row, its pickers and panels and
+ * Radix's dropdown menu (with floating-ui) load with the open-questions
+ * chunks only. 208.0 KB after S5c-1's review round: the picker list's
+ * truncation hint, now shared with the dynamic call's multi-select.
  */
 const ENTRY_CEILING = 240 * 1024;
 
@@ -196,7 +203,9 @@ const isChainPageModule = (id: string) =>
 
 /**
  * The open-questions page, its components and libs (M6 S4; S5a: the answer
- * dialogs, `open-question-answers.ts`, `open-question-actions.ts`): a route
+ * dialogs, `open-question-answers.ts`, `open-question-actions.ts`; S5c-1: the
+ * action row, its pickers and panels, `open-question-pickers.ts`, and the
+ * collapsed subprocess's „Verknüpfen mit …“ in the model view): a route
  * chunk and a lazy section.
  */
 const isOpenQuestionsModule = (id: string) =>
@@ -252,7 +261,11 @@ describe('web bundle (M4 §5 bundle guard)', { timeout: 120_000 }, () => {
         .filter((id) => id.startsWith(join(WEB, 'src/lib/open-question-')))
         .map((id) => relative(WEB, id))
         .sort(),
-    ).toEqual(['src/lib/open-question-actions.ts', 'src/lib/open-question-answers.ts']);
+    ).toEqual([
+      'src/lib/open-question-actions.ts',
+      'src/lib/open-question-answers.ts',
+      'src/lib/open-question-pickers.ts',
+    ]);
     expect(
       chunks.some(
         (c) =>

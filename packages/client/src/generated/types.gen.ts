@@ -751,6 +751,7 @@ export type OpenQuestion = {
   raisedBy: OpenQuestionRaisedBy;
   state: OpenQuestionState;
   answers: Array<OpenQuestionAnswer>;
+  actions: Array<OpenQuestionAction>;
 };
 
 /**
@@ -840,13 +841,15 @@ export type OpenQuestionAnswer = {
   id: OpenQuestionAnswerId;
   questionId: OpenQuestionId;
   kind: OpenQuestionAnswerKind;
+  role: OpenQuestionAnswerRole;
   target: OpenQuestionAnswerTarget;
-  text: string;
+  text: string | null;
   note: OpenQuestionAnswerNote | null;
   by: string;
   sourceKind: 'human';
   seq: number;
   at: Timestamp;
+  withdrawal: OpenQuestionAnswerWithdrawal | null;
 };
 
 /**
@@ -860,6 +863,11 @@ export type OpenQuestionAnswerId = string;
 export type OpenQuestionAnswerKind = 'answer' | 'outside-landscape' | 'will-be-modelled';
 
 /**
+ * How a stored answer counts.
+ */
+export type OpenQuestionAnswerRole = 'note' | 'outside-mark';
+
+/**
  * Where an answer's text is stored.
  */
 export type OpenQuestionAnswerTarget = 'relation-note' | 'placement-note' | 'answer';
@@ -871,6 +879,73 @@ export type OpenQuestionAnswerNote = {
   type: 'relation' | 'placement';
   subjectId: string;
   assertionId: string;
+};
+
+/**
+ * The withdrawal of an outside mark.
+ */
+export type OpenQuestionAnswerWithdrawal = {
+  by: string;
+  seq: number;
+  at: Timestamp;
+};
+
+/**
+ * An action an open question offers.
+ */
+export type OpenQuestionAction = {
+  type: OpenQuestionActionType;
+  primary: boolean;
+  label: string;
+  pick?: OpenQuestionPick;
+  multiple?: boolean;
+  suggested?: Array<Ref>;
+  proposals?: Array<OpenQuestionLinkProposal>;
+  exclude?: Array<Ref>;
+  choices?: Array<Ref>;
+  pairs?: Array<TypedPair>;
+  step?: string;
+  decides?: Array<OpenQuestionDecisionItem>;
+};
+
+/**
+ * Type of an action on an open question.
+ */
+export type OpenQuestionActionType =
+  'decide' | 'link' | 'place' | 'choose-copy' | 'outside' | 'requeue' | 'fix-link' | 'note';
+
+/**
+ * The picker an action needs.
+ */
+export type OpenQuestionPick = 'process' | 'endpoint' | 'step' | 'pair';
+
+/**
+ * A live proposal a link to a suggested target accepts.
+ */
+export type OpenQuestionLinkProposal = {
+  target: Ref;
+  relation: RelationId;
+  type: RelationType;
+  from: Ref;
+  to: Ref;
+};
+
+/**
+ * A typed pair of endpoints.
+ */
+export type TypedPair = {
+  type: 'call' | 'message' | 'signal' | 'trigger';
+  from: Ref;
+  to: Ref;
+};
+
+/**
+ * A relation or placement an action decides.
+ */
+export type OpenQuestionDecisionItem = {
+  type: 'relation' | 'placement';
+  id: string;
+  version: number;
 };
 
 /**
@@ -898,11 +973,10 @@ export type PersonalDataWarning = {
 };
 
 /**
- * An answer to an open question.
+ * A note on an open question.
  */
 export type AnswerOpenQuestionBody = {
   text: string;
-  kind?: OpenQuestionAnswerKind;
 };
 
 /**
@@ -958,6 +1032,167 @@ export type AnswerSheetRowInput = {
   id: string;
   text: string;
   kind?: string;
+};
+
+/**
+ * What an action on an open question did.
+ */
+export type OpenQuestionActionResult = {
+  result: 'applied' | 'unchanged';
+  question: OpenQuestion | null;
+  relations: Array<{
+    effect: OpenQuestionActionEffect;
+    relation: Relation;
+  }>;
+  placements: Array<{
+    effect: OpenQuestionActionEffect;
+    placement: Placement;
+  }>;
+  answer: OpenQuestionAnswer | null;
+  warnings: Array<PersonalDataWarning>;
+};
+
+/**
+ * How an action touched a subject.
+ */
+export type OpenQuestionActionEffect = 'manual' | 'decision';
+
+/**
+ * A process placed on a value chain step.
+ */
+export type Placement = {
+  id: PlacementId;
+  valueChainId: ValueChainId;
+  elementId: string;
+  generation: number;
+  stepName: string | null;
+  stepLive: boolean;
+  process: Ref;
+  processName: string | null;
+  status: RelationStatus;
+  endpointState: EndpointState;
+  endpoints: {
+    step: EndpointState;
+    process: EndpointState;
+  };
+  tier: PlacementTier;
+  confidence: number | null;
+  version: number;
+  source: SourceKind | null;
+  provenance: PlacementProvenance | null;
+  updatedAt: Timestamp;
+};
+
+/**
+ * Placement id (`plc_` + ULID).
+ */
+export type PlacementId = string;
+
+/**
+ * Value chain id (`vch_` + ULID).
+ */
+export type ValueChainId = string;
+
+/**
+ * Evidence tier of a placement: `key` (rule tier: a step link or an equal name), `lexical`, `semantic`, `manual`.
+ */
+export type PlacementTier = 'key' | 'lexical' | 'semantic' | 'manual';
+
+/**
+ * The assertion a placement status rests on.
+ */
+export type PlacementProvenance = {
+  assertionId: PlacementAssertionId;
+  kind: AssertionKind;
+  verdict: Verdict | null;
+  sourceKind: SourceKind;
+  principalId: PrincipalId;
+  handle: string;
+  clientId: string | null;
+  procedure: DeclaredProcedure | null;
+  llmModel: string | null;
+  tier: PlacementTier | null;
+  confidence: number | null;
+  rationale: string | null;
+  question: string | null;
+  label: string | null;
+  at: Timestamp;
+};
+
+/**
+ * Placement assertion id (`pas_` + ULID).
+ */
+export type PlacementAssertionId = string;
+
+/**
+ * An action on an open question.
+ */
+export type OpenQuestionActionBody =
+  | ({
+      type: 'link';
+    } & LinkActionBody)
+  | ({
+      type: 'place';
+    } & PlaceActionBody)
+  | ({
+      type: 'choose-copy';
+    } & ChooseCopyActionBody)
+  | ({
+      type: 'outside';
+    } & OutsideActionBody);
+
+/**
+ * Link the item to the picked targets.
+ */
+export type LinkActionBody = {
+  type: 'link';
+  targets?: Array<Ref>;
+  pair?: {
+    from: Ref;
+    to: Ref;
+  };
+  note?: string;
+};
+
+/**
+ * Place the process on a step.
+ */
+export type PlaceActionBody = {
+  type: 'place';
+  step: string;
+  process?: Ref;
+  note?: string;
+};
+
+/**
+ * Choose the valid copy of a process id.
+ */
+export type ChooseCopyActionBody = {
+  type: 'choose-copy';
+  process: Ref;
+  items: Array<{
+    id: RelationId;
+    version: number;
+  }>;
+  placeOthersOutside: boolean;
+  note?: string;
+};
+
+/**
+ * Mark the item as outside the landscape.
+ */
+export type OutsideActionBody = {
+  type: 'outside';
+  note?: string;
+};
+
+/**
+ * The withdrawn outside mark and its question.
+ */
+export type WithdrawOpenQuestionAnswerResult = {
+  result: 'withdrawn' | 'unchanged';
+  answer: OpenQuestionAnswer;
+  question: OpenQuestion;
 };
 
 /**
@@ -1132,11 +1367,6 @@ export type ValueChain = {
   schemaVersion: number;
   updatedAt: Timestamp;
 };
-
-/**
- * Value chain id (`vch_` + ULID).
- */
-export type ValueChainId = string;
 
 /**
  * Value chain key (M4: `main`).
@@ -1324,16 +1554,6 @@ export type PlacementSummary = {
 };
 
 /**
- * Placement id (`plc_` + ULID).
- */
-export type PlacementId = string;
-
-/**
- * Evidence tier of a placement: `key` (rule tier: a step link or an equal name), `lexical`, `semantic`, `manual`.
- */
-export type PlacementTier = 'key' | 'lexical' | 'semantic' | 'manual';
-
-/**
  * A deterministic finding about the value chain.
  */
 export type ValueChainFinding = {
@@ -1431,58 +1651,6 @@ export type ValueChainStepDetail = {
     }>;
   };
 };
-
-/**
- * A process placed on a value chain step.
- */
-export type Placement = {
-  id: PlacementId;
-  valueChainId: ValueChainId;
-  elementId: string;
-  generation: number;
-  stepName: string | null;
-  stepLive: boolean;
-  process: Ref;
-  processName: string | null;
-  status: RelationStatus;
-  endpointState: EndpointState;
-  endpoints: {
-    step: EndpointState;
-    process: EndpointState;
-  };
-  tier: PlacementTier;
-  confidence: number | null;
-  version: number;
-  source: SourceKind | null;
-  provenance: PlacementProvenance | null;
-  updatedAt: Timestamp;
-};
-
-/**
- * The assertion a placement status rests on.
- */
-export type PlacementProvenance = {
-  assertionId: PlacementAssertionId;
-  kind: AssertionKind;
-  verdict: Verdict | null;
-  sourceKind: SourceKind;
-  principalId: PrincipalId;
-  handle: string;
-  clientId: string | null;
-  procedure: DeclaredProcedure | null;
-  llmModel: string | null;
-  tier: PlacementTier | null;
-  confidence: number | null;
-  rationale: string | null;
-  question: string | null;
-  label: string | null;
-  at: Timestamp;
-};
-
-/**
- * Placement assertion id (`pas_` + ULID).
- */
-export type PlacementAssertionId = string;
 
 /**
  * Findings of the value chain head.
@@ -2280,15 +2448,6 @@ export type NoLinkOutcome =
 export type UncoveredPairs = {
   count: number;
   pairs: Array<TypedPair>;
-};
-
-/**
- * A typed pair of endpoints.
- */
-export type TypedPair = {
-  type: 'call' | 'message' | 'signal' | 'trigger';
-  from: Ref;
-  to: Ref;
 };
 
 /**
@@ -3970,11 +4129,11 @@ export type AnswerOpenQuestionError = AnswerOpenQuestionErrors[keyof AnswerOpenQ
 
 export type AnswerOpenQuestionResponses = {
   /**
-   * An identical answer was recorded earlier
+   * An identical note was recorded earlier
    */
   200: AnswerOpenQuestionResult;
   /**
-   * The answer was recorded
+   * The note was recorded
    */
   201: AnswerOpenQuestionResult;
 };
@@ -4030,6 +4189,117 @@ export type AnswerOpenQuestionsResponses = {
 
 export type AnswerOpenQuestionsResponse =
   AnswerOpenQuestionsResponses[keyof AnswerOpenQuestionsResponses];
+
+export type ActOnOpenQuestionData = {
+  body: OpenQuestionActionBody;
+  path: {
+    /**
+     * Project id (`prj_…`) or project key.
+     */
+    project: string;
+    /**
+     * Id of an open question: `q-` + 16 hex characters.
+     */
+    question: OpenQuestionId;
+  };
+  query?: never;
+  url: '/api/v1/projects/{project}/open-questions/{question}/actions';
+};
+
+export type ActOnOpenQuestionErrors = {
+  /**
+   * Problem: `unauthorized`
+   */
+  401: ApiProblem;
+  /**
+   * Problem: `insufficient-scope`, `human-decision-required`, `forbidden`, `demo-readonly`
+   */
+  403: ApiProblem;
+  /**
+   * Problem: `not-found`
+   */
+  404: ApiProblem;
+  /**
+   * Problem: `conflict`
+   */
+  409: ApiProblem;
+  /**
+   * Problem: `validation-failed`
+   */
+  422: ApiProblem;
+};
+
+export type ActOnOpenQuestionError = ActOnOpenQuestionErrors[keyof ActOnOpenQuestionErrors];
+
+export type ActOnOpenQuestionResponses = {
+  /**
+   * Nothing to write (`unchanged`)
+   */
+  200: OpenQuestionActionResult;
+  /**
+   * The action was applied
+   */
+  201: OpenQuestionActionResult;
+};
+
+export type ActOnOpenQuestionResponse =
+  ActOnOpenQuestionResponses[keyof ActOnOpenQuestionResponses];
+
+export type WithdrawOpenQuestionAnswerData = {
+  body?: never;
+  path: {
+    /**
+     * Project id (`prj_…`) or project key.
+     */
+    project: string;
+    /**
+     * Id of an open question: `q-` + 16 hex characters.
+     */
+    question: OpenQuestionId;
+    /**
+     * Answer to an open question (`oqa_` + ULID).
+     */
+    answer: OpenQuestionAnswerId;
+  };
+  query?: never;
+  url: '/api/v1/projects/{project}/open-questions/{question}/answers/{answer}/withdrawal';
+};
+
+export type WithdrawOpenQuestionAnswerErrors = {
+  /**
+   * Problem: `unauthorized`
+   */
+  401: ApiProblem;
+  /**
+   * Problem: `insufficient-scope`, `human-decision-required`, `forbidden`, `demo-readonly`
+   */
+  403: ApiProblem;
+  /**
+   * Problem: `not-found`
+   */
+  404: ApiProblem;
+  /**
+   * Problem: `validation-failed`
+   */
+  422: ApiProblem;
+};
+
+export type WithdrawOpenQuestionAnswerError =
+  WithdrawOpenQuestionAnswerErrors[keyof WithdrawOpenQuestionAnswerErrors];
+
+export type WithdrawOpenQuestionAnswerResponses = {
+  /**
+   * The mark was withdrawn before
+   */
+  200: WithdrawOpenQuestionAnswerResult;
+  /**
+   * The mark was withdrawn
+   */
+  201: WithdrawOpenQuestionAnswerResult;
+};
+
+export type WithdrawOpenQuestionAnswerResponse =
+  WithdrawOpenQuestionAnswerResponses[keyof WithdrawOpenQuestionAnswerResponses];
 
 export type GetRelationAssertionsData = {
   body?: never;

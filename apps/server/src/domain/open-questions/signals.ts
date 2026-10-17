@@ -1,7 +1,8 @@
 /**
  * Deterministic gap signals over the head facts (M6 §4.3): what a model
- * lacks for analyzr to build more links, as questions. Their own kinds,
- * never `FindingKind` (frozen for the live runs). Each was checked on
+ * lacks for analyzr to build more links, as questions, each versioned by
+ * what it asks about (§4.2, S5c-1). Their own kinds, never `FindingKind`
+ * (frozen for the live runs). Each was checked on
  * `nordwind-handel` and its descriptive variants (`eval:descriptive`) before
  * it shipped; `extractor-loss` comes with S2, which stores the extractor's
  * warnings. Pure.
@@ -71,7 +72,10 @@ function blackBoxPartners(ix: OpenQuestionIndex): Draft[] {
         f.kind === 'process' && f.attrs.participantId !== undefined ? [f.attrs.participantId] : [],
       ),
     );
-    const boxes = new Map<string, { flow: string | null; inside: string; outgoing: boolean }[]>();
+    const boxes = new Map<
+      string,
+      { flow: string | null; inside: string; outgoing: boolean; key: string }[]
+    >();
     for (const flow of model.messageFlows) {
       for (const [end, other, outgoing] of [
         [flow.to, flow.from, true],
@@ -84,6 +88,7 @@ function blackBoxPartners(ix: OpenQuestionIndex): Draft[] {
           flow: flow.name ?? flow.messageName,
           inside: other,
           outgoing,
+          key: `${flow.from}>${flow.to}:${flow.name ?? ''}:${flow.messageName ?? ''}`,
         });
         boxes.set(end, list);
       }
@@ -103,7 +108,11 @@ function blackBoxPartners(ix: OpenQuestionIndex): Draft[] {
         source: 'signal',
         subject: { type: 'ref', id: box },
         subjectLabel: quoteDe(id),
-        version: ix.factsVersion([model.modelKey]),
+        // What it asks about (S5c-1): the inside ends' facts, the box and its flows' ends and names.
+        version: ix.factVersion(inside, [
+          `box=${box}`,
+          ...flows.map((f) => f.key).sort(byCodePoint),
+        ]),
         modelKeys: [model.modelKey],
         text:
           `Ist ${quoteDe(id)} in ${model.modelKey} ein externer Partner, oder fehlt das Modell ` +
@@ -153,7 +162,10 @@ function unlabelledBoundaries(ix: OpenQuestionIndex): Draft[] {
         source: 'signal',
         subject: { type: 'process', id: process },
         subjectLabel: name,
-        version: ix.factsVersion([model.modelKey]),
+        version: ix.factVersion(
+          [process],
+          [`events=${sorted(events.map((f) => f.elementId)).join(',')}`],
+        ),
         modelKeys: [model.modelKey],
         text:
           `${question} ${events.length === 1 ? 'Ein Start- oder Endereignis hat' : `${events.length} Start- oder Endereignisse haben`} ` +
@@ -209,7 +221,7 @@ function messagesWithoutName(ix: OpenQuestionIndex): Draft[] {
         source: 'signal',
         subject: { type: 'ref', id: f.ref },
         subjectLabel: quoteDe(ix.elementName(f.ref)),
-        version: ix.factsVersion([model.modelKey]),
+        version: ix.factVersion([f.ref]),
         modelKeys: [model.modelKey],
         text:
           `Welche Nachricht ${verb} ${ix.elementInProcess(f.ref)}? Ohne Nachrichtennamen ` +
@@ -234,7 +246,7 @@ function undocumentedProcesses(ix: OpenQuestionIndex): Draft[] {
       source: 'signal',
       subject: { type: 'process', id: p.ref },
       subjectLabel: name,
-      version: ix.factsVersion([p.modelKey]),
+      version: ix.factVersion([p.ref], [`doc=${p.fact?.attrs.documentation ?? ''}`]),
       modelKeys: [p.modelKey],
       text:
         `Was leistet ${name}? Der Prozess hat keine Dokumentation; die Agenten brauchen sie ` +
@@ -291,7 +303,7 @@ function isolatedProcesses(ix: OpenQuestionIndex): Draft[] {
       source: 'signal',
       subject: { type: 'process', id: p.ref },
       subjectLabel: name,
-      version: ix.factsVersion([p.modelKey]),
+      version: ix.factVersion([p.ref]),
       modelKeys: [p.modelKey],
       text:
         `Wie hängt ${name} mit dem Rest der Landschaft zusammen? Weder eine Beziehung noch ein ` +
@@ -306,7 +318,9 @@ function isolatedProcesses(ix: OpenQuestionIndex): Draft[] {
 
 /**
  * `descriptive-model` (informational): no engine and no executable process,
- * so the rule tier finds little; the agents carry the linking.
+ * so the rule tier finds little; the agents carry the linking. It asks
+ * about the whole model, so it keeps the model's `facts_hash` as its
+ * source version.
  */
 function descriptiveModels(ix: OpenQuestionIndex): Draft[] {
   const out: Draft[] = [];

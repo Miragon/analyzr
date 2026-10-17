@@ -509,6 +509,7 @@ export function openQuestionAnswer(
   return {
     id: 'oqa_01ANSWER',
     kind: 'answer',
+    role: 'note',
     target: 'answer',
     text: 'Das Ziel ist der Zahlungsdienst des Partners.',
     note: null,
@@ -516,6 +517,7 @@ export function openQuestionAnswer(
     sourceKind: 'human',
     seq: 20,
     at: '2026-10-16T10:00:00.000Z',
+    withdrawal: null,
     ...overrides,
   };
 }
@@ -539,6 +541,7 @@ export function openQuestion(
     raisedBy: { sourceKind: 'rule', handle: null, seq: 3 },
     state: 'open',
     answers: [],
+    actions: [],
     ...overrides,
   };
 }

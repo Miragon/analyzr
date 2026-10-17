@@ -43,6 +43,8 @@ export const MAX_BULK_DECISIONS = 500;
 export const MAX_ANSWER_CHARS = 2000;
 export const MAX_ANSWER_SHEET_ROWS = 5000;
 export const MAX_ANSWER_SHEET_BODY_BYTES = 4 * 1024 * 1024;
+/** Most targets of one `link` action on an open question (M6 S5c-1: a dynamic call's possible targets). */
+export const MAX_LINK_TARGETS = 10;
 
 /** Port of the analyzr server in local mode (docker/compose.yaml, `pnpm dev`). */
 export const ANALYZR_DEFAULT_PORT = 7400;

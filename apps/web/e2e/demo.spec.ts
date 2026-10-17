@@ -47,15 +47,21 @@ const WRITE_ACTIONS = [
   /^Ablehnen/,
   /^Vormerken/,
   /^Korrigieren/,
-  /Antwort speichern/,
+  /Notiz speichern/,
   /Token erstellen/,
   /^Prozess hinzufügen$/,
   /^Platzieren$/,
   /erneut bestätigen/,
   /^Speichern$/,
   /^Importieren$/,
-  /^Beantworten$/,
   /Antworten aus CSV übernehmen/,
+  // M6 S5c-1: the open questions' actions
+  /^Notiz hinzufügen$/,
+  /^Weitere Aktionen$/,
+  /^Entscheiden$/,
+  /Verknüpfen mit/,
+  /^Liegt außerhalb der Landschaft$/,
+  /^Markierung zurücknehmen$/,
 ];
 
 /** Test ids of the value chain's write actions (stable where texts may change). */
@@ -67,7 +73,9 @@ const WRITE_TEST_IDS = [
   'edit-chain',
   'bulk-open',
   'placement-decision',
-  'question-answer-button',
+  'question-actions',
+  'question-withdraw-mark',
+  'subprocess-link',
   'open-questions-import',
 ];
 

@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 
-import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
+import { expect, test, type APIRequestContext, type Locator, type Page } from '@playwright/test';
 
 import { DEMO_SKIP, probeServer } from './server-mode';
 
@@ -18,15 +18,27 @@ import { DEMO_SKIP, probeServer } from './server-mode';
  * the model view, filters combined, both exports as downloads (named after
  * the filters; the CSV without the informational items), and the model
  * view's section.
- * Answers (M6 S5a), after the reading tests: „Beantworten“ on the held
- * relation (a note on it, the item answered, the live personal-data
- * warning) and on the held placement (a placement note; the hold stays, so
- * nothing becomes due or is queued), the Status filter against the API, an
- * answer in the model view's section with the pointer at the model's
- * documentation, and the exported CSV filled in and taken back with
- * „Antworten aus CSV übernehmen“ (the German file picker, preview, unknown
- * ids and invalid rows never stored and listed after storing, the rest on
- * confirmation).
+ * Actions (M6 §4.8 a, S5c-1), after the reading tests: every item's primary
+ * action as the API names it; „Notiz hinzufügen“ on the held relation (a
+ * note on it, the item stays open); the held placement and the agent's
+ * question decided inline; a call target linked from the process list (the
+ * finding stays in „Befunde“, „Rückgängig“ rejects the relation), a dynamic
+ * call's possible targets, a message endpoint's partner, a pool linked to a
+ * suggested process (the preview names the proposal it accepts, the pool's
+ * own processes are not offered); a process placed on
+ * a step („Rückgängig“), on „außerhalb“ in one click, a step given a
+ * process; the valid copy of a duplicated process id; the outside mark on a
+ * pool and its withdrawal, the Status filter „Erledigt (außerhalb)“; the
+ * requeue of an analysis with unjudged pairs (the agent judges one of a
+ * task's assigned pairs, so the others stay unjudged); the
+ * exported CSV taken back as notes (also a sheet with S5a's „Antwortart“);
+ * in the model view's section the outside mark, a link, a placement, a
+ * decision, a requeue, the valid copy (an agent's new call brings the
+ * duplicate back) and a note in place (a step's own items, `fix-link` and a
+ * process for a step, never show there: steps belong to no model);
+ * „Link korrigieren“ on a step whose link names no process (the chain page
+ * at the step, its link editor in edit mode); and „Verknüpfen mit …“ on a
+ * collapsed subprocess selected on the canvas (a project of its own).
  * Skips itself when no server answers or the server is the read-only demo.
  */
 
@@ -53,6 +65,7 @@ interface Claimed {
 }
 interface Relation {
   id: string;
+  type: string;
   status: string;
   tier: string;
   version: number;
@@ -60,22 +73,39 @@ interface Relation {
 interface Answer {
   id: string;
   kind: string;
+  role: 'note' | 'outside-mark';
   target: string;
-  text: string;
+  text: string | null;
   note: { type: string; subjectId: string; assertionId: string } | null;
   by: string;
   sourceKind: string;
+  withdrawal: { by: string; seq: number; at: string } | null;
+}
+interface Action {
+  type: string;
+  primary: boolean;
+  label: string;
+  pick?: string;
+  multiple?: boolean;
+  suggested?: string[];
+  proposals?: { target: string; relation: string; type: string; from: string; to: string }[];
+  exclude?: string[];
+  choices?: string[];
+  step?: string;
+  decides?: { type: string; id: string; version: number }[];
 }
 interface Question {
   id: string;
   kind: string;
   source: string;
   subject: { type: string; id: string };
+  subjectLabel: string;
   modelKeys: string[];
   unlocks: number;
   askWho: { lanes: string[]; stepOwners: string[]; folder: string | null };
   state: string;
   answers: Answer[];
+  actions: Action[];
 }
 
 /** Kinds that ask nothing (the list ranks them last, the CSV leaves them out). */
@@ -189,8 +219,14 @@ test.beforeAll(async ({ playwright, baseURL }) => {
   });
   expect(claim.ok()).toBe(true);
   const claimed = ((await claim.json()) as { items: Claimed[] }).items;
-  const task = claimed.find((t) => t.input.candidates.some((c) => c[3] === 'lexical'));
-  expect(task).toBeDefined();
+  // A task with a lexical pair and at least one more assigned pair: the agent judges one,
+  // so its submission leaves the others unjudged (the `unjudged` item, its requeue).
+  const assigned = (t: Claimed) =>
+    t.input.candidates.filter((c) => c[3] === 'rule' || c[3] === 'key' || c[3] === 'lexical');
+  const task = claimed.find(
+    (t) => assigned(t).length >= 2 && assigned(t).some((c) => c[3] === 'lexical'),
+  );
+  expect(task, 'a claimed task with a lexical and another assigned pair').toBeDefined();
   const [type, from, to] = task!.input.candidates
     .filter((c) => c[3] === 'lexical')
     .sort((a, b) => b[4] - a[4])[0]!;
@@ -441,12 +477,12 @@ test('exports the filtered list as Markdown and as CSV through the export route'
   const bytes = readFileSync(await csv.path());
   expect([...bytes.subarray(0, 3)]).toEqual([0xef, 0xbb, 0xbf]);
   const lines = bytes.toString('utf8').slice(1).split('\r\n').filter(Boolean);
-  expect(lines[0]).toBe('"id";"Art";"Frage";"Ansprechpartner-Hinweis";"Antwort";"Antwortart"');
+  expect(lines[0]).toBe('"id";"Art";"Frage";"Ansprechpartner-Hinweis";"Antwort"');
   expect(lines.slice(1).map((l) => /^"(q-[0-9a-f]{16})"/.exec(l)?.[1])).toEqual(
     filtered.map((q) => q.id),
   );
-  // the answer columns are empty for the customer
-  expect(lines.slice(1).every((l) => l.endsWith(';"";""'))).toBe(true);
+  // the answer column is empty for the customer (five columns since M6 S5c-1)
+  expect(lines.slice(1).every((l) => l.endsWith(';""'))).toBe(true);
 
   const [md] = await Promise.all([
     page.waitForEvent('download'),
@@ -489,10 +525,10 @@ test('the model view lists the questions of its model and leads to the tab', asy
   await expect(page.getByLabel('Modell oder Ordner', { exact: true })).toHaveValue(modelKey);
 });
 
-// ------------------------------------------------------------------ answers (M6 S5a)
+// ------------------------------------------------------------------ actions (M6 S5c-1)
 
-const AGENTS_SENTENCE =
-  'Die Agenten berücksichtigen die Antwort, sobald das Paar neu bewertet wird.';
+const AGENTS_SENTENCE = 'Die Agenten berücksichtigen die Notiz, sobald das Paar neu bewertet wird.';
+const UNDO_REASON = 'Rückgängig gemacht';
 
 /** The cells of a CSV as the export writes it (`;`, every field quoted, CRLF), after the BOM. */
 function parseSheet(text: string): string[][] {
@@ -537,186 +573,426 @@ const tabCount = (page: Page) =>
     name: /Offene Fragen/,
   });
 
-test('a reviewer answers the held relation: a note on it, the item answered', async ({ page }) => {
-  const held = (await api({ kind: 'held' })).find((q) => q.subject.type === 'relation')!;
+const item = (page: Page, id: string) =>
+  page.locator(`[data-testid=open-question][data-question-id="${id}"]`);
+const primaryOf = (scope: Locator) =>
+  scope.locator('[data-testid=question-action][data-primary=true]');
+const panelOf = (scope: Locator) => scope.getByTestId('question-action-panel');
+const toast = (page: Page, title: string) => page.getByTestId('toast').filter({ hasText: title });
+
+/** An action from „Weitere Aktionen“. */
+async function fromMenu(page: Page, scope: Locator, name: string) {
+  await scope.getByTestId('question-more-actions').click();
+  await page.getByRole('menuitem', { name }).click();
+}
+
+/** The action's response (`POST …/actions`), as the server answered it. */
+interface ActionResult {
+  result: string;
+  question: Question | null;
+  relations: { effect: string; relation: Relation & { from: string; to: string } }[];
+  placements: { effect: string; placement: { id: string; elementId: string; status: string } }[];
+  answer: Answer | null;
+}
+const actionResponse = (page: Page, id: string) =>
+  page.waitForResponse(
+    (r) => r.request().method() === 'POST' && r.url().endsWith(`/open-questions/${id}/actions`),
+  );
+
+async function relationOf(id: string): Promise<Relation & { from: string; to: string }> {
+  const response = await owner.get(`/api/v1/projects/${PROJECT}/relations/${id}`);
+  expect(response.ok()).toBe(true);
+  return (await response.json()) as Relation & { from: string; to: string };
+}
+
+async function placementsWith(status: string): Promise<{ id: string; elementId: string }[]> {
+  const response = await owner.get(
+    `/api/v1/projects/${PROJECT}/value-chains/main/placements?status=${status}&limit=200`,
+  );
+  expect(response.ok()).toBe(true);
+  return ((await response.json()) as { items: { id: string; elementId: string }[] }).items;
+}
+
+/** The first open item of a kind whose primary action is `type`. */
+async function openItem(kind: string, type: string, extra: (q: Question) => boolean = () => true) {
+  const found = (await api({ kind, state: 'open' })).find(
+    (q) => q.actions.find((a) => a.primary)?.type === type && extra(q),
+  );
+  expect(found, `an open ${kind} item with the primary action ${type}`).toBeDefined();
+  return found!;
+}
+
+test('every item offers its primary action as the API names it; a note leaves the held relation open', async ({
+  page,
+}) => {
+  const all = await api();
+  await page.goto(`/projects/${PROJECT}/open-questions`);
+  expect(await shownIds(page)).toEqual(all.map((q) => q.id));
+  const shown = await rows(page).evaluateAll((els) =>
+    els.map((e) => ({
+      id: e.getAttribute('data-question-id') ?? '',
+      primary:
+        e.querySelector('[data-testid=question-action][data-primary=true]')?.textContent ?? null,
+      more: e.querySelector('[data-testid=question-more-actions]') !== null,
+    })),
+  );
+  expect(shown).toEqual(
+    all.map((q) => ({
+      id: q.id,
+      primary: q.actions.find((a) => a.primary)?.label ?? null,
+      more: q.actions.filter((a) => !a.primary).length > 0,
+    })),
+  );
+  // informational items ask nothing and offer nothing
+  for (const q of all.filter((x) => INFORMATIONAL.has(x.kind)))
+    await expect(item(page, q.id).getByTestId('question-actions')).toHaveCount(0);
+
+  // „Notiz hinzufügen“ on the held relation: no answer kinds, a note on the relation
+  const held = all.find((q) => q.kind === 'held' && q.subject.type === 'relation')!;
   expect(held.subject.id).toBe(heldId);
   const open = await api({ state: 'open' });
-
   await page.goto(`/projects/${PROJECT}/open-questions?kind=held`);
   await expect(tabCount(page)).toHaveText(`Offene Fragen${open.length} offen`);
-  const item = page.locator(`[data-testid=open-question][data-question-id="${held.id}"]`);
-  await expect(item).toHaveAttribute('data-state', 'open');
-  await item.getByTestId('question-answer-button').click();
-
+  const row = item(page, held.id);
+  await expect(primaryOf(row)).toHaveText('Entscheiden');
+  await fromMenu(page, row, 'Notiz hinzufügen');
   const dialog = page.getByRole('dialog');
-  await expect(dialog.getByRole('heading', { name: 'Frage beantworten' })).toBeVisible();
-  await expect(dialog.getByTestId('answer-question')).toContainText(HOLD.question);
-  await expect(dialog.getByRole('radio')).toHaveText([
-    'Antwort',
-    'Liegt außerhalb der Landschaft',
-    'Wird im Modell ergänzt',
-  ]);
-  await expect(dialog.getByRole('radio', { name: 'Antwort', exact: true })).toHaveAttribute(
-    'aria-checked',
-    'true',
-  );
-  await expect(dialog.getByTestId('answer-hint')).toHaveText(
-    'Keine Namen oder anderen personenbezogenen Daten.',
-  );
-  await expect(dialog.getByTestId('answer-permanent')).toHaveText(
-    'Eine gespeicherte Antwort lässt sich nicht mehr ändern oder löschen.',
-  );
-  await expect(dialog.getByTestId('answer-effect')).toContainText(AGENTS_SENTENCE);
-  await expect(dialog.getByTestId('answer-effect')).toContainText(
-    'Die Vormerkung bleibt; die Entscheidung triffst du.',
-  );
-
-  // the personal-data warning comes as you type and never blocks
-  const field = dialog.getByLabel('Deine Antwort');
+  await expect(dialog.getByRole('heading', { name: 'Notiz hinzufügen' })).toBeVisible();
+  await expect(dialog.getByRole('radio')).toHaveCount(0);
+  await expect(dialog).not.toContainText('Antwortart');
+  await expect(dialog.getByTestId('note-effect')).toContainText(AGENTS_SENTENCE);
+  const field = dialog.getByLabel('Deine Notiz');
   await expect(field).toBeFocused();
   await field.fill('Die Buchhaltung; Rückfragen an rechnung@example.com');
-  await expect(dialog.getByTestId('answer-personal-data')).toContainText(
+  await expect(dialog.getByTestId('note-personal-data')).toContainText(
     'Der Text enthält vermutlich eine E-Mail-Adresse.',
   );
-  const save = dialog.getByRole('button', { name: 'Antwort speichern' });
-  await expect(save).toBeEnabled();
-  const answer = 'Die Buchhaltung verschickt die Rechnung, auch bei Teillieferungen.';
-  await field.fill(answer);
-  await expect(dialog.getByTestId('answer-personal-data')).toHaveText('');
-  await save.click();
-  await expect(page.getByTestId('toast').filter({ hasText: 'Antwort gespeichert' })).toBeVisible();
+  const note = 'Die Buchhaltung verschickt die Rechnung, auch bei Teillieferungen.';
+  await field.fill(note);
+  await dialog.getByRole('button', { name: 'Notiz speichern' }).click();
+  await expect(toast(page, 'Notiz gespeichert')).toBeVisible();
   await expect(dialog).toBeHidden();
-  await expect(item.getByTestId('question-answer-button')).toBeFocused();
-
-  // answered in the tab and over REST: a human note on the relation, linked from the answer
-  await expect(item).toHaveAttribute('data-state', 'answered');
-  await expect(item.getByTestId('question-state')).toHaveText('Beantwortet');
-  await expect(item.getByTestId('question-answer-text')).toHaveText(answer);
-  await expect(item.getByTestId('question-answer')).toContainText('als Notiz an der Relation');
-  await expect(tabCount(page)).toHaveText(`Offene Fragen${open.length - 1} offen`);
+  await expect(row.getByTestId('question-more-actions')).toBeFocused();
+  // the note informs; the item stays open and counted
+  await expect(row.getByTestId('question-answer-text')).toHaveText(note);
+  await expect(row).toHaveAttribute('data-state', 'open');
+  await expect(tabCount(page)).toHaveText(`Offene Fragen${open.length} offen`);
   const [stored] = (await api({ kind: 'held' })).filter((q) => q.id === held.id);
-  expect(stored!.state).toBe('answered');
-  expect(stored!.answers).toHaveLength(1);
-  expect(stored!.answers[0]).toMatchObject({
-    kind: 'answer',
-    target: 'relation-note',
-    text: answer,
-    sourceKind: 'human',
-    note: { type: 'relation', subjectId: heldId },
-  });
+  expect(stored!.state).toBe('open');
+  expect(stored!.answers.map((a) => [a.kind, a.role, a.target, a.text])).toEqual([
+    ['answer', 'note', 'relation-note', note],
+  ]);
   const assertions = await owner.get(`/api/v1/projects/${PROJECT}/relations/${heldId}/assertions`);
-  const note = (
-    (await assertions.json()) as {
-      items: { id: string; kind: string; rationale: string | null; sourceKind: string }[];
-    }
+  const noted = (
+    (await assertions.json()) as { items: { id: string; kind: string; rationale: string | null }[] }
   ).items.find((a) => a.id === stored!.answers[0]!.note!.assertionId);
-  expect(note).toMatchObject({ kind: 'note', rationale: answer, sourceKind: 'human' });
-
-  // the review screen shows it as the note it is
-  await item.getByTestId('question-link').click();
-  await expect(page.getByTestId('review-details')).toBeVisible();
-  await expect(page.getByTestId('timeline-entry').filter({ hasText: answer })).toBeVisible();
+  expect(noted).toMatchObject({ kind: 'note', rationale: note });
 });
 
-test('a reviewer answers the held placement: a placement note, the hold stays, nothing due', async ({
+test('decide inline: the held placement accepted, the agent’s question rejected', async ({
   page,
 }) => {
-  const held = (await api({ kind: 'held' })).find((q) => q.subject.type === 'placement')!;
-  expect(held.subject.id).toBe(heldPlacementId);
-  const chain = `/api/v1/projects/${PROJECT}/value-chains/main`;
-  const pipeline = async () =>
-    (
-      (await (await owner.get(chain)).json()) as {
-        pipeline: { stage: string; task: { id: string; state: string } | null };
-      }
-    ).pipeline;
-  const before = await pipeline();
-
+  const heldPlacement = (await api({ kind: 'held' })).find((q) => q.subject.type === 'placement')!;
+  expect(heldPlacement.subject.id).toBe(heldPlacementId);
   await page.goto(`/projects/${PROJECT}/open-questions?kind=held`);
-  const item = page.locator(`[data-testid=open-question][data-question-id="${held.id}"]`);
-  await item.getByTestId('question-answer-button').click();
-  const dialog = page.getByRole('dialog');
-  const effect = dialog.getByTestId('answer-effect');
-  await expect(effect).toContainText('als Notiz an der Platzierung');
-  // a held placement keeps homing its process: the answer makes nothing due
-  await expect(effect).toContainText(
-    'Die Platzierung bleibt vorgemerkt; solange bekommt kein Agent den Prozess.',
-  );
-  await expect(effect).not.toContainText('fällig');
-  await expect(effect).not.toContainText(AGENTS_SENTENCE);
-  const answer = 'Der Prozess gehört zur Finanzbuchhaltung, nicht zum Mahnwesen.';
-  await dialog.getByLabel('Deine Antwort').fill(answer);
-  await dialog.getByRole('button', { name: 'Antwort speichern' }).click();
-  await expect(dialog).toBeHidden();
-  await expect(item).toHaveAttribute('data-state', 'answered');
-  await expect(item.getByTestId('question-answer')).toContainText('als Notiz an der Platzierung');
+  const row = item(page, heldPlacement.id);
+  await primaryOf(row).click();
+  const decision = panelOf(row).getByTestId('action-decide-placement');
+  await expect(decision).toBeVisible();
+  // many items share the page: no single-key shortcuts on the buttons
+  await expect(decision.locator('kbd')).toHaveCount(0);
+  await decision.getByRole('button', { name: 'Annehmen' }).click();
+  await expect(toast(page, 'Angenommen')).toBeVisible();
+  await expect(row).toHaveCount(0);
+  expect((await placementsWith('accepted')).map((p) => p.id)).toContain(heldPlacementId);
 
-  const [stored] = (await api({ kind: 'held' })).filter((q) => q.id === held.id);
-  expect(stored!.answers).toHaveLength(1);
-  expect(stored!.answers[0]).toMatchObject({
-    kind: 'answer',
-    target: 'placement-note',
-    text: answer,
-    note: { type: 'placement', subjectId: heldPlacementId },
-  });
-  const assertions = await owner.get(`${chain}/placements/${heldPlacementId}/assertions`);
-  expect(assertions.ok()).toBe(true);
-  const note = (
-    (await assertions.json()) as {
-      items: { id: string; kind: string; rationale: string | null; sourceKind: string }[];
-    }
-  ).items.find((a) => a.id === stored!.answers[0]!.note!.assertionId);
-  expect(note).toMatchObject({ kind: 'note', rationale: answer, sourceKind: 'human' });
-  // the placement stays held, so the process stays homed: nothing due, nothing queued (M6 §4.5, S5a)
-  expect(await pipeline()).toEqual(before);
+  const asked = await openItem('agent-question', 'decide');
+  await page.goto(`/projects/${PROJECT}/open-questions?kind=agent-question`);
+  const question = item(page, asked.id);
+  await primaryOf(question).click();
+  const panel = panelOf(question).getByTestId('action-decide-relation');
+  await panel.getByRole('button', { name: 'Ablehnen' }).click();
+  await panel.getByLabel('Grund der Ablehnung').fill('Verschiedene Vorgänge.');
+  await panel.getByRole('button', { name: 'Ablehnen' }).click();
+  await expect(toast(page, 'Abgelehnt')).toBeVisible();
+  await expect(question).toHaveCount(0);
+  expect((await relationOf(asked.subject.id)).status).toBe('rejected');
 });
 
-test('the Status filter separates answered from open questions, as the API does', async ({
+test('link a call target from the process list: the finding stays in „Befunde“, „Rückgängig“ rejects the relation', async ({
   page,
 }) => {
-  const answered = await api({ state: 'answered' });
-  expect(answered.length).toBeGreaterThan(0);
-  await page.goto(`/projects/${PROJECT}/open-questions`);
-  await expect(rows(page).first()).toBeVisible();
-  const state = page.getByLabel('Status', { exact: true });
-  await expect(state.getByRole('option', { name: `Beantwortet (${answered.length})` })).toHaveCount(
-    1,
+  const call = await openItem('call-target-unknown', 'link', (q) => q.source === 'finding');
+  const action = call.actions.find((a) => a.type === 'link')!;
+  await page.goto(`/projects/${PROJECT}/open-questions?kind=call-target-unknown`);
+  const row = item(page, call.id);
+  await primaryOf(row).click();
+  const panel = panelOf(row);
+  await expect(panel.getByLabel('Prozess suchen')).toBeFocused();
+  const target = panel
+    .locator('[data-testid=action-option]')
+    .filter({ hasNot: page.locator('.sr-only') })
+    .first();
+  const ref = (await target.getAttribute('data-ref'))!;
+  expect(action.suggested ?? []).not.toContain(ref);
+  await target.click();
+  await expect(panel.getByTestId('action-preview')).toHaveText(
+    /^Legt eine angenommene Relation „.+“ → „.+“ an\.$/,
   );
+  const response = actionResponse(page, call.id);
+  await panel.getByTestId('action-submit').click();
+  const result = (await (await response).json()) as ActionResult;
+  expect(result.relations.map((r) => [r.effect, r.relation.type, r.relation.to])).toEqual([
+    ['manual', 'manual', ref],
+  ]);
+  const undo = toast(page, 'Verknüpft').getByTestId('toast-action');
+  await expect(undo).toHaveText('Rückgängig');
+  // R1: the item leaves the list, „Befunde“ keeps the finding
+  await expect(row).toHaveCount(0);
+  expect((await api({ kind: 'call-target-unknown' })).map((q) => q.id)).not.toContain(call.id);
+  const findings = (await (await owner.get(`/api/v1/projects/${PROJECT}/findings`)).json()) as {
+    items: { kind: string; refs: string[] }[];
+  };
+  expect(
+    findings.items.some((f) => f.kind === 'unresolved-call' && f.refs.includes(call.subject.id)),
+  ).toBe(true);
+  // the focus moved on to the next item
+  await expect(page.locator(':focus')).toHaveAttribute(
+    'data-testid',
+    /question-action|open-question/,
+  );
+
+  await undo.click();
+  await expect(toast(page, 'Rückgängig gemacht')).toBeVisible();
+  const relation = await relationOf(result.relations[0]!.relation.id);
+  expect(relation.status).toBe('rejected');
+  await expect
+    .poll(async () => (await api({ kind: 'call-target-unknown' })).map((q) => q.id))
+    .toContain(call.id);
+  const history = (await (
+    await owner.get(
+      `/api/v1/projects/${PROJECT}/relations/${result.relations[0]!.relation.id}/assertions`,
+    )
+  ).json()) as { items: { kind: string; verdict: string | null; rationale: string | null }[] };
+  expect(history.items.at(-1)).toMatchObject({ verdict: 'reject', rationale: UNDO_REASON });
+});
+
+test('link several possible targets of a dynamic call at once', async ({ page }) => {
+  const dynamic = await openItem('call-target-dynamic', 'link');
+  await page.goto(`/projects/${PROJECT}/open-questions?kind=call-target-dynamic`);
+  const row = item(page, dynamic.id);
+  await primaryOf(row).click();
+  const panel = panelOf(row);
+  const boxes = panel.getByRole('checkbox');
+  await boxes.nth(0).click();
+  await boxes.nth(1).click();
+  await expect(panel.getByText('2 von höchstens 10 gewählt')).toBeVisible();
+  const response = actionResponse(page, dynamic.id);
+  await panel.getByTestId('action-submit').click();
+  const result = (await (await response).json()) as ActionResult;
+  expect(result.relations).toHaveLength(2);
+  await expect(toast(page, 'Verknüpft')).toBeVisible();
+  for (const r of result.relations) {
+    expect((await relationOf(r.relation.id)).status).toBe('accepted');
+    expect(r.relation.from).toBe(dynamic.subject.id);
+  }
+  await expect(row).toHaveCount(0);
+});
+
+test('link a message endpoint to a complementary endpoint of another process', async ({ page }) => {
+  const endpoint = await openItem('message-partner-missing', 'link');
+  await page.goto(`/projects/${PROJECT}/open-questions?kind=message-partner-missing`);
+  const row = item(page, endpoint.id);
+  await primaryOf(row).click();
+  const panel = panelOf(row);
+  // endpoints first, grouped by process; whole processes last
+  await expect(panel.getByTestId('picker-section').last()).toHaveText('Ganzer Prozess');
+  await panel.getByTestId('action-option').first().click();
+  await expect(panel.getByTestId('action-preview')).toContainText('angenommene Relation');
+  const response = actionResponse(page, endpoint.id);
+  await panel.getByTestId('action-submit').click();
+  const result = (await (await response).json()) as ActionResult;
+  expect(result.relations).toHaveLength(1);
+  await expect(toast(page, 'Verknüpft')).toBeVisible();
+  await expect(row).toHaveCount(0);
+  expect((await api({ kind: 'message-partner-missing' })).map((q) => q.id)).not.toContain(
+    endpoint.id,
+  );
+});
+
+test('link a pool to a suggested process: the preview names the proposal, the link accepts it', async ({
+  page,
+}) => {
+  // a pool whose flow end has a key-tier proposal from another process (nordwind: „Lieferant“)
+  const pool = (await api({ kind: 'black-box-partner', state: 'open' })).find((q) =>
+    q.actions.some((a) => a.type === 'link' && (a.proposals ?? []).length > 0),
+  );
+  expect(pool, 'a pool with a suggested process').toBeDefined();
+  const action = pool!.actions.find((a) => a.type === 'link')!;
+  const proposal = action.proposals![0]!;
+  await page.goto(`/projects/${PROJECT}/open-questions?kind=black-box-partner`);
+  const row = item(page, pool!.id);
+  await fromMenu(page, row, 'Verknüpfen mit …');
+  const panel = panelOf(row);
+  // the processes of the pool's flow ends are not offered: a link would join them to themselves
+  for (const own of action.exclude ?? [])
+    await expect(panel.locator(`[data-testid=action-option][data-ref="${own}"]`)).toHaveCount(0);
+  await expect(panel.getByTestId('picker-section').first()).toHaveText('Vorgeschlagen');
+  await panel.locator(`[data-testid=action-option][data-ref="${proposal.target}"]`).click();
+  await expect(panel.getByTestId('action-preview')).toContainText('nimmt den Vorschlag');
+  const response = actionResponse(page, pool!.id);
+  await panel.getByTestId('action-submit').click();
+  const result = (await (await response).json()) as ActionResult;
+  expect(
+    result.relations.filter((r) => r.effect === 'decision').map((r) => r.relation.id),
+  ).toContain(proposal.relation);
+  await expect(toast(page, 'Verknüpft')).toContainText('angenommen');
+  expect((await relationOf(proposal.relation)).status).toBe('accepted');
+});
+
+test('place a process on a step and take it back; „Gehört zu keinem Schritt“ in one click', async ({
+  page,
+}) => {
+  const first = await openItem('process-without-step', 'place');
+  await page.goto(`/projects/${PROJECT}/open-questions?kind=process-without-step`);
+  const row = item(page, first.id);
+  await primaryOf(row).click();
+  const panel = panelOf(row);
+  await expect(panel.getByTestId('action-option').last()).toHaveAttribute('data-step', '@outside');
+  const option = panel.getByTestId('action-option').first();
+  const step = (await option.getAttribute('data-step'))!;
+  await option.click();
+  await expect(panel.getByTestId('action-preview')).toHaveText(
+    /^Platziert „.+“ auf „.+“ \(manuell, gilt sofort\)\.$/,
+  );
+  const response = actionResponse(page, first.id);
+  await panel.getByTestId('action-submit').click();
+  const result = (await (await response).json()) as ActionResult;
+  expect(result.placements.map((p) => [p.effect, p.placement.elementId])).toEqual([
+    ['manual', step],
+  ]);
+  await expect(row).toHaveCount(0);
+  await toast(page, 'Platziert').getByTestId('toast-action').click();
+  await expect(toast(page, 'Rückgängig gemacht')).toBeVisible();
+  expect((await placementsWith('rejected')).map((p) => p.id)).toContain(
+    result.placements[0]!.placement.id,
+  );
+  await expect
+    .poll(async () => (await api({ kind: 'process-without-step' })).map((q) => q.id))
+    .toContain(first.id);
+
+  const second = await openItem('process-without-step', 'place', (q) => q.id !== first.id);
+  await page.goto(`/projects/${PROJECT}/open-questions?kind=process-without-step`);
+  const other = item(page, second.id);
+  const outside = actionResponse(page, second.id);
+  await fromMenu(page, other, 'Gehört zu keinem Schritt');
+  const placed = (await (await outside).json()) as ActionResult;
+  expect(placed.placements[0]!.placement.elementId).toBe('@outside');
+  await expect(toast(page, 'Platziert')).toContainText('Außerhalb der Kette');
+  await expect(other).toHaveCount(0);
+});
+
+test('give a step without a process one', async ({ page }) => {
+  const step = await openItem('step-without-process', 'place');
+  await page.goto(`/projects/${PROJECT}/open-questions?kind=step-without-process`);
+  const row = item(page, step.id);
+  await primaryOf(row).click();
+  const panel = panelOf(row);
+  await panel.getByTestId('action-option').first().click();
+  await expect(panel.getByTestId('action-submit')).toHaveText('Zuordnen');
+  const response = actionResponse(page, step.id);
+  await panel.getByTestId('action-submit').click();
+  const result = (await (await response).json()) as ActionResult;
+  expect(result.placements[0]!.placement.elementId).toBe(step.subject.id);
+  await expect(toast(page, 'Platziert')).toBeVisible();
+  await expect(row).toHaveCount(0);
+});
+
+test('choose the valid copy of a duplicated process id: the calls decided, the item gone', async ({
+  page,
+}) => {
+  const dup = await openItem('duplicate-process-id', 'choose-copy');
+  const action = dup.actions.find((a) => a.type === 'choose-copy')!;
+  await page.goto(`/projects/${PROJECT}/open-questions?kind=duplicate-process-id`);
+  const row = item(page, dup.id);
+  await primaryOf(row).click();
+  const panel = panelOf(row);
+  await expect(panel.getByTestId('action-option')).toHaveCount(action.choices!.length);
+  await panel.getByTestId('action-option').first().click();
+  await expect(panel.getByTestId('action-note')).toHaveValue(/^Gültig ist „.+“ in .+; die anderen/);
+  await expect(
+    panel.getByRole('checkbox', {
+      name: 'Andere Kopien in der Wertschöpfungskette auf „außerhalb“ setzen',
+    }),
+  ).toBeChecked();
+  const response = actionResponse(page, dup.id);
+  await panel.getByTestId('action-submit').click();
+  const result = (await (await response).json()) as ActionResult;
+  await expect(toast(page, 'Gültige Kopie gewählt').getByTestId('toast-action')).toHaveText(
+    'In „Relationen“ ansehen',
+  );
+  expect(result.relations.map((r) => r.relation.id).sort()).toEqual(
+    action.decides!.map((d) => d.id).sort(),
+  );
+  for (const r of result.relations)
+    expect(['accepted', 'rejected']).toContain((await relationOf(r.relation.id)).status);
+  // R1b: no call waits on the copies any more
+  await expect(row).toHaveCount(0);
+  expect(await api({ kind: 'duplicate-process-id' })).toEqual([]);
+});
+
+test('mark a pool outside the landscape in one click, take it back, and find marked items by Status', async ({
+  page,
+}) => {
+  const pool = await openItem('black-box-partner', 'outside');
+  await page.goto(`/projects/${PROJECT}/open-questions?kind=black-box-partner`);
+  const row = item(page, pool.id);
+  const response = actionResponse(page, pool.id);
+  await primaryOf(row).click();
+  const marked = (await (await response).json()) as ActionResult;
+  expect(marked.answer).toMatchObject({
+    kind: 'outside-landscape',
+    role: 'outside-mark',
+    text: null,
+  });
+  await expect(row).toHaveAttribute('data-state', 'answered');
+  await expect(row.getByTestId('question-state')).toHaveText('Erledigt (außerhalb)');
+  await toast(page, 'Als außerhalb der Landschaft markiert').getByTestId('toast-action').click();
+  await expect(toast(page, 'Markierung zurückgenommen')).toBeVisible();
+  await expect(row).toHaveAttribute('data-state', 'open');
+  const [withdrawn] = (await api({ kind: 'black-box-partner' })).filter((q) => q.id === pool.id);
+  expect(withdrawn!.answers.map((a) => [a.role, a.withdrawal !== null])).toEqual([
+    ['outside-mark', true],
+  ]);
+
+  // marked again: the Status filter finds it as the API does
+  await primaryOf(row).click();
+  await expect(row).toHaveAttribute('data-state', 'answered');
+  const answered = await api({ state: 'answered' });
+  expect(answered.map((q) => q.id)).toEqual([pool.id]);
+  await page.goto(`/projects/${PROJECT}/open-questions`);
+  const state = page.getByLabel('Status', { exact: true });
+  await expect(state.getByRole('option', { name: 'Erledigt (außerhalb) (1)' })).toHaveCount(1);
   await state.selectOption('answered');
   await expect(page).toHaveURL(/state=answered/);
-  expect(await shownIds(page)).toEqual(answered.map((q) => q.id));
-  await state.selectOption('open');
-  expect(await shownIds(page)).toEqual((await api({ state: 'open' })).map((q) => q.id));
+  expect(await shownIds(page)).toEqual([pool.id]);
+  // the marked item offers the way back on itself
+  await item(page, pool.id).getByTestId('question-withdraw-mark').click();
+  await expect(toast(page, 'Markierung zurückgenommen')).toBeVisible();
+  await expect.poll(async () => (await api({ state: 'answered' })).length).toBe(0);
 });
 
-test('the model view answers a gap signal and points at the model’s documentation', async ({
-  page,
-}) => {
-  const signal = (await api({ kind: 'black-box-partner', state: 'open' }))[0]!;
-  const modelKey = signal.modelKeys[0]!;
-  await page.goto(`/projects/${PROJECT}/models/${modelKey}`);
-  const section = page.getByTestId('model-open-questions');
-  const item = section.locator(`[data-question-id="${signal.id}"]`);
-  await item.getByTestId('question-answer-button').click();
-  const dialog = page.getByRole('dialog');
-  await expect(dialog.getByTestId('answer-effect')).toContainText(
-    'ergänze die Dokumentation des Modells und importiere es erneut',
-  );
-  await expect(dialog.getByTestId('answer-effect')).not.toContainText(AGENTS_SENTENCE);
-  await dialog.getByRole('radio', { name: 'Wird im Modell ergänzt' }).click();
-  await dialog.getByLabel('Deine Antwort').fill('Der Partner bekommt ein eigenes Modell.');
-  await dialog.getByRole('button', { name: 'Antwort speichern' }).click();
-  await expect(dialog).toBeHidden();
-  await expect(item).toHaveAttribute('data-state', 'answered');
-  await expect(item.getByTestId('question-answer-kind')).toHaveText('Wird im Modell ergänzt');
-
-  const [stored] = (await api({ kind: 'black-box-partner' })).filter((q) => q.id === signal.id);
-  expect(stored!.answers.map((a) => [a.kind, a.target, a.note])).toEqual([
-    ['will-be-modelled', 'answer', null],
-  ]);
+test('requeue an analysis that left pairs unjudged', async ({ page }) => {
+  const unjudged = (await api({ kind: 'unjudged' }))[0];
+  expect(unjudged, 'the agent left assigned pairs unjudged').toBeDefined();
+  await page.goto(`/projects/${PROJECT}/open-questions?kind=unjudged`);
+  await primaryOf(item(page, unjudged!.id)).click();
+  await expect(
+    page.getByTestId('toast').filter({ hasText: /Erneut eingeplant|Schon eingeplant/ }),
+  ).toBeVisible();
 });
 
-test('answers from the filled-in CSV: a preview first, unknown ids and invalid rows never stored', async ({
+test('notes from the filled-in CSV; a sheet with S5a’s „Antwortart“ still reads', async ({
   page,
 }) => {
   await page.goto(`/projects/${PROJECT}/open-questions`);
@@ -726,46 +1002,39 @@ test('answers from the filled-in CSV: a preview first, unknown ids and invalid r
     page.getByRole('button', { name: 'Als CSV exportieren' }).click(),
   ]);
   const sheet = parseSheet(readFileSync(await download.path(), 'utf8'));
-  expect(sheet[0]).toEqual([
-    'id',
-    'Art',
-    'Frage',
-    'Ansprechpartner-Hinweis',
-    'Antwort',
-    'Antwortart',
-  ]);
+  expect(sheet[0]).toEqual(['id', 'Art', 'Frage', 'Ansprechpartner-Hinweis', 'Antwort']);
 
-  // the answered items come back with their latest answer: unchanged, nothing stored twice
+  // items with notes come back with their latest note: unchanged, nothing stored twice
   const before = await api();
-  const answered = before.filter((q) => q.state === 'answered' && !INFORMATIONAL.has(q.kind));
-  // the held relation, the held placement and the gap signal answered above
-  expect(answered.length).toBe(3);
-  for (const q of answered) {
+  const noted = before.filter((q) => q.answers.some((a) => a.role === 'note'));
+  for (const q of noted) {
     const row = sheet.find((r) => r[0] === q.id)!;
-    expect(row[4]).toBe(q.answers.at(-1)!.text);
+    expect(row[4]).toBe(q.answers.filter((a) => a.role === 'note').at(-1)!.text);
   }
-  // the customer answers two open questions, one row with a kind the sheet does not know,
-  // and one row whose question no longer exists (with an address, but never stored: no hint)
+  // the customer writes two notes and one row whose question no longer exists; the sheet
+  // gets S5a's column `Antwortart` back: an outside mark on a pool, and an unknown kind
   const open = before.filter((q) => q.state === 'open' && !INFORMATIONAL.has(q.kind));
-  const [first, second, third] = [
+  const [first, second, pool, third] = [
     open.find((q) => q.kind === 'process-without-step')!,
     open.find((q) => q.kind === 'message-partner-missing')!,
+    open.find((q) => q.kind === 'black-box-partner')!,
     open.find((q) => q.kind === 'step-without-process')!,
   ];
+  for (const r of sheet) r.push(r === sheet[0] ? 'Antwortart' : '');
   const fill = (id: string, answer: string, kind: string) => {
     const row = sheet.find((r) => r[0] === id)!;
     row[4] = answer;
     row[5] = kind;
   };
   fill(first.id, 'Der Prozess gehört zum Schritt „Auftragsabwicklung“.', '');
-  fill(second.id, 'Der Partner ist ein externer Zahlungsdienst.', 'Liegt außerhalb der Landschaft');
+  fill(second.id, 'Der Partner ist ein externer Zahlungsdienst.', 'Antwort');
+  fill(pool.id, 'Ein externer Spediteur.', 'Liegt außerhalb der Landschaft');
   fill(third.id, 'Vielleicht später.', 'Vielleicht');
   sheet.push(['q-0000000000000000', 'Befund', 'Alte Frage', '', 'Fragen an info@example.com', '']);
 
   await page.getByRole('button', { name: 'Antworten aus CSV übernehmen' }).click();
   const dialog = page.getByRole('dialog');
-  await expect(dialog.getByTestId('answer-sheet-file-name')).toHaveText('Keine Datei ausgewählt');
-  // the German button opens the browser's file chooser
+  await expect(dialog).toContainText('Jede Antwort wird als Notiz an ihrer Frage gespeichert');
   const [chooser] = await Promise.all([
     page.waitForEvent('filechooser'),
     dialog.getByRole('button', { name: 'Datei auswählen' }).click(),
@@ -775,51 +1044,292 @@ test('answers from the filled-in CSV: a preview first, unknown ids and invalid r
     mimeType: 'text/csv',
     buffer: Buffer.from(writeSheet(sheet), 'utf8'),
   });
-  await expect(dialog.getByTestId('answer-sheet-file-name')).toHaveText('„antworten.csv“');
   const preview = dialog.getByTestId('answer-sheet-preview');
-  const ignored = sheet.length - 1 - answered.length - 4;
+  const ignored = sheet.length - 1 - noted.length - 5;
   await expect(dialog.getByTestId('answer-sheet-summary')).toHaveText(
-    `„antworten.csv“: 2 Antworten werden gespeichert, ${answered.length} sind schon gespeichert, 1 unbekannte Kennung, 1 ungültige Zeile, ${ignored} Zeilen ohne Antwort.`,
+    `„antworten.csv“: 3 Antworten werden gespeichert, ${noted.length === 0 ? '' : noted.length === 1 ? '1 ist schon gespeichert, ' : `${noted.length} sind schon gespeichert, `}1 unbekannte Kennung, 1 ungültige Zeile, ${ignored} Zeilen ohne Antwort.`,
   );
-  await expect(dialog.getByTestId('answer-sheet-personal-data')).toHaveCount(0);
   const byOutcome = (outcome: string) =>
     preview.locator(`[data-testid=answer-sheet-row][data-outcome=${outcome}]`);
-  expect(
-    await byOutcome('recorded').evaluateAll((els) =>
-      els.map((e) => e.getAttribute('data-question-id')),
-    ),
-  ).toEqual(sheet.slice(1).flatMap((r) => ([first.id, second.id].includes(r[0]!) ? [r[0]] : [])));
-  await expect(byOutcome('unchanged')).toHaveCount(answered.length);
-  await expect(byOutcome('unknown')).toHaveAttribute('data-question-id', 'q-0000000000000000');
-  await expect(byOutcome('invalid')).toHaveAttribute('data-question-id', third.id);
-  await expect(byOutcome('invalid').getByTestId('answer-sheet-reason')).toContainText(
-    'Die Antwortart ist keine von',
-  );
-  // the preview stored nothing
-  expect((await api({ state: 'answered' })).length).toBe(answered.length);
-
-  await dialog.getByRole('button', { name: '2 Antworten speichern' }).click();
   await expect(
-    page.getByTestId('toast').filter({ hasText: '2 Antworten gespeichert' }),
-  ).toBeVisible();
-  // two rows were left out: the dialog stays with them and their texts, then closes
-  await expect(dialog.getByTestId('answer-sheet-left-out')).toBeVisible();
-  await expect(byOutcome('unknown')).toContainText('Fragen an info@example.com');
-  await expect(byOutcome('invalid')).toContainText('Vielleicht später.');
+    byOutcome('recorded')
+      .locator(`[data-question-id="${pool.id}"]`)
+      .or(byOutcome('recorded').filter({ hasText: 'Ein externer Spediteur.' })),
+  ).toContainText('Liegt außerhalb der Landschaft');
+  await expect(byOutcome('invalid').getByTestId('answer-sheet-reason')).toContainText(
+    'Die Antwortart dieser älteren CSV ist keine von',
+  );
+  await dialog.getByRole('button', { name: '3 Antworten speichern' }).click();
+  await expect(toast(page, '3 Antworten gespeichert')).toBeVisible();
   await dialog.getByRole('button', { name: 'Schließen' }).click();
   await expect(dialog).toBeHidden();
 
   const after = await api();
-  const answerOf = (id: string) => after.find((q) => q.id === id)!;
-  expect(answerOf(first.id).answers.map((a) => [a.kind, a.text])).toEqual([
-    ['answer', 'Der Prozess gehört zum Schritt „Auftragsabwicklung“.'],
+  const of = (id: string) => after.find((q) => q.id === id)!;
+  expect(of(first.id).answers.map((a) => [a.role, a.text])).toEqual([
+    ['note', 'Der Prozess gehört zum Schritt „Auftragsabwicklung“.'],
   ]);
-  expect(answerOf(second.id).answers.map((a) => [a.kind, a.text])).toEqual([
-    ['outside-landscape', 'Der Partner ist ein externer Zahlungsdienst.'],
-  ]);
-  expect(answerOf(third.id).state).toBe('open');
-  for (const q of answered) expect(answerOf(q.id).answers).toHaveLength(1);
+  // notes leave their items open; the old sheet's mark marks the pool
+  expect(of(first.id).state).toBe('open');
+  expect(of(second.id).state).toBe('open');
+  expect(of(pool.id).state).toBe('answered');
+  expect(of(pool.id).answers.at(-1)).toMatchObject({
+    role: 'outside-mark',
+    text: 'Ein externer Spediteur.',
+  });
+  expect(of(third.id).answers).toEqual([]);
+  // back to open for the next tests: take the mark back
+  await page.goto(`/projects/${PROJECT}/open-questions?state=answered`);
+  await item(page, pool.id).getByTestId('question-withdraw-mark').click();
+  await expect.poll(async () => (await api({ state: 'answered' })).length).toBe(0);
+});
+
+test('the model view’s section acts in place: the outside mark and its undo, a link, a placement, a decision, a requeue, the valid copy and a note', async ({
+  page,
+}) => {
+  // a hold to decide here: the owner holds one more key-tier proposal
+  const landscape = (await (await owner.get(`/api/v1/projects/${PROJECT}/landscape`)).json()) as {
+    relations: (Relation & { from: string; to: string })[];
+  };
+  const proposal = landscape.relations.find((r) => r.tier === 'key' && r.status === 'proposed');
+  expect(proposal).toBeDefined();
+  expect(
+    (
+      await owner.post(`/api/v1/projects/${PROJECT}/relations/${proposal!.id}/decision`, {
+        data: { verdict: 'hold', version: proposal!.version, note: 'Im Modell klären.' },
+      })
+    ).ok(),
+  ).toBe(true);
+
+  const section = page.getByTestId('model-open-questions');
+  const inSection = (id: string) => section.locator(`[data-question-id="${id}"]`);
+  const openModel = async (q: Question) => {
+    const modelKey = q.modelKeys[0]!;
+    await page.goto(`/projects/${PROJECT}/models/${modelKey}`);
+    await expect(inSection(q.id)).toBeVisible();
+    return inSection(q.id);
+  };
+
+  // the outside mark and „Rückgängig“
+  const pool = await openItem('black-box-partner', 'outside');
+  let row = await openModel(pool);
+  await primaryOf(row).click();
+  await expect(row).toHaveAttribute('data-state', 'answered');
+  await toast(page, 'Als außerhalb der Landschaft markiert').getByTestId('toast-action').click();
+  await expect(row).toHaveAttribute('data-state', 'open');
+
+  // a link from „Weitere Aktionen“ of the same pool
+  const anchors = pool.actions.find((a) => a.type === 'link');
+  if (anchors) {
+    await fromMenu(page, row, 'Verknüpfen mit …');
+    const panel = panelOf(row);
+    await panel.getByTestId('action-option').first().click();
+    await expect(panel.getByTestId('action-preview')).toContainText('Nachrichtenfluss des Pools');
+    const response = actionResponse(page, pool.id);
+    await panel.getByTestId('action-submit').click();
+    const result = (await (await response).json()) as ActionResult;
+    expect(result.relations.length).toBeGreaterThan(0);
+    await expect(toast(page, 'Verknüpft')).toBeVisible();
+  }
+
+  // a placement
+  const proc = await openItem('process-without-step', 'place');
+  row = await openModel(proc);
+  await primaryOf(row).click();
+  await panelOf(row).getByTestId('action-option').first().click();
+  await panelOf(row).getByTestId('action-submit').click();
+  await expect(toast(page, 'Platziert')).toBeVisible();
+  await expect(row).toHaveCount(0);
+
+  // a decision on the new hold
+  const hold = (await api({ kind: 'held' })).find((q) => q.subject.id === proposal!.id)!;
+  row = await openModel(hold);
+  await primaryOf(row).click();
+  await panelOf(row)
+    .getByTestId('action-decide-relation')
+    .getByRole('button', { name: 'Annehmen' })
+    .click();
+  await expect(toast(page, 'Angenommen')).toBeVisible();
+  await expect(row).toHaveCount(0);
+  expect((await relationOf(proposal!.id)).status).toBe('accepted');
+
+  // the analysis that left pairs unjudged, queued again from its model
+  const unjudged = (await api({ kind: 'unjudged' }))[0];
+  expect(unjudged, 'the agent left assigned pairs unjudged').toBeDefined();
+  row = await openModel(unjudged!);
+  await primaryOf(row).click();
   await expect(
-    page.locator(`[data-testid=open-question][data-question-id="${second.id}"]`),
-  ).toHaveAttribute('data-state', 'answered');
+    page.getByTestId('toast').filter({ hasText: /Erneut eingeplant|Schon eingeplant/ }),
+  ).toBeVisible();
+
+  // the valid copy, once an agent's new call to a copy brought the duplicate back (R1b)
+  const callItem = (await api({ kind: 'call-target-unknown', state: 'open' })).find(
+    (q) => q.source === 'finding',
+  )!;
+  const copies = (
+    (await (await owner.get(`/api/v1/projects/${PROJECT}/findings`)).json()) as {
+      items: { kind: string; refs: string[] }[];
+    }
+  ).items.find((f) => f.kind === 'duplicate-process-id')!.refs;
+  const proposed = await agent.post(`/api/v1/projects/${PROJECT}/relations`, {
+    data: {
+      type: 'call',
+      from: callItem.subject.id,
+      to: copies[0],
+      confidence: 0.5,
+      rationale: 'Der Name passt zu einer der Kopien.',
+    },
+  });
+  expect(proposed.ok()).toBe(true);
+  const dup = await openItem('duplicate-process-id', 'choose-copy');
+  row = await openModel(dup);
+  await primaryOf(row).click();
+  await panelOf(row).getByTestId('action-option').first().click();
+  const chosen = actionResponse(page, dup.id);
+  await panelOf(row).getByTestId('action-submit').click();
+  expect(((await (await chosen).json()) as ActionResult).relations.length).toBeGreaterThan(0);
+  await expect(toast(page, 'Gültige Kopie gewählt')).toBeVisible();
+  await expect(row).toHaveCount(0);
+
+  // a note
+  const other = (await api({ state: 'open' })).find(
+    (q) => q.modelKeys.length > 0 && q.actions.some((a) => a.type === 'note' && !a.primary),
+  )!;
+  row = await openModel(other);
+  await fromMenu(page, row, 'Notiz hinzufügen');
+  const dialog = page.getByRole('dialog');
+  await dialog.getByLabel('Deine Notiz').fill('Im Workshop klären.');
+  await dialog.getByRole('button', { name: 'Notiz speichern' }).click();
+  await expect(toast(page, 'Notiz gespeichert')).toBeVisible();
+  await expect(row.getByTestId('question-answer-text')).toHaveText('Im Workshop klären.');
+});
+
+/** A model with a collapsed subprocess (Signavio-style: it stands for another diagram). */
+test('„Link korrigieren“ opens the chain page at the step whose link names no process', async ({
+  page,
+}) => {
+  // a step's link names a process the landscape does not have (saved over REST)
+  const step = 'step-partnermanagement';
+  const CONTENT = `/api/v1/projects/${PROJECT}/value-chains/main/content`;
+  const head = await owner.get(CONTENT);
+  expect(head.ok()).toBe(true);
+  const rev = Number(/"r(\d+)"/.exec(head.headers()['etag'] ?? '')?.[1]);
+  const doc = JSON.parse(await head.text()) as {
+    elements: { id: string; link?: string }[];
+  };
+  const element = doc.elements.find((e) => e.id === step);
+  expect(element, step).toBeDefined();
+  element!.link = 'analyzr:process/fehlt/partner#Process_Fehlt';
+  const saved = await owner.put(CONTENT, {
+    headers: { 'if-match': `"r${rev}"`, 'content-type': 'application/json' },
+    data: JSON.stringify(doc),
+  });
+  expect(saved.ok(), await saved.text()).toBe(true);
+
+  const fix = await openItem('unresolved-link', 'fix-link', (q) => q.subject.id === step);
+  await page.goto(`/projects/${PROJECT}/open-questions?kind=unresolved-link`);
+  const row = item(page, fix.id);
+  await expect(primaryOf(row)).toHaveText('Link korrigieren');
+  await primaryOf(row).click();
+  await expect(page).toHaveURL(new RegExp(`/projects/${PROJECT}/value-chain\\?step=${step}$`));
+  const panel = page.getByTestId('step-panel');
+  await expect(panel).toHaveAttribute('data-element-id', step);
+  await expect(panel.getByTestId('step-link')).toContainText('nicht auflösbar');
+  // its link editor, one click away in edit mode
+  await page.getByTestId('edit-chain').click();
+  await expect(page.getByTestId('step-panel')).toHaveAttribute('data-element-id', step);
+  await expect(page.getByTestId('link-editor')).toBeVisible();
+  await page.getByTestId('finish-edit').click();
+});
+
+const COLLAPSED = `<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Defs_Haupt" targetNamespace="http://bpmn.io/schema/bpmn">
+  <bpmn:process id="Process_Haupt" name="Bestellung" isExecutable="false">
+    <bpmn:startEvent id="Start_1" name="Bestellung eingegangen" />
+    <bpmn:subProcess id="Sub_Zahlung" name="Zahlung" />
+    <bpmn:endEvent id="End_1" name="Bestellung erledigt" />
+    <bpmn:sequenceFlow id="Flow_1" sourceRef="Start_1" targetRef="Sub_Zahlung" />
+    <bpmn:sequenceFlow id="Flow_2" sourceRef="Sub_Zahlung" targetRef="End_1" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="Diagram_Haupt">
+    <bpmndi:BPMNPlane id="Plane_Haupt" bpmnElement="Process_Haupt">
+      <bpmndi:BPMNShape id="Start_1_di" bpmnElement="Start_1"><dc:Bounds x="100" y="100" width="36" height="36" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sub_Zahlung_di" bpmnElement="Sub_Zahlung"><dc:Bounds x="200" y="78" width="100" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="End_1_di" bpmnElement="End_1"><dc:Bounds x="360" y="100" width="36" height="36" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_1_di" bpmnElement="Flow_1"><di:waypoint x="136" y="118" /><di:waypoint x="200" y="118" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_2_di" bpmnElement="Flow_2"><di:waypoint x="300" y="118" /><di:waypoint x="360" y="118" /></bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>`;
+
+const PAYMENT = `<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Defs_Zahlung" targetNamespace="http://bpmn.io/schema/bpmn">
+  <bpmn:process id="Process_Zahlung" name="Zahlung durchführen" isExecutable="false">
+    <bpmn:startEvent id="Start_Z" name="Zahlung angefordert" />
+    <bpmn:endEvent id="End_Z" name="Zahlung erfolgt" />
+    <bpmn:sequenceFlow id="Flow_Z" sourceRef="Start_Z" targetRef="End_Z" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="Diagram_Zahlung">
+    <bpmndi:BPMNPlane id="Plane_Zahlung" bpmnElement="Process_Zahlung">
+      <bpmndi:BPMNShape id="Start_Z_di" bpmnElement="Start_Z"><dc:Bounds x="100" y="100" width="36" height="36" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="End_Z_di" bpmnElement="End_Z"><dc:Bounds x="220" y="100" width="36" height="36" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_Z_di" bpmnElement="Flow_Z"><di:waypoint x="136" y="118" /><di:waypoint x="220" y="118" /></bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>`;
+
+test('the model view links a collapsed subprocess selected on the canvas to the process it means', async ({
+  page,
+}) => {
+  const key = `${PROJECT}-sub`;
+  expect(
+    (
+      await owner.post('/api/v1/projects', { data: { key, name: 'Teilprozess (Offene Fragen)' } })
+    ).status(),
+  ).toBe(201);
+  const form = new FormData();
+  form.append('files', new File([COLLAPSED], 'teil/bestellung.bpmn', { type: 'application/xml' }));
+  form.append('files', new File([PAYMENT], 'teil/zahlung.bpmn', { type: 'application/xml' }));
+  expect((await owner.post(`/api/v1/projects/${key}/imports`, { multipart: form })).ok()).toBe(
+    true,
+  );
+
+  await page.goto(`/projects/${key}/models/teil/bestellung`);
+  await expect(page.getByTestId('bpmn-canvas')).toHaveAttribute('data-imported', 'true');
+  // a click on the collapsed subprocess selects it; the panel offers the link
+  await page.locator('.djs-element[data-element-id="Sub_Zahlung"]').click();
+  await expect(page).toHaveURL(/\?element=Sub_Zahlung/);
+  const card = page.getByTestId('subprocess-link');
+  await expect(card).toContainText('Eingeklappter Teilprozess „Zahlung“');
+  await card.getByRole('button', { name: 'Verknüpfen mit …' }).click();
+  const formPanel = card.getByTestId('subprocess-link-form');
+  await formPanel
+    .locator('[data-testid=action-option][data-ref="teil/zahlung#Process_Zahlung"]')
+    .click();
+  await expect(formPanel.getByTestId('action-preview')).toHaveText(
+    'Legt eine angenommene Relation „Bestellung“ → „Zahlung durchführen“ an.',
+  );
+  await formPanel.getByTestId('action-submit').click();
+  await expect(toast(page, 'Verknüpft')).toBeVisible();
+  const relations = async () =>
+    (
+      (await (await owner.get(`/api/v1/projects/${key}/landscape`)).json()) as {
+        relations: (Relation & { from: string; to: string; type: string })[];
+      }
+    ).relations.filter((r) => r.type === 'manual');
+  const [manual] = await relations();
+  expect(manual).toMatchObject({
+    from: 'teil/bestellung#Process_Haupt',
+    to: 'teil/zahlung#Process_Zahlung',
+    status: 'accepted',
+  });
+  await toast(page, 'Verknüpft').getByTestId('toast-action').click();
+  await expect(toast(page, 'Rückgängig gemacht')).toBeVisible();
+  const response = await owner.get(`/api/v1/projects/${key}/relations/${manual!.id}`);
+  expect(((await response.json()) as Relation).status).toBe('rejected');
+
+  // any other element offers nothing
+  await page.locator('.djs-element[data-element-id="Start_1"]').click();
+  await expect(page).toHaveURL(/\?element=Start_1/);
+  await expect(page.getByTestId('subprocess-link')).toHaveCount(0);
 });

@@ -7,7 +7,10 @@ import { requireActor, type App } from '../context.ts';
 import { problemResponse } from '../problem.ts';
 import { toHonoPath } from './not-implemented.ts';
 
-/** Open questions, their export (M6 §4.4) and their answers (M6 §4.5, S5a). */
+/**
+ * Open questions, their export (M6 §4.4), their notes (M6 §4.5 S5a, §4.8 b),
+ * their actions and the outside mark's withdrawal (M6 §4.8, S5c-1).
+ */
 export function registerOpenQuestionRoutes(app: App, useCases: UseCases): void {
   app.openapi(createRoute(apiRoutes.listOpenQuestions), async (c) => {
     const { project } = c.req.valid('param');
@@ -38,6 +41,28 @@ export function registerOpenQuestionRoutes(app: App, useCases: UseCases): void {
       c.req.valid('json'),
     );
     return c.json(result, result.result === 'recorded' ? 201 : 200);
+  });
+
+  app.openapi(createRoute(apiRoutes.actOnOpenQuestion), async (c) => {
+    const { project, question } = c.req.valid('param');
+    const result = await useCases.actOnOpenQuestion(
+      requireActor(c),
+      project,
+      question,
+      c.req.valid('json'),
+    );
+    return c.json(result, result.result === 'applied' ? 201 : 200);
+  });
+
+  app.openapi(createRoute(apiRoutes.withdrawOpenQuestionAnswer), async (c) => {
+    const { project, question, answer } = c.req.valid('param');
+    const result = await useCases.withdrawOpenQuestionAnswer(
+      requireActor(c),
+      project,
+      question,
+      answer,
+    );
+    return c.json(result, result.result === 'withdrawn' ? 201 : 200);
   });
 
   app.use(

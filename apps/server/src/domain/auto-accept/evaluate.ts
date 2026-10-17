@@ -133,6 +133,34 @@ function commonChecks(
   return { accept: true, rule };
 }
 
+/** Statuses of a call relation that leave no room for another target of the same call element. */
+export const CALL_TAKEN: ReadonlySet<string> = new Set(['proposed', 'held', 'accepted']);
+
+/**
+ * Statuses of a `manual` relation leaving a call element that leave no room
+ * for another target either (M6 S5c-1: a human's link from „Offene Fragen“
+ * is often a manual relation; a call has one target, never over a human
+ * decision).
+ */
+export const MANUAL_CALL_TAKEN: ReadonlySet<string> = new Set(['held', 'accepted']);
+
+/**
+ * Whether `other` competes with the call relation `call` for its call
+ * element (`competing-call`, owner decision 19): another proposed, held or
+ * accepted `call` relation from the same element, or an accepted or held
+ * `manual` relation from it to another target (M6 S5c-1).
+ */
+export function competesWithCall(
+  call: { id: string; fromRef: string; toRef: string },
+  other: { id: string; type: string; fromRef: string; toRef: string; status: string },
+): boolean {
+  if (other.id === call.id || other.fromRef !== call.fromRef) return false;
+  if (other.type === 'call') return CALL_TAKEN.has(other.status);
+  return (
+    other.type === 'manual' && other.toRef !== call.toRef && MANUAL_CALL_TAKEN.has(other.status)
+  );
+}
+
 const asks = (a: HistoryView): boolean => a.question !== null && a.question.trim() !== '';
 
 /** Live agent proposals of a history. */
@@ -143,7 +171,8 @@ function liveAgentProposals<T extends HistoryView>(history: readonly T[]): T[] {
 /**
  * Whether a rule accepts an agent's relation proposal. Safeguards after the
  * common ones: `competing-call` (another proposed, held or accepted call
- * leaves the same call element: a call has one target), `human-involved`
+ * leaves the same call element, or an accepted or held manual relation to
+ * another target, M6 S5c-1: a call has one target), `human-involved`
  * (any human assertion on the relation), `agent-question` (a live agent
  * proposal asks a question, the trigger's included) and `no-link` (a live
  * no-link of any agent on the typed pair, current or stale).
@@ -154,7 +183,10 @@ export function evaluateRelationAutoAccept(src: {
   trigger: TriggerView;
   /** Live no-links on the typed pair (any principal, current or stale). */
   liveNoLinks: number;
-  /** Another proposed, held or accepted call relation leaves the same call element. */
+  /**
+   * Another proposed, held or accepted call relation leaves the same call
+   * element, or an accepted or held manual relation to another target.
+   */
   competingCall: boolean;
   rules: readonly AutoAcceptRuleRev[];
 }): AutoAcceptVerdict {

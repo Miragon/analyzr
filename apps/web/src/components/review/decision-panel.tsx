@@ -33,7 +33,11 @@ export interface DecisionPanelProps {
   resolve: RefResolver;
   /** Head facts of the project, for the correction candidates. */
   facts: readonly Fact[];
-  /** Single-key shortcuts A, R, H, C (off while another view owns the keyboard). */
+  /**
+   * Single-key shortcuts A, R, H, C, shown on the buttons (off while another
+   * view owns the keyboard, and in the inline panels of „Offene Fragen“,
+   * where many items share the page).
+   */
   shortcuts?: boolean;
   onDecided?: (outcome: DecisionOutcome, result: DecisionResult) => void;
   /** Reloads the relation after a conflict. */
@@ -85,35 +89,34 @@ function Panel({
   function run(outcome: DecisionOutcome, body: DecisionBody) {
     if (busy) return;
     setConflict(null);
-    decide.mutate(
-      { relationId: relation.id, body },
-      {
-        onSuccess: (result) => {
+    // `mutateAsync`, not `mutate`'s callbacks: those are dropped when the panel unmounts
+    // first (in „Offene Fragen“ the decided item leaves the list with the refetch).
+    decide.mutateAsync({ relationId: relation.id, body }).then(
+      (result) => {
+        setForm(null);
+        const pair = result.corrected ?? result.relation;
+        toast({
+          tone: 'success',
+          title: TOAST_TITLES[outcome],
+          description:
+            outcome === 'correct'
+              ? `Manuelle Relation ${pairText(pair, labelText(resolve))} angelegt.`
+              : pairText(pair, labelText(resolve)),
+        });
+        onDecided?.(outcome, result);
+      },
+      (error: unknown) => {
+        const c = conflictOf(error, relation.version);
+        if (c) {
+          setConflict(c);
           setForm(null);
-          const pair = result.corrected ?? result.relation;
+        } else {
           toast({
-            tone: 'success',
-            title: TOAST_TITLES[outcome],
-            description:
-              outcome === 'correct'
-                ? `Manuelle Relation ${pairText(pair, labelText(resolve))} angelegt.`
-                : pairText(pair, labelText(resolve)),
+            tone: 'danger',
+            title: 'Entscheidung nicht gespeichert',
+            description: errorMessage(error),
           });
-          onDecided?.(outcome, result);
-        },
-        onError: (error) => {
-          const c = conflictOf(error, relation.version);
-          if (c) {
-            setConflict(c);
-            setForm(null);
-          } else {
-            toast({
-              tone: 'danger',
-              title: 'Entscheidung nicht gespeichert',
-              description: errorMessage(error),
-            });
-          }
-        },
+        }
       },
     );
   }
@@ -199,7 +202,9 @@ function Panel({
               <CheckIcon />
               {reconfirm ? 'Erneut annehmen' : 'Annehmen'}
             </span>
-            <Kbd className="border-transparent bg-white/20 text-current">A</Kbd>
+            {shortcuts ? (
+              <Kbd className="border-transparent bg-white/20 text-current">A</Kbd>
+            ) : null}
           </Button>
           <Button
             variant="outline"
@@ -211,7 +216,7 @@ function Panel({
               <XIcon />
               Ablehnen
             </span>
-            <Kbd>R</Kbd>
+            {shortcuts ? <Kbd>R</Kbd> : null}
           </Button>
           <Button
             variant="outline"
@@ -223,7 +228,7 @@ function Panel({
               <BookmarkIcon />
               Vormerken
             </span>
-            <Kbd>H</Kbd>
+            {shortcuts ? <Kbd>H</Kbd> : null}
           </Button>
           <Button
             variant="outline"
@@ -235,7 +240,7 @@ function Panel({
               <PenLineIcon />
               Korrigieren
             </span>
-            <Kbd>C</Kbd>
+            {shortcuts ? <Kbd>C</Kbd> : null}
           </Button>
         </div>
       )}
