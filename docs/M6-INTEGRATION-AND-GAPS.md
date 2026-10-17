@@ -1,7 +1,8 @@
 # analyzr – Milestone M6 "Landscape integration and gap analysis"
 
-Status: in progress (2026-10-15); owner decision 24 (§2, HANDOFF §4); S0 (this concept, revised
-after review), S1, S3a and S3b done, the „erste Anfänge“ await the owner's review (§8) · Branch:
+Status: in progress (2026-10-15); owner decisions 24 and 25 (§2, HANDOFF §4); S0 (this concept,
+revised after review), S1, S3a, S3b, S4 and S5a done, the „erste Anfänge“ await the owner's review;
+next S5c, answering by action and model amendments (decision 25, §4.8, §8) · Branch:
 `feat/integration-and-gaps` ·
 Spec: [CONCEPT.md](CONCEPT.md) §1–§7 · Previous: [M4-VALUE-CHAIN.md](M4-VALUE-CHAIN.md) · Paused:
 the process network map (decision 22, issue [#2](https://github.com/Miragon/analyzr/issues/2)),
@@ -45,6 +46,11 @@ Most of the loop exists. Four joints are missing:
 Joint 4 also serves M5: its `impact_of` reuses the relation-graph part of the same pure function
 (HANDOFF §7 "Next milestone").
 
+Decision 25 closes much of joint 3 without touching the judge-once core: the consultant answers
+by action, so an answer is a relation, a placement or a decision at once, or an amendment of the
+model whose new revision re-queues the model through its `facts_hash` (§4.8). Text stays a note;
+S5b and S7 are what make notes reach agents.
+
 ### 1.1 The consultant's path
 
 From „Kunde gibt mir einen Export“ to „Landschaft in analyzr, Lücken gelistet“; each step names
@@ -69,18 +75,23 @@ the command or screen and the slice that adds it ("today" means it exists now):
 7. **Placements.** `/analyzr:placements <project>` (today).
 8. **Review** in the web (today); export „Offene Fragen“ with the agents' questions for the
    customer (S4).
-9. **Answers.** Record the customer's answers one by one or from the returned CSV (S5a).
-10. **Next export.** Run the skill again, preview and re-import (S2b); the answers reach the
-    agents with S5b and S7.
+9. **Answers.** Act on each question in „Offene Fragen“ or the model view: link, place, decide,
+   mark „Liegt außerhalb der Landschaft“, or fill in a missing call target, name or
+   documentation in the model (S5c, §4.8); the customer's answers come back as notes, one by one
+   or from the returned CSV (S5a, simplified by S5c-1).
+10. **Next export.** Run the skill again, preview and re-import (S2b); analyzr re-applies its
+    model amendments to the new export (S5c-2) and hands over the change list for the source
+    tool; notes reach the agents with S5b and S7.
 
 The size and cost of the first agent run on a customer landscape (§6 "Run size and cost
 estimate") already matter at step 5, during M6: S1 prints the tasks waiting, and the follow-up of
 S2b's impact counts the pairs to judge.
 
-## 2. Owner decision 24 (2026-10-15)
+## 2. Owner decisions 24 (2026-10-15) and 25 (2026-10-17)
 
-Recorded in HANDOFF §4 on 2026-10-15 in short form; HANDOFF §7 names M6 and keeps M5 paused, and
-CONCEPT §11 notes what §7 "Deferrals" says. The full record:
+Decision 24 is recorded in HANDOFF §4 on 2026-10-15 in short form; HANDOFF §7 names M6 and keeps
+M5 paused, and CONCEPT §11 notes what §7 "Deferrals" says. Decision 25 is recorded in HANDOFF §4
+on 2026-10-17 in short form, and CONCEPT §11 notes it. The full records:
 
 24. **Landscape integration and gap analysis (M6)** (2026-10-15), before the process network map
     (M5, paused); this amends decision 22's "next milestone" (§10.7). The wishes: „Brauchen einen
@@ -133,6 +144,58 @@ CONCEPT §11 notes what §7 "Deferrals" says. The full record:
     9. **Agent submission summaries are shown read-only** („Ja, nur lesend“) in „Offene Fragen“
        and the model view (S4); this reverses the resolution of M3-RELATIONS-PROCEDURE.md
        question 1.
+
+25. **Answering by action, and targeted model amendments** (2026-10-17), taken after S5a was
+    delivered. The owner wrote: „ich verstehe die Antwortarten nicht? Das soll für den User alles
+    möglichst einfach sein, der user soll auch anpassungen am bpmn modell machen können. also
+    fehlende Keys setzen, modelle zur Verknüpfung auswählen usw. was bringen die
+    Textantworten?“ The agent explained (in German) that text answers are today only stored,
+    shown and exported and change nothing automatically (agents read them only from S5b and S7,
+    after the live runs), that text helps only for knowledge that does not belong in a model,
+    and proposed that every open question offers a direct action, with text only as an optional
+    note:
+
+    | Question | Direct action |
+    |---|---|
+    | Aufrufziel unbekannt, Prozess ohne Verbindung, Nachrichtenpartner fehlt | „Verknüpfen mit …“: pick the target model or process from a list → an accepted manual relation (the backend has it, the UI does not) |
+    | Vorgemerkt, Agent unsicher, Frage eines Agenten | accept, reject or correct right from the tab |
+    | Prozess ohne Schritt | pick a step → a manual placement (the backend exists) |
+    | Externer Partner, Pool ohne Prozess | one click „Liegt außerhalb der Landschaft“ |
+    | Aufruf ohne Key, Nachricht ohne Namen, Start/Ende ohne Namen, doppelte Prozess-ID | set the value directly in the model → a new model revision |
+
+    It noted that the last row is new (analyzr so far only stores what was uploaded; CONCEPT §11
+    defers "the Web Modeler"), the catch being that models come from Signavio, ARIS & co. and the
+    next import overwrites a change made in analyzr. The owner then answered two questions:
+    1. **„Wie sollen Änderungen am BPMN-Modell in analyzr funktionieren?“ → „Gezielte
+       Ergänzungen (Empfohlen)“**: „Nur die Felder, die eine Frage nennt (Aufrufziel/Key,
+       Nachrichtenname, Start/Ende-Name, Prozess-ID), per Formular am Element. Ergibt eine neue
+       Revision mit Herkunft „in analyzr ergänzt“. Der nächste Import wendet sie automatisch
+       wieder an, solange das Element existiert, sonst wird daraus eine Frage. Exportierbar als
+       korrigiertes BPMN und als Änderungsliste fürs Quellsystem.“ Rejected: „Voller Modeler im
+       Browser“ (the bpmn-js modeler, everything editable) and „Keine BPMN-Änderungen“ (only links
+       and placements in analyzr; models are fixed in the source tool and imported again).
+    2. **„Wann soll „Fragen per Aktion beantworten“ kommen?“ → „Jetzt, vor S2 (Empfohlen)“**:
+       „Als nächster Slice S5c. Dabei vereinfache ich die Antworten: Die drei Antwortarten fallen
+       weg, „Liegt außerhalb der Landschaft“ wird eine eigene Aktion, „Wird im Modell ergänzt“
+       ersetzt die echte Änderung, und Text bleibt nur als optionale Notiz.“
+
+    What it amends: CONCEPT §11's deferral of "the Web Modeler", lifted in part (targeted
+    amendments of the fields questions name, as revisions; no modeler, §9); S5a's answer kinds
+    (§4.5, delivered as recorded in §8 "S5a as delivered"); the order of §8 (S5c before S2); and
+    the reading of ADR-0001 (decisions 2 and 3) and CONCEPT principle 3 and §4 that analyzr only
+    stores what was uploaded and that a head's bytes are the uploaded ones: analyzr now writes
+    *amended revisions*, computed from uploaded bytes (ADR-0001's header and CONCEPT principle 3
+    and §4 carry a forward note since decision 25 was recorded; §7 "Decision 7"). Imports stay one-way
+    (decision 7): nothing is written back to the source tool; the corrected BPMN and the change
+    list are downloads for the human. Specified in §4.8; slices S5c-1 and S5c-2 (§8). The concept
+    also extends S2c's rule (decision 24.2): a call target a human set by amendment counts as
+    modelled, whatever the class of the uploaded revision (§3.10). It refines „solange das
+    Element existiert“: a field the tool changed since is not overwritten but asked about
+    (`value-changed`), and a value the tool took over counts as carried over („im Quellsystem
+    übernommen“) and is not written again (§4.8 c). It leaves process ids out of the first
+    amendments and adds process documentation, which the option text did not list. §10.9 asks the
+    owner to confirm the fields, the 24.2 extension and the refinement; S5c-2 waits for the answer,
+    S5c-1 does not.
 
 ## 3. Part A: Integration toolkit
 
@@ -258,10 +321,17 @@ so provenance never triggers re-judging.
 | `externalId`, `externalPath`, `url` | manifest (declared, not checked beyond the URL scheme) | „Im Quellsystem öffnen“ for an http(s) URL (`rel="noopener noreferrer"`, as M4 links) |
 | `derived {kind, converter, llmModel, from}` | manifest (declared) | badges „Konvertiert“, „KI-rekonstruiert“, „Aus Interview“ |
 | `losses` | manifest (declared) | „Verluste bei der Konvertierung“ |
+| `upstream`, `amendments` (S5c-2, decision 25) | server: `upstream` on an amended revision (`kind: 'amendment'`), the uploaded revision it is computed from; `amendments` on a head with live amendments, each with its outcome (§4.8 c) | „In analyzr ergänzt (aus r3)“ |
 
 If the owner amends decision 9 (§3.10), declared values can only lower trust, never raise it.
 Identical bytes stay `unchanged` and keep the first revision's provenance (append-only); a
-correction needs new bytes. The fields analyzr adds itself aim to hold no personal data: the
+correction needs new bytes. An amended revision keeps no manifest fields of its own: readers of
+provenance (the „Herkunft“ panel, `external-ids`, the trust class of S2c) follow `upstream` to
+the uploaded revision, so S2a extends the uploaded revisions only. Its own `uploader` and
+`principal_id` are those of the request that caused it (the human for an amendment write or a
+withdrawal; the importer, `sourceKindOf(actor)`, at a re-import or a revival); they never raise
+the trust class, which comes from `upstream`'s revision except for applied `call-target`
+amendments (§3.10). The fields analyzr adds itself aim to hold no personal data: the
 integrate skill drops author and owner fields of exports, and `derived.from` takes opaque ids only
 (pattern `[A-Za-z0-9._:-]{1,64}`). The declared `externalPath` and `url` are not checked, and the
 model bytes themselves (lanes, documentation, tool metadata) can name people (§7 "Privacy").
@@ -343,7 +413,8 @@ The existing previews compute impact with pure code (`apps/server/src/domain/val
 | Models | no verb; REST has list, delete and requeue | S1: `analyzr models list\|delete\|requeue` |
 | Provenance, keys | none | S2: `analyzr-import.json` read from the import root |
 | Preview | `value-chain push --dry-run`, `rules preview`, `rules apply --dry-run` and `rules revoke --dry-run`; nothing for models | S2: `import --dry-run`, deletion impact in `models delete` |
-| Open questions | none | S4: `analyzr questions`; S5a: `analyzr questions answer` (also `--from <csv>`) |
+| Open questions | none | S4: `analyzr questions`; S5a: `analyzr questions answer` (also `--from <csv>`); S5c-1: `analyzr questions outside\|link\|place`, notes without a kind |
+| Model amendments | none | S5c-2: `analyzr models amend\|pull`, `analyzr amendments list\|export\|withdraw` |
 | Zip, URL, git sources; adapter hook | none | later (a zip library is a new dependency; the web would need a lazy chunk under the 240 KB entry ceiling, decision 21) |
 
 ### 3.7 The second plugin `analyzr-integrate`
@@ -556,6 +627,17 @@ The owner agreed with option (a) for older revisions and with the decision-19 ex
 (decision 24.2). It ships as S2c; until then §3.9's renderer rule and the
 consultant-runs-the-import rule limit the risk.
 
+**Added with decision 25 (2026-10-17; extends decision 24.2; the owner may overrule, §10.9).**
+A call target set by a model amendment (S5c-2, §4.8 c) was picked by a human from the
+landscape's processes, so such a call counts as modelled whatever the class of the uploaded
+revision, and the rule tier keeps accepting it; the amended revision's other calls keep the class
+of its uploaded revision. The rule tier reads the applied `call-target` amendments from the
+head's `source.amendments` and the class of the rest from `source.upstream`'s revision; the
+amended revision's own `uploader` (the importer at a re-import, §3.3) never raises it. S5c-2
+lands before S2c, so amended revisions stored before S2c carry no `source.trust` either; under
+option (a) the list „Vor der Vertrauensregel angenommen“ leaves out calls whose element has an
+applied `call-target` amendment.
+
 ### 3.11 `eval:descriptive`: measure the loss first
 
 The corpus is executable Camunda only: in `nordwind-handel` no file has `isExecutable="false"` or
@@ -650,7 +732,8 @@ OpenQuestion {
   unlocks: number            // open decisions touching the subject
   refs: Ref[]                // links for the reviewer
   raisedBy: { sourceKind: 'rule' | 'agent' | 'human', handle: string | null, seq: number }
-  state: 'open' | 'answered' // S5a
+  state: 'open' | 'answered' // S5a; since S5c-1 `answered` = a live outside mark (§4.8 b)
+  actions: OpenQuestionAction[] // S5c-1 (§4.8 a)
 }
 ```
 
@@ -659,7 +742,20 @@ OpenQuestion {
   verdicts, the submission id for summaries. When the source changes, the id changes, and an
   answered item comes back open. Value chain findings are versioned by what they ask about: the
   process model's `facts_hash` (`process-without-step`), the step's fingerprint
-  (`step-without-process`) and with the link (`unresolved-link`). A chain finding that goes away
+  (`step-without-process`) and with the link (`unresolved-link`). **Since S5c-1** findings,
+  signals, `process-without-step` and the coded no-links are versioned by what they ask about
+  too, not by the whole model: the sorted fingerprints of the item's subject and anchor facts
+  (CONCEPT §2), plus what the question reads beyond them (`black-box-partner`: the box id and
+  its flows' ends and names; `undocumented-process`: the documentation; `unlabelled-boundary`:
+  the ids of the unnamed events; `duplicate-process-id`: the copies' refs and fingerprints);
+  `external-partner` and a no-link `call-target-unknown` take the subject's fingerprint instead
+  of the no-link ids, so a re-judgement that stores new no-links with the same code keeps the
+  item; `descriptive-model` keeps the model's `facts_hash`. Decision 25 makes amendments
+  frequent and the outside mark the only `answered` state (§4.8 b), and every amendment writes a
+  new `facts_hash`: an amendment or re-import elsewhere in the model must keep the item's id, its
+  outside mark and the ids of an exported CSV, while a change at the subject changes them. S5a's
+  rows on the agent-created stack `analyzr-local` lose their items once (no real data exists
+  elsewhere). A chain finding that goes away
   (a placement accepted) and comes back (the placement revoked or rejected, its step removed)
   therefore keeps its id and its answer, by design (S5a): the answer is about the process or the
   step, not about a placement, and the question's text is the same.
@@ -680,8 +776,9 @@ Their own enum, not `FindingKind`: `FindingKind` is part of the claim input, the
 (`eval/tools/src/score.ts`), all frozen for the live runs. `OpenQuestionKind` covers the mapped
 sources (`call-target-unknown`, `call-target-dynamic`, `duplicate-process-id`,
 `message-partner-missing`, `held`, `agent-question`, `placement-unsure`, `process-without-step`,
-`step-without-process`, `unresolved-link`, `external-partner`, `summary-note`, `unjudged`) and
-these new signals, computed from head facts:
+`step-without-process`, `unresolved-link`, `external-partner`, `summary-note`, `unjudged`; since
+S5c-2 also `amendment-conflict`, source `amendment`, §4.8 c) and these new signals, computed from
+head facts:
 
 | Signal | Rule | Question it asks |
 |---|---|---|
@@ -706,7 +803,8 @@ without a warning, and ships with S2, which stores the warnings.
   viewers and the read-only demo see them. The CSV has the columns `id`, `Art`, `Frage`,
   `Ansprechpartner-Hinweis`, `Antwort` and `Antwortart`, the last two empty (`Antwortart` one of
   „Antwort“, „Liegt außerhalb der Landschaft“, „Wird im Modell ergänzt“), so the customer can fill
-  in the sheet and S5a reads it back.
+  in the sheet and S5a reads it back. S5c-1 drops `Antwortart` (five columns, every filled
+  `Antwort` a note; §4.8 b).
 - **Web:** the tab „Offene Fragen“ after „Befunde“ with its count, filters (Art, Modell oder
   Ordner, Ansprechpartner-Hinweis, Quelle, Status), sorted by `unlocks` (since the owner's
   answer of 2026-10-16 the value chain's findings after the other questions, §8 "S4 as
@@ -725,6 +823,17 @@ without a warning, and ships with S2, which stores the warnings.
 Answering ships in two slices. **S5a** records and shows answers and changes no analysis rule,
 so it is live-run neutral and comes right after S4. **S5b** makes answers re-open exactly the
 affected judgements; it touches the judge-once core and recorded rules (§10.5).
+
+**Changed by S5c-1 (decision 25; §4.8 b).** What follows describes S5a as specified and
+delivered (§8 "S5a as delivered" stays the record). S5c-1 changes: the three answer kinds go from
+the dialog, the CLI (`--kind`) and the CSV (`Antwortart`); „Liegt außerhalb der Landschaft“
+becomes the one-click action `outside` (an `open_question_answer` row of kind
+`outside-landscape` with an optional text, revocable); „Wird im Modell ergänzt“ is dropped in
+favour of real amendments (S5c-2); free text stays as „Notiz hinzufügen“ and as the CSV round
+trip, and a note no longer makes an item `answered`: only a live outside mark does, while every
+other item ends through its action (§4.8 a). Where a note's text lands (the table below) is
+unchanged. Rows recorded before keep their kind (append-only) and show as notes, except
+`outside-landscape` on a subject that is neither a relation nor a placement.
 
 **S5a: answers recorded.** The consultant answers each item with „Beantworten“ in the tab or the
 model view (also `POST /projects/{p}/open-questions/{q}/answers` and `analyzr questions answer
@@ -809,9 +918,14 @@ every open process again, because the judgement bases include the procedure.
 - **`analyzr-placements@0.2.0`:** unsure kinds `no-fitting-step` (with an optional
   `suggestedStep` name: a chain gap the human may draw), `process-unclear`, `several-steps`; the
   same `gaps` field.
-- **Claim inputs** gain S5a's subject answers; their `seq` joins the relations basis (pairs
-  touching the subject) and `lastNonAgentSeqs` (the subject's processes), the latter as
-  `analyzr-placement-input/2`.
+- **Claim inputs** gain the subject notes and outside marks (S5a, S5c-1); their `seq` joins the
+  relations basis (pairs touching the subject) and `lastNonAgentSeqs` (the subject's processes),
+  the latter as `analyzr-placement-input/2`. From then on, recording a subject note or recording
+  or withdrawing an outside mark makes those pairs and processes non-current and queues their
+  tasks in the same transaction, with S5b's mechanism; the release itself re-offers every pair
+  and process (above), so no deploy-time requeue is needed (part of §10.5). Model amendments need none of this: they reach
+  agents as facts of a new revision (S5c-2). Optionally the facts a human set by amendment are
+  marked in the claim input, so agents weigh them as human input.
 - **MCP** `list_open_questions`; the interview skills' texts as MCP prompts.
 - **Personal-data guard** on agent free text (e-mail, phone, IBAN patterns, as S5a checks human
   answers), warning-only at first, calibrated on the corpus.
@@ -831,6 +945,543 @@ from a first dev run and the owner confirms them. The simulation agent gets a de
 policy (`sim-policy-1` extended) so recordings exist before any LLM run. No holdout variant
 until a third landscape or owner-authored data exists.
 
+### 4.8 Answering by action, and model amendments (decision 25)
+
+Every open question gets one obvious action that changes the landscape: a link, a placement, a
+decision, the mark „Liegt außerhalb der Landschaft“, or an amendment of the model; text stays an
+optional note. Two slices (§8): **S5c-1** wires the actions to use cases that exist, adds the
+outside mark and simplifies answers and the CSV, and writes no BPMN; **S5c-2** adds model
+amendments. Every action and amendment is a human act: permission `review` (amendments and their
+withdrawal also `write`, c), agents get `human-decision-required` with the tab's `reviewUrl` (as
+answers, §4.5), the read-only demo `demo-readonly`, and the web hides the actions from viewers.
+The one exception is `requeue`, which decides nothing and keeps `requeueAnalyses`' permission
+`write`. Agents keep proposing (decision 4).
+
+#### a) The action per kind
+
+The read model computes the actions with each item (pure `actionsFor(item, index)` in a new
+`apps/server/src/domain/open-questions/actions.ts`): `OpenQuestion.actions:
+OpenQuestionAction[]`, each `{type, primary, label}` plus what the client needs (`pick:
+'process' | 'endpoint' | 'step' | 'pair'` for the picker, `multiple`, `suggested: Ref[]` for the
+targets a live proposal already names, and for amendments `amend: {modelKey, targets:
+{elementId, op, label}[] (1–20, the amendments route's item limit), replaces?}`, one form field
+per target, saved in one request). Types: `decide`, `link`, `place`, `choose-copy`, `outside`,
+`requeue`, `fix-link`, `amend` and `withdraw-amendment` (S5c-2), `note`. At most one action is
+primary; `label` is German and from code, so the tab, the model view and the CLI say the same.
+Informational items get none; every other item also has `note` („Notiz hinzufügen“, not
+repeated below). Only REST carries `actions` (MCP `list_open_questions` comes with S7).
+`actionsFor` reads the chain finding's `state` (`value-chain/findings.ts`: `held`, `proposed`,
+`none`) and never offers `amend` on a call whose target is an expression in either dialect
+(`^\s*=`, `${`, `#{`), whatever the engine: without an engine facts v1 treat only JUEL as
+dynamic (§3.11), so an engine-null `calledElement="=x"` arrives as an unresolved static call. A C7
+call of a CMMN case (`camunda:caseRef`, no `calledElement`) also arrives as „Aufruf ohne Key“;
+`call-target` refuses it (c), and once S2 stores the extractor's warnings, whose
+`call-without-target` names `caseRef`, `actionsFor` makes `outside` its primary action.
+
+| Kind (label) | Primary action | Secondary | Writes | The item ends |
+|---|---|---|---|---|
+| `call-target-unknown` „Aufrufziel unbekannt“: finding `unresolved-call` without `calledElement` („Aufruf ohne Key“) | `amend` `call-target` „Aufrufziel eintragen …“ (S5c-2; until then `link` is primary) | `link` „Nur verknüpfen …“, `outside` | the amendment: an amended revision (c); `link`: the decision on a live typed proposal or `acceptManual` (`use-cases/review.ts`, existing; "Where the actions write") through the new action route; `outside`: an answer row (migration 0013, b) | amendment: the facts change, the finding goes and decision 9 accepts the unique call; `link`: R1 (below); `outside`: `answered` |
+| `call-target-unknown`: `calledElement` set but naming no process (no expression), or a no-link coded `call-target` | `link` „Verknüpfen mit …“ (process picker) | `amend` „Aufrufziel im Modell ändern …“ (S5c-2; with `replaces` and the text „in analyzr ergänzt“ when the value comes from a live amendment), `outside` | as above | as above |
+| `call-target-dynamic` „Aufrufziel erst zur Laufzeit bekannt“ | `link` „Mögliche Ziele verknüpfen …“ (`multiple`, at most 10 processes) | `outside` | per target as for `link` above, in one transaction | R1; `answered`. No amendment: an expression is the engine's runtime semantics |
+| `duplicate-process-id` „Prozess-ID mehrfach vergeben“ | `choose-copy` „Gültige Kopie wählen …“ | – | the call relations proposed or held towards the copies (`attrs.match: 'duplicate-process-id'`, `packages/relations/src/rules.ts`): accepted towards the chosen copy, rejected towards the others with a German reason, all or nothing with their versions (the bulk decision of `decideRelations`, existing); with „Andere Kopien in der Wertschöpfungskette auf „außerhalb“ setzen“ (checked by default when a chain exists) the other copies not yet homed go to `@outside` through `acceptManualPlacement`, the reason naming the valid copy as decision 18 asks for archived copies; the dialog's note, optional and prefilled („Gültig ist „…“ in …; die anderen Kopien sind veraltet oder Varianten.“), is a note row, no mark; the dialog points at `analyzr models delete` for obsolete copies | R1b (below); the finding stays in „Befunde“ until a copy is renamed in the tool or its model deleted. Copies that are all valid (variants) are decided call by call in the review („Prüfen“) |
+| `message-partner-missing` „Nachrichten- oder Signalpartner fehlt“: endpoint without a message or signal name | `amend` `message-name` „Nachrichtennamen eintragen …“ (S5c-2; until then `link`) | `link`, `outside` | the amendment; a name picked from a partner's suggestion sends `partner`, and the same transaction accepts the key-tier proposals between the endpoint and that partner as the human's decision (rationale from code); `link`: as above, from the endpoint to the picked partner endpoint | amendment: the facts change and the accepted relation hides the finding; a free-text name that pairs elsewhere yields key-tier proposals only, which hide the finding too (`visibleFindings` counts proposals), so the form's summary names them and links to „Prüfen“; `link`: `visibleFindings` hides it (existing: any live relation at the end, `domain/findings.ts`), the partner's own finding too; `answered` |
+| `message-partner-missing`: named endpoint | `link` „Verknüpfen mit …“ (endpoint picker: the complementary message or signal endpoints of other processes, grouped by model and process) | `amend` „Nachrichtennamen ändern …“ (S5c-2), `outside` | as above | as above |
+| `held` „Vorgemerkt“ on a relation | `decide` „Entscheiden“: an inline panel with Annehmen, Ablehnen, Korrigieren (the review screen's components, `components/review/`) | – (the note is the S5a note on the relation) | `decideRelation` (existing route) | decided: no longer `held` |
+| `held` on a placement | `decide`: Annehmen, Ablehnen, Korrigieren to another step | – | `decidePlacement` (existing route) | decided |
+| `agent-question` „Frage eines Agenten“ (relation or placement) | `decide`, also Vormerken | – | `decideRelation`, `decidePlacement` | decided (`agentQuestions` lists only proposals waiting for review, `sources.ts`) |
+| `placement-unsure` „Einordnung unsicher“ | `place` „Schritt wählen …“ (step picker over the live chain) | `place` on `@outside` „Gehört zu keinem Schritt“ | `acceptManualPlacement` (`value-chain/placements.ts`, existing, as `postPlacements` kind `manual` uses it) through the action route, its rationale from code | the process is homed, so its unsure verdict is no longer listed |
+| `process-without-step` „Prozess ohne Schritt“, `state: none` | `place` „Schritt wählen …“ | `place` on `@outside` | as above | the finding goes (`@outside` counts, `value-chain/findings.ts`) |
+| `process-without-step`, `state: proposed` (an agent's placement waits for review) | `decide` „Vorschlag prüfen“: Annehmen, Ablehnen, Korrigieren on the proposed placement, naming its step | `place` „Anderen Schritt wählen …“, `place` on `@outside` | `decidePlacement` (existing route); `acceptManualPlacement` | decided or homed |
+| `process-without-step`, `state: held` | none: the read model drops the item, since the `held` item of the same placement asks it (one question per process) | – | – | – |
+| `step-without-process` „Schritt ohne Prozess“ | `place` „Prozess zuordnen …“ (process picker); `decide` „Vorschlag prüfen“ instead while a placement on the step is proposed | `outside`; `place` when `decide` is primary | `acceptManualPlacement` of the picked process on the step; `decidePlacement` | the finding goes; `answered` |
+| `unresolved-link` „Link nicht auflösbar“ | `fix-link` „Link korrigieren“: the chain page at the step (`?step=`) with its link editor | – | the chain save with its dry run and `If-Match` (existing, M4 S3) | the finding goes with the save |
+| `external-partner` „Externer Partner?“ (no-link coded `collaboration`) | `outside` „Liegt außerhalb der Landschaft“ | `link` „Verknüpfen mit …“ | an answer row; as for `link` above | `answered`; R1 |
+| `summary-note`, `descriptive-model` (informational) | none | – | – | with their source (a newer submission, a new revision) |
+| `unjudged` „Paare ohne Urteil“ | `requeue` „Erneut einplanen“ | `link` „Paar verknüpfen …“ (`pick: 'pair'`: one of the listed pairs) | `requeueAnalyses` for the analysed model (existing, permission `write`); as for `link` above | when every listed pair has a current judgement or a settling decision (existing rule, `submissionQuestions`) |
+| `black-box-partner` „Pool ohne Prozess“ | `outside`, next to „Im Modell zeigen“ (the model view at `?element=<box>`, where the canvas highlights and names the pool) | `link` „Verknüpfen mit …“ (process picker): one relation per anchor of the box's flows (below), directed like its flow, in one transaction; offered while at least one anchor exists | an answer row; as for `link` above, per anchor | `answered`; R1 |
+| `unlabelled-boundary` „Start oder Ende ohne Namen“ | `amend` `event-name` „Namen eintragen …“, one target per unnamed none start or end event of the process (S5c-2; in S5c-1 only the note) | – | the amendment | the facts change |
+| `message-without-name` (off since S4, reserved) | `amend` `message-name` (S5c-2) | `link`, `outside` | as for `message-partner-missing` | the facts change |
+| `undocumented-process` „Prozess ohne Dokumentation“ | `amend` `process-documentation` „Dokumentation ergänzen …“ (S5c-2; in S5c-1 only the note) | – | the amendment | the facts change |
+| `isolated-process` „Prozess ohne Verbindung“ | `link` „Verknüpfen mit …“ (process picker, process to process) | `outside` | as for `link` above | any relation touching the process (existing rule, `signals.ts`); `answered` |
+| `extractor-loss` (S2; not yet in the contracts) | none in analyzr: the elements were dropped on import and are fixed in the tool or with `normalize-bpmn` | – | – | with the next import |
+| `amendment-conflict` „Ergänzung nicht mehr anwendbar“ (new, S5c-2, c) | reason `value-changed`: `withdraw-amendment` „Wert aus dem Quellsystem übernehmen“; reasons `element-missing` and `expression`: `withdraw-amendment` „Ergänzung zurücknehmen“ | `value-changed`, only where the op may write over the incoming value (c): `amend` „Meine Ergänzung behalten“ (`replaces` the conflicting amendment; its `before` is the incoming value); `element-missing`: „Alle Ergänzungen dieses Modells zurücknehmen“ | a withdrawal, or a new amendment that supersedes the old one | withdrawn, or applied again |
+
+A conflict's text shows the incoming value and analyzr's value side by side.
+
+**Anchors of a pool's flows.** The inside end of a message flow to or from a box is whatever the
+flow's other end is: an element with a fact, or one without (a pool whose process the model
+holds, a collapsed subprocess, a gateway, an intermediate none event; S4 places such ends in their
+process, §8 "S4 as delivered"). `acceptManual` refuses a ref without a head fact (`unknown-ref`),
+so each end maps to an anchor that can carry a relation: its own fact if it has one, else its
+process (a flow node through `OpenQuestionIndex.processOfRef`, a pool through the process fact
+whose `attrs.participantId` it is); an end without either (a flow between two boxes) has none.
+`link` writes from these anchors, R1 checks them, and the pickers offer the whole process when no
+endpoint fits.
+
+**R1: resolved by an accepted link.** The read model hides a `call-target-unknown`,
+`call-target-dynamic`, `external-partner` or `black-box-partner` item once each of its anchors
+(the call, the coded end, the anchors of the box's flows) has an accepted relation of any type to
+a ref in another process (the rule `acceptManual` applies), decided by a human, an owner's rule
+or the rule tier. An agent's proposal does not count until a human or an owner's rule accepts
+it. R1 lives in the read model only; `visibleFindings`, „Befunde“ and the claim inputs'
+`findings` stay as they are (frozen for the live runs, §7). `message-partner-missing` and
+`isolated-process` already end with a relation (above). On the seeded projects of S4 no human or
+rule has accepted such a link, so their counts stay.
+
+**R1b: duplicate ids resolved by decided calls.** The read model hides a `duplicate-process-id`
+item while no call relation towards any of the copies is proposed or held: the question asks
+which copy calls mean, and once each such call is decided (by „Gültige Kopie wählen“ or in
+„Prüfen“) nothing waits on it. It comes back with a new caller's proposals. A duplicate without
+any open call therefore stays in „Befunde“ only. Read model only, like R1; S5c-1's done-when pins
+the seeded dev project's count.
+
+**Where the actions write.** One new route, contracts first: `POST
+/projects/{p}/open-questions/{q}/actions` (tag `open-questions`, permission `review`), its body
+discriminated by `type`: `link {targets: Ref[] (1–10), pair?: {from, to}, note?}`, `place {step:
+<element id> | '@outside', process?: Ref, note?}`, `choose-copy {process: Ref, items: {id,
+version}[], placeOthersOutside: boolean, note?}`, `outside {note?}`. One transaction under the
+project lock; the items are computed after taking the lock (as S5a's answers) and `q` must name a
+current item and the action one of its `actions` (404 `not-found`, 422 `validation-failed` with
+`reason: 'action-not-offered'` otherwise). It delegates to what exists. For each `link` target,
+when a typed relation from the anchor to it is live (proposed or held: a rule-tier file-stem or
+process-name proposal for an unresolved `calledElement`, `rules.ts`; a key-tier message
+proposal; an agent's proposal), `decideRelation` accepts that relation as the human's decision
+(rationale from code), so the typed pair is settled and judge-once stops assigning it
+(`judgements.ts` `isAssignedRelation` skips `manual` relations, so a second, manual relation
+would leave it open); otherwise `acceptManual` writes a `manual` relation, accepted at once, the
+rationale German and from code: „Aus „Offene Fragen“: <Art> – <Frage, gekürzt>“, plus the note.
+The pickers list the targets of such live relations first, under „Vorgeschlagen“ (the action's
+`suggested`). It also delegates to `acceptManualPlacement` (rationale likewise), the bulk
+decision of `decideRelations` (all or nothing) and the answer row. It answers `{question:
+OpenQuestion | null, relations, placements, answer}`, the relations and placements it wrote or
+decided (for the undo below), with `question` null when the item is gone. `decide` uses the
+existing `decideRelation` and `decidePlacement` routes from the inline panels, `requeue` the
+existing `requeueAnalyses`, and `fix-link` the chain page; no route edits one step's link today,
+and S5c needs none. Typed human links (a human-accepted `call` where no proposal exists) are a
+later choice that M5's network map may want; the review's „Korrigieren“ stays as it is (HANDOFF
+§8 "`correct` on a typed pair").
+
+**Competing calls (decision 19).** After S5c-1 a link from a call element is often a `manual`
+relation, which today's safeguard `competing-call` does not see: it counts relations of type
+`call` only (`auto-accept/apply.ts` `callsFrom`, `preview.ts`, `evaluate.ts`), and
+`human-involved` checks the same relation only. An owner's rule could then accept an agent's
+`call` proposal C → Q after a human linked C → P, and the call would have two accepted targets
+that nobody compared. S5c-1 counts accepted or held `manual` relations leaving a `call` element as
+competing calls, in the write paths, apply and the „Regeln“ preview. This tightens decision 19's
+agreed design („a call has one target“, never over a human decision) without changing it; live-run
+projects have no rules, and the `eval:replay` what-if (`eval/tools/src/auto-accept-whatif.ts`,
+its own code over recordings without human links) does not see it.
+
+**Web.** Each item in the tab and in the model view's section shows its primary action as a
+button and the others under „Weitere Aktionen“; „Beantworten“ goes. The pickers reuse
+`components/picker-list.tsx`, `value-chain/manual-placement-form.tsx` and the review's decision
+panels; a picker lists processes as „Name (Modell)“, searchable, and names what the action will
+write before it does („Legt eine angenommene Relation „…“ → „…“ an.“ or „Nimmt den Vorschlag
+„…“ → „…“ an.“). `outside` is one click with a toast „Als außerhalb der Landschaft markiert –
+Rückgängig“. Every action that wrote a manual relation or placement gets the same toast:
+„Rückgängig“ rejects what it wrote through `decideRelation` or `decidePlacement` (append-only,
+rationale „Rückgängig gemacht“ from code), from the ids in the action's answer. An action that
+decided existing proposals (`choose-copy`, a `link` that accepted a live proposal) has no undo:
+its toast links to the decision in „Relationen“, where a reviewer can change it. After an action
+the item leaves the list (or turns `answered`), and the focus moves to the next item. The pickers,
+panels and forms load with the tab's and the section's lazy chunks, their labels from the zod-free
+`@analyzr/contracts/open-question-labels` (entry ceiling, decision 21; S4 saw rolldown split
+shared modules into the entry, so the bundle guard is re-checked). In the model view, selecting a
+collapsed subprocess (no fact in facts v1; in Signavio-style exports often a link to another
+diagram, c) offers „Verknüpfen mit …“ too: an accepted manual relation from its process to the
+picked process through the existing `POST …/relations` (kind `manual`, humans only), without a
+question.
+
+**CLI.** `analyzr questions list` prints each item's primary action label and, with `--format
+text`, the suggested targets with their refs; `analyzr questions outside <id> -p <project>
+[--note <text>]` and `--undo <answer id>`; `analyzr questions link <id> --to <target>…` and
+`analyzr questions place <id> --step <element id>|@outside`. A target is a ref, a model key whose
+model has one process, or a unique process name; an ambiguous one lists the candidates and sends
+nothing. Owner key only, an agent token is refused before any request (as `questions answer`).
+Decisions stay in the web, which has the review components; the CLI has no decision commands
+today.
+
+#### b) Simplified answers
+
+- **The answer kinds go** from the web dialog, the CLI (`--kind`) and the CSV (`Antwortart`).
+  The contracts drop `kind` from `AnswerOpenQuestionBody` (a request that sends it gets 422, so
+  an old client notices); `OpenQuestionAnswerKind` keeps its three values for stored rows.
+- **„Liegt außerhalb der Landschaft“ is the action `outside`**: one click, an optional note
+  (≤ 2,000 characters, the personal-data warning). It stores one `open_question_answer` row of
+  kind `outside-landscape` whose `text` is the note or null. Migration 0013 (generated)
+  replaces the check `open_question_answer_text_or_note` so that an outside mark may have neither
+  text nor note (never on a relation or placement subject, which gets `decide` instead), adds
+  `unique('open_question_answer_project_id_unique').on(projectId, id)` (the target of the
+  composite foreign key, as `no_link_project_id_unique`) and adds
+  `open_question_answer_withdrawal(answer_id pk, project_id, principal_id, source_kind =
+  'human', seq, created_at)` with a composite foreign key to its answer (the pattern of
+  `no_link_withdrawal`; its `seq` is that of an `open_question.answer_withdrawn` event naming the
+  question and the answer, no text); 0014 adds its append-only and no-truncate triggers. A
+  mistaken click is undone with „Rückgängig“ (`POST …/open-questions/{q}/answers/{a}/withdrawal`,
+  permission `review`); a withdrawn mark no longer counts, and marking again records a new row.
+  `outside` is `unchanged` while a live (not withdrawn) outside mark exists for the item, whatever
+  the latest note says; a note is `unchanged` when identical to the item's latest note (S5a
+  compared any latest answer). Additive:
+  0011 and 0012 stay as they are, since the agent-created stack `analyzr-local` already applied
+  them, and stored rows never change (principle 5). No real data exists outside tests (the
+  branch is not merged).
+- **`answered` means a live outside mark.** „Text bleibt nur als optionale Notiz“: a note
+  informs and the action resolves, so a note no longer makes an item `answered`; otherwise an
+  answer from the department would drop the item from „Offen“ before anyone built the link. The
+  Status filter calls the state „Erledigt (außerhalb)“; the tab's count stays the `total` of
+  `state=open`. Stored rows of kind `answer` and `will-be-modelled` show as notes, and so do
+  stored `outside-landscape` rows on a relation or placement subject (S5a accepted them there as
+  notes; such an item ends only through `decide`); every other stored `outside-landscape` row
+  keeps marking. Since items are versioned by what they ask about (§4.2), a mark survives an
+  amendment or re-import elsewhere in the model.
+- **„Wird im Modell ergänzt“ is dropped**, replaced by real amendments (c). The database check
+  keeps the value for stored rows; the use cases never write it again.
+- **Notes.** „Notiz hinzufügen“ on every non-informational item posts to `POST
+  …/open-questions/{q}/answers` with `{text}` only; where the text lands is S5a's table (a human
+  note through `recordRelationNote` or `addPlacementNote` on a relation or placement, else the
+  row's text), and so is everything a note does there (the next claim shows it; it blocks
+  auto-accept rules on the pair).
+- **The CSV round trip stays, with five columns**: `id`, `Art`, `Frage`,
+  `Ansprechpartner-Hinweis`, `Antwort`. The sheet route records each filled `Antwort` as a note,
+  with S5a's checks (unknown ids, 2,000 characters, control characters, the personal-data
+  warning, one transaction, the dry run). An S5a sheet with `Antwortart` still reads: „Liegt
+  außerhalb der Landschaft“ (or `outside-landscape`) records the outside mark with the text as
+  its note, except on a relation or placement item, where it records a note; „Antwort“, „Wird im
+  Modell ergänzt“ and an empty cell record a note; anything else is `invalid` (`unknown-kind`). No column replaces it: the department writes what it knows, and the
+  consultant acts in the tab, where the actions are.
+
+#### c) Model amendments („Ergänzungen“)
+
+**Operations (v1).** Only the fields the questions name, set through a form at the element:
+
+| `op` | Element (fact) | What it writes | The value comes from | Rules |
+|---|---|---|---|---|
+| `call-target` | call activity (`call`) | the field `Extraction.call` reads (`packages/bpmn-facts/src/extract.ts`): C7 the `calledElement` attribute; C8 `processId` of `zeebe:calledElement`, inserted into `extensionElements` when missing (insertion rules under "Applying"); engine null the `calledElement` attribute, or the zeebe extension's `processId` when the element has one (it wins there) | the process picker: head processes of the project outside the caller's process, written as the process id | never over an expression in either dialect (`^\s*=`, `${`, `#{`), whatever the engine (dynamic calls are runtime semantics; reason `expression`); never on a call with `camunda:caseRef` (it calls a CMMN case, and the Camunda 7 parser refuses `calledElement` next to it; reason `cmmn-call`, the form says „Ruft einen CMMN-Fall auf, keinen Prozess“); an id several models define is allowed with the warning that the call stays ambiguous (proposals to every copy, `rules.ts`) |
+| `message-name` | the `bpmn:message` or `bpmn:signal` a message or signal endpoint (`msg_*`, `sig_*`) references; an endpoint without a reference | the referenced element's `name` (every endpoint referencing it changes with it; the form lists them), or, without a reference, a new `<message id="…" name="…"/>` (`<signal …>`) after the last root element before the first `BPMNDiagram` plus the `messageRef` (`signalRef`) on the event definition or the send or receive task; the new id is `Message_` (`Signal_`) plus the first 8 hex of sha256 of the amendment id, with `_2`, `_3` on a collision with an id of the file | the landscape's message (signal) names with where they are thrown and caught, or free text | one line, at most 1,000 characters (`MAX_KEY_LENGTH`), no expression (`=`, `${`, `#{`), neither as the value nor over one; a name used elsewhere yields key-tier proposals at confidence 1.0, never an acceptance by itself (CONCEPT §2; a partner picked from the suggestions is accepted by the human, a) |
+| `event-name` | start or end event (`evt_start`, `evt_end`) | its `name` attribute | free text, with the labels of start and end events elsewhere as suggestions (trigger partners) | one line, at most 200 characters (`MAX_LABEL_LENGTH`) |
+| `process-documentation` | process (`process`) without documentation | a `<documentation>` as the process element's first child (BPMN 2.0 requires it first) | free text | only while the process has none (it never replaces the tool's text); at most 2,000 characters (`MAX_DOCUMENTATION_LENGTH`) |
+
+**Where a field can be amended.** „Nur die Felder, die eine Frage nennt“: a field is amendable
+only where an open question names it or where it is empty or unresolved (a call without
+`calledElement` or with one naming no process and no expression, an endpoint without a message or
+signal name or whose name pairs with nothing, an unnamed start or end event, a process without
+documentation), and where a live amendment set it (to replace or withdraw it). Elsewhere
+`amendable` answers „Nur für offene Fragen“ with the reason (`only-open-questions`). Replacing a
+value that resolves (a call that reaches a process, a name that pairs, a labelled event, the
+tool's documentation) would turn accepted relations `changed` and override the source tool; it
+is not in v1 (§6).
+
+Not in v1: **process ids** (`duplicate-process-id`). A process id is the anchor of every relation
+and placement at the process (`<key>#<processId>`), the target of other models' calls, and is
+referenced inside its file (a participant's `processRef`, the DI plane's `bpmnElement`).
+Renaming one copy turns its accepted relations and placements `missing` (decision memory is lost
+until re-anchoring, R2, ADR-0001), lets callers that meant it resolve to the other copy, where
+decision 9 accepts them unseen, and needs an id rewrite across the file instead of one attribute.
+The duplicate gets „Gültige Kopie wählen“ instead (a); the rename belongs in the tool. Also not
+in v1: names of tasks, lanes and pools, message flows, deleting or adding elements. The owner's
+option text named „Prozess-ID“ and did not name documentation; §10.9 asks.
+
+**Collapsed subprocesses are not call activities.** In Signavio-style exports a link to another
+diagram is a collapsed `subProcess` with vendor metadata (`signavio:signavioMetaData
+metaKey="linkedmodel"`, the synthetic fixture
+`tools/integrate/test/fixtures/signavio/2026-10-14-signavio/Gemeinsame Dokumente/Vertrieb/Auftragsabwicklung.bpmn`;
+to verify, `plugins/analyzr-integrate/reference/signavio.md`) and no `calledElement`. Facts v1
+make no fact for it, so it raises no question and `call-target` cannot reach it: „Aufrufziel/Key“
+in v1 means call activities and leaves out the main call shape of descriptive exports
+(`eval:descriptive`: calls 9/9 → 0/9 from `descriptive` on, §3.11). Until the owner chooses
+(§10.9), the model view links such an element with „Verknüpfen mit …“ from its process (§4.8 a).
+
+**Storage.** Two append-only tables (migration 0015 generated, 0016 the triggers), with the
+`no_link`/`no_link_withdrawal` pattern:
+
+```sql
+model_amendment(id 'mam_', project_id, model_id, element_id, via_element_id null,
+         op in ('call-target','message-name','event-name','process-documentation'),
+         before text null, after text not null, base_revision_id, supersedes_id null,
+         principal_id, client_id, source_kind = 'human', seq, created_at,
+         unique (project_id, id),
+         fk (project_id, model_id) → model,
+         fk (project_id, model_id, base_revision_id) → model_revision (project_id, model_id, id),
+         fk (project_id, supersedes_id) → model_amendment (project_id, id))
+model_amendment_withdrawal(amendment_id pk, project_id, reason in ('withdrawn','superseded'),
+         principal_id, source_kind = 'human', seq, created_at,
+         fk (project_id, amendment_id) → model_amendment (project_id, id))
+```
+
+0015 also adds `unique('model_revision_project_model_id_unique').on(projectId, modelId, id)` to
+`model_revision`, so the base revision is one of the amendment's model. `element_id` is the
+element whose field is written: the call, the event, the process, and for `message-name` the
+referenced `bpmn:message` or `bpmn:signal`, with `via_element_id` keeping the endpoint the form
+was opened from, for display; only an endpoint without a reference keys the amendment by itself.
+`before` is the value as the uploaded revision reads it (`''` for no `calledElement`, null for no
+name), `after` the value set, both in the extractor's sanitized form (`sanitizeLine` for targets
+and names, `sanitizeBlock` for documentation, with the field's fact limit,
+`packages/bpmn-facts/src/sanitize.ts`), so the check and the re-import compare like facts and a
+pasted CRLF or a double space neither fails the check nor makes a conflict; the form shows the
+normalized value before saving. At most one amendment per model, element and `op` is live: a new
+one supersedes the previous one (a withdrawal, reason `superseded`) in its transaction, under the
+project lock, so a second name for one message replaces the first; a request with two items on
+the same element and `op` is refused (422). Every withdrawal is a human's: carrying a value over
+from the source tool is a computed state (below), so `analyzr-rules`, which may only accept calls
+(CONCEPT §6), writes nothing here. Values are model content, so they never enter events:
+`model.amended` names the recorded and superseded amendment ids, element ids and ops (the seq of
+their rows), `model.amendment_withdrawn` the id, op and reason (the seq of a withdrawal row), as
+`open_question.answered` carries no text.
+
+**Revisions.** The uploaded bytes stay a revision of their own, the *uploaded* revision (what
+the tool exported, with its import or upload provenance), and the result is an *amended* revision
+on top of it that becomes the head ("derived" stays the trust class of decision 24.2, §3.10). An
+amended revision is always computed from its uploaded revision's bytes, never from the previous
+head: every derivation (an amendment, a withdrawal, a re-import, a revival) runs
+`planAmendments(live, current)` against the uploaded revision and splices exactly the
+amendments it marks `applied`, so a withdrawal is a re-derivation without it, a re-import
+re-applies the same list, and an amendment in conflict is never forced onto bytes it no longer
+fits. **Head and seq:** a model's head is always its revision with the highest seq, and the head
+never points back at an older revision, since code that reads "the model at seq X" takes the
+newest revision by seq (`hashesAt` in `apps/server/src/db/store.ts`, used for judge-once
+currency and the partner bases recorded at submit). Every revision has its own event: the
+uploaded one `model.revised` as today, the amended one a `model.revised` with `source.kind:
+'amendment'` appended after it (and after `model.amended`) in the same transaction. Its source:
+
+```jsonc
+{"kind": "amendment", "uploader": "human",              // the request's credential kind (§3.3); RevisionSource is a looseObject: no migration
+ "upstream": {"revisionId": "rev_…", "rev": 3, "contentHash": "…"},
+ "amendments": [{"id": "mam_…", "elementId": "Call_Rechnung", "op": "call-target", "outcome": "applied"},
+                {"id": "mam_…", "elementId": "Message_Rechnung", "op": "message-name",
+                 "outcome": "conflict", "reason": "value-changed"}]}   // every live amendment, no values
+```
+
+The head carries the plan: `source.amendments` lists every live amendment of the model with its
+outcome (`applied`, `in-source`, or `conflict` with its reason `element-missing`,
+`value-changed` or `expression`), on an amended head and, when nothing applies, on the uploaded
+head (a server field next to the provenance). An amendment's state is read from the current
+head's list and its withdrawal row: „angewendet“, „im Quellsystem übernommen“, „Konflikt“,
+„zurückgenommen“, „ersetzt“, marked „Modell gelöscht“ while its model is deleted.
+
+`RevisionSource.kind` gains `amendment`; it appears in no MCP output schema (§8 "S2"). Why two
+revisions instead of one amended revision that carries the uploaded hash: the original stays
+downloadable as it came (`getRevisionContent` of the uploaded revision), re-derivation needs the
+uploaded bytes, the history says what came from the tool and what from analyzr, and S2's
+provenance stays on the revision its manifest describes (§3.3). **Identical bytes stay
+`unchanged`:** ingest (`ingest.ts` `liveHeadHash`, `storeFile`) compares an incoming file with
+the head's own `content_hash`, with its `source.upstream.contentHash` and with the content hash
+of every amended revision of the model (analyzr's own output, such as a corrected BPMN downloaded
+before later amendments), so importing the same export again, or uploading any downloaded
+amended file, stores nothing and never counts an amendment as carried over. The cost: an import
+of an amended model writes two revisions, and `headRev` counts both. `model_revision.xml`
+changes its comment from "the uploaded bytes, verbatim" to "the uploaded bytes, or bytes
+computed from an uploaded revision by amendments".
+
+**Applying.** A pure `applyAmendments(xml, amendments)` in `@analyzr/bpmn-facts` (new
+`src/amend.ts`, exported; the package already owns the extractor's precedence, `assertSafeXml`,
+the scanner of `xml-scan.ts` and `extractFacts`, so no sixth package and no XML logic in the
+domain), a function of the bytes and of the amendments in seq order only, so two derivations
+from the same inputs give identical bytes (stable downloads, the `unchanged` match of a
+downloaded file, S2b's dry run equal to the import). Beside it a pure `readAmendable(xml)` reads,
+per amendable element, its kind, its current values in the facts' sanitized form, the message or
+signal an endpoint references, whether a value is an expression in either dialect and whether a
+call has `camunda:caseRef`: what `planAmendments`, `amendable` and the checks need beyond facts
+v1, which carry neither message ids nor `caseRef` (facts and `FACTS_VERSION` stay unchanged).
+Both are reached through `AnalysisPort.amend` and `AnalysisPort.readAmendable`, as extraction is
+through `AnalysisPort.extract`, so the domain stays pure and tests use doubles.
+**Byte-preserving:** it works on the stored bytes (`assertSafeXml` returns text without the BOM,
+so it only checks) and finds the target's start tag by its `id` attribute (exactly one; the local
+name the expected BPMN type, in the BPMN model namespace through a prefix or the default
+namespace, as the Signavio-style fixture writes it; no redeclaration on the way), then splices:
+it replaces or adds one attribute (the value escaped, `&`, `<`, `>`, `"`, tab and line breaks as
+character references) or inserts one minimal element. bpmn-moddle tolerates a wrong child order
+that the Camunda 7 and Zeebe parsers, which validate against the BPMN XSD, refuse, so the
+insertion rules are fixed: a self-closing start tag is expanded with the element's own qualified
+name; a new `extensionElements` goes right after the last `documentation` child, else right after
+the start tag; a new `documentation` is the first child; new BPMN elements take the prefix of the
+amended element (of `definitions` for a root element), the default namespace included;
+`zeebe:calledElement` uses the root's prefix for the Zeebe namespace and declares `xmlns:zeebe` on
+itself when the root has none (a C8 file detected through `executionPlatform` alone, `extract.ts`).
+Every other byte stays: vendor extensions of Signavio or ARIS exports, comments, whitespace, the
+BOM and line endings. No bpmn-moddle round trip: bpmn-moddle drops what it cannot read (into
+`parse-warning`s, `moddle.ts`), which `normalize-bpmn` accepts for `converted` files (§3.7) but an
+amendment must not. **Checked:** the result passes `assertSafeXml` and the limits again (5 MB,
+50,000 elements); `extractFacts` reads every amended field as `after` and every other fact exactly
+as before (same fingerprint and attrs; for a shared message the other elements referencing it
+change only in their message name and what derives from it, key and fingerprint); no new warning
+code. A failed check refuses the amendment (422 `validation-failed`, `reason:
+'amendment-not-applicable'`) or, at a re-import, makes it a conflict. Golden tests pin the child
+order on C7 and C8 fixtures against what Camunda Modeler writes for the same change (saved from
+the Modeler once into the fixtures; no new dependency).
+
+**What an amended revision sets off** is what any change from the tool sets off: a new
+`facts_hash` (the extractor and `FACTS_VERSION` are unchanged) runs `recomputeProject`, queues
+the model's relations task and makes its judgements non-current (decision 17); the placement
+input of the model's processes changes with names, documentation and start or end labels, so they
+become due; a changed call target, name or label changes the element's fingerprint
+(documentation is not part of one, `fingerprint.ts`), so accepted relations there turn `changed`
+and wait for re-confirming, and a rejection there reopens. A unique call target set by amendment
+is accepted by decision 9 today; S2c keeps accepting it (§3.10). **The cost is shown before every
+save.** `facts_hash` includes documentation, names and labels (`fingerprint.ts`), so even one
+documentation line makes every judgement of a pair touching the model non-current, and a new head
+cancels the model's open relations task: an agent holding its claim gets 409 `task-cancelled` at
+submit (CONCEPT §3), its work lost. The dry run therefore returns the current judgements it makes
+non-current (pairs to re-judge, as S2b's follow-up counts them) and whether the model's relations
+task is claimed; the form says „Danach: … 214 Paare werden neu beurteilt.“ and, for a claimed
+task, warns „Ein Agent bearbeitet dieses Modell gerade; seine Arbeit geht verloren.“, saving only
+after confirmation. One request carries up to 20 amendments of a model, and the tab and the model
+view collect them before one save (Web, below), so working through a model's questions costs one
+re-judgement. **Manual links at the element.** A changed call target or message name changes the
+element's fingerprint (the call target is part of `ref_name_norm`), so a manual relation from it
+(often a link from „Offene Fragen“, a) turns `changed` like any accepted relation there; the dry
+run lists them. A manual relation from the call to the target the amendment sets is retired in
+the same transaction, as the rule tier accepts the call: a human rejection with a rationale from
+code („Ersetzt durch den Aufruf aus der Ergänzung“), append-only; likewise a manual link between an
+endpoint and the `partner` whose key-tier proposal the amendment accepts (a). Other manual
+relations there wait for re-confirming.
+
+**Re-import.** On every upload of the key, ingest plans each live amendment against the incoming
+bytes (pure `planAmendments(live, incoming)` in a new `apps/server/src/domain/amendments/`, over
+`readAmendable` of the incoming file); values compare in their sanitized form:
+
+| The incoming file | Outcome |
+|---|---|
+| the element is missing, or no longer of the op's kind | conflict `element-missing` |
+| a `call-target` or `message-name` whose incoming value is an expression | conflict `expression` (only the withdrawal is offered) |
+| its value equals `after`; for `process-documentation`, any documentation | in the source: nothing to splice, shown „im Quellsystem übernommen“; applied again when a later import brings back `before` |
+| its value equals `before` | applied |
+| any other value | conflict `value-changed`: not applied, stays live |
+
+`process-documentation` never conflicts: the op never replaces the tool's text, so the tool's
+documentation always takes over. When at least one applies, the transaction stores the uploaded
+revision and the amended head; otherwise the uploaded revision is the head and carries the plan.
+Recompute, endpoint states and queueing run once, for the final head, as for any ingest. Each
+conflict is an open question of the new kind `amendment-conflict` („Ergänzung nicht mehr
+anwendbar“), new source `amendment`, subject the element's ref (version: the amendment id and
+the uploaded revision's id), its text naming the field and showing before, after and the
+incoming value; actions in a. S2b's `importImpact` calls the same planner, so the dry run lists
+per file the amendments applied, in the source and in conflict („n Ergänzungen nicht mehr
+anwendbar“). A converter that regenerates element ids (against §3.4 rule 2) shows there as a wave
+of `element-missing`, which „Alle Ergänzungen dieses Modells zurücknehmen“ clears in one step;
+v1 does not re-anchor (§6). The import and PUT results (`ImportFileOutcome`, `PutModelResult`,
+contracts first) gain an optional `amendments: {applied, inSource, conflicts}` (counts plus at
+most 20 ids), present only for a model with live amendments, so the corpus and seed JSON stay
+byte-identical; `revision` is the final head, and an optional `uploadedRevisionId` names the
+uploaded one. The CLI prints „2 Ergänzungen angewendet, 1 Konflikt“, the web upload panel the
+same per file.
+
+**Concurrency.** Ingest reads the live amendment set with the heads before its write transaction
+and plans, applies and extracts there (CPU-bound, as it extracts today, `ingest.ts`), keeping a
+token of the set (the sorted live ids and the highest amendment or withdrawal seq); under the
+project lock it reads the set again and, if the token changed, plans, applies and extracts again
+inside the transaction. Amendment writes and withdrawals take the project lock and check
+`If-Match` inside it. So an amendment recorded while an import is being extracted is in the head
+after the import. The tail every head change runs (`recomputeProject`, `touchNoLinkRelations`,
+`syncValueChainAfterModels`, `queueAnalysis`, `queuePlacementTasks`) moves into one function that
+ingest, amendment writes and withdrawals call.
+
+**Withdrawal** („Ergänzung zurücknehmen“, reason `withdrawn`) re-derives from the uploaded
+revision with the remaining live amendments and writes a new amended revision; with none left its
+bytes equal the uploaded revision's, a new revision all the same (as a revert upload today), so
+`headRev` only grows. „Alle Ergänzungen dieses Modells zurücknehmen“ withdraws every live
+amendment of a model in one transaction and one re-derivation. **Model deletion** keeps the
+amendments live (deletion is soft), and nothing writes a revision for a deleted model (one written
+after `model.deleted` would make `hashesAt` see the model as present, and `storeFile` clears
+`deletedSeq`, so reusing it would revive the model): a withdrawal there records only its row, the
+amendment route and `amendable` answer 404 `not-found`, and the `amendment-conflict` actions are
+not offered. A revival by upload re-derives from the live set as a re-import does.
+
+**Exports.** The change list, `GET /projects/{p}/amendments/export?format=markdown|csv` (filters
+`modelKey`, `state` and `since=<seq>`; German headings, the file name like the open-questions
+export), grouped per model: the model's name and key (from S2a also its `externalPath` and „Im
+Quellsystem öffnen“, followed through `source.upstream`); per amendment the pool or process and
+the lane, the element's German type and name („Aufrufaktivität „Rechnung stellen“, Lane
+„Buchhaltung““), the field, before → after, who, when and the state; a `call-target` names its
+target as „Prozess „Rechnungsstellung“ im Modell „…“ (Pfad …, ID …)“, marked „Ziel nicht mehr in
+der Landschaft“ when no head process has that id any more; a shared message lists every element
+referencing it. Every export names the seq it reflects („Stand: Ereignis 1234“), so `since=` lists
+only what is new since the last carry-over. The consultant carries it into the source tool;
+analyzr writes nothing back (decision 7). For Signavio and ARIS the change list is the path (a
+diagram link is picked in the tool, not typed as an id); the corrected BPMN, whose
+`calledElement` is a bare process id without an `<import>`, is for Camunda tools. The amended BPMN
+is the head's bytes and the original the uploaded revision's, both through the existing
+`getRevisionContent`; the web offers „BPMN herunterladen“ and „Original herunterladen“, the CLI
+`analyzr models pull <key> -p <project> [--original] [-o <file>]`. The OKF export (deferred,
+decision 22) would write the head, amended or not; §9.
+
+**REST** (contracts first, tag `amendments`, the client regenerated):
+
+- `GET /projects/{p}/models/{model}/elements/{elementId}/amendable` (`read`): the fields the
+  element allows (above), each with its current and uploaded value, whether it can be set and
+  why not (`only-open-questions`, `expression`, `cmmn-call`, …), the suggestions (processes,
+  names, partners), the element's amendment history, and `ETag: "r<headRev>"`, which the form
+  sends; 404 for a deleted model;
+- `POST /projects/{p}/models/{model}/amendments?dryRun=` (`review` and `write`): `{items:
+  [{elementId, op, after | target: Ref, partner?: Ref, replaces?}]}` (1–20, no two on one element
+  and `op`), `If-Match: "r<headRev>"` required and checked under the project lock (428 and 412
+  `revision-conflict`, as the value chain's saves); each item answered `recorded`, `unchanged`
+  (identical to the live amendment) or `not-applicable` (with the reason), the new head, and the
+  would-be effect at the element (findings resolved and added, rule-tier relations accepted or
+  withdrawn, the key-tier proposals a `partner` accepts, relations turning `changed`, manual
+  relations retired: `runRules` over the head facts with the model's facts replaced, pure) and the
+  cost (the current judgements made non-current, whether the model's relations task is claimed);
+  a dry run writes nothing; 404 for a deleted model;
+- `GET /projects/{p}/amendments` (`read`; filters `modelKey`, `state`), `POST
+  /projects/{p}/amendments/{a}/withdrawal` and `POST
+  /projects/{p}/models/{model}/amendments/withdrawal` (every live amendment of the model; both
+  `review` and `write`), and the export above.
+
+**Both permissions.** An amendment is a human decision about content (`review`, humans only) and
+writes a revision, which ingest guards with `write`. Scopes do not nest that way
+(`apps/server/src/domain/policy.ts`: review ⊇ propose ⊇ read, write ⊇ read), so the amendment and
+withdrawal use cases call `policy.require` for both, and a review-only scope gets 403
+`insufficient-scope`.
+
+**Web.** At a question, an `amend` action opens a form for its targets (picker or text, the
+personal-data warning for names and documentation, the normalized value as it will be stored, and
+the hint „Der nächste Import aus dem Quellsystem behält die Ergänzung, solange das Feld dort
+unverändert ist.“) and saves after a dry run's summary („Danach: 1 Aufruf angenommen, 1 Befund
+erledigt, 214 Paare werden neu beurteilt.“, with the warning for a claimed task). „Sammeln“ next to
+„Speichern“ keeps the amendment in the page instead: a bar per model („3 Ergänzungen für „…“
+gesammelt – Speichern“) saves them with one dry run and one request. In the model view, selecting
+an element (today's `?element=` of the bpmn-js NavigatedViewer, `components/bpmn-canvas.tsx`; no
+modeler; a pool maps to its process through `attrs.participantId`) shows a section „Ergänzen“
+with its amendable fields and its history (who, when, before → after, state, „Zurücknehmen“);
+amended elements get an overlay „ergänzt“, the header a badge „In analyzr ergänzt (n)“ naming
+the uploaded rev, and the downloads. The models table marks amended models; the history lists
+uploaded and amended revisions. `model-view.tsx` is in the entry chunk, so the section, its
+history, the forms and the downloads load lazily with the model view's panel (entry ceiling,
+decision 21), their labels from a zod-free contracts module on the bundle guard's allowlist.
+
+**CLI.** `analyzr models amend <key> -p <project> --element <id> (--call-target <target> |
+--message-name <name> | --name <label> | --documentation <text>) [--dry-run] [--yes]` (a target
+as in `questions link`; it prints the cost, and a claimed relations task needs `--yes`),
+`analyzr amendments list|export|withdraw -p <project> …` (`withdraw --model <key>` for every live
+amendment of a model) and `analyzr models pull`; owner key only, an agent token refused before any
+request.
+
+**MCP: no new tool before the live runs.** Agents read an amended head like any revision:
+`get_model_xml` returns its bytes, `get_process`, `get_landscape` and the claim input its facts;
+`RevisionSource` is in no MCP output schema, so the tool and prompt snapshots stay. Telling agents
+which facts a human set is an S7 option (§4.6).
+
+**Personal data.** Names and documentation typed in land in immutable revisions and in the
+change list; the personal-data check warns and never blocks, as for notes. Erasure stays §10.6.
+
+#### d) Live-run neutrality
+
+- Live-run projects are fresh, seeded and without human input (M3-LIVE-RUNS.md): no action, no
+  mark, no note, no amendment, no rule. Every S5c write is a human route; the read model adds
+  `actions`, R1 and R1b (links and decisions by humans or rules), versions items by what they ask
+  about (§4.2), reads the chain findings' `state` and changes what `answered` means, none of which
+  a claim reads.
+- Shared paths change in four places: ingest's `unchanged` comparison (a model without amended
+  revisions compares as today); the re-application step, which runs only for models with live
+  amendments; the ingest tail, moved into one function without a change in behaviour; and the
+  auto-accept safeguard `competing-call`, which also counts manual relations leaving a call
+  element (live-run projects have no rules; the `eval:replay` what-if has its own code).
+- The golden claim test (`claim-golden.test.ts`) keeps the SHA-256 of the claims of a seeded
+  project without actions and amendments, and pins them again after an `outside` mark on every
+  subject that is neither a relation nor a placement (as S5a pinned text answers); the corpus JSON
+  of `analyzr import` and `seed --json`, the sim recordings, `eval:replay` and every committed
+  report stay as they are; the MCP snapshots, facts and `FACTS_VERSION`, `FindingKind`, the
+  procedures and the plugins are untouched.
+
 ## 5. Part C: Interviews
 
 Skills in `analyzr-integrate`, nothing new in analyzr's core:
@@ -847,7 +1498,8 @@ Skills in `analyzr-integrate`, nothing new in analyzr's core:
 3. **As-told fact sheet** (`interview-facts`): per process trigger, steps, outcomes, handovers,
    systems and open points, every statement citing `src:<sourceId>#T<n>`; contradictions with
    the landscape (read over MCP) flagged; answers to guide questions listed by question id for
-   the consultant to enter with „Beantworten“ or the CSV (S5a). Nothing is written to analyzr.
+   the consultant to act on in „Offene Fragen“ or to enter as notes from the CSV (S5a, S5c).
+   Nothing is written to analyzr.
 4. **BPMN draft:** the skill writes an `analyzr-spec/1` from the fact sheet, renders it (§3.9,
    no `calledElement` for `as-told`), emits a bundle with `derived {kind: as-told, llmModel,
    from: [src ids]}`, runs the dry run; the consultant imports it. When the real model arrives
@@ -878,6 +1530,7 @@ draft (after the owner's rated draft run, M4b) are later work.
 | Vision reconstruction | screenshots, PDFs, slides into a spec, `reconstructed`, one review per diagram. After the renderer and the trust decision. |
 | Tool API pullers | Signavio and ARIS APIs, one-way, no prune, customer-tool credentials with the consultant, never in analyzr. When a customer needs repeated syncs. |
 | Zip import, staged imports, adapter hook, document store, identity-key rule | each when a real import shows the need. |
+| More amendment operations, typed human links | process ids (an id rewrite across the file plus re-anchoring of relations and placements, R2), task and pool names, replacing values that already resolve (a reachable call target, a pairing name, a label, the tool's documentation; §4.8 c), a collapsed subprocess turned into a call activity (§10.9), re-anchoring amendments after a converter regenerated ids, a per-amendment mark „Im Quellsystem eingetragen“ for the change list; links as human-accepted `call`, `message` or `trigger` relations where no proposal exists, instead of `manual` (§4.8 a). After S5c-2 shows how consultants use it. |
 
 ## 7. Constraints
 
@@ -886,16 +1539,31 @@ draft (after the owner's rated draft run, M4b) are later work.
   procedures, the claim inputs, proposal and submission validation, the MCP tool and prompt
   surface (21 tools including the two `decide_*` stubs, 3 prompts, no resources;
   `apps/server/test/integration/__snapshots__/mcp-{tools,prompts}.json`), `draft_value_chain`, the
-  sim recordings or the committed reports. S1–S4, S5a and S6 keep to it; S5b is neutral but
-  waits; S7 comes after.
+  sim recordings or the committed reports. S1–S4, S5a, S5c and S6 keep to it (S5c: §4.8 d); S5b
+  is neutral but waits; S7 comes after.
 - **Decision 17.** `facts_hash` includes `FACTS_VERSION`; there is no reindex; every judgement
-  basis includes the procedure. Provenance stays out of facts.
+  basis includes the procedure. Provenance stays out of facts. A model amendment (S5c-2) is a
+  new revision with new facts, so it re-queues and re-judges like a change from the tool; that is
+  intended, not an exception, and its cost (the pairs to re-judge, a claimed task that would be
+  cancelled) is shown before every save, which can carry all of a model's amendments at once
+  (§4.8 c).
 - **Principle 7.** Five library packages; the toolkit lives in `plugins/` and `tools/integrate`
   (precedents outside `packages/*`: `tools/notices`, `apps/agent-sim`, `apps/demo`); whether that
   reading holds for product logic shipped to consultants is §10.8.
 - **Decision 7.** PostgreSQL is the record; imports are one-way; no prune, no sync, no watch;
-  deletions are explicit and human.
-- **Decision 9** stays until the owner amends it (§3.10). **Decision 8:** stages are fixed.
+  deletions are explicit and human. Decision 25 keeps this: analyzr re-applies its amendments to
+  every import and never writes to the source tool; the amended BPMN and the change list are
+  downloads the consultant carries over by hand, as the OKF export is an export (CONCEPT
+  principle 3: "nothing flows both ways" holds for analyzr's own data flows). What decision 25
+  changes is that analyzr writes revisions of its own, amended revisions computed from uploaded
+  bytes (ADR-0001 decisions 2 and 3; CONCEPT principle 3, §2's `model_revision.xml` and §4's
+  "BPMN bytes are canonical at their origin (the revision for uploads …)"). ADR-0001's header and
+  CONCEPT principle 3 and §4 carry a forward note since decision 25; S5c-2's docs pass rewrites
+  the places (§8 "S5c-2").
+- **Decision 9 as amended by 24.2 (S2c):** a unique static call in a derived revision is
+  proposed, not accepted; until S2c ships, decision 9 holds unchanged. Decision 25 adds, for the
+  owner to confirm (§10.9), that a call target a human set by amendment counts as modelled, so the
+  rule tier keeps accepting it (§3.10). **Decision 8:** stages are fixed.
   **Decision 10:** no assignee. **Decisions 4 and 5:** agents propose and draft, humans decide, no
   LLM credentials. This concept adds: the consultant runs every import (§3.1; not enforced by the
   policy, which lets any `analyzr:write` token ingest, §10.1), and every skill also ships as a
@@ -903,7 +1571,16 @@ draft (after the owner's rated draft run, M4b) are later work.
 - **Deferrals (CONCEPT §11).** M6 lifts the deferral of "agent findings" in part (gap reports
   bound to submissions, without a lifecycle, S7) and adds answers to open questions (S5a), close
   to the deferred "comments"; the S2c recommendation narrows decision-19 rules by derived kind and
-  converter, which §11 also defers. CONCEPT §11 notes both since decision 24.
+  converter, which §11 also defers. CONCEPT §11 notes both since decision 24. Decision 25 lifts
+  the deferral of "the Web Modeler" in part: targeted amendments of the fields open questions
+  name, through forms, as amended revisions; no modeler (§9). CONCEPT §11 notes it. S5c-1
+  tightens decision 19's safeguard `competing-call` to count manual relations from a call element
+  (§4.8 a), within its agreed design.
+- **Principle 5 (append-only).** S5c adds rows and never changes one: outside marks and their
+  withdrawals, amendments and their withdrawals (withdrawn, superseded; carried over by the source
+  tool is computed, never written), uploaded and amended revisions, manual relations retired by a
+  rejection; migrations 0013 to 0016 add (constraints and tables), 0011 and 0012 stay as they
+  are.
 - **Holdout hygiene.** No agent opens the holdout's `expected.yaml`, `README.md`, `spec/`,
   expected placements, recordings or report sections; tooling reports it in aggregate only.
 - **Privacy.** Customer exports and transcripts never enter the repository or the eval corpus.
@@ -911,8 +1588,9 @@ draft (after the owner's rated draft run, M4b) are later work.
   hold no personal data. Models and free texts can: customer BPMN bytes (lanes, documentation,
   tool metadata) are stored as immutable revisions; stored extractor warnings (S2) quote
   bpmn-moddle messages, which can contain unknown extension content; the declared `externalPath`
-  and `url` are not checked; human answers (S5a) and agent `gaps` (S7) are free text behind a
-  warning-only check. M6 is the first milestone that puts customer data into the append-only
+  and `url` are not checked; human answers and notes (S5a, S5c-1), names and documentation typed
+  into amendments (S5c-2, which end up in amended revisions and the change list) and agent
+  `gaps` (S7) are free text behind a warning-only check. M6 is the first milestone that puts customer data into the append-only
   store (principle 5), and there is no erasure path: model deletion is soft (uploading the key
   again revives the model) and no route deletes a project (§10.6).
 - **House rules.** Contracts first and a regenerated client for every route; `policy.require` in
@@ -929,6 +1607,8 @@ draft (after the owner's rated draft run, M4b) are later work.
 | S3 | a: `eval:descriptive` and the `get_landscape` size; b: integrate v0 for BPMN exports (plugin, `tools/integrate` with `inspect` and `normalize-bpmn`, workspace, key map, report); c: renderer and spec YAML, the ad-hoc converter path, the bundled CLI | 1.5 + 3 + 3 d |
 | S4 | open-questions read model, gap signals (without `extractor-loss`), tab „Offene Fragen“, model view section, export, `analyzr questions` | 5 d |
 | S5 | a: answers in the web, REST and CLI, the CSV round trip, `open_question_answer`; b: notes that make pairs non-current and queue exactly the affected work | 3 + 1.5 d |
+| S5c-1 | "Actions" (decision 25): `actions` on every item, R1 and R1b, items versioned by what they ask about, the action route (link, place, choose copy, outside; a link accepts a live typed proposal before it writes a manual relation), `competing-call` counting manual relations from calls, the outside mark and its withdrawal (migrations 0013/0014), notes without kinds, the five-column CSV, the actions with undo in the tab and the model view's section, `analyzr questions outside\|link\|place`; no BPMN writing | 4.5 d |
+| S5c-2 | "Model amendments" (decision 25): `applyAmendments` and `readAmendable` in `@analyzr/bpmn-facts`, `model_amendment` (migrations 0015/0016), uploaded and amended revisions with the plan on the head, re-application at import with `amendment-conflict` and the concurrency token, withdrawal, the cost in the dry run, the amendments in the import and PUT results, the change list and downloads, the routes, the form at the question with „Sammeln“ and the model view's „Ergänzen“, `analyzr models amend\|pull` and `analyzr amendments` | 8 d |
 | S6 | interview skills: guide, transcript pre-processor, fact sheet, as-told drafts; the skill text generator and start prompts | 3 d |
 | S7 | after the live runs: `analyzr-relations@0.3.0` + `analyzr-placements@0.2.0`, claim input additions, MCP `list_open_questions` and prompts, personal-data guard, `nordwind-gaps`, one live-gate round | 6 d + the owner's live runs |
 
@@ -942,8 +1622,17 @@ knows. Answering in the UI (24.3) needs no change to the judge-once core. The ac
 revisions imported before S2 keep no provenance, and a re-import of the same bytes stays
 `unchanged` and does not add it.
 
-About seven weeks of agent work, plus the owner's runs. Every slice runs all gates (AGENTS.md)
-before it is called done and records deviations here as "S<n> as delivered".
+**Order since decision 25** (2026-10-17, „Jetzt, vor S2“): S5c-1 → S5c-2 → S2a/S2b → S2c → S3c →
+S6; after the owner's live runs S5b, S7 and facts v2 (§6, the reindex with judgement carry-over
+first). S5c-1 comes first because it needs no BPMN writing and makes most items actionable at
+once with use cases that exist; S5c-2 follows because S2 builds on its revision shape (S2a's
+provenance follows `source.upstream`, S2b's `importImpact` plans amendments, S2c's trust rule
+reads the amended calls; §3.3, §3.10, "S2" below). S5c-2 starts once the owner has answered
+§10.9; S5c-1 does not wait for it.
+
+About seven weeks of agent work, plus the owner's runs; S5c adds about 12.5 days. Every slice runs
+all gates (AGENTS.md) before it is called done and records deviations here as "S<n> as
+delivered".
 
 **S1 "Import hygiene"** (live-run neutral; no migration; part of the „erste Anfänge“).
 
@@ -1137,7 +1826,14 @@ null), and §4.3's `extractor-loss` on it; the web reads `analyzr-import.json` f
 folder and shows „Herkunft“ in the model view and badges in the models table. S2b: §3.5's
 `importImpact` and the dry runs in REST, the CLI and the web upload („Vorschau“ before
 „Importieren“), the deletion impact in `models delete`; the follow-up (judgements, tasks,
-placements) right after. S2c: §3.10, only with the owner's OK. Does not touch: facts, the claim
+placements) right after. S2c: §3.10, only with the owner's OK (given with decision 24.2). Since
+decision 25, S2 comes after S5c-2 and builds on its revisions: S2a writes the manifest fields on
+uploaded revisions only and its readers (`external-ids`, „Herkunft“, `external-id-changed`)
+follow an amended head's `source.upstream`; S2b's `importImpact` plans the re-application of live
+amendments per file with S5c-2's `planAmendments` (applied, in the source, conflicts) and computes
+the impact against the would-be amended head; S2c classifies an amended head by its uploaded
+revision and treats its applied `call-target` amendments as modelled (§3.10, pending the owner's
+confirmation, §10.9), and option (a)'s list leaves their calls out. Does not touch: facts, the claim
 input, MCP (`RevisionSource` appears in no MCP output schema), procedures. Done when: provenance
 round trips through PUT, import and the web; a manifest's pinned keys win over paths; a checksum
 mismatch gives `manifest-sha-mismatch` and the file is imported; `external-id-moved` and
@@ -1587,7 +2283,142 @@ screen readers.
 a held relation makes exactly that pair non-current and queues its origin model, whose next claim
 assigns that pair and lists the others as `judged`; a placement answer queues the chain's task;
 the deploy step queues exactly the origin models of pairs the new basis makes non-current; claims
-of note-free seeded projects are byte-identical; recordings and `eval:replay` unchanged.
+of note-free seeded projects are byte-identical; recordings and `eval:replay` unchanged. Since
+decision 25 it is about notes alone: outside marks queue nothing before S7 (from S7 on, a subject
+note or an outside mark joins the bases and queues with this slice's mechanism, §4.6), and model
+amendments need no S5b, since they re-queue through `facts_hash` (decision 17).
+
+**S5c-1 "Actions"** (decision 25; live-run neutral; may land before the live runs). Scope: §4.8
+a and b: `OpenQuestionAction` and `OpenQuestion.actions` in the contracts with the labels in
+`@analyzr/contracts/open-question-labels`; the pure `actionsFor` (`open-questions/actions.ts`,
+reading the chain findings' `state` and the expression rule), R1 and R1b in the read model;
+items versioned by what they ask about (§4.2); `answered` as a live outside mark; the route `POST
+…/open-questions/{q}/actions` (link, place, choose copy, outside; a link accepts a live typed
+proposal through `decideRelation` before it writes a manual relation; the anchors of a pool's
+flows) and `POST …/open-questions/{q}/answers/{a}/withdrawal`; the safeguard `competing-call`
+counting accepted or held manual relations from a call element (`auto-accept/apply.ts`,
+`preview.ts`); `AnswerOpenQuestionBody` without `kind`; the five-column CSV and the reader's
+compatibility with S5a sheets; migrations 0013 (the relaxed check, the unique `(project_id,
+id)`, `open_question_answer_withdrawal`) and 0014 (its triggers); the client regenerated; the
+web: the action row on each item in the tab and in the model view's section, the pickers with
+„Vorgeschlagen“, the inline decision panels, the one-click outside mark and „Rückgängig“ after
+every action that wrote a manual relation or placement, „Im Modell zeigen“, „Verknüpfen mit …“ on
+a collapsed subprocess in the model view, „Notiz hinzufügen“ instead of „Beantworten“, the sheet
+dialog without `Antwortart`; the CLI: `analyzr questions list` with the primary action and the
+suggested targets, `analyzr questions outside|link|place` with targets by ref, model key or
+process name, `questions answer` without `--kind`; docs (DEVELOPMENT.md, CONCEPT §2's schema for
+`open_question_answer`, CONCEPT §3 step 5's competing calls). Does not touch: BPMN bytes and
+revisions, facts and `FACTS_VERSION`, `visibleFindings` and `FindingKind`, the claim input
+formats, procedures, plugins, judgement bases, queueing, the other auto-accept safeguards, MCP
+tools, prompts and snapshots, recordings and reports. Done when:
+
+- a unit test over a fixture with every kind of the contracts (both `call-target-unknown`
+  flavours, an engine-null FEEL `calledElement` offered no `amend`, named and nameless
+  `message-partner-missing`, relation and placement holds and questions, `process-without-step`
+  in each `state` (`held` dropped), `step-without-process` with a proposed placement,
+  informational items) pins each kind's actions and its single primary;
+- `link` from a `call-target-unknown` item writes one accepted `manual` relation with the German
+  rationale from code, and the item leaves the list while „Befunde“ still lists the finding; with
+  a live rule-tier or agent proposal to the picked target it accepts that relation instead and
+  writes no manual one; a `black-box-partner` with two flows gets two relations in one
+  transaction, directed like the flows, and a pool-to-pool flow and a collapsed-subprocess end
+  anchor at their processes; an agent's proposal from the same call leaves the item listed, a
+  link to another process of the same model ends it (R1);
+- after a human linked call C → P with a manual relation, an owner's rule does not accept an
+  agent's `call` proposal C → Q (`competing-call`, in a write, in apply and in the preview);
+- `place` homes a `process-without-step` and a `placement-unsure` process (also on `@outside`),
+  and the items leave the list;
+- `choose-copy` accepts and rejects all or nothing (a stale version gives 409 and writes
+  nothing), places the other copies on `@outside` when asked, records the note without a mark,
+  and the item leaves the list (R1b); a new caller's proposal to a copy brings it back; the
+  seeded dev project's count is pinned;
+- `outside` records one row of kind `outside-landscape` with null text, the item turns
+  `answered`, a second click is `unchanged`, the withdrawal opens it again, and marking again
+  records a new row; a note and then `outside` records the mark; a note leaves the item `open`;
+  stored rows of kind `answer` and `will-be-modelled`, and stored `outside-landscape` rows on
+  relation and placement subjects, show as notes, every other stored `outside-landscape` row
+  keeps marking;
+- an outside mark and the ids of an exported CSV survive a change to another element of the same
+  model (a re-import), a change at the subject reopens the item, and a re-judgement that
+  replaces the coded no-link keeps an `external-partner` mark;
+- „Rückgängig“ after `link` and `place` rejects what they wrote;
+- the export has five columns; an S5a sheet with `Antwortart` reads as §4.8 b says, „Liegt
+  außerhalb …“ on a relation item as a note;
+- an agent token gets `human-decision-required`, the demo `demo-readonly`, a viewer sees no
+  action, an item whose source changed gives 404, an action the item does not offer 422;
+  `requeue` keeps permission `write`;
+- Playwright: each action type in the tab and in the model view's section; the entry chunk stays
+  under its ceiling;
+- claims of a seeded project are byte-identical before and after an outside mark on every
+  subject that is neither a relation nor a placement; MCP snapshots, recordings, `eval:replay`
+  and every report unchanged; all gates green.
+
+**S5c-2 "Model amendments"** (decision 25; live-run neutral; may land before the live runs;
+starts once the owner has answered §10.9). Scope: §4.8 c: `applyAmendments`, `readAmendable`
+and their checks in `@analyzr/bpmn-facts` (`src/amend.ts`), `AnalysisPort.amend` and
+`AnalysisPort.readAmendable`; `model_amendment` and `model_amendment_withdrawal` (migrations 0015
+with the unique constraints, 0016; typed id `mam_`); the amended revision (`RevisionSource.kind`
+`amendment`, `upstream`, the plan in `amendments` on the head, its own `model.revised` event) and
+ingest's `unchanged` against the uploaded and every amended hash; `planAmendments` and the
+re-application in ingest with the concurrency token, revival included, and the shared tail
+function; withdrawal (one, or all of a model; no revision on a deleted model); the kind
+`amendment-conflict` and the source `amendment` with their actions; the amendments in
+`ImportFileOutcome` and `PutModelResult`; the routes (`amendable` with its `ETag`, amendments
+with dry run, cost, `partner` and `If-Match`, list, withdrawals, the change-list export with
+`since`); the client regenerated; the web: the form at a question with „Sammeln“, the model
+view's „Ergänzen“ with history, overlay, badge and both downloads (lazy), the mark in the models
+table; the CLI: `analyzr models amend|pull`, `analyzr amendments list|export|withdraw`; docs
+(DEVELOPMENT.md; CONCEPT §2 (`model_revision.xml`, "Hashes"), principle 3, §4 (canonical bytes,
+the OKF layout's "head bytes, verbatim"), §5 (the PUT row, the events `model.amended` and
+`model.amendment_withdrawn`) and §6 ("Principals and provenance"); ADR-0001's decisions 2 and 3,
+whose header carries the amendment line since decision 25). Does not touch: the extractor and
+`FACTS_VERSION`, the rule tier's rules, `FindingKind`, claim input formats, procedures, plugins,
+MCP tools, prompts and snapshots, recordings and reports. Done when:
+
+- `applyAmendments` unit tests: C7 `calledElement` set and replaced; C8 `zeebe:calledElement`
+  replaced and inserted (with and without `extensionElements`, after a `documentation`, into a
+  self-closing start tag, without `xmlns:zeebe` on the root); engine null with and without a
+  zeebe extension, as `Extraction.call` reads it; a message name set on a shared message (the
+  other elements listed and changed) and created with its `messageRef`; a signal; a start and an
+  end name; documentation inserted as the first child; on a Signavio-style fixture with vendor
+  extensions and a default namespace the output equals the input outside the spliced ranges, byte
+  for byte, BOM and CRLF included; values with `&`, `<`, `"` and line breaks escaped; an
+  expression target (also an engine-null `calledElement="=x"`), a `camunda:caseRef` call, a
+  duplicate id and a redeclared prefix refused; a check that would fail is reported, never
+  written; two derivations from the same inputs give identical bytes; the golden C7 and C8
+  fixtures keep the Modeler's child order;
+- an amendment through REST makes an amended head whose facts read the value, whose `source`
+  names the uploaded revision and the plan, on which the rule tier accepts a unique call
+  (decision 9), and which queues the model's relations task; a manual link from the call to the
+  same target is retired; a stale `If-Match` gives 412; the dry run writes nothing and names the
+  findings it would resolve, the pairs to re-judge and a claimed task; a name picked with
+  `partner` accepts the key-tier proposal; two endpoints of one message hold one live amendment; a
+  review-only scope gets 403 `insufficient-scope`; a field no question names is refused („Nur für
+  offene Fragen“);
+- re-import: the same bytes are `unchanged` (also the downloaded amended file, also one downloaded
+  before later amendments); a change elsewhere gives the uploaded revision plus an amended head
+  with the amendment applied, the head with the highest seq, and `hashesAt` at a partner claim's
+  `claimedSeq` after the import returns the amended head's `facts_hash`; an incoming value equal
+  to `after` shows the amendment „im Quellsystem übernommen“, writes no amended revision when
+  nothing else applies and re-applies when a later import brings back `before`; incoming
+  documentation ends a `process-documentation` amendment's writing without a conflict; an
+  incoming expression gives the conflict `expression` with the withdrawal only; any other value
+  gives one `amendment-conflict` item whose „Wert aus dem Quellsystem übernehmen“ and „Meine
+  Ergänzung behalten“ work; a removed element gives `element-missing`; with one conflict live, a
+  new amendment on another element succeeds and leaves the conflict open; an amendment recorded
+  while an import is being extracted is in the head after the import; the import and PUT results
+  carry `amendments` only for models with live amendments;
+- withdrawal writes an amended revision without it, with none left the uploaded bytes;
+  withdrawing all of a model writes one revision; on a deleted model a withdrawal writes no
+  revision and leaves `hashesAt` unchanged, and the amendment route answers 404; revival
+  re-derives; the change list (Markdown, CSV) lists every state, groups per model and honours
+  `since`; both downloads return the expected bytes;
+- an agent token gets `human-decision-required`, the demo `demo-readonly`;
+- Playwright: the form at a question with „Sammeln“, the model view's section with history,
+  overlay and badge; the entry chunk stays under its ceiling;
+- claims of a seeded project without amendments byte-identical; the corpus JSON of `analyzr
+  import` and `seed --json` byte-identical; MCP snapshots, recordings, `eval:replay` and every
+  report unchanged; all gates green.
 
 **S6 "Interviews".** Scope: §5 items 1–4 as skills and scripts; the skill text generator and the
 German start prompts (§3.7). Does not touch: analyzr's core. Done when: a synthetic
@@ -1610,6 +2441,39 @@ außerhalb der Landschaft“ closes an open-question item but never dismisses a 
 keeps "dismissing findings" out); identical bytes keep their first provenance; `nordwind-gaps`
 outside `eval/corpus`.
 
+**Taken by this concept for S5c (decision 25; the owner may overrule):** the actions come from
+the server with each item (`actions`, one primary at most, German labels from code), so the tab,
+the model view and the CLI offer the same; a link accepts a live typed proposal to the picked
+target and otherwise writes a `manual` relation accepted at once, with a German rationale from
+code naming the question; one action route for the actions that need the item (link, place,
+choose copy, outside), while decisions, requeue and the chain's link editing use what exists; R1
+hides partner questions once each anchor has an accepted link to another process (not an agent's
+proposal), and R1b hides a duplicate-id question once no call to a copy waits, both in the read
+model only, never in `visibleFindings` or the claim input; items are versioned by what they ask
+about, not by their model's `facts_hash`; `competing-call` also counts manual relations from a
+call element (a tightening within decision 19's agreed design); a chain finding with a proposed
+placement offers that decision, one with a held placement gives way to the `held` item; a note
+no longer closes an item, only an outside mark (`answered`) or the item's own action does; the
+outside mark is revocable through an append-only withdrawal, and every action that wrote a
+relation or placement has an undo by rejection; the CSV drops `Antwortart` (five columns) and
+still reads S5a sheets; „Gültige Kopie wählen“ decides the ambiguous calls, can place the other
+copies on `@outside` (decision 18) and leaves no mark; a field is amendable only where a question
+names it or where it is empty or unresolved; an amendment is written byte-preserving, never
+through a bpmn-moddle round trip, refused unless the facts read exactly the intended change, and
+deterministic in its bytes; a `message-name` amendment is keyed by the message or signal it
+renames; values are stored sanitized; the uploaded bytes stay a revision and the amended head is
+computed from them with the amendments the plan applies, the plan carried on the head, every
+revision with its own event and the head always the revision with the highest seq; identical
+uploaded bytes and analyzr's own amended bytes stay `unchanged`; at a re-import an amendment is
+applied when the incoming value equals its `before`, counts as carried over (computed, never a
+withdrawal) when it equals its `after`, and is otherwise a conflict question whose primary action
+takes the tool's value; the tool's documentation always wins; amendments stay live through a
+model's deletion, which writes no revision; amendment writes need `review` and `write`; the cost
+is shown before every save; a manual link that an amendment's call or accepted message replaces is
+retired; no new MCP tool, and agents see amended heads like any revision; S5c-1 before S5c-2, both
+before S2. The v1 fields, the 24.2 extension and the re-import refinement are the owner's to
+confirm (§10.9), not taken here.
+
 ## 9. Out of scope
 
 Bundled converters for AML, VSDX, ADOxx or Bizagi packages (until sample exports exist); MCP
@@ -1617,7 +2481,11 @@ Bundled converters for AML, VSDX, ADOxx or Bizagi packages (until sample exports
 lifecycle; assignees, due dates and notifications (decision 10, server mode R1); sync, prune and
 watch; tool API pullers; vision reconstruction; facts v2 and reindex; a non-BPMN document store;
 staged imports; project deletion and purging (§10.6); cross-project relations; a new pipeline
-stage; OKF (deferred, decision 22).
+stage; OKF (deferred, decision 22; when it resumes, the proposal is that `models/<key>.bpmn` holds
+the head, amended or not, with the uploaded revision named as its source, so the export shows
+what the landscape analysis rests on); a BPMN modeler in the browser (the bpmn-js Modeler, every
+element editable: rejected in decision 25.1, which chose targeted amendments, §4.8 c), and any
+write-back or sync to the source tools (decision 7).
 
 ## 10. Open questions for the owner
 
@@ -1649,7 +2517,9 @@ stage; OKF (deferred, decision 22).
    human note and lets notes queue relations and placement tasks; that amends CONCEPT §2, §3 and
    §11 and the M3 and M4 S5 records (§4.5 "Recorded rules"). It also relies on notes blocking
    auto-accept rules (HANDOFF §8 "Auto-accept: notes block"): answer notes keep blocking even if
-   you let plain notes through. May it change these rules, and may it land before your live runs?
+   you let plain notes through. From S7 on, notes on other subjects and the outside marks of S5c-1
+   join the bases too, and recording one (or withdrawing a mark) queues the affected tasks with
+   the same mechanism (§4.6). May it change these rules, and may it land before your live runs?
    It changes nothing in fresh live-run projects but touches the judge-once core.
    Recommendation: yes to the change, after the live runs. S5a (recording and showing answers)
    does not wait for this.
@@ -1671,7 +2541,47 @@ stage; OKF (deferred, decision 22).
    only (precedents `tools/notices`, `apps/agent-sim`, `apps/demo`). Recommendation: confirm that
    reading. Otherwise S3b ships `inspect` alone as a dependency-free script and `normalize-bpmn`
    waits for an exception. S3b needs the answer.
+9. **Model amendments (decision 25.1): four points to confirm before S5c-2.** S5c-1 does not
+   wait for the answers.
+   1. **The fields.** Your chosen option named „Aufrufziel/Key, Nachrichtenname, Start/Ende-Name,
+      Prozess-ID“. This concept (§4.8 c) leaves the process id out and adds the documentation of
+      a process that has none. Process id: it is the anchor of every relation and placement at
+      the process and the target of other models' calls; renaming one copy of a duplicate id
+      sends its accepted relations and placements to `missing` until re-anchoring (R2), lets
+      callers that meant it be accepted by decision 9 towards the other copy without anyone
+      seeing it, and needs an id rewrite across the file. For the question „Prozess-ID mehrfach
+      vergeben“ you get „Gültige Kopie wählen“ instead (the ambiguous calls decided in one step,
+      the other copies optionally set to „außerhalb“ in the value chain), and the rename stays in
+      the tool. Documentation: the question „Prozess ohne Dokumentation“ names it, and it is what
+      agents read most to place a process; without it that question could only take a text
+      note, the kind of answer you questioned. A field is amendable only where a question names
+      it or where it is empty; values that already resolve are not replaced in v1. Recommendation:
+      yes to both, in S5c-2; process ids later, with re-anchoring, if real landscapes need them
+      (§6).
+   2. **Amended call targets and the trust rule (extends decision 24.2).** Under 24.2 a call in a
+      derived revision (no engine, for example a Signavio export) is only proposed. A call target
+      you set by amendment was picked by a human from the landscape's processes, so the concept
+      counts it as modelled and the rule tier keeps accepting it, whatever the uploaded
+      revision's class, and leaves it off the list „Vor der Vertrauensregel angenommen“ (§3.10).
+      Recommendation: yes.
+   3. **Re-import, refining „solange das Element existiert“.** If the element exists but the tool
+      changed the field since, the amendment is not written over the tool's value; it becomes the
+      question „Ergänzung nicht mehr anwendbar“, whose main action takes the tool's value. If the
+      tool now has the amendment's value itself, the amendment counts as carried over („im
+      Quellsystem übernommen“) and is not written again; it applies again if a later export loses
+      the value. Documentation from the tool always wins (§4.8 c). Recommendation: keep.
+   4. **Linked diagrams in Signavio-style exports.** A link to another diagram arrives as a
+      collapsed subprocess without `calledElement` (to verify, §10.4), which facts v1 do not see,
+      so „Aufrufziel/Key“ in v1 covers call activities only and such links raise no question. (a)
+      A further operation turns such a subprocess into a call activity with a `calledElement` (a
+      byte-preserving rename of its tags, the planner treating the collapsed subprocess as the
+      value before), plus a signal „Zugeklappter Teilprozess ohne Aufrufziel“ that reads the
+      bytes, since facts v1 have no fact for it. (b) The model view links such an element with
+      „Verknüpfen mit …“ from its process (a manual relation, already in S5c-1, §4.8 a), and the
+      model itself is fixed in the tool. Recommendation: (b) now and (a) as a follow-up once a
+      real or sandbox export confirms the shape (§10.4), so the operation is not built on an
+      unverified assumption.
 
 HANDOFF §8 "First users" is answered in part: the consultant works with the CLI and the skills
-(24.1), and answering also works in the web UI (24.3). Manifest upload and preview in the web
+(24.1), and answering also works in the web UI (24.3), by action since decision 25. Manifest upload and preview in the web
 follow decision 3. Whether Git/bpmiq.yml import moves earlier stays open.

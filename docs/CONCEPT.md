@@ -8,7 +8,7 @@ analyzr is a headless store for process landscapes. It holds BPMN models, the fa
 
 1. **Headless first.** Every capability is a domain use case, reachable through REST and, where agents need it, through MCP. The UI has no private endpoints.
 2. **Code computes facts, agents judge, humans decide.**
-3. **Postgres is the record; files are for exchange.** BPMN comes in, OKF goes out, and nothing flows both ways.
+3. **Postgres is the record; files are for exchange.** BPMN comes in, OKF goes out, and nothing flows both ways. (Owner decision 25 adds targeted model amendments, stored as amended revisions computed from the uploaded bytes and downloadable as corrected BPMN and a change list, never written back; M6 §4.8.)
 4. **One model is one BPMN file with a stable key.** Collaborations are never split.
 5. **Append-only history, authorization in the domain.** Revisions, facts, assertions, submissions, no-links and events never change. Every use case checks access, and composite foreign keys back the checks up.
 6. **The agent is the operator's choice.** analyzr ships no runner and holds no LLM credentials; whoever runs the agent brings model, credentials and compute.
@@ -216,7 +216,7 @@ The stage shows in `GET /projects/{p}/models?stage=` and MCP `list_processes`; h
 | Offline reading, diffs, PR review | via export | native |
 | Build cost | low | high (clone, merge, credentials, webhooks) |
 
-Git only wins in rows a read-only export covers too. **Decision: hybrid, but asymmetric.** Postgres is canonical for everything computed or decided; BPMN bytes are canonical at their origin (the revision for uploads; a linked repo, later, mirrored with `source={repo,commit,path}` and closed to UI upload).
+Git only wins in rows a read-only export covers too. **Decision: hybrid, but asymmetric.** Postgres is canonical for everything computed or decided; BPMN bytes are canonical at their origin (the revision for uploads; a linked repo, later, mirrored with `source={repo,commit,path}` and closed to UI upload). (Owner decision 25: a head may be an amended revision computed from an uploaded one, which stays stored as it came; M6 §4.8 c.)
 
 **Import.** Every adapter yields `{path, bytes, sha256, source}` for `ingest(projectId, files, actor)`; the model key is the slugified path (`modelKeyFromPath`, with the BPMN file rule `.bpmn`, `.bpmn2`, `.bpmn20.xml`, `.xml` in `@analyzr/contracts`, shared by the server, the CLI and the web since M6 S1). Upload/`PUT`, the web upload and `analyzr import <dir>` ship in v1 (the CLI derives every key before sending and refuses a key twice across its batches; extractor warnings come back in the results, not stored), a one-shot bpmiq.yml import (vendored MIT `content.ts`) in R2, the import bundle with a manifest is proposed for M6 S2, linked sync and OKF restore later.
 
@@ -462,8 +462,8 @@ packages/{contracts,client,bpmn-facts,relations,procedures}
 
 - **Versioning:** project versions, branches, named tags and a diff view (later one `landscape_tag(project_id, name, seq)` table), the landscape "as of seq".
 - **Pipeline:** neighbour rechecks, priorities, lease renewal, a judgment cache beyond judging each pair once per change of its models (§3), `agent_run` bookkeeping, minimum procedure versions, a runner shipped with analyzr.
-- **Relations and content:** cross-project relations, external placeholders, error/escalation/link/compensation relations, DMN refs, fuzzy data-store matching, agent findings (owner decision 24 lifts this in part: gap reports bound to submissions, without a lifecycle, M6 S7), comments (decision 24 adds answers to open questions, M6 S5a), embeddings, runtime data.
-- **Sync and export:** linked Git sync, OKF restore, foreign OKF, the Web Modeler, `messages/`, `findings/` and `log.md` in the export.
+- **Relations and content:** cross-project relations, external placeholders, error/escalation/link/compensation relations, DMN refs, fuzzy data-store matching, agent findings (owner decision 24 lifts this in part: gap reports bound to submissions, without a lifecycle, M6 S7), comments (decision 24 adds answers to open questions, M6 S5a; decision 25 turns them into actions with optional notes, M6 S5c), embeddings, runtime data.
+- **Sync and export:** linked Git sync, OKF restore, foreign OKF, the Web Modeler (owner decision 25 lifts this in part: targeted amendments of the fields open questions name, set through forms as amended revisions computed from the uploaded bytes, re-applied at every import and exported as corrected BPMN and a change list for the source tool; no modeler and no write-back, M6 §4.8), `messages/`, `findings/` and `log.md` in the export.
 - **Platform and auth:** stdio MCP, MCP subscriptions, an authorization server or OAuth proxy in analyzr, Keycloak CIMD while experimental, Enterprise-Managed Authorization (ID-JAG), token exchange, DPoP/mTLS, WorkOS API keys, personal user tokens (`analyzr-cli` uses device flow), row-level security, a shared multi-tenant instance.
 - **Decisions:** deciding via MCP; beyond the owner's auto-accept rules (decision 19): a glossary, fixed mappings, rules that re-confirm after an endpoint change, narrowing a rule by procedure (decision 24 adds one narrowing: rule-tier call proposals of derived revisions by derived kind and converter, M6 §3.10).
 

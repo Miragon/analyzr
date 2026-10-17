@@ -2,6 +2,7 @@
 
 - Status: **proposed** (2026-10-05)
 - Amended 2026-10-11 by owner decision 23 (own repository `Miragon/analyzr`, MIT)
+- Amended 2026-10-17 by owner decision 25 (targeted model amendments as revisions computed from uploaded bytes; corrected BPMN and a change list as downloads; no write-back; `docs/M6-INTEGRATION-AND-GAPS.md` §4.8)
 - Deciders: Dominik Horn
 - Related: `docs/CONCEPT.md`
 

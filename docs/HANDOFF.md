@@ -1,4 +1,4 @@
-# analyzr – Handoff (status as of 2026-10-16)
+# analyzr – Handoff (status as of 2026-10-17)
 
 This file lets another person or AI agent continue analyzr without the original
 conversation. It records **where we stand, what the owner decided, what is open and what comes
@@ -81,15 +81,20 @@ and code are in English.
   fixes: answers recorded in the append-only `open_question_answer`, migrations 0011/0012, one by
   one or from the returned CSV, in the web UI and with `analyzr questions answer`; note answers on
   relations and placements through the note use cases; live-run neutral; M6 §8 "S5a as
-  delivered"). Next per M6 §8's order: S2 (provenance, manifest, dry run) and the trust rule
-  S2c, then S3c and S6; after the owner's live runs S5b, S7 and facts v2 as recommended (§7
-  "M6").
+  delivered"). **Owner decision 25** (2026-10-17, after S5a): every open question is answered by
+  an action (link, place, decide, „Liegt außerhalb der Landschaft“), text only as an optional
+  note, and the consultant may fill in the fields a question names in the BPMN model (targeted
+  amendments as amended revisions computed from the uploaded bytes, re-applied at every import,
+  exported as corrected BPMN and a change list; no modeler), now, before S2 (M6 §2, §4.8). Next per M6 §8's order: **S5c-1
+  "Actions"** (no BPMN writing), **S5c-2 "Model amendments"**, then S2 (provenance, manifest, dry
+  run) and the trust rule S2c, then S3c and S6; after the owner's live runs S5b, S7 and facts v2
+  as recommended (§7 "M6").
 
 ## 2. Read in this order
 
 | # | Document | What it holds |
 |---|---|---|
-| 1 | `docs/adr/0001-headless-landscape-store.md` | ADR-0001, the architecture decision (status: proposed; amended by decision 23) |
+| 1 | `docs/adr/0001-headless-landscape-store.md` | ADR-0001, the architecture decision (status: proposed; amended by decisions 23 and 25) |
 | 2 | `docs/CONCEPT.md` | The full spec: domain, pipeline, review workflow, store vs Git/OKF, interfaces, auth (local mode v1, server mode R1), agents/procedures, eval, stack, repository, license and releases, roadmap, open questions |
 | 3 | `docs/DEVELOPMENT.md` | How to run, test and extend the workspace (the operational source of truth) |
 | 4 | `docs/M1-SKELETON.md`, `docs/M2-PIPELINE-REVIEW.md`, `docs/M3-RELATIONS-PROCEDURE.md` | Scope and status of the milestones |
@@ -97,7 +102,7 @@ and code are in English.
 | 5 | `docs/M4-VALUE-CHAIN.md` | The value chain milestone (concept, slices, open questions) |
 | 6 | `eval/README.md`, `eval/tools/SPEC.md`, `eval/value-chains/README.md` | Test landscapes, trap catalog, generator/validator, golden value chains |
 | 7 | `examples/agents/README.md` | The reference agent setups (Claude Code, Claude Desktop, Codex) |
-| 8 | `docs/M6-INTEGRATION-AND-GAPS.md` | M6, in progress: integration toolkit, gap analysis, interviews (concept, decision 24, slices with what each delivered, the `eval:descriptive` results in §3.11, the `get_landscape` limit in §6, open questions) |
+| 8 | `docs/M6-INTEGRATION-AND-GAPS.md` | M6, in progress: integration toolkit, gap analysis, interviews (concept, decisions 24 and 25, answering by action and model amendments in §4.8, slices with what each delivered, the `eval:descriptive` results in §3.11, the `get_landscape` limit in §6, open questions) |
 
 ## 3. Repository state
 
@@ -230,6 +235,31 @@ and code are in English.
     `tools/integrate`. (8) Agent submission summaries are shown **read-only** in „Offene
     Fragen“ and the model view (reverses M3-RELATIONS-PROCEDURE.md question 1). (9) Work step by
     step („Gehe Schritt für Schritt vor“).
+
+25. **Answering by action, and targeted model amendments, M6 S5c** (2026-10-17, after S5a was
+    delivered; details and quotes in `docs/M6-INTEGRATION-AND-GAPS.md` §2 and §4.8). The owner:
+    „ich verstehe die Antwortarten nicht? Das soll für den User alles möglichst einfach sein, der
+    user soll auch anpassungen am bpmn modell machen können. also fehlende Keys setzen, modelle
+    zur Verknüpfung auswählen usw. was bringen die Textantworten?“ (1) **BPMN changes as targeted
+    amendments** („Gezielte Ergänzungen (Empfohlen)“): only the fields a question names, through a
+    form at the element; a new revision with the provenance „in analyzr ergänzt“; the next import
+    re-applies it while the element exists, otherwise it becomes a question; exportable as
+    corrected BPMN and as a change list for the source tool. Rejected: a full modeler in the
+    browser, and no BPMN changes at all. (2) **Now, before S2** („Jetzt, vor S2 (Empfohlen)“), as
+    slice S5c: the three answer kinds go, „Liegt außerhalb der Landschaft“ becomes an action of
+    its own, real amendments replace „Wird im Modell ergänzt“, and text stays only as an
+    optional note. It amends CONCEPT §11's deferral of "the Web Modeler" (lifted in part, no
+    modeler), S5a's answer kinds, M6 §8's order, and the reading of ADR-0001 (decisions 2 and 3)
+    and CONCEPT principle 3 and §4 that analyzr only stores uploaded bytes (ADR-0001's header and
+    CONCEPT carry a forward note); imports stay one-way (decision 7), nothing is written back to a
+    source tool. The concept refines „while the element exists“: a field the tool changed since is
+    not overwritten but asked about (`value-changed`), and a value the tool took over counts as
+    carried over and is not written again. It also extends S2c's rule (decision 24.2): call
+    targets set by amendment count as modelled. Open, needed before S5c-2 (M6 §10.9): the fields of
+    v1 (without process ids, with missing process documentation), the 24.2 extension, the
+    re-import refinement, and how to treat Signavio's linked diagrams (collapsed subprocesses
+    without `calledElement`); the concept recommends yes, yes, keep, and a link from the model
+    view now with a conversion operation after a real export.
 
 **Taken during decision 20 by the implementing agent (the owner may overrule; details in
 DEVELOPMENT.md "Demo deployment (Fly.io)"):** the seed is made **while the image is built** and
@@ -776,13 +806,28 @@ preview, `analyzr questions answer` (one answer or `--from <csv>`), the routes `
 only), the append-only table `open_question_answer` (migrations 0011/0012); an answer on a
 relation or placement is a human note through the existing note use cases (a held placement
 stays held, so its process is not due), every other answer keeps its text; claims of seeded
-projects pinned byte for byte. **Next**, per M6 §8's order: S2a/S2b (provenance, manifest, dry
-run) and S2c, the trust rule of decision 24.2, then S3c (renderer and spec YAML, the ad-hoc
-converter path, the bundled CLI) and S6 (interviews); after the owner's live runs S5b, S7 and
-facts v2 as recommended (M6 §3.11 and §6: the reindex with judgement carry-over first). The
-owner's review of S1–S5a, ideally on a sandbox or anonymized export (M6 §10.4), can run
-alongside. Nothing of M6 changes released procedures, claim inputs or the MCP surface before
-the owner's live runs.
+projects pinned byte for byte. **Owner decision 25** (2026-10-17, §4) followed S5a: answer by
+action, amend the model where a question names a field, now and before S2 (M6 §4.8). **Next**,
+per M6 §8's order: **S5c-1 "Actions"** (about 4.5 d: an action on every open question from the
+server, the action route for link, place, choose copy and outside, a link accepting a live typed
+proposal before it writes a manual relation, items versioned by what they ask about so marks
+survive amendments elsewhere, the safeguard `competing-call` also counting manual relations from
+a call, the revocable outside mark with migrations 0013/0014, notes that no longer close items,
+the five-column CSV, the actions with undo in the tab and the model view,
+`analyzr questions outside|link|place`; no BPMN writing), then **S5c-2 "Model amendments"**
+(about 8 d: byte-preserving, deterministic `applyAmendments` in `@analyzr/bpmn-facts`,
+`model_amendment` with migrations 0015/0016, uploaded plus amended revisions with the plan on the
+head, re-application at every import with the question „Ergänzung nicht mehr anwendbar“,
+withdrawal, the cost of each save shown in its dry run, the change list and BPMN downloads, the
+form at the question and „Ergänzen“ in the model view, `analyzr models amend|pull` and `analyzr
+amendments`), then S2a/S2b (provenance, manifest, dry run, built on S5c-2's revisions) and S2c,
+the trust rule of decision 24.2, then S3c (renderer and spec YAML, the ad-hoc converter path, the
+bundled CLI) and S6 (interviews); after the owner's live runs S5b, S7 and facts v2 as recommended
+(M6 §3.11 and §6: the reindex with judgement carry-over first). The owner's answers to M6 §10.9
+(the fields of v1, the 24.2 extension, the re-import refinement, linked diagrams) are needed
+before S5c-2, not before S5c-1. The owner's review of S1–S5a, ideally on a sandbox or anonymized export
+(M6 §10.4), can run alongside. Nothing of M6 changes released procedures, claim inputs or the
+MCP surface before the owner's live runs.
 
 ### Paused milestone: process network map, M5 (owner decisions 22 and 24)
 
@@ -854,8 +899,9 @@ Git/bpmiq.yml import, MCP App widget.
 | Demo: no-links in the review | Decision 20(4) asks the review to show no-links; the simulation agent's are all on pairs without a relation, where no „Einwand“ can appear. The review round added the inbox tab „Kein Zusammenhang“ (`GET …/no-links`, read-only, every role and mode, model and stage filters). Keep it there, move it (e.g. per model in the model view), or also want example disagreements („Einwand“ on proposals, which needs a second agent's verdict on judged pairs and so conflicts with decision 17)? | Owner decision 20, review round |
 | M6: address form | „Sie“ in interview guides for customers, „du“ elsewhere? | M6 §10.3 |
 | M6: sample exports | Sandbox instances or anonymized exports of ARIS, Signavio, ADONIS, Bizagi, Visio? | M6 §10.4 |
-| M6: answers re-queue | May S5b widen the relations judgement basis by human notes and queue tasks (after the live runs)? | M6 §10.5 |
+| M6: answers re-queue | May S5b widen the relations judgement basis by human notes and queue tasks (after the live runs), and from S7 on also by subject notes and outside marks? | M6 §10.5 |
 | M6: erasure | One database per customer engagement for now, a purge use case with server mode? | M6 §10.6 |
+| M6: model amendments | Four points, needed before S5c-2: v1 without process ids (anchors of relations, placements and calls; „Gültige Kopie wählen“ instead) and with the documentation of undocumented processes, which your option text did not list? Call targets set by amendment count as modelled under S2c's trust rule (extends decision 24.2)? At a re-import a field the tool changed becomes a question instead of being overwritten, and a value the tool took over counts as carried over? Signavio's linked diagrams (collapsed subprocesses): a link from the model view now, a conversion operation after a real export? | M6 §10.9, decision 25 |
 
 ## 9. Working agreements and pitfalls
 
