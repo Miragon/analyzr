@@ -353,9 +353,11 @@ test('nordwind-handel: the open questions read, exported and in the model view',
   expect(download.suggestedFilename()).toBe('offene-fragen-nordwind-handel.csv');
   await page.goto('/projects/nordwind-handel');
   await page.getByTestId('model-row').first().getByRole('link').first().click();
-  // the model view's „Fragen“ (UX2b: „Zu klären“ only)
-  const section = page.getByTestId('model-open-questions');
-  await expect(section.getByRole('heading', { name: /^Fragen \(\d+\)$/ })).toBeVisible();
+  // the model view's tab „Fragen“ (UX2b: „Zu klären“ only; UX3: a tab of the panel)
+  const tab = page.locator('[data-testid=panel-tab][data-tab=questions]');
+  await expect(tab).toHaveText(/^Fragen\d+$/);
+  await tab.click();
+  await expect(page.getByTestId('model-open-questions')).toBeVisible();
   await noWriteActions(page);
 });
 

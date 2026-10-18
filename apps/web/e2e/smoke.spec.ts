@@ -127,7 +127,7 @@ test('projects → relations → model view', async ({ page }) => {
   // … and the switch leads to the called process in the other model
   await page.getByTestId('switch-model').click();
   await expect(page).toHaveURL(new RegExp(`/models/${CALL_TO}\\?relation=rel_`));
-  await expect(page.getByRole('heading', { name: CALL_TO })).toBeVisible();
+  await expect(page.getByTestId('model-header')).toContainText(CALL_TO);
   await expect(page.getByTestId('bpmn-canvas')).toHaveAttribute('data-imported', 'true');
   await expect(page.locator('[data-testid=model-relation][data-selected=true]')).toHaveCount(1);
 });
@@ -240,7 +240,8 @@ test('upload: a bundle folder with its manifest imports as `analyzr import` does
   );
   const [first] = manifest.files;
   await page.goto(`/projects/${key}/models/${first?.key ?? ''}`);
-  await page.getByTestId('model-provenance-open').click();
+  await page.getByTestId('model-more').click();
+  await page.getByTestId('menu-provenance').click();
   const panel = page.getByTestId('model-provenance');
   await expect(panel).toContainText('Aus Signavio 19.6.0 · exportiert am 14.10.2026 (angegeben)');
   await expect(panel).toContainText(first?.externalPath ?? '');

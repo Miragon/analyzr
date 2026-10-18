@@ -1220,8 +1220,21 @@ describe('the model view’s „Ergänzen“, badge and downloads (M6 S5c-2)', (
       .spyOn(HTMLAnchorElement.prototype, 'click')
       .mockImplementation(() => undefined);
     const { calls, user } = setup('/projects/demo/models/a/order', { routes: routes({ n: 0 }) });
-    const badge = await screen.findByTestId('amended-badge');
+    // the chip in the header (one of at most three, UX3)
+    const badge = await screen.findByTestId('amended-badge', {}, { timeout: 10_000 });
     expect(badge.textContent).toBe('In analyzr ergänzt (1) · aus r2');
+    // „Mehr“ holds „Herkunft“, „Revisionen“, the downloads and an info line (UX3)
+    await user.click(await screen.findByTestId('model-more'));
+    expect((await screen.findAllByRole('menuitem')).map((m) => m.textContent)).toEqual([
+      'Herkunft …',
+      'Revisionen (3) …',
+      'BPMN herunterladen',
+      'Original herunterladen',
+      'Änderungsliste (Markdown)',
+      'Änderungsliste (CSV)',
+    ]);
+    expect(screen.getByTestId('menu-info').textContent).toMatch(/· Kopfrevision r3$/);
+    await user.click(screen.getByRole('menuitem', { name: 'Revisionen (3) …' }));
     expect(
       within(await screen.findByTestId('model-revisions'))
         .getAllByTestId('model-revision')
@@ -1231,14 +1244,9 @@ describe('the model view’s „Ergänzen“, badge and downloads (M6 S5c-2)', (
       expect.stringMatching(/^r2 · importiert · /),
       expect.stringMatching(/^r1 · importiert · /),
     ]);
-    await user.click(screen.getByTestId('model-downloads'));
-    expect((await screen.findAllByRole('menuitem')).map((m) => m.textContent)).toEqual([
-      'BPMN herunterladen',
-      'Original herunterladen',
-      'Änderungsliste (Markdown)',
-      'Änderungsliste (CSV)',
-    ]);
-    await user.click(screen.getByRole('menuitem', { name: 'Original herunterladen' }));
+    await user.keyboard('{Escape}');
+    await user.click(screen.getByTestId('model-more'));
+    await user.click(await screen.findByRole('menuitem', { name: 'Original herunterladen' }));
     await waitFor(() => expect(click).toHaveBeenCalledTimes(1));
     expect((click.mock.contexts[0] as HTMLAnchorElement).download).toBe('a-order-original-r2.bpmn');
     expect(calls.some((c) => c.path === `${M}/revisions/rev_UPLOADED/content`)).toBe(true);
@@ -1256,7 +1264,9 @@ describe('the model view’s „Ergänzen“, badge and downloads (M6 S5c-2)', (
   });
 
   it('says where a field is changed instead, next to one that can be set', async () => {
+    // no open question offers these fields here (with one, its card is the one entry, UX3)
     setup('/projects/demo/models/a/order?element=Call_1', {
+      list: [],
       routes: amendableRoutes({
         Call_1: element('Call_1', [
           { ...CALL_FIELD, value: 'Process_Pay', settable: false, reason: 'only-open-questions' },
@@ -1276,6 +1286,30 @@ describe('the model view’s „Ergänzen“, badge and downloads (M6 S5c-2)', (
     expect(within(section).getByTestId('amend-section-reason').textContent).toBe(
       'Diesen Wert änderst du im Quellsystem; ergänzen lässt sich nur, wonach eine offene Frage fragt oder was leer ist.',
     );
+  });
+
+  it('leaves out a field an open question of the element offers: its card is the one entry (UX3)', async () => {
+    setup('/projects/demo/models/a/order?element=Call_1', {
+      routes: amendableRoutes({
+        Call_1: element('Call_1', [
+          CALL_FIELD,
+          {
+            ...CALL_FIELD,
+            op: 'event-name',
+            element: 'end-event',
+            typeLabel: 'Endereignis',
+            fieldLabel: 'Name',
+            suggestions: {},
+          },
+        ]),
+      }),
+    });
+    const section = await screen.findByTestId('amend-section', {}, { timeout: 10_000 });
+    expect(
+      within(section)
+        .getAllByTestId('amend-section-field')
+        .map((f) => f.dataset['op']),
+    ).toEqual(['event-name']);
   });
 
   it('shows no section where nothing can be set and nothing was amended', async () => {

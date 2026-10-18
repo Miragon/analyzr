@@ -170,8 +170,16 @@ and code are in English.
   the pure `importImpact` with the dry runs `POST …/imports?dryRun=true` and `PUT …?dryRun=true`
   (permission `read`) and `GET …/models/{m}/deletion-impact`, `analyzr import --dry-run` and the
   deletion impact in `analyzr models delete`, and the web's „Vorschau“ before „Importieren“; the
-  follow-up (judgements, tasks, placements) still open; live-run neutral. **Next:** UX3 → UX4 →
-  UX5 → UX6 → UX9 (the owner: „Sonst kannst du weitermachen“), alongside S2c (the trust rule),
+  follow-up (judgements, tasks, placements) still open; live-run neutral. **UX3 „Modellansicht“**
+  (done 2026-10-18 on the branch, every gate green, the UI load guard and the whole Playwright
+  suite against a scratch stack; UX-SIMPLIFICATION.md §7 "UX3 as delivered"): the shared canvas
+  panel and header (an aside from 1024 px, below it a sheet collapsed to its handle, the canvas
+  ending above it, so the bpmn.io watermark stays unobstructed), the tabs „Fragen (n)“ and
+  „Relationen (n)“ filtered by a selected element, two-line relation cards, the crumb as the one
+  way back, at most three chips and „Mehr“ (Herkunft, Revisionen, the downloads); the panel 10
+  controls and 75 words on `vertrieb/order-handling` (37 and 515 before), „Gutschrift“ on a phone
+  shows its name with the canvas at 86 %; web only, live-run neutral. **Next:** UX4 → UX5 → UX6 →
+  UX9 (the owner: „Sonst kannst du weitermachen“), alongside S2c (the trust rule),
   S2b's follow-up and S3c; S6 after them; after the owner's
   live runs S5b, S7 and facts v2 as recommended (§7 "M6"; M6 §8 "After S2a").
 
@@ -981,7 +989,7 @@ eine gute Richtung“; UX-SIMPLIFICATION.md §7 "Owner walkthrough"); its one fi
 model from a question card, is fixed with a labelled button on the card. **Next**, in the
 proposed order (Q10), which the owner kept („Sonst kannst du weitermachen“): UX7 („Hochladen“, „Agent verbinden“; done 2026-10-18, UX-SIMPLIFICATION.md §7 "UX7 as delivered") → UX8 (done 2026-10-18, "UX8 as delivered"; S2a's web
 parts: „Herkunft“, the badges, the manifest of a dropped folder) → S2b (`importImpact`, the dry
-runs, the deletion impact, absent keys within `source.scope`) → UX3 (model view) → UX4 (question
+runs, the deletion impact, absent keys within `source.scope`; done 2026-10-18 except its follow-up) → UX3 (model view; done 2026-10-18, "UX3 as delivered") → UX4 (question
 actions) → UX5 („Relationen“ and the review screen) → UX6 (value chain) → UX9 (result views,
 „Annahmeregeln“, the projects summary), alongside S2c (the trust rule of decision 24.2) and S3c
 (renderer and spec YAML, the ad-hoc converter path, the bundled CLI); then S6 (interviews); after

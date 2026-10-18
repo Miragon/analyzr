@@ -548,7 +548,10 @@ test('the model view’s „Fragen“ lists the open questions „Zu klären“ 
 
   await page.goto(`/projects/${PROJECT}/models/${modelKey}`);
   const section = page.getByTestId('model-open-questions');
-  await expect(section.getByRole('heading', { name: `Fragen (${expected.length})` })).toBeVisible();
+  // the panel opens on its tab „Fragen“ with the count (UX3)
+  const tab = page.locator('[data-testid=panel-tab][data-tab=questions]');
+  await expect(tab).toHaveAttribute('aria-selected', 'true');
+  await expect(tab).toHaveText(`Fragen${expected.length}`);
   await expect(section.getByTestId('open-question')).toHaveCount(expected.length);
   expect(
     await section

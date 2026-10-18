@@ -717,7 +717,12 @@ describe('model view section „Fragen“', () => {
     await waitFor(() =>
       expect(section.textContent).toContain('Zu diesem Modell ist nichts zu klären.'),
     );
-    expect(within(section).getByRole('heading', { name: 'Fragen (0)' })).toBeDefined();
+    // the panel opens on „Relationen“ then; the tab says „Fragen 0“ (UX3)
+    const tabs = screen.getAllByTestId('panel-tab');
+    expect(tabs.map((t) => [t.textContent, t.getAttribute('aria-selected')])).toEqual([
+      ['Fragen0', 'false'],
+      ['Relationen0', 'true'],
+    ]);
   });
 });
 

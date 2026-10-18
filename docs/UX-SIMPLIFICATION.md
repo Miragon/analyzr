@@ -4,7 +4,7 @@ Status: **decided** (owner decision 26, 2026-10-18: every "Ask now" question of 
 the recommended option; HANDOFF §4); proposal of 2026-10-17, revised the same day after a UX and a
 feasibility critique · Branch: `feat/integration-and-gaps` (the first wave UX2a, UX1 and UX2b
 delivered on it on 2026-10-18, §7; the owner's walkthrough the same day, §7 "Owner
-walkthrough"; UX7, UX8 and S2b's „Vorschau“ delivered the same day; next UX3) · Source: four user-need audits of the web UI on the agent-created scratch stack
+walkthrough"; UX7, UX8, S2b's „Vorschau“ and UX3 delivered the same day; next UX4) · Source: four user-need audits of the web UI on the agent-created scratch stack
 `analyzr-uxaudit` (seeded `nordwind-handel` with its chain and a simulation agent run,
 `signavio-beispiel` from the CLI bundle import, two projects made from the raw synthetic Signavio
 export; 1440x900 and 390x844), torn down after the audit · Relates to: HANDOFF §4 decisions 8, 10,
@@ -1616,6 +1616,56 @@ filters both tabs; at 390x844, measured against job 5 (find, open, show), the mo
 the canvas covers at least 55 % of the viewport and the sheet is collapsed; the header shows at most
 three chips and „Mehr“; the watermark check passes (README's rule); the panel API covers the review
 screen and the chain on paper.
+
+**UX3 as delivered** (2026-10-18, on the branch, every gate green; DEVELOPMENT.md "UX3"). Web
+only, live-run neutral. The canvas pages' shared parts: `components/canvas-panel.tsx`
+(`CanvasPanel`: from 1024 px, `lib/media.ts` `CANVAS_WIDE`, the aside at the right; below it a
+bottom sheet collapsed to its handle „Fragen 3 · Relationen 7“, expanded the handle names the
+panel; the handle a button with `aria-expanded` and `aria-controls`, the collapsed content `inert`,
+Escape collapses, expanding moves the focus into the content, the height change off under
+`prefers-reduced-motion`; `PanelTabs` and `PanelTabPanel`, a light tablist with the arrow keys,
+Home and End, no Radix in the entry), `lib/canvas-sheet.ts` (`useCanvasSheet`: the canvas
+container's bottom inset, the handle's height collapsed and the sheet's 60dvh expanded, so the
+sheet never overlays the canvas and the watermark moves up with the container; `bpmn-canvas.tsx`
+calls bpmn-js `canvas.resized()` from a ResizeObserver) and `components/canvas-header.tsx`
+(`CanvasHeader`: from 1024 px a card with the crumb „<Projekt> › Übersicht“, the title, a small
+subtitle, at most three chips and „Mehr“; below it a top bar with „‹ Übersicht“, the title, „Mehr“
+and the first chip). The model view (`routes/model-view.tsx`): the model's name as the title, its
+key small below; the chips stage, „In analyzr ergänzt (n) · aus r1“ and the derived chip (the
+badge „N Ergänzungen nicht mehr anwendbar“ went: its conflicts are questions under „Fragen“);
+„Mehr“ (`ModelMore`, in the amendments chunk: „Herkunft …“ and „Revisionen (n) …“ as dialogs, „In
+Signavio öffnen“, „BPMN herunterladen“, „Original herunterladen“, „Fürs Quellsystem“ with the change
+list, the line „<Engine> · Kopfrevision rN“); the tabs „Fragen“ (the model's `ask` items, the
+collection's bar, „Ergänzen“ only for fields no open question of the element covers, „Verknüpfen
+mit …“ on a collapsed subprocess) and „Relationen“, both counted; the panel opens on „Fragen“ when
+there are questions or the selected element offers „Ergänzen“ or „Verknüpfen mit …“, else (and for
+a selected relation) on „Relationen“, settled once per selection, so answering the last question
+does not flip the tab; a selected element filters both tabs, its label in the panel header with
+„Alle zeigen“; the section „Befunde“ went (the canvas marker stays); the relation cards in two
+lines (type icon, element, status; the arrow with the other end's name and key; the confidence on
+a proposal only; „Aufruf, ausgehend: …“ as the accessible name; the tier left for the review
+screen); the legend at the bottom left until the first click on an element, then behind an info
+button next to the zoom controls (`LightPopover`). `collapsedSubprocess` moved to
+`lib/collapsed-subprocess.ts` (the pickers re-export it), so the entry tells the tab without loading
+the pickers. Entry chunk 219.8 KB gzip (218.1 before, within +3 KB). The panel API against the
+other two pages, on paper: the review screen (UX5) passes the relation's name as `summary` and its
+decisions as children; J/K/A/R/H/C stay window-level shortcuts, so they work while the sheet is
+collapsed; its previous and next need a slot beside the handle, which as a button cannot hold
+buttons (a prop for it comes with UX5). The chain page (UX6) passes its edit panel as children and
+takes its `INSET` from `useCanvasSheet`'s inset. Measured with the UI load guard on the scratch
+stack `analyzr-ux3` (`nordwind-handel` after the simulation agent):
+
+| Done when | Before | After (UX3) |
+|---|---|---|
+| First question, `vertrieb/order-handling` at 1440x900 | 1,275 px down the panel | ends inside the panel, no scrolling |
+| The panel's controls, words | 37, 515 | 10, 75 (≤ 25, ≤ 300) |
+| The whole view | 35 controls, 555 words (28, 324 after UX8) | 18, 196 |
+| A selected element | filters the relations | filters both tabs, „Alle zeigen“ |
+| „Gutschrift“ at 390x844 | the panel covers the header and the canvas | the name in the top bar answers `elementFromPoint`, the sheet collapsed, the canvas 86 % of the screen (≥ 55 %) |
+| Header | „← Relationen“ and „Modelle“; „Herunterladen“, „Revisionen“ and „Herkunft“ beside the chips | the crumb, at most three chips and „Mehr“ |
+| bpmn.io watermark | visible only by painting over the panel's corner | answers `elementFromPoint` at 390 (sheet collapsed and expanded), 800, 1024 and 1440 px |
+
+Not verified: other browsers than Chromium, a real phone, a screen reader.
 
 **UX4 "Question actions".** Files: `components/open-questions/action-panels.tsx`, `amend-panel.tsx`,
 `question-actions.tsx`, `note-dialog.tsx`, `use-note-dialog.ts`; `components/amendments/amend-form.tsx`,

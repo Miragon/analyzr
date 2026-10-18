@@ -383,19 +383,22 @@ test('the model view: „Ergänzen“ with the history, the overlay, the badge, 
   ).toEqual(['Call_Rechnung', 'End_Auftrag', 'Start_Auftrag']);
   await expect(overlays.first()).toHaveText('ergänzt');
 
-  // the header's badge names the uploaded revision; the revisions list both kinds
+  // the header's badge names the uploaded revision; „Mehr › Revisionen“ lists both kinds (UX3)
   await expect(page.getByTestId('amended-badge')).toHaveText('In analyzr ergänzt (4) · aus r1');
-  await page.getByTestId('model-revisions').locator('summary').click();
+  await page.getByTestId('model-more').click();
+  await page.getByTestId('menu-revisions').click();
   await expect(page.getByTestId('model-revision')).toHaveText([
     /^r3 · in analyzr ergänzt \(aus r1\) · .* · Kopf$/,
     /^r2 · in analyzr ergänzt \(aus r1\) · /,
     /^r1 · importiert · /,
   ]);
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
 
-  // both downloads: the original as it came, the amended head with the values (the menu
-  // closes before it opens again)
+  // both downloads in „Mehr“: the original as it came, the amended head with the values (the
+  // menu closes before it opens again)
   const menu = page.getByRole('menu');
-  await page.getByTestId('model-downloads').click();
+  await page.getByTestId('model-more').click();
   const [original] = await Promise.all([
     page.waitForEvent('download'),
     page.getByRole('menuitem', { name: 'Original herunterladen' }).click(),
@@ -403,7 +406,7 @@ test('the model view: „Ergänzen“ with the history, the overlay, the badge, 
   expect(original.suggestedFilename()).toBe('vertrieb-auftrag-original-r1.bpmn');
   expect(readFileSync(await original.path(), 'utf8')).toBe(orderXml());
   await expect(menu).toHaveCount(0);
-  await page.getByTestId('model-downloads').click();
+  await page.getByTestId('model-more').click();
   const [amended] = await Promise.all([
     page.waitForEvent('download'),
     page.getByRole('menuitem', { name: 'BPMN herunterladen' }).click(),
@@ -417,7 +420,7 @@ test('the model view: „Ergänzen“ with the history, the overlay, the badge, 
     '<bpmn:documentation>Nimmt Aufträge an, prüft sie und stellt die Rechnung.</bpmn:documentation>',
   );
   await expect(menu).toHaveCount(0);
-  await page.getByTestId('model-downloads').click();
+  await page.getByTestId('model-more').click();
   const [list] = await Promise.all([
     page.waitForEvent('download'),
     page.getByRole('menuitem', { name: 'Änderungsliste (Markdown)' }).click(),

@@ -221,3 +221,15 @@ export function importLossOf(
     questionId: q.id,
   };
 }
+
+/** The link into the source tool of a head, for „Mehr“'s own entry; `null` without one. */
+export function toolLinkOf(
+  model: Pick<Model, 'headRevisionId'>,
+  revisions: readonly Pick<Revision, 'id' | 'source'>[],
+): { url: string; system: string } | null {
+  const head = revisions.find((r) => r.id === model.headRevisionId);
+  const upstream = head?.source.upstream;
+  const declared = upstream ? revisions.find((r) => r.id === upstream.revisionId) : head;
+  const url = toolUrl(declared?.source.url);
+  return url && declared?.source.system ? { url, system: declared.source.system } : null;
+}

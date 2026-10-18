@@ -1,42 +1,43 @@
-import type { Fact, Finding, Model, Relation } from '@analyzr/client';
+import type { Fact, Model, OpenQuestion, Relation } from '@analyzr/client';
 import { useQuery } from '@tanstack/react-query';
 import { Link, createRoute } from '@tanstack/react-router';
 import { cn } from 'cn';
 import {
-  ArrowDownLeftIcon,
   ArrowLeftIcon,
+  ArrowRightIcon,
   ArrowRightLeftIcon,
-  ArrowUpRightIcon,
+  InfoIcon,
   SearchCheckIcon,
   SparklesIcon,
-  TriangleAlertIcon,
   XIcon,
 } from 'lucide-react';
-import { lazy, Suspense, useCallback, useMemo, useState } from 'react';
+import { lazy, Suspense, useCallback, useId, useMemo, useState, type ReactNode } from 'react';
 
-import {
-  EngineBadge,
-  StageBadge,
-  StatusBadge,
-  TierBadge,
-  ToneBadge,
-  TYPE_ICONS,
-} from '@/components/badges';
+import { StageBadge, StatusBadge, ToneBadge, TYPE_ICONS } from '@/components/badges';
+import { CanvasHeader } from '@/components/canvas-header';
+import { CanvasPanel, PanelTabPanel, PanelTabs } from '@/components/canvas-panel';
 import { ErrorText } from '@/components/error-text';
-import { MiragonMark } from '@/components/page-shell';
+import { LightPopover } from '@/components/light-popover';
 import { toast } from '@/lib/toast';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Spinner } from '@/components/ui/spinner';
 
 import type { CanvasHighlight } from '@/lib/bpmn-elements';
-import { FINDING_KINDS, RELATION_TYPES, formatConfidence } from '@/lib/labels';
+import { useCanvasSheet } from '@/lib/canvas-sheet';
+import { collapsedSubprocess } from '@/lib/collapsed-subprocess';
+import { RELATION_TYPES, formatConfidence } from '@/lib/labels';
 import { derivedChip, importLossOf } from '@/lib/provenance';
-import { contentQuery, landscapeQuery, modelOpenQuestionsQuery, modelsQuery } from '@/lib/queries';
+import {
+  contentQuery,
+  landscapeQuery,
+  modelOpenQuestionsQuery,
+  modelsQuery,
+  projectQuery,
+} from '@/lib/queries';
 import { splitRef, type RefLabel, type RefResolver } from '@/lib/refs';
+import { useProjectPermissions } from '@/lib/permissions';
 import { touchesModel } from '@/lib/relation-filters';
 import { useProjectFacts } from '@/lib/use-project-facts';
 
@@ -60,16 +61,18 @@ const SubprocessLink = lazy(() =>
  * from one lazy module (one chunk), never with the entry.
  */
 const AmendSection = lazy(() => import('@/components/amendments/model-amendments'));
-const ModelAmendHeader = lazy(() =>
+const ModelAmendBadge = lazy(() =>
   import('@/components/amendments/model-amendments').then((m) => ({
-    default: m.ModelAmendHeader,
+    default: m.ModelAmendBadge,
   })),
+);
+/** „Mehr“ (UX3): „Herkunft“, „Revisionen“, the downloads, from the amendments' lazy module. */
+const ModelMore = lazy(() =>
+  import('@/components/amendments/model-amendments').then((m) => ({ default: m.ModelMore })),
 );
 const CollectBar = lazy(() =>
   import('@/components/amendments/model-amendments').then((m) => ({ default: m.CollectBar })),
 );
-/** „Herkunft“ (UX8): the declared provenance, read from the revisions when it opens. */
-const ModelProvenance = lazy(() => import('@/components/model-provenance'));
 
 /** Fact kinds an amendment can write a field of (M6 §4.8 c); other elements never ask the server. */
 const AMENDABLE_KINDS: ReadonlySet<Fact['kind']> = new Set([
@@ -116,6 +119,13 @@ function perspective(relation: Relation, modelKey: string, resolve: RefResolver)
   return { outgoing, local, remote };
 }
 
+/**
+ * A relation card (UX-SIMPLIFICATION.md §3.5 item 3): the element in this
+ * model and the status; below the arrow (its direction) to the other end,
+ * „→ Kreditprüfung · finanzen/kreditpruefung“, the type by its icon and in
+ * the accessible name; the confidence only on a proposal. Selected: the
+ * switch to the other model and „Prüfen“.
+ */
 function RelationItem({
   relation,
   modelKey,
@@ -131,7 +141,8 @@ function RelationItem({
 }) {
   const { outgoing, local, remote } = perspective(relation, modelKey, resolve);
   const TypeIcon = TYPE_ICONS[relation.type];
-  const Direction = outgoing ? ArrowUpRightIcon : ArrowDownLeftIcon;
+  const type = RELATION_TYPES[relation.type].label;
+  const direction = outgoing ? 'ausgehend' : 'eingehend';
   const sameModel = remote.modelKey === modelKey;
   return (
     <li
@@ -149,25 +160,29 @@ function RelationItem({
         search={selected ? {} : { relation: relation.id }}
         replace
         aria-current={selected ? 'true' : undefined}
-        className="flex flex-col gap-1.5 rounded-lg p-2.5 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+        aria-label={`${type}, ${direction}: ${shortLabel(local)} ${outgoing ? 'nach' : 'von'} ${shortLabel(remote)} (${remote.modelKey})`}
+        title={`${type}, ${direction}`}
+        className="flex flex-col gap-0.5 rounded-lg p-2.5 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
       >
-        <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <TypeIcon className="size-3.5" aria-hidden />
-          {RELATION_TYPES[relation.type].label}
-          <Direction className="size-3.5" aria-hidden />
-          {outgoing ? 'ausgehend' : 'eingehend'}
-          <span className="ml-auto tabular-nums">{formatConfidence(relation.confidence)}</span>
-        </span>
-        <span className="flex min-w-0 flex-col">
-          <span className="truncate font-medium">{shortLabel(local)}</span>
-          <span className="truncate text-xs text-muted-foreground">
-            {outgoing ? 'nach' : 'von'} {shortLabel(remote)} ·{' '}
-            <span className="font-mono">{remote.modelKey}</span>
-          </span>
-        </span>
-        <span className="flex flex-wrap gap-1">
+        <span className="flex min-w-0 items-center gap-1.5">
+          <TypeIcon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+          <span className="min-w-0 flex-1 truncate font-medium">{shortLabel(local)}</span>
           <StatusBadge status={relation.status} />
-          <TierBadge tier={relation.tier} />
+        </span>
+        <span className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground">
+          {outgoing ? (
+            <ArrowRightIcon className="size-3.5 shrink-0" aria-hidden />
+          ) : (
+            <ArrowLeftIcon className="size-3.5 shrink-0" aria-hidden />
+          )}
+          <span className="min-w-0 truncate">
+            {shortLabel(remote)} · <span className="font-mono">{remote.modelKey}</span>
+          </span>
+          {relation.status === 'proposed' && relation.confidence !== null ? (
+            <span className="ml-auto shrink-0 tabular-nums">
+              {formatConfidence(relation.confidence)}
+            </span>
+          ) : null}
         </span>
       </Link>
       {selected && local.kind === 'process' ? (
@@ -206,40 +221,68 @@ function RelationItem({
   );
 }
 
-function FindingItem({
-  finding,
-  elementId,
-  selected,
-}: {
-  finding: Finding;
-  elementId: string;
-  selected: boolean;
-}) {
+/** The legend of the canvas marks (§3.5 item 7). */
+function Legend() {
   return (
-    <li
-      className={cn(
-        'rounded-lg border',
-        selected ? 'border-warning bg-warning-soft' : 'border-transparent hover:bg-muted',
+    <span className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+      <span className="inline-flex items-center gap-1.5">
+        <span aria-hidden className="inline-block h-3 w-4 rounded-sm border-2 border-primary" />
+        gewählter Endpunkt
+      </span>
+      <span className="inline-flex items-center gap-1.5">
+        <span
+          aria-hidden
+          className="inline-block h-3 w-4 rounded-sm border-2 border-dashed border-link"
+        />
+        hat Relationen
+      </span>
+      <span>Klick auf ein Element filtert die Liste.</span>
+    </span>
+  );
+}
+
+/** After the first click on an element the legend moves behind this button at the zoom controls. */
+function LegendButton() {
+  const [open, setOpen] = useState(false);
+  return (
+    <LightPopover
+      open={open}
+      onOpenChange={setOpen}
+      label="Legende"
+      align="end"
+      testId="legend-popover"
+      trigger={(props) => (
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label="Legende"
+          title="Legende"
+          data-testid="legend-button"
+          {...props}
+        >
+          <InfoIcon />
+        </Button>
       )}
     >
-      <Link
-        from={modelViewRoute.fullPath}
-        to="."
-        search={selected ? {} : { element: elementId }}
-        replace
-        className="flex flex-col gap-1 rounded-lg p-2.5 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
-      >
-        <span className="flex items-center gap-1.5 text-xs font-medium text-warning">
-          <TriangleAlertIcon className="size-3.5" aria-hidden />
-          {FINDING_KINDS[finding.kind].label}
-        </span>
-        <span className="font-mono text-xs break-all">{elementId}</span>
-        {finding.detail ? (
-          <span className="text-xs text-muted-foreground">{finding.detail}</span>
-        ) : null}
-      </Link>
-    </li>
+      <div className="w-60 p-2">
+        <Legend />
+      </div>
+    </LightPopover>
   );
+}
+
+/** The amendment fields an open question of the element offers (`op:elementId`), for „Ergänzen“. */
+function coveredFields(questions: readonly OpenQuestion[], elementId: string): Set<string> {
+  const out = new Set<string>();
+  for (const q of questions) {
+    if (q.state !== 'open' || q.group !== 'ask') continue;
+    for (const a of q.actions) {
+      for (const t of a.amend?.targets ?? []) {
+        if (t.elementId === elementId) out.add(`${t.op}:${t.elementId}`);
+      }
+    }
+  }
+  return out;
 }
 
 /** Shows a question's card in the panel's „Fragen“ and moves the focus there. */
@@ -287,12 +330,17 @@ function ImportLoss({ project, modelKey }: { project: string; modelKey: string }
   );
 }
 
+type PanelTab = 'questions' | 'relations';
+
 function ModelView() {
   const { project, _splat } = modelViewRoute.useParams();
   const modelKey = (_splat ?? '').replace(/\/+$/, '');
   const search = modelViewRoute.useSearch();
   const navigate = modelViewRoute.useNavigate();
+  const sheet = useCanvasSheet();
+  const tabsId = useId();
 
+  const info = useQuery(projectQuery(project));
   const models = useQuery(modelsQuery(project));
   const landscape = useQuery(landscapeQuery(project));
   const model = models.data?.find((m) => m.key === modelKey);
@@ -304,6 +352,7 @@ function ModelView() {
     }),
     enabled: model !== undefined,
   });
+  const questions = useQuery({ ...modelOpenQuestionsQuery(project, modelKey), enabled: !!model });
   const { resolve, byModel } = useProjectFacts(project, models.data);
   const amendableSelected =
     search.element !== undefined &&
@@ -311,6 +360,17 @@ function ModelView() {
       .get(modelKey)
       ?.facts.some((f) => f.elementId === search.element && AMENDABLE_KINDS.has(f.kind)) ??
       false);
+  // A selected collapsed subprocess offers „Verknüpfen mit …“ under „Fragen“ (M6 S5c-1).
+  const permissions = useProjectPermissions(project);
+  const xml = content.data?.xml;
+  const linkableSelected = useMemo(
+    () =>
+      permissions.canReview &&
+      search.element !== undefined &&
+      xml !== undefined &&
+      collapsedSubprocess(xml, search.element) !== null,
+    [permissions.canReview, search.element, xml],
+  );
   // The elements the head's applied amendments wrote (the overlay „ergänzt“), as the header reports them.
   const [amendedOf, setAmendedOf] = useState<{ modelId: string; ids: readonly string[] } | null>(
     null,
@@ -326,17 +386,30 @@ function ModelView() {
     () => (amendedOf && amendedOf.modelId === modelId ? amendedOf.ids : []),
     [amendedOf, modelId],
   );
+  /** The questions „Fragen“ shows (from its lazy module), for the tab and the handle, per selected element. */
+  const counting = `${modelKey}#${search.element ?? ''}`;
+  const [counted, setCounted] = useState<{ counting: string; count: number } | null>(null);
+  const onCount = useCallback((count: number) => setCounted({ counting, count }), [counting]);
+  const questionCount = counted?.counting === counting ? counted.count : undefined;
+  const [chosenTab, setChosenTab] = useState<PanelTab | null>(null);
+  /** The default tab, settled once per selection: answering the last question does not flip it. */
+  const [settled, setSettled] = useState<{ selection: string; tab: PanelTab } | null>(null);
+  /** The legend shows until the first click on an element, then behind a button. */
+  const [clicked, setClicked] = useState(false);
 
   const relations = useMemo(
     () => (landscape.data?.relations ?? []).filter((r) => touchesModel(r, modelKey)),
     [landscape.data, modelKey],
   );
-  const findings = useMemo(
+  // The canvas marker „Befund“ stays (the section „Befunde“ went, Q2): elements with a finding.
+  const findingElements = useMemo(
     () =>
-      (landscape.data?.findings ?? []).flatMap((f) =>
-        f.refs
-          .filter((ref) => splitRef(ref).modelKey === modelKey)
-          .map((ref) => ({ finding: f, elementId: splitRef(ref).elementId })),
+      new Set(
+        (landscape.data?.findings ?? []).flatMap((f) =>
+          f.refs
+            .filter((ref) => splitRef(ref).modelKey === modelKey)
+            .map((ref) => splitRef(ref).elementId),
+        ),
       ),
     [landscape.data, modelKey],
   );
@@ -363,7 +436,7 @@ function ModelView() {
       return out;
     }
     if (search.element) {
-      const hasFinding = findings.some((f) => f.elementId === search.element);
+      const hasFinding = findingElements.has(search.element);
       return [
         {
           elementId: search.element,
@@ -381,11 +454,51 @@ function ModelView() {
       }
     }
     return [...ids].map((elementId) => ({ elementId, label: '', tone: 'related' as const }));
-  }, [selected, search.element, relations, findings, modelKey]);
+  }, [selected, search.element, relations, findingElements, modelKey]);
 
   const focus = selected ? (highlights[0]?.elementId ?? null) : (search.element ?? null);
-
   const loadError = models.error ?? landscape.error ?? content.error;
+  const covered = useMemo(
+    () =>
+      search.element ? coveredFields(questions.data ?? [], search.element) : new Set<string>(),
+    [questions.data, search.element],
+  );
+
+  // „Fragen“ when there are any (or a selected element offers „Ergänzen“ or „Verknüpfen mit …“
+  // there), else „Relationen“; a selected relation opens „Relationen“. Settled once the count
+  // (and a selected element's facts, file and the role) are known, so the tab stays while the
+  // user works through it.
+  const rule: PanelTab = search.relation
+    ? 'relations'
+    : questionCount === 0 && !amendableSelected && !linkableSelected
+      ? 'relations'
+      : 'questions';
+  const selection = `${counting}#${search.relation ?? ''}`;
+  if (
+    questionCount !== undefined &&
+    (search.element === undefined ||
+      (byModel.has(modelKey) && xml !== undefined && permissions.known)) &&
+    settled?.selection !== selection
+  ) {
+    setSettled({ selection, tab: rule });
+  }
+  const tab: PanelTab = chosenTab ?? (settled?.selection === selection ? settled.tab : rule);
+  const elementLabel = search.element ? shortLabel(resolve(`${modelKey}#${search.element}`)) : null;
+  const summary = [
+    questionCount === undefined ? 'Fragen' : `Fragen ${questionCount}`,
+    `Relationen ${listed.length}`,
+  ].join(' · ');
+  const title = model?.name ?? modelKey;
+
+  const chips: ReactNode[] = model
+    ? [
+        <StageBadge key="stage" stage={model.stage} />,
+        <Suspense key="amended" fallback={null}>
+          <ModelAmendBadge project={project} model={model} onAmended={onAmended} />
+        </Suspense>,
+        <DerivedChip key="derived" source={model.source} />,
+      ]
+    : [];
 
   return (
     <div
@@ -393,7 +506,11 @@ function ModelView() {
       data-testid="model-view"
     >
       {content.data ? (
-        <div className="absolute inset-y-0 right-0 left-0 md:right-[400px]">
+        <div
+          className={cn('absolute inset-x-0 top-0', sheet.wide && 'right-[400px]')}
+          style={{ bottom: sheet.inset }}
+          data-testid="model-canvas"
+        >
           <Suspense
             fallback={
               <div className="absolute inset-0 grid place-items-center">
@@ -406,7 +523,9 @@ function ModelView() {
               highlights={highlights}
               focus={focus}
               amended={amended}
+              controls={clicked ? <LegendButton /> : null}
               onElementClick={(elementId) => {
+                setClicked(true);
                 if (elementId === search.element) return;
                 void navigate({ search: { element: elementId }, replace: true });
               }}
@@ -422,76 +541,73 @@ function ModelView() {
         </div>
       ) : null}
 
-      {/* top left: where am I */}
-      <header className="absolute top-4 left-4 z-30 flex max-w-[min(480px,calc(100vw-440px))] flex-col gap-2 rounded-xl border bg-card/90 p-3 shadow-md backdrop-blur-sm">
-        <div className="flex items-center gap-2 text-sm">
-          <Link to="/" aria-label="Zu den Projekten">
-            <MiragonMark className="size-5" />
-          </Link>
-          <Button variant="ghost" size="sm" asChild>
-            <Link to="/projects/$project/relations" params={{ project }}>
-              <ArrowLeftIcon data-icon="inline-start" />
-              Relationen
-            </Link>
-          </Button>
-          <Button variant="ghost" size="sm" asChild>
-            <Link to="/projects/$project" params={{ project }}>
-              Modelle
-            </Link>
-          </Button>
-        </div>
-        <div className="flex min-w-0 flex-col">
-          <h1 className="truncate font-mono text-base font-semibold" title={modelKey}>
-            {modelKey}
-          </h1>
-          {model?.name ? (
-            <p className="truncate text-sm text-muted-foreground">{model.name}</p>
-          ) : null}
-        </div>
-        {model ? (
-          <div className="flex flex-wrap items-center gap-1.5">
-            <EngineBadge engine={model.engine} />
-            <Badge variant="outline" title="Kopfrevision">
-              r{model.headRev}
-            </Badge>
-            <StageBadge stage={model.stage} />
-            <DerivedChip source={model.source} />
-            <Suspense fallback={null}>
-              <ModelAmendHeader project={project} model={model} onAmended={onAmended} />
-            </Suspense>
-            <Suspense fallback={null}>
-              <ModelProvenance project={project} model={model} />
-            </Suspense>
-          </div>
-        ) : null}
-        {model ? <ImportLoss project={project} modelKey={modelKey} /> : null}
-      </header>
-
-      {/* right: relations, findings and open questions of this model */}
-      <aside
-        aria-label="Relationen, Befunde und offene Fragen dieses Modells"
-        className="absolute top-4 right-4 bottom-32 z-30 flex w-[380px] max-w-[calc(100vw-32px)] flex-col overflow-hidden rounded-xl border bg-card/95 shadow-md backdrop-blur-sm"
-      >
-        <div className="flex items-center gap-2 border-b px-3 py-2.5">
-          <h2 className="font-semibold">Relationen</h2>
-          <span className="text-sm text-muted-foreground tabular-nums">
-            {listed.length === relations.length
-              ? relations.length
-              : `${listed.length} von ${relations.length}`}
-          </span>
-          {search.element ? (
-            <Button
-              variant="ghost"
-              size="xs"
-              className="ml-auto"
-              onClick={() => void navigate({ search: {}, replace: true })}
+      <CanvasHeader
+        wide={sheet.wide}
+        project={project}
+        projectName={info.data?.name ?? project}
+        area={{ label: 'Übersicht', to: '/projects/$project' }}
+        title={title}
+        subtitle={model?.name ? <span className="font-mono">{modelKey}</span> : null}
+        chips={chips}
+        more={
+          model ? (
+            <Suspense
+              fallback={
+                <Button variant="outline" size="xs" disabled>
+                  Mehr
+                </Button>
+              }
             >
-              <XIcon data-icon="inline-start" />
-              <span className="max-w-32 truncate font-mono">{search.element}</span>
-            </Button>
-          ) : null}
-        </div>
-        <div className="flex-1 overflow-y-auto p-2">
+              <ModelMore project={project} model={model} />
+            </Suspense>
+          ) : null
+        }
+        below={model ? <ImportLoss project={project} modelKey={modelKey} /> : null}
+        testId="model-header"
+      />
+
+      <CanvasPanel
+        sheet={sheet}
+        label="Dieses Modell"
+        summary={summary}
+        testId="model-panel"
+        header={
+          <div className="flex flex-col border-b">
+            {elementLabel ? (
+              <div className="flex items-center gap-2 px-3 pt-2.5" data-testid="panel-element">
+                <span
+                  className="min-w-0 flex-1 truncate text-sm font-medium"
+                  title={search.element}
+                >
+                  {elementLabel}
+                </span>
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  onClick={() => void navigate({ search: {}, replace: true })}
+                  data-testid="panel-show-all"
+                >
+                  <XIcon data-icon="inline-start" />
+                  Alle zeigen
+                </Button>
+              </div>
+            ) : (
+              <h2 className="sr-only">Dieses Modell</h2>
+            )}
+            <PanelTabs
+              tabs={[
+                { id: 'questions', label: 'Fragen', count: questionCount },
+                { id: 'relations', label: 'Relationen', count: listed.length },
+              ]}
+              value={tab}
+              onChange={setChosenTab}
+              label="Dieses Modell"
+              idBase={tabsId}
+            />
+          </div>
+        }
+      >
+        <PanelTabPanel id="questions" value={tab} idBase={tabsId}>
           {model ? (
             <Suspense fallback={null}>
               <div className="empty:hidden mb-2">
@@ -499,15 +615,29 @@ function ModelView() {
               </div>
             </Suspense>
           ) : null}
-          {search.element && model && amendableSelected ? (
-            <Suspense fallback={<Skeleton className="mb-2 h-12" />}>
-              <AmendSection
-                key={`${model.id}:${search.element}`}
+          {model ? (
+            <Suspense fallback={<Skeleton className="mx-2 h-16" />}>
+              <ModelQuestions
                 project={project}
-                model={model}
-                elementId={search.element}
+                modelKey={modelKey}
                 resolve={resolve}
+                element={search.element}
+                onCount={onCount}
               />
+            </Suspense>
+          ) : null}
+          {search.element && model && amendableSelected ? (
+            <Suspense fallback={<Skeleton className="mt-2 h-12" />}>
+              <div className="mt-2">
+                <AmendSection
+                  key={`${model.id}:${search.element}`}
+                  project={project}
+                  model={model}
+                  elementId={search.element}
+                  resolve={resolve}
+                  covered={covered}
+                />
+              </div>
             </Suspense>
           ) : null}
           {search.element && content.data && model ? (
@@ -522,6 +652,8 @@ function ModelView() {
               />
             </Suspense>
           ) : null}
+        </PanelTabPanel>
+        <PanelTabPanel id="relations" value={tab} idBase={tabsId}>
           {landscape.isPending ? (
             <Skeleton className="h-24 w-full" />
           ) : listed.length === 0 ? (
@@ -544,48 +676,18 @@ function ModelView() {
               ))}
             </ul>
           )}
-          {findings.length > 0 ? (
-            <>
-              <Separator className="my-2" />
-              <h3 className="px-2 pb-1 text-sm font-semibold">Befunde ({findings.length})</h3>
-              <ul className="flex flex-col gap-1">
-                {findings.map(({ finding, elementId }) => (
-                  <FindingItem
-                    key={`${finding.kind}:${elementId}`}
-                    finding={finding}
-                    elementId={elementId}
-                    selected={search.element === elementId && !selected}
-                  />
-                ))}
-              </ul>
-            </>
-          ) : null}
-          {model ? (
-            <>
-              <Separator className="my-2" />
-              <Suspense fallback={<Skeleton className="mx-2 h-16" />}>
-                <ModelQuestions project={project} modelKey={modelKey} resolve={resolve} />
-              </Suspense>
-            </>
-          ) : null}
-        </div>
-      </aside>
+        </PanelTabPanel>
+      </CanvasPanel>
 
-      {/* bottom left: legend */}
-      <p className="absolute bottom-4 left-4 z-30 flex items-center gap-3 rounded-lg border bg-card/90 px-3 py-1.5 text-xs text-muted-foreground shadow-sm backdrop-blur-sm">
-        <span className="inline-flex items-center gap-1.5">
-          <span aria-hidden className="inline-block h-3 w-4 rounded-sm border-2 border-primary" />
-          gewählter Endpunkt
-        </span>
-        <span className="inline-flex items-center gap-1.5">
-          <span
-            aria-hidden
-            className="inline-block h-3 w-4 rounded-sm border-2 border-dashed border-link"
-          />
-          hat Relationen
-        </span>
-        <span>Klick auf ein Element filtert die Liste.</span>
-      </p>
+      {/* the legend until the first click on an element, then behind its button */}
+      {!clicked && sheet.wide ? (
+        <p
+          className="absolute bottom-4 left-4 z-30 rounded-lg border bg-card/90 px-3 py-1.5 shadow-sm backdrop-blur-sm"
+          data-testid="model-legend"
+        >
+          <Legend />
+        </p>
+      ) : null}
 
       {loadError ? (
         <div className="absolute inset-x-0 top-1/3 z-40 mx-auto w-[min(480px,calc(100vw-32px))]">

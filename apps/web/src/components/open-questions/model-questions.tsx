@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { ArrowRightIcon } from 'lucide-react';
-import { useCallback, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 
 import { Skeleton } from '@/components/ui/skeleton';
 import { errorMessage } from '@/lib/api';
@@ -34,17 +34,32 @@ export default function ModelQuestions({
   project,
   modelKey,
   resolve,
+  element,
+  onCount,
 }: {
   project: string;
   modelKey: string;
   resolve: RefResolver;
+  /** The selected element (UX3): only its questions, by subject or ref. */
+  element?: string | undefined;
+  /** The number of cards shown, for the panel's tab and handle. */
+  onCount?: (count: number) => void;
 }) {
   const query = useQuery(modelOpenQuestionsQuery(project, modelKey));
   const own = useMemo(
     () => questionsOfModel(query.data ?? [], modelKey).filter((q) => q.state === 'open'),
     [query.data, modelKey],
   );
-  const items = useMemo(() => own.filter((q) => q.group === 'ask'), [own]);
+  const items = useMemo(() => {
+    const ask = own.filter((q) => q.group === 'ask');
+    if (!element) return ask;
+    const ref = `${modelKey}#${element}`;
+    return ask.filter((q) => q.subject.id === ref || q.refs.includes(ref));
+  }, [own, element, modelKey]);
+  const shown = query.data ? items.length : undefined;
+  useEffect(() => {
+    if (shown !== undefined) onCount?.(shown);
+  }, [shown, onCount]);
   const agentCount = own.filter((q) => q.group === 'agent').length;
   const info = useMemo(
     () =>
@@ -69,7 +84,8 @@ export default function ModelQuestions({
   return (
     <section aria-labelledby="model-open-questions" data-testid="model-open-questions">
       <div className="flex items-center gap-2 px-2 pb-1">
-        <h3 id="model-open-questions" tabIndex={-1} className="text-sm font-semibold outline-none">
+        {/* The panel's tab names the section (UX3); the heading stays for focus and landmarks. */}
+        <h3 id="model-open-questions" tabIndex={-1} className="sr-only outline-none">
           Fragen{query.data ? ` (${items.length})` : ''}
         </h3>
         {items.length > 0 ? (
@@ -91,7 +107,11 @@ export default function ModelQuestions({
           Fragen konnten nicht geladen werden: {errorMessage(query.error)}
         </p>
       ) : items.length === 0 ? (
-        <p className="px-2 text-sm text-muted-foreground">Zu diesem Modell ist nichts zu klären.</p>
+        <p className="px-2 text-sm text-muted-foreground">
+          {element
+            ? 'Zu diesem Element ist nichts zu klären.'
+            : 'Zu diesem Modell ist nichts zu klären.'}
+        </p>
       ) : (
         <ul ref={list} className="flex flex-col gap-1.5" aria-label="Fragen zu diesem Modell">
           {items.map((q) => (

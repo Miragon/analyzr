@@ -35,7 +35,7 @@ import { userPath } from './user-path';
  * `scrollWidth`), the numbers DEVELOPMENT.md "Web UI" records per slice.
  *
  * Checked: the load budgets of the slices done so far (UX1 „Übersicht“, UX2b
- * „Offene Fragen“, UX7 „Hochladen“ and the token form; UX7 imports the raw
+ * „Offene Fragen“, UX3 the model view, UX7 „Hochladen“ and the token form; UX7 imports the raw
  * Signavio export into a project of its own per run), the tasks (clicks to the first decision, „Gutschrift“ on
  * a phone, a hold answered from each of its three entries in one dialog, on
  * a fourth project `ui-load-vormerkung` (…_HOLDS) made from the corpus with
@@ -43,8 +43,8 @@ import { userPath } from './user-path';
  * (every badge and „Als Nächstes“ number equals the list it opens, every
  * „Offene Punkte“ the sum of its parts, each part its list; no item in two
  * badges), no ids in visible text and in the customer export, menus whose
- * entries fit. „Gutschrift found“ means opened until UX3 makes the phone's
- * model view show it (the `fixme` below).
+ * entries fit; UX3's model view (the panel's budgets, the element filter,
+ * „Gutschrift“ found, opened and shown on a phone, the bpmn.io watermark).
  */
 
 const ROOT = join(import.meta.dirname, '../../..');
@@ -89,6 +89,15 @@ const OQ_BUDGET = {
   clicksPerAnswer: 3,
 } as const;
 const HOLDS = process.env['ANALYZR_UI_LOAD_HOLDS'] ?? 'ui-load-vormerkung';
+
+/** UX3's budgets (§7 "UX3", done when): the model view of `vertrieb/order-handling`. */
+const MODEL_BUDGET = {
+  panelControls: 25,
+  panelWords: 300,
+  chips: 3,
+  /** At 390x844 the canvas the top bar and the collapsed sheet leave, of the viewport. */
+  canvasShareMobile: 0.55,
+} as const;
 
 interface Measure {
   project: string;
@@ -412,7 +421,9 @@ test('UX1 tasks: the first relation decision in one click from „Übersicht“'
   await expect(page.getByRole('button', { name: /^Annehmen/ })).toBeVisible();
 });
 
-test('UX1 tasks: „Gutschrift“ found in two interactions on a phone', async ({ browser }) => {
+test('UX1/UX3 tasks: „Gutschrift“ found in two interactions on a phone, its name and its diagram shown', async ({
+  browser,
+}) => {
   const { context, page } = await mobile(browser);
   try {
     await settle(page, `/projects/${NORDWIND}`, '[data-testid=model-search]');
@@ -421,25 +432,10 @@ test('UX1 tasks: „Gutschrift“ found in two interactions on a phone', async (
     await expect(rows).toHaveCount(1);
     await rows.first().getByRole('link').first().click(); // 2
     await expect(page).toHaveURL(/\/models\/finanzen\/gutschrift/);
-    await expect(page.getByTestId('model-view')).toBeVisible();
-  } finally {
-    await context.close();
-  }
-});
-
-// Opened is not yet found: at 390x844 the model view's panel covers the canvas and the header
-// until UX3's view-first sheet (its done-when: the model name visible, the canvas ≥ 55 %).
-test.fixme('UX3 tasks: „Gutschrift“ on a phone shows its name and its diagram', async ({
-  browser,
-}) => {
-  const { context, page } = await mobile(browser);
-  try {
-    await settle(
-      page,
-      `/projects/${NORDWIND}/models/finanzen/gutschrift`,
-      '[data-testid=model-view]',
-    );
-    const name = page.getByRole('heading', { level: 1 }).first();
+    await expect(page.getByTestId('bpmn-canvas')).toHaveAttribute('data-imported', 'true');
+    // UX3's view-first phone: the name in the top bar, the sheet collapsed, the canvas ≥ 55 %
+    const name = page.getByTestId('canvas-title');
+    await expect(name).toHaveText(/Gutschrift/);
     const box = await name.boundingBox();
     expect(box, 'the model name is on screen').not.toBeNull();
     const hit = await page.evaluate(
@@ -447,18 +443,38 @@ test.fixme('UX3 tasks: „Gutschrift“ on a phone shows its name and its diagra
       [box!.x + box!.width / 2, box!.y + box!.height / 2] as const,
     );
     expect(hit, 'the model name answers elementFromPoint').toBe(true);
+    await expect(page.getByTestId('model-panel')).toHaveAttribute('data-sheet', 'collapsed');
+    await expect(page.getByTestId('panel-handle')).toHaveText(/^Fragen \d+ · Relationen \d+$/);
     const share = await page.evaluate(() => {
-      const canvas = document.querySelector('.djs-container');
+      const area = (r: { left: number; top: number; right: number; bottom: number }) =>
+        Math.max(0, r.right - r.left) * Math.max(0, r.bottom - r.top);
+      const cut = (
+        a: DOMRect,
+        b: { left: number; top: number; right: number; bottom: number },
+      ) => ({
+        left: Math.max(a.left, b.left),
+        top: Math.max(a.top, b.top),
+        right: Math.min(a.right, b.right),
+        bottom: Math.min(a.bottom, b.bottom),
+      });
+      const view = { left: 0, top: 0, right: window.innerWidth, bottom: window.innerHeight };
+      const canvas = document.querySelector('[data-testid=model-canvas]')?.getBoundingClientRect();
       if (!canvas) return 0;
-      const r = canvas.getBoundingClientRect();
-      const panel = document.querySelector('aside')?.getBoundingClientRect();
-      const covered = panel
-        ? Math.max(0, Math.min(r.bottom, panel.bottom) - Math.max(r.top, panel.top)) *
-          Math.max(0, Math.min(r.right, panel.right) - Math.max(r.left, panel.left))
-        : 0;
-      return (r.width * r.height - covered) / (window.innerWidth * window.innerHeight);
+      const shown = cut(canvas, view);
+      // what the top bar and the sheet cover of it
+      const covered = ['[data-testid=model-header]', '[data-testid=model-panel]']
+        .map((selector) => document.querySelector(selector)?.getBoundingClientRect())
+        .filter((r): r is DOMRect => r !== undefined)
+        .reduce((sum, r) => sum + area(cut(r, shown)), 0);
+      return (area(shown) - covered) / area(view);
     });
-    expect(share, 'the canvas covers at least 55 % of the screen').toBeGreaterThanOrEqual(0.55);
+    expect(share, 'the canvas covers at least 55 % of the screen').toBeGreaterThanOrEqual(
+      MODEL_BUDGET.canvasShareMobile,
+    );
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+      MOBILE.viewport.width,
+    );
+    await measure(page, NORDWIND, 'Modellansicht', null);
   } finally {
     await context.close();
   }
@@ -627,23 +643,14 @@ test('UX1: the other two projects and the projects list, desktop and mobile', as
 
 // ------------------------------------------------------------------ measured for the next slices
 
-test('the other screens, measured (budgets come with UX3, UX5 and UX6)', async ({
-  page,
-  browser,
-}) => {
+test('the other screens, measured (budgets come with UX5 and UX6)', async ({ page, browser }) => {
   const screens: [string, string, string][] = [
     ['Relationen', `/projects/${NORDWIND}/review`, '[data-testid=queue-row]'],
     ['Kette', `/projects/${NORDWIND}/value-chain`, '[data-testid=chain-overview]'],
-    [
-      'Modellansicht',
-      `/projects/${NORDWIND}/models/vertrieb/order-handling`,
-      '[data-testid=model-view]',
-    ],
   ];
   const first: Record<string, string> = {
     Relationen: '[data-testid=queue-row]',
     Kette: '[data-testid=open-placement]',
-    Modellansicht: '[data-testid=model-relation]',
   };
   for (const [screen, path, ready] of screens) {
     await settle(page, path, ready);
@@ -657,6 +664,158 @@ test('the other screens, measured (budgets come with UX3, UX5 and UX6)', async (
     }
   } finally {
     await context.close();
+  }
+});
+
+// ------------------------------------------------------------------ the model view (UX3)
+
+const ORDER_HANDLING = 'vertrieb/order-handling';
+const FIRST_QUESTION = '[data-testid=model-panel] [data-testid=open-question]';
+
+/** The panel's visible controls and words, and where its first question ends. */
+async function panelLoad(page: Page) {
+  return page.getByTestId('model-panel').evaluate((aside) => {
+    const visible = (el: Element) => {
+      const r = el.getBoundingClientRect();
+      return (
+        r.width > 0 &&
+        r.height > 0 &&
+        getComputedStyle(el).visibility !== 'hidden' &&
+        !el.closest('[inert]')
+      );
+    };
+    const controls = [
+      ...aside.querySelectorAll(
+        'button, a[href], input, select, textarea, [role=tab], [role=menuitem], [role=radio], [role=checkbox], [role=switch]',
+      ),
+    ].filter(visible);
+    const first = aside.querySelector('[data-testid=open-question]')?.getBoundingClientRect();
+    return {
+      controls: new Set(controls).size,
+      words: (aside as HTMLElement).innerText.split(/\s+/).filter((w) => /[\p{L}\p{N}]/u.test(w))
+        .length,
+      firstBottom: first ? Math.round(first.bottom) : null,
+      panelBottom: Math.round(aside.getBoundingClientRect().bottom),
+    };
+  });
+}
+
+test('UX3 desktop: the first question without scrolling, the panel within 25 controls and 300 words, three chips and „Mehr“', async ({
+  page,
+}) => {
+  await settle(page, `/projects/${NORDWIND}/models/${ORDER_HANDLING}`, FIRST_QUESTION);
+  await expect(page.locator('[data-testid=panel-tab][data-tab=questions]')).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  const load = await panelLoad(page);
+  expect(load.firstBottom, 'the first question ends inside the panel').not.toBeNull();
+  expect(load.firstBottom!).toBeLessThanOrEqual(load.panelBottom);
+  expect(load.controls, 'visible controls of the panel').toBeLessThanOrEqual(
+    MODEL_BUDGET.panelControls,
+  );
+  expect(load.words, 'words of the panel').toBeLessThanOrEqual(MODEL_BUDGET.panelWords);
+  // the header: the crumb the one way back, at most three chips and „Mehr“
+  const header = page.getByTestId('model-header');
+  await expect(header.getByRole('navigation', { name: 'Brotkrumen' })).toContainText('Übersicht');
+  expect(await header.locator('[data-slot=badge]').count()).toBeLessThanOrEqual(MODEL_BUDGET.chips);
+  await expect(header.getByTestId('model-more')).toBeVisible();
+  expect(await page.getByTestId('model-panel').innerText()).not.toMatch(ID_PATTERN);
+  const entry = await measure(page, NORDWIND, 'Modellansicht', FIRST_QUESTION);
+  console.log(`Modellansicht panel: ${load.controls} controls, ${load.words} words`);
+  expect(entry.scrollWidth).toBeLessThanOrEqual(entry.width);
+});
+
+test('UX3: a selected element filters both tabs, „Alle zeigen“ lifts it', async ({ page }) => {
+  interface Relation {
+    from: string;
+    to: string;
+  }
+  const { relations } = await json<{ relations: Relation[] }>(
+    `/api/v1/projects/${NORDWIND}/landscape`,
+  );
+  const own = (ref: string) => ref.startsWith(`${ORDER_HANDLING}#`);
+  const touching = relations.filter((r) => own(r.from) || own(r.to));
+  const [element] = [...new Set(touching.flatMap((r) => [r.from, r.to]).filter(own))].sort();
+  expect(element, 'an element of the model with a relation').toBeDefined();
+  const count = async (tab: string) =>
+    Number(
+      (await page.locator(`[data-testid=panel-tab][data-tab=${tab}]`).innerText()).replace(
+        /\D/g,
+        '',
+      ),
+    );
+
+  await settle(page, `/projects/${NORDWIND}/models/${ORDER_HANDLING}`, FIRST_QUESTION);
+  const all = { questions: await count('questions'), relations: await count('relations') };
+  expect(all.relations).toBe(touching.length);
+
+  const elementId = element!.slice(element!.indexOf('#') + 1);
+  await settle(
+    page,
+    `/projects/${NORDWIND}/models/${ORDER_HANDLING}?element=${encodeURIComponent(elementId)}`,
+    '[data-testid=panel-element]',
+  );
+  // the element's label in the panel header, its id behind it
+  await expect(page.getByTestId('panel-element')).not.toContainText(elementId);
+  const expected = touching.filter((r) => r.from === element || r.to === element).length;
+  expect(await count('relations')).toBe(expected);
+  expect(await count('questions')).toBeLessThanOrEqual(all.questions);
+  await page.locator('[data-testid=panel-tab][data-tab=relations]').click();
+  await expect(page.getByTestId('model-relation')).toHaveCount(expected);
+
+  await page.getByTestId('panel-show-all').click();
+  await expect(page).not.toHaveURL(/element=/);
+  await expect(page.getByTestId('model-relation')).toHaveCount(all.relations);
+});
+
+test('UX3: the bpmn.io watermark answers elementFromPoint at 390, 800, 1024 and 1440 px', async ({
+  page,
+}) => {
+  const check = () =>
+    page.locator('.bjs-powered-by').evaluate((mark) => {
+      const r = mark.getBoundingClientRect();
+      const points: [number, number][] = [
+        [r.left + 1, r.top + 1],
+        [r.right - 1, r.top + 1],
+        [r.left + 1, r.bottom - 1],
+        [r.right - 1, r.bottom - 1],
+        [(r.left + r.right) / 2, (r.top + r.bottom) / 2],
+      ];
+      return {
+        inside:
+          r.width > 0 &&
+          r.left >= 0 &&
+          r.top >= 0 &&
+          r.right <= window.innerWidth &&
+          r.bottom <= window.innerHeight,
+        unobstructed: points.every(([x, y]) => mark.contains(document.elementFromPoint(x, y))),
+      };
+    });
+  for (const [width, height] of [
+    [390, 844],
+    [800, 1024],
+    [1024, 768],
+    [1440, 900],
+  ] as const) {
+    await page.setViewportSize({ width, height });
+    await settle(
+      page,
+      `/projects/${NORDWIND}/models/${ORDER_HANDLING}`,
+      '[data-testid=model-view]',
+    );
+    await expect(page.getByTestId('bpmn-canvas')).toHaveAttribute('data-imported', 'true');
+    await expect
+      .poll(check, { message: `${width}px`, timeout: 5_000 })
+      .toEqual({ inside: true, unobstructed: true });
+    if (width < 1024) {
+      // the expanded sheet: the canvas container ends above it, the watermark moves up with it
+      await page.getByTestId('panel-handle').click();
+      await expect(page.getByTestId('model-panel')).toHaveAttribute('data-sheet', 'expanded');
+      await expect
+        .poll(check, { message: `${width}px, sheet expanded`, timeout: 5_000 })
+        .toEqual({ inside: true, unobstructed: true });
+    }
   }
 });
 
@@ -957,4 +1116,4 @@ test('UX7: the token form shows its name and its button only; step 3 starts the 
 });
 
 test.fixme('UX4: after an amendment save „Agent starten“ is visible without navigating', () => {});
-test.fixme('UX3/UX5: the bpmn.io watermark answers elementFromPoint at 390, 800 and 1024 px', () => {});
+test.fixme('UX5: the review screen’s bpmn.io watermark answers elementFromPoint at 390, 800 and 1024 px', () => {});

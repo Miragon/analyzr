@@ -92,7 +92,12 @@ const BUDGET = 40 * 1024;
  * the active tab with its edge fade, „Offene Punkte“ as text with a tooltip
  * (no links), the hold box's latest answer, „Nochmal versuchen“'s toggle and
  * the key field of „Neues Projekt“; the hold's fallback answer on the
- * relation loads with the open-questions chunks only.
+ * relation loads with the open-questions chunks only. 218.1 KB before UX3
+ * (UX7's upload panel and connect page, UX8's provenance chip and project
+ * source line, S2b's „Vorschau“). 219.8 KB after UX3 (2026-10-18): the canvas
+ * panel with its sheet and light tabs, the canvas header, the media query
+ * hook and the model view's relation cards and legend; „Mehr“ with its
+ * revisions and „Herkunft“ dialog loads with the amendments chunk only.
  */
 const ENTRY_CEILING = 240 * 1024;
 

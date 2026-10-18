@@ -28,10 +28,12 @@ if (dom) {
     if (typeof elementProto[name] !== 'function') elementProto[name] = stub;
   }
 }
+// Desktop by default: the canvas pages' aside from 1024 px (UX3) matches, every other query
+// (the review's 1280 px, hover, reduced motion) does not; a test overrides it for a phone.
 if (dom && typeof window.matchMedia !== 'function')
   window.matchMedia = (query: string) =>
     ({
-      matches: false,
+      matches: query === '(min-width: 1024px)',
       media: query,
       onchange: null,
       addEventListener: () => undefined,

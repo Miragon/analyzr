@@ -9,21 +9,25 @@ import { useQuery } from '@tanstack/react-query';
 import {
   ArrowRightIcon,
   ChevronDownIcon,
+  ExternalLinkIcon,
+  FileClockIcon,
   FileDownIcon,
   HistoryIcon,
   PenLineIcon,
-  TriangleAlertIcon,
   Undo2Icon,
 } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
 
 import { ToneBadge } from '@/components/badges';
+import { ProvenanceDetails } from '@/components/model-provenance';
 import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -48,7 +52,9 @@ import {
   withdrawnToast,
 } from '@/lib/amendments';
 import { errorMessage } from '@/lib/api';
+import { ENGINE_LABELS } from '@/lib/engine';
 import { formatDateTime } from '@/lib/labels';
+import { systemLabel, toolLinkOf } from '@/lib/provenance';
 import { useProjectPermissions } from '@/lib/permissions';
 import type { RefResolver } from '@/lib/refs';
 import { toast } from '@/lib/toast';
@@ -195,11 +201,18 @@ export default function AmendSection({
   model,
   elementId,
   resolve,
+  covered,
 }: {
   project: string;
   model: Pick<Model, 'id' | 'key' | 'name'>;
   elementId: string;
   resolve: RefResolver;
+  /**
+   * Fields an open question of the element offers (`op:elementId`, UX3): left
+   * out unless an amendment lives on them, so a gap has one entry, the
+   * question's.
+   */
+  covered?: ReadonlySet<string>;
 }) {
   const query = useQuery(amendableQuery(project, model.id, elementId));
   const can = useProjectPermissions(project);
@@ -218,8 +231,9 @@ export default function AmendSection({
       </p>
     );
   }
-  const { fields, history } = query.data;
   const keyOf = (f: AmendableField) => `${f.op}:${f.elementId}`;
+  const history = query.data.history;
+  const fields = query.data.fields.filter((f) => f.live !== null || !covered?.has(keyOf(f)));
   const settable = canAmend && fields.some((f) => f.settable);
   if (!settable && history.length === 0) return null;
   // Nothing to set here: only the fields an amendment touched, for context.
@@ -391,72 +405,100 @@ function useDownload() {
 }
 
 /**
- * The header's amendment parts (M6 §4.8 c "Web"): the badge „In analyzr
- * ergänzt (n)“ naming the uploaded revision the head is computed from, the
- * conflicts, „Herunterladen“ (the amended BPMN, the original, the change
- * list) and the revisions (uploaded and amended). Reports the elements the
- * head's applied amendments wrote, for the canvas's overlay „ergänzt“.
+ * The chip „In analyzr ergänzt (n) · aus r<rev>“ of the model view's header
+ * (M6 S5c-2; since UX3 one of its at most three chips), and the elements the
+ * head's applied amendments wrote, for the canvas overlay (`onAmended`).
+ * Conflicts are questions in „Fragen“ (`amendment-conflict`), not a chip.
  */
-export function ModelAmendHeader({
+export function ModelAmendBadge({
   project,
   model,
   onAmended,
 }: {
   project: string;
-  model: Pick<Model, 'id' | 'key' | 'headRevisionId' | 'headRev'>;
+  model: Pick<Model, 'id' | 'headRevisionId' | 'headRev'>;
   onAmended: (elementIds: readonly string[]) => void;
 }) {
   const revisions = useQuery(modelRevisionsQuery(project, model.id));
   const head = revisions.data?.find((r) => r.id === model.headRevisionId);
   const counts = planCounts(head?.source);
   const upstream = head?.source.kind === 'amendment' ? head.source.upstream : undefined;
-  const live = (head?.source.amendments ?? []).length > 0;
-  const download = useDownload();
   const ids = amendedElements(head?.source).join('\n');
   useEffect(() => {
     onAmended(ids === '' ? [] : ids.split('\n'));
   }, [ids, onAmended]);
+  if (!upstream || counts.applied === 0) return null;
+  return (
+    <span data-testid="amended-badge">
+      <ToneBadge
+        tone="info"
+        icon={PenLineIcon}
+        title={`r${model.headRev} ist aus der hochgeladenen Revision r${upstream.rev} berechnet; ${counts.applied === 1 ? 'eine Ergänzung' : `${counts.applied} Ergänzungen`} aus analyzr angewendet`}
+      >
+        In analyzr ergänzt ({counts.applied}) · aus r{upstream.rev}
+      </ToneBadge>
+    </span>
+  );
+}
 
+/**
+ * „Mehr“ of the model view's header (UX3, UX-SIMPLIFICATION.md §3.5 item 4):
+ * „Herkunft …“ (S2a, a dialog), „Im Quellsystem öffnen“ when the head names
+ * an http(s) link, „Revisionen (n) …“ (uploaded and amended, a dialog),
+ * „BPMN herunterladen“, „Original herunterladen“ (an amended head's uploaded
+ * revision), the change list for the source tool (Markdown, CSV) while
+ * amendments live, and an info line with engine and revision.
+ */
+export function ModelMore({
+  project,
+  model,
+}: {
+  project: string;
+  model: Pick<Model, 'id' | 'key' | 'headRevisionId' | 'headRev' | 'engine'>;
+}) {
+  const revisions = useQuery(modelRevisionsQuery(project, model.id));
+  const head = revisions.data?.find((r) => r.id === model.headRevisionId);
+  const upstream = head?.source.kind === 'amendment' ? head.source.upstream : undefined;
+  const live = (head?.source.amendments ?? []).length > 0;
+  const download = useDownload();
+  const [dialog, setDialog] = useState<'provenance' | 'revisions' | null>(null);
+  const tool = revisions.data ? toolLinkOf(model, revisions.data) : null;
+  const count = revisions.data?.length ?? 0;
   return (
     <>
-      {upstream && counts.applied > 0 ? (
-        <span data-testid="amended-badge">
-          <ToneBadge
-            tone="info"
-            icon={PenLineIcon}
-            title={`r${model.headRev} ist aus der hochgeladenen Revision r${upstream.rev} berechnet; ${counts.applied === 1 ? 'eine Ergänzung' : `${counts.applied} Ergänzungen`} aus analyzr angewendet`}
-          >
-            In analyzr ergänzt ({counts.applied}) · aus r{upstream.rev}
-          </ToneBadge>
-        </span>
-      ) : null}
-      {counts.conflicts > 0 ? (
-        <span data-testid="amended-conflicts">
-          <ToneBadge tone="warning" icon={TriangleAlertIcon}>
-            {counts.conflicts === 1
-              ? '1 Ergänzung nicht mehr anwendbar'
-              : `${counts.conflicts} Ergänzungen nicht mehr anwendbar`}
-          </ToneBadge>
-        </span>
-      ) : null}
       <DropdownMenu modal={false}>
         <DropdownMenuTrigger asChild>
-          <Button
-            variant="outline"
-            size="xs"
-            disabled={download.busy}
-            data-testid="model-downloads"
-          >
-            {download.busy ? (
-              <Spinner data-icon="inline-start" />
-            ) : (
-              <FileDownIcon data-icon="inline-start" />
-            )}
-            Herunterladen
+          <Button variant="outline" size="xs" disabled={download.busy} data-testid="model-more">
+            {download.busy ? <Spinner data-icon="inline-start" /> : null}
+            Mehr
             <ChevronDownIcon data-icon="inline-end" />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="start">
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem onSelect={() => setDialog('provenance')} data-testid="menu-provenance">
+            <FileClockIcon />
+            Herkunft …
+          </DropdownMenuItem>
+          {tool ? (
+            <DropdownMenuItem asChild>
+              <a
+                href={tool.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                data-testid="menu-tool-link"
+              >
+                <ExternalLinkIcon />
+                In {systemLabel(tool.system)} öffnen
+              </a>
+            </DropdownMenuItem>
+          ) : null}
+          {count > 1 ? (
+            <DropdownMenuItem onSelect={() => setDialog('revisions')} data-testid="menu-revisions">
+              <HistoryIcon />
+              Revisionen ({count === 20 ? 'die letzten 20' : count}) …
+            </DropdownMenuItem>
+          ) : null}
+          <DropdownMenuSeparator />
           <DropdownMenuItem
             onSelect={() =>
               download.run(() =>
@@ -506,24 +548,40 @@ export function ModelAmendHeader({
               ))}
             </>
           ) : null}
+          <DropdownMenuSeparator />
+          <DropdownMenuLabel
+            className="text-xs font-normal text-muted-foreground"
+            data-testid="menu-info"
+          >
+            {model.engine ? ENGINE_LABELS[model.engine] : 'Engine unbekannt'} · Kopfrevision r
+            {model.headRev}
+          </DropdownMenuLabel>
         </DropdownMenuContent>
       </DropdownMenu>
-      {revisions.data && revisions.data.length > 1 ? (
-        <details className="w-full text-xs" data-testid="model-revisions">
-          <summary className="cursor-pointer text-muted-foreground">
-            Revisionen ({revisions.data.length === 20 ? 'die letzten 20' : revisions.data.length})
-          </summary>
-          <ol className="mt-1 flex flex-col gap-0.5">
-            {revisions.data.map((r) => (
-              <li key={r.id} data-testid="model-revision" data-kind={r.source.kind}>
-                <span className="font-mono">r{r.rev}</span> · {revisionOrigin(r)} ·{' '}
-                {formatDateTime(r.createdAt)}
-                {r.id === model.headRevisionId ? ' · Kopf' : ''}
-              </li>
-            ))}
-          </ol>
-        </details>
-      ) : null}
+      <Dialog open={dialog !== null} onOpenChange={(open) => (open ? undefined : setDialog(null))}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{dialog === 'revisions' ? 'Revisionen' : 'Herkunft'}</DialogTitle>
+          </DialogHeader>
+          {revisions.isPending ? (
+            <Spinner />
+          ) : revisions.isError ? (
+            <p className="text-sm text-destructive">{errorMessage(revisions.error)}</p>
+          ) : dialog === 'revisions' ? (
+            <ol className="flex flex-col gap-0.5 text-sm" data-testid="model-revisions">
+              {(revisions.data ?? []).map((r) => (
+                <li key={r.id} data-testid="model-revision" data-kind={r.source.kind}>
+                  <span className="font-mono">r{r.rev}</span> · {revisionOrigin(r)} ·{' '}
+                  {formatDateTime(r.createdAt)}
+                  {r.id === model.headRevisionId ? ' · Kopf' : ''}
+                </li>
+              ))}
+            </ol>
+          ) : (
+            <ProvenanceDetails model={model} revisions={revisions.data ?? []} />
+          )}
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

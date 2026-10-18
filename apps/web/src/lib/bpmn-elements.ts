@@ -34,6 +34,8 @@ export interface Canvas {
   getRootElement(): DiagramElement;
   viewbox(): Viewbox;
   viewbox(box: Pick<Viewbox, 'x' | 'y' | 'width' | 'height'>): Viewbox;
+  /** Tells the canvas its container changed size (diagram-js `Canvas#resized`). */
+  resized(): void;
 }
 export interface Viewbox {
   x: number;

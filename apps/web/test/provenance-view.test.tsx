@@ -158,8 +158,9 @@ describe('provenance in the model view (UX8)', () => {
       expect(document.activeElement?.getAttribute('data-question-id')).toBe(loss.id),
     );
 
-    // the newest revisions, as the header's amendments read them (one request)
-    await user.click(within(view).getByTestId('model-provenance-open'));
+    // „Herkunft“ in „Mehr“ (UX3), from the newest revisions the header reads (one request)
+    await user.click(await within(view).findByTestId('model-more', {}, { timeout: 10_000 }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Herkunft …' }));
     const panel = await screen.findByTestId('model-provenance');
     await waitFor(() => expect(within(panel).getAllByTestId('provenance-line')).toHaveLength(5));
     expect(
@@ -180,6 +181,12 @@ describe('provenance in the model view (UX8)', () => {
     expect(link.textContent).toBe('In Signavio öffnen');
     expect(link.getAttribute('href')).toBe('https://editor.signavio.com/p/hub/model/sid-B');
     expect(link.getAttribute('rel')).toBe('noopener noreferrer');
+    // „In Signavio öffnen“ is also a direct entry of „Mehr“ (§6)
+    await user.keyboard('{Escape}');
+    await user.click(within(view).getByTestId('model-more'));
+    expect(
+      (await screen.findByRole('menuitem', { name: 'In Signavio öffnen' })).getAttribute('href'),
+    ).toBe('https://editor.signavio.com/p/hub/model/sid-B');
     expect(calls.filter((c) => c.path.endsWith('/revisions'))).toHaveLength(1);
   });
 });

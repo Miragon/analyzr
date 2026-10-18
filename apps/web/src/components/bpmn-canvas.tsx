@@ -2,7 +2,7 @@ import 'bpmn-js/dist/assets/diagram-js.css';
 import 'bpmn-js/dist/assets/bpmn-js.css';
 
 import { MaximizeIcon, ZoomInIcon, ZoomOutIcon } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -37,6 +37,8 @@ export interface BpmnCanvasProps {
   amended?: readonly string[];
   onElementClick?: (elementId: string) => void;
   onImportError?: (message: string) => void;
+  /** More buttons in the zoom group (UX3: the legend's, after the first click). */
+  controls?: ReactNode;
 }
 
 const NO_AMENDED: readonly string[] = [];
@@ -55,6 +57,7 @@ export default function BpmnCanvas({
   amended = NO_AMENDED,
   onElementClick,
   onImportError,
+  controls,
 }: BpmnCanvasProps) {
   const container = useRef<HTMLDivElement>(null);
   const viewer = useRef<Viewer | null>(null);
@@ -179,6 +182,15 @@ export default function BpmnCanvas({
     else canvas.scrollToElement(target, 120);
   }, [focus, imported, xml]);
 
+  // The container changes size with the panel's sheet (UX3): bpmn-js must know.
+  useEffect(() => {
+    const el = container.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(() => viewer.current?.get('canvas').resized());
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
   const zoomBy = (factor: number) => {
     const canvas = viewer.current?.get('canvas');
     if (canvas) canvas.zoom(canvas.zoom() * factor);
@@ -218,6 +230,7 @@ export default function BpmnCanvas({
         >
           <MaximizeIcon />
         </Button>
+        {controls}
       </div>
     </div>
   );
