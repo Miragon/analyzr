@@ -113,6 +113,7 @@ describe('PlacementDecisionPanel', () => {
     const hold = screen.getByRole('form', { name: 'Vormerken' });
     expect(disabled(within(hold).getByRole('button', { name: /Vormerken/ }))).toBe(true);
     await user.type(within(hold).getByLabelText('Notiz'), 'Fachbereich fragen');
+    await user.click(within(hold).getByRole('button', { name: 'Frage oder Label ergänzen' }));
     await user.type(within(hold).getByLabelText('Frage (optional)'), 'Wer prüft die Bonität?');
     await user.click(within(hold).getByRole('button', { name: /Vormerken/ }));
     await waitFor(() =>

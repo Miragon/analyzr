@@ -22,6 +22,8 @@ export function CanvasPanel({
   label,
   summary,
   header,
+  footer,
+  size = 'default',
   children,
   testId,
 }: {
@@ -32,6 +34,10 @@ export function CanvasPanel({
   summary: string;
   /** Above the scrolling content: tabs, the selected element. */
   header?: ReactNode;
+  /** Below it, pinned: the review screen's decisions (UX5). */
+  footer?: ReactNode;
+  /** `wide`: 440 px from 1024 (the review screen), else 380. */
+  size?: 'default' | 'wide';
   children: ReactNode;
   testId?: string;
 }) {
@@ -65,7 +71,10 @@ export function CanvasPanel({
       className={cn(
         'z-30 flex flex-col overflow-hidden bg-card/95 shadow-md backdrop-blur-sm',
         wide
-          ? 'absolute top-4 right-4 bottom-4 w-[380px] max-w-[calc(100vw-32px)] rounded-xl border'
+          ? cn(
+              'absolute top-4 right-4 bottom-4 max-w-[calc(100vw-32px)] rounded-xl border',
+              size === 'wide' ? 'w-[440px]' : 'w-[380px]',
+            )
           : 'absolute inset-x-0 bottom-0 rounded-t-xl border-t transition-[height] motion-reduce:transition-none',
       )}
       style={wide ? undefined : { height: expanded ? SHEET_HEIGHT : SHEET_HANDLE }}
@@ -101,7 +110,10 @@ export function CanvasPanel({
         className="flex min-h-0 flex-1 flex-col outline-none"
       >
         {header}
-        <div className="min-h-0 flex-1 overflow-y-auto p-2">{children}</div>
+        <div className={cn('min-h-0 flex-1 overflow-y-auto', size === 'wide' ? 'p-4' : 'p-2')}>
+          {children}
+        </div>
+        {footer}
       </div>
     </aside>
   );

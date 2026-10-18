@@ -220,9 +220,8 @@ export function RelationTable({
                 </TableCell>
                 <TableCell>
                   <div className="flex min-w-0 flex-col items-start gap-1">
-                    <StatusBadge status={r.status} />
+                    {auto ? <AutoAcceptMark entry={auto} /> : <StatusBadge status={r.status} />}
                     <EndpointStateBadge state={r.endpointState} />
-                    {auto ? <AutoAcceptMark entry={auto} wrap /> : null}
                   </div>
                 </TableCell>
                 <TableCell className="text-right tabular-nums">

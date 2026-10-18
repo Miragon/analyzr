@@ -429,6 +429,7 @@ test('reject with a reason (twice) and hold with a question; answer it in the he
   await page
     .getByLabel('Notiz')
     .fill('Zuordnung und Anordnung klingen ähnlich, sind es aber nicht.');
+  await page.getByRole('button', { name: 'Frage oder Label ergänzen' }).click();
   await page
     .getByLabel('Frage (optional)')
     .fill('Meldet der Zahlungslauf Anordnungen an das Forderungsmanagement?');
@@ -586,7 +587,10 @@ test('decision memory: a changed model reopens its rejection, an unchanged one s
   const reviewUrl = `${base}/projects/${PROJECT}/review/${ids.rejectReopened ?? ''}`;
   expect(problem).toMatchObject({ code: 'human-decision-required', status: 403, reviewUrl });
   await page.goto(reviewUrl);
-  await expect(page.getByTestId('review-details')).toContainText(PAIRS.rejectReopened[1]);
+  // the relation's screen: its „Nach“ end by its model (the raw ref is behind „Verlauf“ since UX5)
+  await expect(page.getByTestId('review-details')).toContainText(
+    PAIRS.rejectReopened[1].slice(0, PAIRS.rejectReopened[1].indexOf('#')),
+  );
 
   // the agent's second run: one task, the changed pair reopened
   const report = await runSimAgent();
@@ -606,13 +610,14 @@ test('decision memory: a changed model reopens its rejection, an unchanged one s
 
   // the timeline: proposal → rejection → the reopening proposal (the basis)
   await review(page, ids.rejectReopened);
+  await page.getByTestId('review-history').locator(':scope > summary').click();
   const entries = page.getByTestId('timeline-entry');
   await expect(entries.first()).toHaveAttribute('data-kind', 'proposal');
   await expect(page.locator('[data-testid=timeline-entry][data-verdict=reject]')).toContainText(
     'verschiedene Vorgänge',
   );
   await expect(entries.last()).toHaveAttribute('data-kind', 'proposal');
-  await expect(entries.last()).toContainText('maßgeblich');
+  await expect(entries.last()).toContainText('Vom Agenten vorgeschlagen');
   await expect(page.getByTestId('review-details')).toContainText('Vorgezogene Zahlung angefordert');
   await entries.last().scrollIntoViewIfNeeded();
   await shot(page, 'm2-12-reopened');

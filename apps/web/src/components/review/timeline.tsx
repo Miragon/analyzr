@@ -16,7 +16,7 @@ import type { ReactNode } from 'react';
 import { TierBadge } from '@/components/badges';
 import { Badge } from '@/components/ui/badge';
 import type { TimelineMark } from '@/lib/auto-accept';
-import { formatConfidence, formatDateTime, procedureText } from '@/lib/labels';
+import { TIERS, formatConfidence, formatDateTime, procedureText } from '@/lib/labels';
 
 import { PlainText } from './plain-text';
 import { Principal } from './provenance';
@@ -71,7 +71,13 @@ function lookOf(a: TimelineAssertion, mark: TimelineMark | undefined): EntryLook
     case 'proposal':
       return {
         icon: CircleDashedIcon,
-        title: 'Vorgeschlagen',
+        // the glossary (UX-SIMPLIFICATION.md §4): what found it, not a principal's id
+        title:
+          a.sourceKind === 'rule'
+            ? `${a.tier ? TIERS[a.tier].label : 'Treffer'} erkannt (analyzr)`
+            : a.sourceKind === 'agent'
+              ? 'Vom Agenten vorgeschlagen'
+              : 'Vorgeschlagen',
         textLabel: 'Begründung',
         tone: 'text-info',
       };
@@ -120,6 +126,16 @@ export interface AssertionTimelineProps<T extends TimelineAssertion> {
   renderLink?: (assertion: T) => ReactNode;
   /** Auto-accept decisions and revocations by assertion id (owner decision 19, owners only). */
   marks?: ReadonlyMap<string, TimelineMark> | undefined;
+  /**
+   * Entries whose texts the page shows already (the review panel's rationale, evidence and
+   * hold, UX5): only their title, who and when.
+   */
+  brief?: ReadonlySet<string> | undefined;
+  /**
+   * Client, declared procedure and model on each entry, and the mark „maßgeblich“; the review
+   * screen keeps them behind „Technische Angaben“ instead (UX5).
+   */
+  technical?: boolean;
 }
 
 /** The link between a corrected relation proposal and the manual relation that replaced it. */
@@ -155,6 +171,8 @@ export function AssertionTimeline<T extends TimelineAssertion>({
   basisId,
   renderLink,
   marks,
+  brief,
+  technical = true,
 }: AssertionTimelineProps<T>) {
   if (assertions.length === 0) {
     return <p className="text-sm text-muted-foreground">Noch keine Einträge.</p>;
@@ -165,8 +183,9 @@ export function AssertionTimeline<T extends TimelineAssertion>({
         const mark = marks?.get(a.id);
         const look = lookOf(a, mark);
         const Icon = look.icon;
-        const procedure = procedureText(a.procedure);
+        const procedure = technical ? procedureText(a.procedure) : null;
         const last = i === assertions.length - 1;
+        const short = brief?.has(a.id) === true;
         return (
           <li
             key={a.id}
@@ -183,7 +202,7 @@ export function AssertionTimeline<T extends TimelineAssertion>({
             <div className="flex min-w-0 flex-1 flex-col gap-1">
               <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
                 <span className="font-semibold">{look.title}</span>
-                {a.id === basisId ? (
+                {technical && a.id === basisId ? (
                   <Badge variant="outline" title="Auf diesem Eintrag beruht der Status">
                     maßgeblich
                   </Badge>
@@ -202,31 +221,31 @@ export function AssertionTimeline<T extends TimelineAssertion>({
               </div>
               <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
                 <Principal sourceKind={a.sourceKind} handle={a.handle} />
-                {a.clientId ? <span className="font-mono">{a.clientId}</span> : null}
+                {technical && a.clientId ? <span className="font-mono">{a.clientId}</span> : null}
                 {procedure ? <span className="font-mono">{procedure}</span> : null}
-                {a.llmModel ? <span className="font-mono">{a.llmModel}</span> : null}
+                {technical && a.llmModel ? <span className="font-mono">{a.llmModel}</span> : null}
                 <time dateTime={a.at}>{formatDateTime(a.at)}</time>
               </div>
-              {a.rationale ? (
+              {!short && a.rationale ? (
                 <div className="text-sm">
                   <span className="sr-only">{look.textLabel}: </span>
                   <PlainText text={a.rationale} />
                 </div>
               ) : null}
-              {a.question ? (
+              {!short && a.question ? (
                 <div className="rounded-md bg-warning-soft px-2 py-1 text-sm">
                   <span className="font-medium">Frage: </span>
                   <PlainText as="span" text={a.question} />
                 </div>
               ) : null}
-              {a.label ? (
+              {!short && a.label ? (
                 <span>
                   <Badge variant="outline">
                     <PlainText as="span" text={a.label} />
                   </Badge>
                 </span>
               ) : null}
-              {a.evidence.length > 0 ? (
+              {!short && a.evidence.length > 0 ? (
                 <ul className="flex flex-wrap gap-1" aria-label="Belege">
                   {a.evidence.map((e, k) => (
                     <li key={k} className="rounded-sm bg-muted px-1.5 font-mono text-xs break-all">

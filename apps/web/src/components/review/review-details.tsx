@@ -1,29 +1,35 @@
 import type { AutoAcceptLedgerEntry, Relation, RelationAssertion } from '@analyzr/client';
 import { Link } from '@tanstack/react-router';
-import { CircleHelpIcon, CrosshairIcon, ExternalLinkIcon, UnlinkIcon } from 'lucide-react';
-import { lazy, Suspense, type ReactNode } from 'react';
+import {
+  ChevronRightIcon,
+  CircleHelpIcon,
+  CrosshairIcon,
+  ExternalLinkIcon,
+  Undo2Icon,
+  UnlinkIcon,
+} from 'lucide-react';
+import type { ReactNode } from 'react';
 
-import { EndpointStateBadge, StatusBadge, TierBadge, TypeLabel } from '@/components/badges';
+import { AutoAcceptMark } from '@/components/auto-accept-mark';
+import { EndpointStateBadge, StatusBadge, TypeLabel } from '@/components/badges';
 import { AutoAcceptProvenance } from '@/components/rules/auto-accept-provenance';
 import { Badge } from '@/components/ui/badge';
-import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
-import { formatConfidence, formatDate, formatDateTime, provenanceOf } from '@/lib/labels';
+import {
+  formatConfidence,
+  formatDate,
+  formatDateTime,
+  procedureText,
+  provenanceOf,
+} from '@/lib/labels';
 import type { TimelineMark } from '@/lib/auto-accept';
 import type { RefResolver } from '@/lib/refs';
 import { answersSinceHold, currentProposal, evidenceItems, type EvidenceItem } from '@/lib/review';
 
 import { Endpoint } from '../relation-table';
 import { PlainText } from './plain-text';
-import { Principal, ProvenanceList } from './provenance';
+import { Principal } from './provenance';
 import { AssertionTimeline, RelationLink } from './timeline';
-
-/**
- * „Antwort geben“ on a held relation (UX2b): the note dialog of „Offene
- * Fragen“, one place to answer a hold, loaded with the open-questions
- * modules on first render, never with the entry.
- */
-const HoldAnswer = lazy(() => import('@/components/open-questions/hold-answer'));
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -62,15 +68,56 @@ export interface ReviewDetailsProps {
     marks: ReadonlyMap<string, TimelineMark>;
     canRevoke: boolean;
   };
-  /** Offer „Antwort geben“ on a held relation (reviewers; UX2b). */
-  canAnswerHold?: boolean;
+}
+
+/** „Technische Angaben“: the relation's id and version, the proposal's client, procedure and model (P2). */
+function TechnicalDetails({
+  relation,
+  proposal,
+}: {
+  relation: Relation;
+  proposal: RelationAssertion | null;
+}) {
+  const procedure = proposal ? procedureText(proposal.procedure) : null;
+  const rows = [
+    ['Relation', `${relation.id} · Version ${relation.version}`],
+    ['Client', proposal?.clientId ?? null],
+    ['Verfahren', procedure],
+    ['LLM-Modell', proposal?.llmModel ?? null],
+  ].filter((r): r is [string, string] => r[1] !== null);
+  return (
+    <details className="group text-xs text-muted-foreground" data-testid="review-technical">
+      <summary className="inline-flex cursor-pointer list-none items-center gap-1 hover:text-foreground">
+        <ChevronRightIcon
+          className="size-3.5 transition-transform group-open:rotate-90"
+          aria-hidden
+        />
+        Technische Angaben
+      </summary>
+      <dl className="mt-1 grid grid-cols-[max-content_minmax(0,1fr)] gap-x-3 gap-y-0.5">
+        {rows.map(([label, value]) => (
+          <div key={label} className="contents">
+            <dt>{label}</dt>
+            <dd className="font-mono break-all">{value}</dd>
+          </div>
+        ))}
+      </dl>
+    </details>
+  );
 }
 
 /**
- * Everything a reviewer reads before deciding (CONCEPT §3): both endpoints,
- * the agent's rationale, evidence and question, the agents' current
- * no-links on the pair (judge each pair once), who the status rests on, and
- * the full history. All agent text is plain text.
+ * Everything a reviewer reads before deciding (CONCEPT §3; since UX5,
+ * UX-SIMPLIFICATION.md §3.7 item 2): the header (type, status, both ends,
+ * the confidence; „Automatisch angenommen“ as the status of an item a rule
+ * accepted, owner decision 26 (5)), the agent's question, the agents'
+ * current no-links on the pair, a held relation's note, question, label and
+ * latest answer (read-only; answered from the decision bar), the rationale
+ * and the evidence by element name. Who decided what, the tier, the rule and
+ * its revision are in one closed „Verlauf (n)“, where an entry shown above
+ * keeps only its title, who and when; the relation id, version, client,
+ * procedure and model behind „Technische Angaben“. All agent text is plain
+ * text.
  */
 export function ReviewDetails({
   project,
@@ -81,7 +128,6 @@ export function ReviewDetails({
   paneModels,
   onEvidence,
   autoAccept,
-  canAnswerHold = false,
 }: ReviewDetailsProps) {
   const proposal = assertions ? currentProposal(relation, assertions) : null;
   const evidence = proposal ? evidenceItems(proposal.evidence, modelKeys) : [];
@@ -92,14 +138,25 @@ export function ReviewDetails({
   const holdNote = held && relation.provenance?.rationale ? relation.provenance.rationale : null;
   // The latest answer to the hold, where the decision is made (§3.7 item 3), read-only.
   const holdAnswer = held && assertions ? answersSinceHold(relation, assertions).at(-1) : undefined;
+  const auto = autoAccept?.entries.at(-1);
+  const inForce = auto?.state === 'in-force' && relation.status === 'accepted';
+  // Entries the panel shows above keep only their title, who and when in „Verlauf“.
+  const shownAbove = new Set(
+    [proposal?.id, held ? relation.provenance?.assertionId : undefined].filter(
+      (id): id is string => id !== undefined,
+    ),
+  );
 
   return (
     <div className="flex flex-col gap-5" data-testid="review-details">
       <div className="flex flex-col gap-3">
         <div className="flex flex-wrap items-center gap-2">
           <TypeLabel type={relation.type} />
-          <StatusBadge status={relation.status} />
-          <TierBadge tier={relation.tier} />
+          {inForce && auto ? (
+            <AutoAcceptMark entry={auto} />
+          ) : (
+            <StatusBadge status={relation.status} />
+          )}
           <EndpointStateBadge state={relation.endpointState} />
           <span className="ml-auto text-sm tabular-nums" title="Konfidenz">
             {formatConfidence(relation.confidence)}
@@ -115,9 +172,15 @@ export function ReviewDetails({
             <Endpoint label={resolve(relation.to)} />
           </dd>
         </dl>
-        <p className="font-mono text-xs text-muted-foreground">
-          {relation.id} · Version {relation.version}
-        </p>
+        {auto?.state === 'revoked' ? (
+          <p
+            className="flex items-center gap-1.5 text-sm text-muted-foreground"
+            data-testid="auto-accept-revoked"
+          >
+            <Undo2Icon className="size-4 shrink-0" aria-hidden />
+            Automatische Annahme widerrufen
+          </p>
+        ) : null}
       </div>
 
       {question ? (
@@ -198,15 +261,6 @@ export function ReviewDetails({
                 <PlainText as="span" text={holdAnswer.rationale} />
               </p>
             ) : null}
-            {canAnswerHold ? (
-              <Suspense fallback={null}>
-                <HoldAnswer
-                  project={project}
-                  subject={{ type: 'relation', id: relation.id }}
-                  className="mt-1 self-start bg-card"
-                />
-              </Suspense>
-            ) : null}
           </div>
         </div>
       ) : null}
@@ -219,7 +273,7 @@ export function ReviewDetails({
         ) : (
           <p className="text-sm text-muted-foreground">
             Keine Begründung angegeben
-            {fallback.source === 'rule' ? ` (Regel: ${fallback.detail})` : ''}.
+            {fallback.source === 'rule' ? ` (${fallback.detail})` : ''}.
           </p>
         )}
       </Section>
@@ -236,13 +290,10 @@ export function ReviewDetails({
                     search={{ element: item.elementId }}
                     data-testid="evidence-link"
                     className="inline-flex max-w-full items-center gap-1.5 rounded-sm text-link hover:underline focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
-                    title="Im Modell öffnen"
+                    title={`Im Modell ${item.modelKey} öffnen`}
                   >
                     <ExternalLinkIcon className="size-3.5 shrink-0" aria-hidden />
                     <span className="truncate">{resolve(item.text).label ?? item.elementId}</span>
-                    <span className="truncate font-mono text-xs text-muted-foreground">
-                      {item.modelKey}
-                    </span>
                   </Link>
                 ) : item.kind === 'ref' && onEvidence ? (
                   <button
@@ -250,13 +301,10 @@ export function ReviewDetails({
                     data-testid="evidence-ref"
                     onClick={() => onEvidence(item)}
                     className="inline-flex max-w-full items-center gap-1.5 rounded-sm text-left text-link hover:underline focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
-                    title="Im Diagramm zeigen"
+                    title={`Im Diagramm zeigen (${item.modelKey})`}
                   >
                     <CrosshairIcon className="size-3.5 shrink-0" aria-hidden />
                     <span className="truncate">{resolve(item.text).label ?? item.elementId}</span>
-                    <span className="truncate font-mono text-xs text-muted-foreground">
-                      {item.modelKey}
-                    </span>
                   </button>
                 ) : (
                   <PlainText as="span" className="text-muted-foreground" text={item.text} />
@@ -267,37 +315,36 @@ export function ReviewDetails({
         </Section>
       ) : null}
 
-      <Separator />
-      <Section title="Herkunft">
-        {autoAccept && autoAccept.entries.length > 0 ? (
-          <AutoAcceptProvenance
-            project={project}
-            entries={autoAccept.entries}
-            canRevoke={autoAccept.canRevoke}
+      <details className="group flex flex-col gap-3 border-t pt-3" data-testid="review-history">
+        <summary className="flex cursor-pointer list-none items-center gap-1.5 text-xs font-semibold tracking-wide text-muted-foreground uppercase hover:text-foreground">
+          <ChevronRightIcon
+            className="size-4 transition-transform group-open:rotate-90"
+            aria-hidden
           />
-        ) : null}
-        {relation.provenance ? (
-          <ProvenanceList provenance={relation.provenance} />
-        ) : (
-          <p className="text-sm text-muted-foreground">
-            {fallback.label} · {fallback.detail}
-          </p>
-        )}
-      </Section>
-
-      <Separator />
-      <Section title="Verlauf">
-        {assertions === undefined ? (
-          <Skeleton className="h-24 w-full" />
-        ) : (
-          <AssertionTimeline
-            assertions={assertions}
-            renderLink={(a) => <RelationLink project={project} assertion={a} />}
-            basisId={relation.provenance?.assertionId ?? null}
-            marks={autoAccept?.marks}
-          />
-        )}
-      </Section>
+          Verlauf{assertions ? ` (${assertions.length})` : ''}
+        </summary>
+        <div className="mt-3 flex flex-col gap-3">
+          {autoAccept && autoAccept.entries.length > 0 ? (
+            <AutoAcceptProvenance
+              project={project}
+              entries={autoAccept.entries}
+              canRevoke={autoAccept.canRevoke}
+            />
+          ) : null}
+          {assertions === undefined ? (
+            <Skeleton className="h-24 w-full" />
+          ) : (
+            <AssertionTimeline
+              assertions={assertions}
+              renderLink={(a) => <RelationLink project={project} assertion={a} />}
+              marks={autoAccept?.marks}
+              brief={shownAbove}
+              technical={false}
+            />
+          )}
+          <TechnicalDetails relation={relation} proposal={proposal} />
+        </div>
+      </details>
     </div>
   );
 }

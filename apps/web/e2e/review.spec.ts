@@ -380,6 +380,7 @@ test('decide with the keyboard: A accepts, R rejects with a reason, H holds', as
   await page
     .getByLabel('Notiz')
     .fill('Fachbereich muss bestätigen, ob die Nachricht hier ankommt.');
+  await page.getByRole('button', { name: 'Frage oder Label ergänzen' }).click();
   await page.getByLabel('Frage (optional)').fill('Kommt die Meldung auch bei Expresslieferungen?');
   await page.getByLabel('Label (optional)').fill('mit Fachbereich Logistik klären');
   await page.getByRole('button', { name: 'Vormerken' }).click();
@@ -426,6 +427,7 @@ test('correct: another endpoint becomes a manual relation; the timeline links bo
 
   await page.goto(`/projects/${PROJECT}/review/${original}`);
   await onReviewScreen(page, original);
+  await page.getByTestId('review-history').locator(':scope > summary').click();
   const reject = page.locator('[data-testid=timeline-entry][data-verdict=reject]');
   await expect(reject).toContainText('Der Vorgang endet beim anderen Empfänger.');
   await reject.getByRole('link', { name: /Korrigiert durch/ }).scrollIntoViewIfNeeded();
@@ -433,6 +435,7 @@ test('correct: another endpoint becomes a manual relation; the timeline links bo
   await reject.getByRole('link', { name: /Korrigiert durch/ }).click();
   await onReviewScreen(page);
   await expect(page.getByTestId('review-details')).toContainText('Manuell');
+  await page.getByTestId('review-history').locator(':scope > summary').click();
   await expect(
     page.locator('[data-testid=timeline-entry][data-verdict=accept]').getByRole('link'),
   ).toContainText(original);

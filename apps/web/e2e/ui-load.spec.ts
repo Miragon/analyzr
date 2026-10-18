@@ -47,7 +47,9 @@ import { userPath } from './user-path';
  * „Gutschrift“ found, opened and shown on a phone, the bpmn.io watermark);
  * UX4's question actions (a call target in 3 clicks with „Passt vermutlich“
  * in a project of its own per run, „Agent starten“ after an amendment, the
- * ghost button „Notiz“).
+ * ghost button „Notiz“); UX5's „Zu prüfen“ (the first proposal, the
+ * controls, the words per row, the cards on a phone) and review screen (the
+ * panel's words, the way back on a phone, the watermark).
  */
 
 const ROOT = join(import.meta.dirname, '../../..');
@@ -1071,7 +1073,7 @@ test('UX2b: a hold answered in at most 3 clicks, in one dialog from each entry',
   const card = page.locator('[data-testid=open-question][data-kind=held]').first();
   await expect(card.getByRole('link', { name: 'Jetzt entscheiden' })).toHaveAttribute(
     'href',
-    `/projects/${HOLDS}/review/${relation}?view=held`,
+    `/projects/${HOLDS}/review/${relation}?view=held&from=open-questions`,
   );
   // once the hold has an answer, „Jetzt entscheiden“ leads and „Antwort ergänzen“ adds one more
   const answerButton = /^Antwort (geben|ergänzen)$/;
@@ -1090,7 +1092,8 @@ test('UX2b: a hold answered in at most 3 clicks, in one dialog from each entry',
   // the review screen's hold box shows the latest answer where the decision is made
   await expect(page.getByTestId('hold-answer-latest')).toContainText('Bestätigt vom Vertrieb.');
   await answer('review screen', 'Gilt auch für Teillieferungen.', () =>
-    page.getByTestId('hold-box').getByRole('button', { name: answerButton }).click(),
+    // in the decision bar since UX5, where „Vormerken“ was
+    page.getByTestId('decision-panel').getByRole('button', { name: answerButton }).click(),
   );
   // all three on the same item, as notes on the relation
   expect(await notesBefore()).toBe(before + 3);
@@ -1300,4 +1303,131 @@ test('UX4: a card whose only further action is the note shows the ghost button �
   expect(await visibleText(page)).not.toContain('Sammeln');
 });
 
-test.fixme('UX5: the review screen’s bpmn.io watermark answers elementFromPoint at 390, 800 and 1024 px', () => {});
+// ------------------------------------------------------------------ the review screen (UX5 step 2)
+
+/** An agent's open proposal with a rationale on `nordwind-handel`, the first by id. */
+async function agentProposal(): Promise<string> {
+  const { relations } = await json<{
+    relations: {
+      id: string;
+      status: string;
+      provenance: { sourceKind: string; rationale: string | null } | null;
+    }[];
+  }>(`/api/v1/projects/${NORDWIND}/landscape`);
+  const found = relations
+    .filter(
+      (r) =>
+        r.status === 'proposed' &&
+        r.provenance?.sourceKind === 'agent' &&
+        (r.provenance.rationale ?? '') !== '',
+    )
+    .map((r) => r.id)
+    .sort()[0];
+  expect(found, 'an agent proposal with a rationale').toBeDefined();
+  return found!;
+}
+
+/** UX5's budget for the review panel (§7 "UX5", done when). */
+const REVIEW_PANEL_WORDS = 110;
+
+test('UX5 desktop: the review panel of an agent proposal in at most 110 words with „Verlauf“ closed', async ({
+  page,
+}) => {
+  const id = await agentProposal();
+  await settle(page, `/projects/${NORDWIND}/review/${id}`, '[data-testid=review-details]');
+  await expect(page.getByTestId('review-history')).not.toHaveAttribute('open', '');
+  const words = await page
+    .getByTestId('review-panel')
+    .evaluate(
+      (el) =>
+        (el as HTMLElement).innerText.split(/\s+/).filter((w) => /[\p{L}\p{N}]/u.test(w)).length,
+    );
+  console.log(`review panel: ${words} words`);
+  expect(words, 'words of the review panel').toBeLessThanOrEqual(REVIEW_PANEL_WORDS);
+  expect(await page.getByTestId('review-panel').innerText()).not.toMatch(ID_PATTERN);
+  await measure(page, NORDWIND, 'Prüfung', null);
+});
+
+test('UX5 mobile: the review screen view-first, the way back and ‹ › on top, the sheet collapsed', async ({
+  browser,
+}) => {
+  const id = await agentProposal();
+  const { context, page } = await mobile(browser);
+  try {
+    await settle(page, `/projects/${NORDWIND}/review/${id}`, '[data-testid=review-screen]');
+    await expect(page.getByTestId('review-panel')).toHaveAttribute('data-sheet', 'collapsed');
+    for (const testId of ['review-back', 'review-previous', 'review-next']) {
+      const box = await page.getByTestId(testId).boundingBox();
+      expect(box, `${testId} is on screen`).not.toBeNull();
+      const hit = await page.evaluate(
+        ([x, y, wanted]) =>
+          document.elementFromPoint(x, y)?.closest(`[data-testid="${wanted}"]`) !== null,
+        [box!.x + box!.width / 2, box!.y + box!.height / 2, testId] as const,
+      );
+      expect(hit, `${testId} answers elementFromPoint`).toBe(true);
+    }
+    await expect(page.getByTestId('panel-handle')).toHaveText(/→ .* · \d+ %$/);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+      MOBILE.viewport.width,
+    );
+  } finally {
+    await context.close();
+  }
+});
+
+test('UX5: the review screen’s bpmn.io watermark answers elementFromPoint at 390, 800, 1024 and 1440 px', async ({
+  page,
+}) => {
+  const id = await agentProposal();
+  const check = () =>
+    page.locator('.bjs-powered-by').evaluateAll((marks) =>
+      marks.map((mark) => {
+        const r = mark.getBoundingClientRect();
+        const points: [number, number][] = [
+          [r.left + 1, r.top + 1],
+          [r.right - 1, r.top + 1],
+          [r.left + 1, r.bottom - 1],
+          [r.right - 1, r.bottom - 1],
+          [(r.left + r.right) / 2, (r.top + r.bottom) / 2],
+        ];
+        return {
+          inside:
+            r.width > 0 &&
+            r.left >= 0 &&
+            r.top >= 0 &&
+            r.right <= window.innerWidth &&
+            r.bottom <= window.innerHeight,
+          unobstructed: points.every(([x, y]) => mark.contains(document.elementFromPoint(x, y))),
+        };
+      }),
+    );
+  for (const [width, height] of [
+    [390, 844],
+    [800, 1024],
+    [1024, 768],
+    [1440, 900],
+  ] as const) {
+    await page.setViewportSize({ width, height });
+    await settle(page, `/projects/${NORDWIND}/review/${id}`, '[data-testid=review-screen]');
+    await expect(page.getByTestId('bpmn-canvas').first()).toHaveAttribute('data-imported', 'true');
+    // every pane's watermark, the one or both
+    await expect
+      .poll(check, { message: `${width}px`, timeout: 5_000 })
+      .toEqual(expect.arrayContaining([{ inside: true, unobstructed: true }]));
+    const marks = await check();
+    expect(
+      marks.every((m) => m.inside && m.unobstructed),
+      `${width}px: every pane`,
+    ).toBe(true);
+    if (width < 1024) {
+      await page.getByTestId('panel-handle').click();
+      await expect(page.getByTestId('review-panel')).toHaveAttribute('data-sheet', 'expanded');
+      await expect
+        .poll(async () => (await check()).every((m) => m.inside && m.unobstructed), {
+          message: `${width}px, sheet expanded`,
+          timeout: 5_000,
+        })
+        .toBe(true);
+    }
+  }
+});

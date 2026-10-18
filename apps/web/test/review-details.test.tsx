@@ -116,27 +116,32 @@ describe('ReviewDetails', () => {
     await setup();
     const details = screen.getByTestId('review-details');
     expect(details.querySelector('img, script, a[href^="javascript"], strong')).toBeNull();
-    // the rationale appears verbatim (in the details and in the timeline)
-    expect(screen.getAllByText(HOSTILE).length).toBeGreaterThanOrEqual(2);
+    // the rationale appears verbatim, once: „Verlauf“ keeps only the title of an entry shown above
+    expect(screen.getAllByText(HOSTILE).length).toBeGreaterThanOrEqual(1);
     for (const el of screen.getAllByText(HOSTILE)) {
       expect(el.hasAttribute('data-plain-text')).toBe(true);
     }
   });
 
-  it('shows endpoints, the agent question and the provenance', async () => {
+  it('shows endpoints, the agent question; who and how in a closed „Verlauf“ (UX5)', async () => {
     await setup();
     expect(screen.getByText('Ware versandbereit')).toBeTruthy();
     expect(screen.getByText('Versand gemeldet')).toBeTruthy();
     expect(screen.getByTestId('agent-question').textContent).toContain(
       'Gilt das auch für Abholung?',
     );
-    const provenanceList = screen.getByRole('region', { name: 'Herkunft' });
-    expect(provenanceList.textContent).toContain('agent:claude code');
-    expect(provenanceList.textContent).toContain('agt_01CLAUDE');
-    expect(provenanceList.textContent).toContain('analyzr-relations@0.1.0');
-    expect(provenanceList.textContent).toContain('claude-sonnet-5-5');
-    expect(provenanceList.textContent).toContain('82 %');
-    expect(screen.getByText(/Version 4/)).toBeTruthy();
+    // the header: type, status, both ends, the confidence; the tier is in „Verlauf“
+    expect(screen.getByTestId('review-details').firstElementChild?.textContent).toContain('82 %');
+    expect(screen.queryByRole('region', { name: 'Herkunft' })).toBeNull();
+    const history = screen.getByTestId('review-history');
+    expect(history.hasAttribute('open')).toBe(false);
+    expect(history.querySelector('summary')?.textContent).toBe('Verlauf (4)');
+    // ids, client, procedure and model behind „Technische Angaben“
+    const technical = within(history).getByTestId('review-technical');
+    expect(technical.textContent).toContain('rel_01DETAILS0000000000000001 · Version 4');
+    expect(technical.textContent).toContain('agt_01CLAUDE');
+    expect(technical.textContent).toContain('analyzr-relations@0.1.0');
+    expect(technical.textContent).toContain('claude-sonnet-5-5');
     // no current no-link on the pair, no callout
     expect(screen.queryByTestId('agent-no-links')).toBeNull();
   });
@@ -205,15 +210,19 @@ describe('ReviewDetails', () => {
       ['proposal', null],
       ['decision', 'reject'],
     ]);
+    expect(within(entries[0]!).getByText('Vom Agenten vorgeschlagen')).toBeTruthy();
     expect(within(entries[1]!).getByText('Vorschlag zurückgezogen')).toBeTruthy();
-    expect(within(entries[2]!).getByText('maßgeblich')).toBeTruthy();
+    // shown above: the title, who and when only; no „maßgeblich“, no client id (UX5)
+    expect(within(entries[2]!).queryByText(HOSTILE)).toBeNull();
+    expect(within(entries[2]!).queryByText('maßgeblich')).toBeNull();
+    expect(entries[2]!.textContent).not.toContain('agt_01CLAUDE');
     expect(within(entries[3]!).getByText('Abgelehnt')).toBeTruthy();
     expect(within(entries[3]!).getByText('Falscher Empfänger')).toBeTruthy();
     const link = within(entries[3]!).getByRole('link', { name: /Korrigiert durch/ });
     expect(link.getAttribute('href')).toBe('/projects/demo/review/rel_01MANUAL000000000000000001');
   });
 
-  it('shows a hold’s question, note and label, and answers it in the dialog of „Offene Fragen“ (UX2b)', async () => {
+  it('shows a hold’s question, note and label read-only; the answer is in the decision bar (UX5)', async () => {
     const held = relation({
       ...rel,
       status: 'held',
@@ -235,7 +244,7 @@ describe('ReviewDetails', () => {
       text: 'Wer verschickt die Rechnung?',
       actions: [{ type: 'note', primary: false, label: 'Notiz hinzufügen' }],
     });
-    const calls = stubApi({
+    stubApi({
       'GET /api/v1/projects/demo/open-questions': (call) =>
         json(openQuestionPage([question], call.search)),
     });
@@ -246,7 +255,6 @@ describe('ReviewDetails', () => {
         assertions={history}
         resolve={resolve}
         modelKeys={new Set(['shop', 'billing'])}
-        canAnswerHold
       />,
     );
     const box = screen.getByTestId('hold-box');
@@ -254,15 +262,10 @@ describe('ReviewDetails', () => {
     expect(box.textContent).toContain('Wer verschickt die Rechnung?');
     expect(box.textContent).toContain('Notiz zur Vormerkung: Laut Handbuch der Vertrieb.');
     expect(box.textContent).toContain('mit Finanzen klären');
-    const user = userEvent.setup();
-    await user.click(await within(box).findByRole('button', { name: 'Antwort geben' }));
-    const dialog = await screen.findByTestId('note-dialog');
-    expect(within(dialog).getByRole('heading', { name: 'Antwort geben' })).toBeTruthy();
-    const list = calls.find((c) => c.path === '/api/v1/projects/demo/open-questions');
-    expect(new URLSearchParams(list?.search).get('kind')).toBe('held');
+    expect(within(box).queryByRole('button')).toBeNull();
   });
 
-  it('shows the hold’s latest answer where it is decided, and offers „Antwort ergänzen“', async () => {
+  it('shows the hold’s latest answer where it is decided', async () => {
     const held = relation({
       ...rel,
       status: 'held',
@@ -315,28 +318,11 @@ describe('ReviewDetails', () => {
         assertions={answered}
         resolve={resolve}
         modelKeys={new Set(['shop', 'billing'])}
-        canAnswerHold
       />,
     );
     const box = screen.getByTestId('hold-box');
     expect(within(box).getByTestId('hold-answer-latest').textContent).toBe(
       'Antwort vom 18.10.2026: Ja, laut Einkauf immer.',
     );
-    expect(await within(box).findByRole('button', { name: 'Antwort ergänzen' })).toBeTruthy();
-  });
-
-  it('offers no answer without the right to review', async () => {
-    stubApi({});
-    await renderWithRouter(
-      <ReviewDetails
-        project="demo"
-        relation={relation({ ...rel, status: 'held' })}
-        assertions={history}
-        resolve={resolve}
-        modelKeys={new Set(['shop', 'billing'])}
-      />,
-    );
-    expect(screen.getByTestId('hold-box')).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'Antwort geben' })).toBeNull();
   });
 });

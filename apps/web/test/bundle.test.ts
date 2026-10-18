@@ -103,6 +103,8 @@ const BUDGET = 40 * 1024;
  * pickers, the inline dry run and the removal of „Sammeln“ are lazy.
  * 221.3 KB after UX5 step 1: the views of „Relationen“, the queue's rows and
  * status line, the key tier's bulk dialog and the shared pipeline state.
+ * 221.9 KB after UX5 step 2: the review screen on the shared panel (sheet,
+ * top bar, stacked panes, the pane chip's info), the closed „Verlauf“.
  */
 const ENTRY_CEILING = 240 * 1024;
 

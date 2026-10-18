@@ -1135,7 +1135,9 @@ describe('actions in the tab „Offene Fragen“ (M6 S5c-1)', () => {
     const item = await row('q-00000000000000b1');
     // no inline decision any more
     const decideNow = within(item).getByRole('link', { name: 'Jetzt entscheiden' });
-    expect(decideNow.getAttribute('href')).toBe('/projects/demo/review/rel_01HELD?view=held');
+    expect(decideNow.getAttribute('href')).toBe(
+      '/projects/demo/review/rel_01HELD?view=held&from=open-questions',
+    );
     expect(decideNow.dataset['action']).toBe('decide');
     await user.click(primary(item));
     const dialog = await screen.findByRole('dialog');
@@ -1264,6 +1266,7 @@ describe('actions in the model view’s section (M6 S5c-1)', () => {
   it('offers a hold’s answer and „Jetzt entscheiden“ there too', async () => {
     const { user } = setup('/projects/demo/models/b/billing');
     const held = await item('q-00000000000000b1');
+    // from the model view the review screen keeps its own way back (only the tab is returned to)
     expect(within(held).getByRole('link', { name: 'Jetzt entscheiden' }).getAttribute('href')).toBe(
       '/projects/demo/review/rel_01HELD?view=held',
     );

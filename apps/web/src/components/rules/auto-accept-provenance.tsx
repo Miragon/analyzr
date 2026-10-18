@@ -3,8 +3,8 @@ import { Undo2Icon, WandSparklesIcon } from 'lucide-react';
 import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
-import { LATER_VERDICTS, autoAcceptLabel, formatDecimal } from '@/lib/auto-accept';
-import { TIERS, formatDateTime } from '@/lib/labels';
+import { LATER_VERDICTS } from '@/lib/auto-accept';
+import { TIERS, formatConfidence, formatDateTime } from '@/lib/labels';
 
 import { RevokeDialog } from './revoke-dialog';
 
@@ -34,19 +34,20 @@ export function AutoAcceptProvenance({
       data-testid="auto-accept-provenance"
       data-state={latest.state}
     >
-      <p className="flex items-center gap-1.5 font-medium">
-        <WandSparklesIcon className="size-4 shrink-0 text-info" aria-hidden />
-        {latest.state === 'in-force'
-          ? autoAcceptLabel(latest.ruleName)
-          : latest.state === 'revoked'
+      {/* in force, the status badge says it (UX5, owner decision 26 (5)) */}
+      {latest.state === 'in-force' ? null : (
+        <p className="flex items-center gap-1.5 font-medium">
+          <WandSparklesIcon className="size-4 shrink-0 text-info" aria-hidden />
+          {latest.state === 'revoked'
             ? `Automatische Annahme widerrufen – Regel „${latest.ruleName}“`
             : `Automatisch angenommen, dann ${latest.laterVerdict ? LATER_VERDICTS[latest.laterVerdict] : 'entschieden'}`}
-      </p>
+        </p>
+      )}
       <p className="text-xs">
         Entschieden durch Regel „{latest.ruleName}“ (Revision {latest.revision}), aktiviert von{' '}
         <span className="font-mono">{latest.decidedBy.handle}</span>; ausgelöst von{' '}
         <span className="font-mono">{latest.agent.handle}</span>
-        {latest.confidence === null ? '' : ` mit ${formatDecimal(latest.confidence)}`}
+        {latest.confidence === null ? '' : ` mit ${formatConfidence(latest.confidence)}`}
         {latest.tier ? ` (${TIERS[latest.tier].label})` : ''}
         {latest.llmModel ? `, Modell ${latest.llmModel}` : ''} · {formatDateTime(latest.at)}
       </p>

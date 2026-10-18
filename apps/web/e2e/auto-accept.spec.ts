@@ -235,14 +235,19 @@ test('marks and the filter in the Relations tab, provenance on the review screen
   for (const id of accepted) {
     await expect(
       page.locator(`[data-relation-id="${id}"]`).getByTestId('auto-accept-mark'),
-    ).toHaveText(`Automatisch angenommen – Regel „${RULE_NAME}“`);
+    ).toHaveText('Automatisch angenommen');
   }
   await shot(page, 'd19-05-relations');
 
   await page.goto(`/projects/${PROJECT}/review/${accepted[0]}`);
+  // the status badge says it (Q6); the rule, its revision and the agent in „Verlauf“
+  await expect(page.getByTestId('review-details').getByTestId('auto-accept-mark')).toHaveText(
+    'Automatisch angenommen',
+  );
+  await page.getByTestId('review-history').locator(':scope > summary').click();
   const provenance = page.getByTestId('auto-accept-provenance');
   await expect(provenance).toContainText(`Entschieden durch Regel „${RULE_NAME}“ (Revision 1)`);
-  await expect(provenance).toContainText('ausgelöst von agent:e2e-rules mit 0,97');
+  await expect(provenance).toContainText('ausgelöst von agent:e2e-rules mit 97 %');
   await expect(page.locator('[data-auto="decision"]')).toContainText('Automatisch angenommen');
   await shot(page, 'd19-06-review');
 });
@@ -330,9 +335,7 @@ test('a placement rule marks its acceptance on the chain page', async ({ page })
   await page.goto(`/projects/${PROJECT}/value-chain`);
   await page.getByTestId('filter-auto').click();
   const card = page.locator(`[data-testid="placement-card"][data-placement-id="${placement!.id}"]`);
-  await expect(card.getByTestId('auto-accept-mark')).toHaveText(
-    'Automatisch angenommen – Regel „Platzierungen ab 98 %“',
-  );
+  await expect(card.getByTestId('auto-accept-mark')).toHaveText('Automatisch angenommen');
   await shot(page, 'd19-09-chain');
 });
 

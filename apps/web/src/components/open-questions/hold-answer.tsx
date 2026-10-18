@@ -65,10 +65,13 @@ export default function HoldAnswer({
   project,
   subject,
   className,
+  size = 'sm',
 }: {
   project: string;
   subject: { type: 'relation' | 'placement'; id: string };
   className?: string;
+  /** `default` in the review screen's decision grid (UX5), beside the other decisions. */
+  size?: 'sm' | 'default';
 }) {
   const holds = useQuery(heldOpenQuestionsQuery(project));
   const noting = useNoteDialog();
@@ -78,14 +81,14 @@ export default function HoldAnswer({
   );
   if (!question) {
     return subject.type === 'relation' ? (
-      <RelationAnswer project={project} relationId={subject.id} className={className} />
+      <RelationAnswer project={project} relationId={subject.id} className={className} size={size} />
     ) : null;
   }
   return (
     <>
       <Button
         variant="outline"
-        size="sm"
+        size={size}
         className={className}
         onClick={(event) => noting.open(question, event.currentTarget)}
         data-testid="hold-answer"
@@ -106,10 +109,12 @@ function RelationAnswer({
   project,
   relationId,
   className,
+  size,
 }: {
   project: string;
   relationId: string;
   className?: string | undefined;
+  size: 'sm' | 'default';
 }) {
   const id = useId();
   const [open, setOpen] = useState(false);
@@ -149,7 +154,7 @@ function RelationAnswer({
       }}
     >
       <DialogTrigger asChild>
-        <Button variant="outline" size="sm" className={className} data-testid="hold-answer">
+        <Button variant="outline" size={size} className={className} data-testid="hold-answer">
           <MessageSquareReplyIcon data-icon="inline-start" />
           {CARD_ACTION_LABELS.answer}
         </Button>

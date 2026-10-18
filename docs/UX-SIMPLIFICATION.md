@@ -4,7 +4,7 @@ Status: **decided** (owner decision 26, 2026-10-18: every "Ask now" question of 
 the recommended option; HANDOFF §4); proposal of 2026-10-17, revised the same day after a UX and a
 feasibility critique · Branch: `feat/integration-and-gaps` (the first wave UX2a, UX1 and UX2b
 delivered on it on 2026-10-18, §7; the owner's walkthrough the same day, §7 "Owner
-walkthrough"; UX7, UX8, S2b's „Vorschau“, UX3, UX4 and UX5 step 1 delivered the same day; next UX5 step 2) · Source: four user-need audits of the web UI on the agent-created scratch stack
+walkthrough"; UX7, UX8, S2b's „Vorschau“, UX3, UX4 and UX5 delivered the same day; next UX6) · Source: four user-need audits of the web UI on the agent-created scratch stack
 `analyzr-uxaudit` (seeded `nordwind-handel` with its chain and a simulation agent run,
 `signavio-beispiel` from the CLI bundle import, two projects made from the raw synthetic Signavio
 export; 1440x900 and 390x844), torn down after the audit · Relates to: HANDOFF §4 decisions 8, 10,
@@ -1782,6 +1782,43 @@ stack `analyzr-ux5` (`nordwind-handel` after the simulation agent, 48 rows; the 
 | Truncated names at 1440 px | „finanzen/gutschrift · Gutschrift e…“ | none |
 | 390x844 | 429 px wide (sideways scroll) | 390 px, the rows as cards |
 | Bulk count | „Schlüssel: 29 annehmen…“ selecting 8 | „11 unauffällige annehmen …“ selecting 11 |
+
+Not verified: other browsers than Chromium, a real phone, a screen reader.
+
+**UX5 step 2 as delivered** (2026-10-18, on the branch, every gate green; DEVELOPMENT.md "UX5 step
+2"). §3.7 and Q6 (owner decision 26 (5)); web only, live-run neutral. The review screen
+(`routes/review.tsx`) uses the canvas pages' panel (`CanvasPanel`, now with a pinned `footer` for
+the decisions and the `wide` size of 440 px, as UX3 designed it): below 1024 px a sheet collapsed to
+„Von → Nach · Konfidenz“, the header a top bar above it with the way back, the position, ‹ › and
+„Von“ / „Nach“, the canvas ending above the sheet, a decision's form (R, H, C) expanding it
+(`DecisionPanel.onFormOpen`; J/K/A work while collapsed); from 1024 px both panes, stacked up to
+1279 and side by side from 1280; the pane chip with „Von“ or „Nach“, the process name and „Im
+Modell“, key, engine and stage behind its info button. The panel (`review-details.tsx`): type,
+status, endpoint state, both ends, confidence (the tier went to „Verlauf“), the agent's question,
+the no-links, the held relation's box read-only, „Begründung“, „Belege“ by element name, and one
+closed „Verlauf (n)“ instead of „Herkunft“ and „Verlauf“: the timeline (`AssertionTimeline` with
+`brief` for the entries shown above, `technical={false}`; „Gleicher Name erkannt (analyzr)“, „Vom
+Agenten vorgeschlagen“, no „maßgeblich“), the auto-acceptance's details and its revoke, and
+„Technische Angaben“ (id and version, client, procedure, model). On a held relation „Antwort geben“
+or „Antwort ergänzen“ (the note dialog of „Offene Fragen“) takes the place of „Vormerken“ in the
+decision grid; „Vormerken“ asks for the note, its question and label behind „Frage oder Label
+ergänzen“ (`HOLD_HINT` gone). The way back: `?from=open-questions` (validated) from the tab's
+„Jetzt entscheiden“ leads the back link and the end of the list to „Offene Fragen“ (the model view
+keeps the list's way; the chain's return is UX6). Keyboard hints on the four buttons and „J K
+weiter, zurück“ only, none on touch (`Kbd` hides under `(hover: none)`). Q6: `AutoAcceptMark` is the
+status badge „Automatisch angenommen“ (its tooltip the rule, revision and agent) instead of
+„Angenommen“ plus the box, in the relations table, the review screen, the chain's cards and the
+step view; a revoked item one line „Automatische Annahme widerrufen“; confidences as
+`formatConfidence` („97 %“, not „mit 0,97“). Measured with the UI load guard on the scratch stack
+`analyzr-ux5b`:
+
+| Done when | Before | After (UX5 step 2) |
+|---|---|---|
+| Review panel of an agent proposal, „Verlauf“ closed | 201 words | 93 words (≤ 110) |
+| 390x844: the way back and ‹ › | covered by the panel (`elementFromPoint` hit the aside) | on top, each answers `elementFromPoint`; the sheet collapsed |
+| bpmn.io watermark | visible only by painting over the panel's corner | every pane's answers `elementFromPoint` at 390 (both sheet states), 800, 1024 and 1440 px |
+| 1024–1279 px | one pane at a time | both, stacked |
+| Auto-accepted item | „Angenommen“ plus a four-line badge or box | one badge „Automatisch angenommen“, the rule in „Verlauf“ |
 
 Not verified: other browsers than Chromium, a real phone, a screen reader.
 

@@ -160,6 +160,8 @@ describe('DecisionPanel', () => {
     const { calls, user } = setup();
     await user.click(screen.getByRole('button', { name: /Vormerken/ }));
     await user.type(screen.getByLabelText('Notiz'), 'Unklar');
+    // folded behind a link since UX5 (decision 10: both stay)
+    await user.click(screen.getByRole('button', { name: 'Frage oder Label ergänzen' }));
     await user.type(
       screen.getByLabelText('Frage (optional)'),
       'Gilt das auch für Teillieferungen?',

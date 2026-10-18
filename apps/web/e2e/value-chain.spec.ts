@@ -424,6 +424,7 @@ test('agent proposals over REST are reviewed in the panel: A, R, H, C, HTML as t
   await expect(card(proposed['hold']!)).toContainText('Gehört die Gutschrift zu Retouren');
   await page.keyboard.press('h');
   await page.getByLabel('Notiz').fill('Mit der Buchhaltung klären.');
+  await page.getByRole('button', { name: 'Frage oder Label ergänzen' }).click();
   await page.getByLabel('Frage (optional)').fill('Wer erstellt die Gutschrift?');
   await page.keyboard.press('Control+Enter');
   await expect.poll(async () => (await placement(proposed['hold']!)).status).toBe('held');
@@ -1005,7 +1006,7 @@ test('CSS check: the bpmn-js review screen is unchanged after the chain page', a
   const shotsBefore = await paneShots(page);
 
   // to the chain page through the project tabs, view and edit mode, and back
-  await page.getByRole('link', { name: /Prüfliste/ }).click();
+  await page.getByTestId('review-back').click();
   await page.getByRole('link', { name: /^Wertschöpfungskette/ }).click();
   await expect(canvas(page)).toHaveAttribute('data-imported', 'true');
   await enterEdit(page);

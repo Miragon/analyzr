@@ -194,8 +194,14 @@ and code are in English.
   (the key tier only, the count its selection, the flagged pairs under „Genauer ansehen“, then the
   rule offered), rows that lead with the processes and one link each, the no-links behind a foot
   link, the glossary's tier names; the first proposal at 297 px (620 before); web only, live-run
-  neutral. **Next:** UX5 step 2 (the review screen, the auto-accept mark, the screenshots) → UX6 →
-  UX9 (the owner: „Sonst kannst du weitermachen“), alongside S2c (the trust rule),
+  neutral. **UX5 step 2 „Prüfbildschirm“** (done 2026-10-18 on the branch, every gate green, the UI
+  load guard and the whole Playwright suite against a scratch stack, the screenshots retaken;
+  UX-SIMPLIFICATION.md §7 "UX5 step 2 as delivered"): the review screen on the canvas pages' panel
+  (a sheet on a phone with the way back and ‹ › above it, both panes from 1024 px), the panel in 93
+  words with one closed „Verlauf“, a hold answered from the decision bar, the way back to „Offene
+  Fragen“, „Automatisch angenommen“ as one status badge (Q6) everywhere; web only, live-run
+  neutral. **Next:** UX6 → UX9 (the owner: „Sonst kannst du weitermachen“), alongside S2c (the
+  trust rule),
   S2b's follow-up and S3c; S6 after them; after the owner's
   live runs S5b, S7 and facts v2 as recommended (§7 "M6"; M6 §8 "After S2a").
 
@@ -1014,7 +1020,8 @@ model from a question card, is fixed with a labelled button on the card. **Next*
 proposed order (Q10), which the owner kept („Sonst kannst du weitermachen“): UX7 („Hochladen“, „Agent verbinden“; done 2026-10-18, UX-SIMPLIFICATION.md §7 "UX7 as delivered") → UX8 (done 2026-10-18, "UX8 as delivered"; S2a's web
 parts: „Herkunft“, the badges, the manifest of a dropped folder) → S2b (`importImpact`, the dry
 runs, the deletion impact, absent keys within `source.scope`; done 2026-10-18 except its follow-up) → UX3 (model view; done 2026-10-18, "UX3 as delivered") → UX4 (question
-actions; done 2026-10-18, "UX4 as delivered") → UX5 („Relationen“ and the review screen) → UX6 (value chain) → UX9 (result views,
+actions; done 2026-10-18, "UX4 as delivered") → UX5 („Relationen“ and the review screen; done
+2026-10-18, "UX5 step 1/2 as delivered") → UX6 (value chain) → UX9 (result views,
 „Annahmeregeln“, the projects summary), alongside S2c (the trust rule of decision 24.2) and S3c
 (renderer and spec YAML, the ad-hoc converter path, the bundled CLI); then S6 (interviews); after
 the owner's live runs S5b, S7 and facts v2 as recommended (M6 §3.11 and §6: the reindex with

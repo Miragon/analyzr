@@ -2,29 +2,24 @@ import type { AutoAcceptLedgerEntry } from '@analyzr/client';
 import { WandSparklesIcon } from 'lucide-react';
 
 import { ToneBadge } from '@/components/badges';
-import { autoAcceptLabel, formatDecimal } from '@/lib/auto-accept';
+import { formatConfidence } from '@/lib/labels';
 
 /**
- * The mark of an item an owner's auto-accept rule accepted (owner decision
- * 19): „Automatisch angenommen – Regel „…““, the details in the tooltip.
+ * The status of an item an owner's auto-accept rule accepted (owner
+ * decision 19; one badge since UX5, owner decision 26 (5)): „Automatisch
+ * angenommen“ instead of „Angenommen“; the rule, its revision and the agent
+ * repeat in the tooltip and stand in „Verlauf“.
  */
-export function AutoAcceptMark({
-  entry,
-  wrap = false,
-}: {
-  entry: AutoAcceptLedgerEntry;
-  /** Wrap the text instead of truncating it (narrow table columns). */
-  wrap?: boolean;
-}) {
+export function AutoAcceptMark({ entry }: { entry: AutoAcceptLedgerEntry }) {
   return (
     <ToneBadge
-      tone="info"
+      tone="success"
       icon={WandSparklesIcon}
-      className={wrap ? 'h-auto max-w-full text-left whitespace-normal' : 'max-w-full'}
-      title={`Revision ${entry.revision}, entschieden unter ${entry.decidedBy.handle}; ausgelöst von ${entry.agent.handle}${entry.confidence === null ? '' : ` mit ${formatDecimal(entry.confidence)}`}`}
+      className="max-w-full"
+      title={`Regel „${entry.ruleName}“ (Revision ${entry.revision}), entschieden unter ${entry.decidedBy.handle}; ausgelöst von ${entry.agent.handle}${entry.confidence === null ? '' : ` mit ${formatConfidence(entry.confidence)}`}`}
     >
-      <span className={wrap ? undefined : 'truncate'} data-testid="auto-accept-mark">
-        {autoAcceptLabel(entry.ruleName)}
+      <span className="truncate" data-testid="auto-accept-mark">
+        Automatisch angenommen
       </span>
     </ToneBadge>
   );

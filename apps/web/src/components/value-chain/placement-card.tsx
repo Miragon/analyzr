@@ -273,7 +273,7 @@ export function PlacementCard({
         </span>
       </div>
       <div className="flex flex-wrap items-center gap-1.5">
-        <StatusBadge status={p.status} />
+        {auto ? <AutoAcceptMark entry={auto} /> : <StatusBadge status={p.status} />}
         <TierBadge tier={p.tier} />
         <EndpointStateBadge state={p.endpointState} />
         {p.endpoints.process === 'missing' ? (
@@ -281,7 +281,6 @@ export function PlacementCard({
         ) : !p.stepLive ? (
           <Badge variant="outline">Schritt entfernt</Badge>
         ) : null}
-        {auto ? <AutoAcceptMark entry={auto} /> : null}
       </div>
 
       {prov?.sourceKind === 'rule' ? (

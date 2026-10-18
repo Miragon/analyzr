@@ -137,7 +137,7 @@ describe('web app', () => {
     expect(inbox).toContain('href="/projects/demo/review"');
     const screen = await render('/projects/demo/review/rel_01ABCDEFGHJKMNPQRSTVWXYZ01?tier=key');
     expect(screen).toContain('data-testid="review-screen"');
-    expect(screen).toContain('Prüfliste');
+    expect(screen).toContain('Zu prüfen');
   });
 
   it('routes the value chain page (the placement reviewUrl) and the step drill-down', async () => {

@@ -3,7 +3,7 @@ import type {
   OpenQuestionAction,
   OpenQuestionWithdrawCompare,
 } from '@analyzr/client';
-import { Link } from '@tanstack/react-router';
+import { Link, useRouterState } from '@tanstack/react-router';
 import {
   ArrowUpRightIcon,
   ChevronDownIcon,
@@ -141,6 +141,10 @@ function ActionLink({
   children: ReactNode;
 }) {
   const link = actionLink(q, card.action);
+  // From the tab, the review screen leads back to it (UX5, Q4); the model view keeps the list's way.
+  const inTab = useRouterState({
+    select: (state) => state.location.pathname.endsWith('/open-questions'),
+  });
   const common = {
     className,
     'aria-describedby': describedBy,
@@ -153,7 +157,10 @@ function ActionLink({
       <Link
         to="/projects/$project/review/$relation"
         params={{ project, relation: link.relation }}
-        search={link.held ? { view: 'held' as const } : {}}
+        search={{
+          ...(link.held ? { view: 'held' as const } : {}),
+          ...(inTab ? { from: 'open-questions' as const } : {}),
+        }}
         {...common}
       >
         {children}

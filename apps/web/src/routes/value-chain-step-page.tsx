@@ -64,9 +64,8 @@ function ProcessRow({
         ) : null}
       </span>
       <span className="flex flex-wrap items-center gap-1.5">
-        <StatusBadge status={p.status} />
+        {auto ? <AutoAcceptMark entry={auto} /> : <StatusBadge status={p.status} />}
         <TierBadge tier={p.tier} />
-        {auto ? <AutoAcceptMark entry={auto} /> : null}
         <EndpointStateBadge state={p.endpointState} />
         <span className="text-xs text-muted-foreground tabular-nums">
           {formatConfidence(p.confidence)}

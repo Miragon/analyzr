@@ -68,9 +68,13 @@ describe('marks in the relation views', () => {
     const row = (await screen.findAllByTestId('relation-row')).find(
       (r) => r.dataset['relationId'] === MESSAGE.id,
     );
-    expect(within(row!).getByTestId('auto-accept-mark').textContent).toBe(
-      'Automatisch angenommen – Regel „Schlüssel ab 95 %“',
+    // one status badge instead of „Angenommen“ plus a box; the rule in its tooltip (Q6)
+    const mark = within(row!).getByTestId('auto-accept-mark');
+    expect(mark.textContent).toBe('Automatisch angenommen');
+    expect(mark.parentElement?.getAttribute('title')).toContain(
+      'Regel „Schlüssel ab 95 %“ (Revision 2)',
     );
+    expect(within(row!).queryByText('Angenommen')).toBeNull();
     const select = screen.getByLabelText('Annahmeregel');
     expect(
       within(select)
@@ -224,9 +228,10 @@ describe('provenance and single-item revoke', () => {
       />,
     );
     const box = screen.getByTestId('auto-accept-provenance');
-    expect(box.textContent).toContain('Automatisch angenommen – Regel „Schlüssel ab 95 %“');
+    // in force, the status badge says it; the box names the rule and the confidence in percent
+    expect(box.textContent).not.toContain('Automatisch angenommen – Regel');
     expect(box.textContent).toContain(
-      'Entschieden durch Regel „Schlüssel ab 95 %“ (Revision 2), aktiviert von owner; ausgelöst von agent:claude code mit 0,97 (Gleicher Name)',
+      'Entschieden durch Regel „Schlüssel ab 95 %“ (Revision 2), aktiviert von owner; ausgelöst von agent:claude code mit 97 % (Gleicher Name)',
     );
     const user = userEvent.setup();
     await user.click(screen.getByTestId('revoke-one'));
@@ -326,9 +331,7 @@ describe('the chain page card', () => {
     );
     const card = await screen.findByTestId('placement-card');
     expect(card.dataset['auto']).toBe('true');
-    expect(within(card).getByTestId('auto-accept-mark').textContent).toBe(
-      'Automatisch angenommen – Regel „Schlüssel ab 95 %“',
-    );
+    expect(within(card).getByTestId('auto-accept-mark').textContent).toBe('Automatisch angenommen');
   });
 
   it.each([

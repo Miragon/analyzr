@@ -755,7 +755,7 @@ test('every card offers its primary action as the API names it; a hold’s answe
   await expect(primaryOf(row)).toHaveText('Antwort geben');
   await expect(row.getByRole('link', { name: 'Jetzt entscheiden' })).toHaveAttribute(
     'href',
-    `/projects/${PROJECT}/review/${heldId}?view=held`,
+    `/projects/${PROJECT}/review/${heldId}?view=held&from=open-questions`,
   );
   await primaryOf(row).click();
   const dialog = page.getByRole('dialog');

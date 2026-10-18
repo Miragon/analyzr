@@ -73,25 +73,28 @@ export function RejectForm({
   );
 }
 
-const HOLD_HINT =
-  'Vorgemerkte Relationen stehen in einer eigenen Liste; Antworten erreichen den nächsten Agent-Lauf.';
-
+/**
+ * „Vormerken“: a note, and behind „Frage oder Label ergänzen“ the optional
+ * question and label (UX5, UX-SIMPLIFICATION.md §3.7 item 7; decision 10:
+ * both stay, folded).
+ */
 export function HoldForm({
   pending,
   onSubmit,
   onCancel,
-  hint = HOLD_HINT,
+  hint,
 }: {
   pending: boolean;
   onSubmit: (hold: { note: string; question?: string; label?: string }) => void;
   onCancel: () => void;
-  /** What happens to a held item (relation or placement). */
+  /** What happens to a held item, where the page needs to say it (a placement). */
   hint?: string;
 }) {
   const id = useId();
   const [note, setNote] = useState('');
   const [question, setQuestion] = useState('');
   const [label, setLabel] = useState('');
+  const [more, setMore] = useState(false);
   function submit(event: FormEvent) {
     event.preventDefault();
     if (note.trim() === '') return;
@@ -121,27 +124,42 @@ export function HoldForm({
             placeholder="Was ist offen?"
           />
         </Field>
-        <Field>
-          <FieldLabel htmlFor={`${id}-question`}>Frage (optional)</FieldLabel>
-          <Input
-            id={`${id}-question`}
-            value={question}
-            onChange={(e) => setQuestion(e.target.value)}
-            maxLength={MAX_QUESTION_CHARS}
-            placeholder="z. B. Wird die Gutschrift auch bei Teilretouren erstellt?"
-          />
-        </Field>
-        <Field>
-          <FieldLabel htmlFor={`${id}-label`}>Label (optional)</FieldLabel>
-          <Input
-            id={`${id}-label`}
-            value={label}
-            onChange={(e) => setLabel(e.target.value)}
-            maxLength={MAX_LABEL_CHARS}
-            placeholder="z. B. mit Fachbereich Finanzen klären"
-          />
-          <FieldDescription>{hint}</FieldDescription>
-        </Field>
+        {more ? (
+          <>
+            <Field>
+              <FieldLabel htmlFor={`${id}-question`}>Frage (optional)</FieldLabel>
+              <Input
+                id={`${id}-question`}
+                value={question}
+                onChange={(e) => setQuestion(e.target.value)}
+                maxLength={MAX_QUESTION_CHARS}
+                placeholder="z. B. Wird die Gutschrift auch bei Teilretouren erstellt?"
+              />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor={`${id}-label`}>Label (optional)</FieldLabel>
+              <Input
+                id={`${id}-label`}
+                value={label}
+                onChange={(e) => setLabel(e.target.value)}
+                maxLength={MAX_LABEL_CHARS}
+                placeholder="z. B. mit Fachbereich Finanzen klären"
+              />
+            </Field>
+          </>
+        ) : (
+          <Button
+            type="button"
+            variant="link"
+            size="sm"
+            className="self-start px-0"
+            onClick={() => setMore(true)}
+            data-testid="hold-more"
+          >
+            Frage oder Label ergänzen
+          </Button>
+        )}
+        {hint ? <FieldDescription>{hint}</FieldDescription> : null}
       </FieldGroup>
       <div className="flex justify-end gap-2">
         <Button type="button" variant="outline" onClick={onCancel}>

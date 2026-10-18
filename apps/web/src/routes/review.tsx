@@ -1,18 +1,22 @@
 import type { Fact, Model } from '@analyzr/client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, createRoute } from '@tanstack/react-router';
+import { cn } from 'cn';
 import {
   ArrowLeftIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
   EyeIcon,
+  InfoIcon,
   LocateIcon,
   TriangleAlertIcon,
 } from 'lucide-react';
-import { lazy, Suspense, useMemo, useState, useSyncExternalStore } from 'react';
+import { lazy, Suspense, useMemo, useState } from 'react';
 
 import { EngineBadge, StageBadge } from '@/components/badges';
+import { CanvasPanel } from '@/components/canvas-panel';
 import { ErrorText } from '@/components/error-text';
+import { LightPopover } from '@/components/light-popover';
 import { MiragonMark } from '@/components/page-shell';
 import { DecisionPanel, type DecisionOutcome } from '@/components/review/decision-panel';
 import { ReviewDetails } from '@/components/review/review-details';
@@ -24,6 +28,9 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { ApiError } from '@/lib/api';
 import { useAutoAcceptIndex } from '@/lib/auto-accept-actions';
 import type { CanvasHighlight } from '@/lib/bpmn-elements';
+import { useCanvasSheet } from '@/lib/canvas-sheet';
+import { formatConfidence } from '@/lib/labels';
+import { useMediaQuery } from '@/lib/media';
 import { useProjectPermissions } from '@/lib/permissions';
 import {
   assertionsQuery,
@@ -39,6 +46,7 @@ import {
   neighbours,
   parseQueueFilters,
   reviewQueue,
+  sideName,
   type QueueFilters,
 } from '@/lib/review';
 import { toast } from '@/lib/toast';
@@ -48,14 +56,24 @@ import { useShortcuts } from '@/lib/use-shortcuts';
 import { rootRoute } from './root';
 
 const BpmnCanvas = lazy(() => import('@/components/bpmn-canvas'));
+/**
+ * A held relation's answer in the decision grid (UX2b, UX5): the note dialog
+ * of „Offene Fragen“, loaded with the open-questions modules on first render.
+ */
+const HoldAnswer = lazy(() => import('@/components/open-questions/hold-answer'));
 
 type PaneMode = 'both' | 'from' | 'to';
 
 interface ReviewScreenSearch extends QueueFilters {
   /** Only one endpoint's model (narrow screens start with `from`). */
   pane?: 'from' | 'to';
-  /** `held`: opened from the held list; J/K walk it and "Prüfliste" returns to it. */
+  /** `held`: opened from the held list; J/K walk it and „Vorgemerkt“ returns to it. */
   view?: 'held';
+  /**
+   * Opened from „Offene Fragen“ (a hold's „Jetzt entscheiden“, owner decision 26 Q4): the back
+   * link and the end of the list lead back there (UX5).
+   */
+  from?: 'open-questions';
 }
 
 /**
@@ -71,30 +89,80 @@ export const reviewRoute = createRoute({
     ...parseQueueFilters(search),
     ...(search['pane'] === 'from' || search['pane'] === 'to' ? { pane: search['pane'] } : {}),
     ...(search['view'] === 'held' ? { view: 'held' as const } : {}),
+    ...(search['from'] === 'open-questions' ? { from: 'open-questions' as const } : {}),
   }),
   component: ReviewScreen,
 });
 
-const WIDE = '(min-width: 1280px)';
-
-function subscribeWide(callback: () => void) {
-  const query = window.matchMedia(WIDE);
-  query.addEventListener('change', callback);
-  return () => query.removeEventListener('change', callback);
-}
-
-/** Side by side needs room; below 1280px the panes are switched instead. */
-function useWide(): boolean {
-  return useSyncExternalStore(
-    subscribeWide,
-    () => window.matchMedia(WIDE).matches,
-    () => true,
-  );
-}
+/** Side by side needs room; from 1024 px to 1279 px the panes stack instead (UX5). */
+const SIDE_BY_SIDE = '(min-width: 1280px)';
 
 interface FocusTarget {
   modelKey: string;
   elementId: string;
+}
+
+/** A pane's chip (UX5): „Von“ or „Nach“, the process name and „Im Modell“; key, engine and stage behind the info. */
+function PaneChip({
+  project,
+  relationId,
+  title,
+  name,
+  model,
+}: {
+  project: string;
+  relationId: string;
+  title: string;
+  name: string;
+  model: Model;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div
+      className="absolute bottom-4 left-4 z-30 flex max-w-[calc(100%-96px)] items-center gap-2 rounded-xl border bg-card/90 px-3 py-1.5 text-sm shadow-sm backdrop-blur-sm"
+      data-testid="pane-chip"
+    >
+      <span className="font-semibold">{title}</span>
+      <span className="min-w-0 truncate" title={name}>
+        {name}
+      </span>
+      <LightPopover
+        open={open}
+        onOpenChange={setOpen}
+        label={`Angaben zu ${model.key}`}
+        align="start"
+        className="bottom-full top-auto mt-0 mb-1 p-2"
+        trigger={(props) => (
+          <Button
+            {...props}
+            variant="ghost"
+            size="icon-xs"
+            aria-label={`Angaben zum Modell von „${title}“`}
+          >
+            <InfoIcon />
+          </Button>
+        )}
+      >
+        <div className="flex flex-col gap-1.5" data-testid="pane-chip-details">
+          <span className="font-mono text-[13px]">{model.key}</span>
+          <span className="flex flex-wrap gap-1.5">
+            <EngineBadge engine={model.engine} />
+            <StageBadge stage={model.stage} />
+          </span>
+        </div>
+      </LightPopover>
+      <Button variant="ghost" size="xs" asChild>
+        <Link
+          to="/projects/$project/models/$"
+          params={{ project, _splat: model.key }}
+          search={{ relation: relationId }}
+        >
+          <LocateIcon data-icon="inline-start" />
+          Im Modell
+        </Link>
+      </Button>
+    </div>
+  );
 }
 
 function Pane({
@@ -103,6 +171,7 @@ function Pane({
   side,
   modelKey,
   model,
+  name,
   highlights,
   focus,
 }: {
@@ -112,6 +181,8 @@ function Pane({
   /** Key of the endpoint's model, from the ref (the model may be deleted). */
   modelKey: string;
   model: Model | undefined;
+  /** The endpoint's process, for the chip. */
+  name: string;
   highlights: CanvasHighlight[];
   focus: string | null;
 }) {
@@ -129,7 +200,7 @@ function Pane({
       aria-label={`${title}: ${modelKey}`}
       data-testid="review-pane"
       data-side={side}
-      className="relative min-w-0 flex-1 border-r border-border last:border-r-0"
+      className="relative min-h-0 min-w-0 flex-1 border-border not-last:border-b xl:not-last:border-r xl:not-last:border-b-0"
     >
       {content.data ? (
         <Suspense
@@ -180,24 +251,13 @@ function Pane({
         </div>
       )}
       {model ? (
-        <div className="absolute bottom-4 left-4 z-30 flex max-w-[calc(100%-96px)] flex-wrap items-center gap-2 rounded-xl border bg-card/90 px-3 py-2 text-sm shadow-sm backdrop-blur-sm">
-          <span className="font-semibold">{title}</span>
-          <span className="truncate font-mono text-[13px]" title={model.key}>
-            {model.key}
-          </span>
-          <EngineBadge engine={model.engine} />
-          <StageBadge stage={model.stage} />
-          <Button variant="ghost" size="xs" asChild>
-            <Link
-              to="/projects/$project/models/$"
-              params={{ project, _splat: model.key }}
-              search={{ relation: relationId }}
-            >
-              <LocateIcon data-icon="inline-start" />
-              Im Modell
-            </Link>
-          </Button>
-        </div>
+        <PaneChip
+          project={project}
+          relationId={relationId}
+          title={title}
+          name={name}
+          model={model}
+        />
       ) : null}
     </section>
   );
@@ -208,7 +268,8 @@ function ReviewScreen() {
   const search = reviewRoute.useSearch();
   const navigate = reviewRoute.useNavigate();
   const queryClient = useQueryClient();
-  const wide = useWide();
+  const sheet = useCanvasSheet();
+  const sideBySide = useMediaQuery(SIDE_BY_SIDE);
   // A cited element belongs to one relation: another relation (J/K, a link,
   // the browser history) starts without it.
   const [cited, setCited] = useState<(FocusTarget & { relationId: string }) | null>(null);
@@ -236,6 +297,7 @@ function ReviewScreen() {
     [stage, tier, modelFilter],
   );
   const held = search.view === 'held';
+  const fromQuestions = search.from === 'open-questions';
   const queue = useMemo(
     () =>
       held
@@ -256,20 +318,27 @@ function ReviewScreen() {
   const from = relation ? splitRef(relation.from) : null;
   const to = relation ? splitRef(relation.to) : null;
   const sameModel = from !== null && to !== null && from.modelKey === to.modelKey;
-  const mode: PaneMode = sameModel ? 'both' : (search.pane ?? (wide ? 'both' : 'from'));
+  // Both panes from 1024 px (side by side from 1280, stacked below); on a phone one at a time.
+  const mode: PaneMode = sameModel ? 'both' : (search.pane ?? (sheet.wide ? 'both' : 'from'));
   const modelOf = (key: string | undefined) => models.data?.find((m) => m.key === key);
   /** Models with a pane on this screen: evidence into them is shown there. */
   const paneModels = new Set(from && to ? [from.modelKey, to.modelKey] : []);
+  const keep = {
+    ...(search.pane ? { pane: search.pane } : {}),
+    ...(fromQuestions ? { from: 'open-questions' as const } : {}),
+  };
 
   const goTo = (id: string) => {
     void navigate({
       to: '/projects/$project/review/$relation',
       params: { project, relation: id },
-      search: { ...listSearch, ...(search.pane ? { pane: search.pane } : {}) },
+      search: { ...listSearch, ...keep },
     });
   };
-  const toInbox = () =>
-    void navigate({ to: '/projects/$project/review', params: { project }, search: listSearch });
+  const toList = () =>
+    fromQuestions
+      ? void navigate({ to: '/projects/$project/open-questions', params: { project } })
+      : void navigate({ to: '/projects/$project/review', params: { project }, search: listSearch });
 
   /** Shows a cited element; switches to its pane when only the other one is shown. */
   const showEvidence = (target: FocusTarget) => {
@@ -277,7 +346,7 @@ function ReviewScreen() {
     if (!from || !to || sameModel || mode === 'both') return;
     const side = target.modelKey === from.modelKey ? 'from' : 'to';
     if (side !== mode) {
-      void navigate({ search: { ...listSearch, pane: side }, replace: true });
+      void navigate({ search: { ...listSearch, ...keep, pane: side }, replace: true });
     }
   };
 
@@ -295,13 +364,15 @@ function ReviewScreen() {
       toast({
         tone: 'info',
         title: 'Liste abgearbeitet',
-        description: held
-          ? 'In dieser Liste ist nichts mehr vorgemerkt.'
-          : outcome === 'hold'
-            ? 'Vorgemerkte Relationen findest du unter „Vorgemerkt“.'
-            : 'In dieser Liste ist kein Vorschlag mehr offen.',
+        description: fromQuestions
+          ? 'Zurück zu „Offene Fragen“.'
+          : held
+            ? 'In dieser Liste ist nichts mehr vorgemerkt.'
+            : outcome === 'hold'
+              ? 'Vorgemerkte Relationen findest du unter „Vorgemerkt“.'
+              : 'In dieser Liste ist kein Vorschlag mehr offen.',
       });
-      toInbox();
+      toList();
     }
   }
 
@@ -326,6 +397,101 @@ function ReviewScreen() {
 
   const notFound = relationQ.error instanceof ApiError && relationQ.error.status === 404;
   const loadError = relationQ.error ?? models.error ?? landscape.error;
+  const fromName = relation ? sideName(resolve(relation.from)) : '';
+  const toName = relation ? sideName(resolve(relation.to)) : '';
+  const back = fromQuestions ? 'Offene Fragen' : held ? 'Vorgemerkt' : 'Zu prüfen';
+
+  const header = (
+    <>
+      {sheet.wide ? (
+        <Link to="/" aria-label="Zu den Projekten" className="px-1">
+          <MiragonMark className="size-5" />
+        </Link>
+      ) : null}
+      <Button variant="ghost" size="sm" asChild>
+        {fromQuestions ? (
+          <Link
+            to="/projects/$project/open-questions"
+            params={{ project }}
+            data-testid="review-back"
+          >
+            <ArrowLeftIcon data-icon="inline-start" />
+            {back}
+          </Link>
+        ) : (
+          <Link
+            to="/projects/$project/review"
+            params={{ project }}
+            search={listSearch}
+            data-testid="review-back"
+          >
+            <ArrowLeftIcon data-icon="inline-start" />
+            {back}
+          </Link>
+        )}
+      </Button>
+      <span className="text-muted-foreground tabular-nums" data-testid="queue-position">
+        {nav.index >= 0
+          ? `${nav.index + 1} von ${queue.length}`
+          : queue.length > 0
+            ? `nicht in der Liste (${queue.length} offen)`
+            : held
+              ? 'nichts vorgemerkt'
+              : 'keine offenen Vorschläge'}
+      </span>
+      <div className="flex items-center gap-1">
+        <Button
+          variant="outline"
+          size="icon-sm"
+          aria-label="Vorheriger Vorschlag (K)"
+          title="Vorheriger Vorschlag (K)"
+          disabled={!nav.previous}
+          onClick={() => nav.previous && goTo(nav.previous.id)}
+          data-testid="review-previous"
+        >
+          <ChevronLeftIcon />
+        </Button>
+        <Button
+          variant="outline"
+          size="icon-sm"
+          aria-label="Nächster Vorschlag (J)"
+          title="Nächster Vorschlag (J)"
+          disabled={!nav.next}
+          onClick={() => nav.next && goTo(nav.next.id)}
+          data-testid="review-next"
+        >
+          <ChevronRightIcon />
+        </Button>
+      </div>
+      {relation && !sameModel ? (
+        <ToggleGroup
+          type="single"
+          variant="outline"
+          size="sm"
+          spacing={0}
+          value={mode}
+          aria-label="Diagramme"
+          onValueChange={(value) => {
+            if (value !== 'both' && value !== 'from' && value !== 'to') return;
+            void navigate({
+              search: {
+                ...listSearch,
+                ...(fromQuestions ? { from: 'open-questions' as const } : {}),
+                ...(value === 'both' ? {} : { pane: value }),
+              },
+              replace: true,
+            });
+          }}
+        >
+          {sheet.wide ? (
+            <ToggleGroupItem value="both">{sideBySide ? 'Nebeneinander' : 'Beide'}</ToggleGroupItem>
+          ) : null}
+          <ToggleGroupItem value="from">Von</ToggleGroupItem>
+          <ToggleGroupItem value="to">Nach</ToggleGroupItem>
+        </ToggleGroup>
+      ) : null}
+    </>
+  );
 
   return (
     <div
@@ -333,7 +499,15 @@ function ReviewScreen() {
       data-testid="review-screen"
     >
       {relation && from && to && models.data ? (
-        <div className="absolute inset-y-0 right-0 left-0 flex lg:right-[468px]">
+        <div
+          className={cn(
+            'absolute inset-x-0 top-0 flex',
+            sheet.wide ? 'right-[468px]' : 'top-14',
+            sideBySide ? 'flex-row' : 'flex-col',
+          )}
+          style={{ bottom: sheet.inset }}
+          data-testid="review-canvas"
+        >
           {mode === 'both' && sameModel ? (
             <Pane
               project={project}
@@ -341,6 +515,7 @@ function ReviewScreen() {
               side="both"
               modelKey={from.modelKey}
               model={modelOf(from.modelKey)}
+              name={fromName === toName ? fromName : `${fromName} · ${toName}`}
               highlights={highlightsFor(from.modelKey)}
               focus={focusFor(from.modelKey, from.elementId)}
             />
@@ -353,6 +528,7 @@ function ReviewScreen() {
               side="from"
               modelKey={from.modelKey}
               model={modelOf(from.modelKey)}
+              name={fromName}
               highlights={highlightsFor(from.modelKey)}
               focus={focusFor(from.modelKey, from.elementId)}
             />
@@ -365,6 +541,7 @@ function ReviewScreen() {
               side="to"
               modelKey={to.modelKey}
               model={modelOf(to.modelKey)}
+              name={toName}
               highlights={highlightsFor(to.modelKey)}
               focus={focusFor(to.modelKey, to.elementId)}
             />
@@ -372,167 +549,122 @@ function ReviewScreen() {
         </div>
       ) : null}
 
-      {/* top left: where am I, queue position, pane mode */}
-      <header className="absolute top-4 left-4 z-30 flex max-w-[calc(100vw-32px)] flex-wrap items-center gap-2 rounded-xl border bg-card/90 p-2 text-sm shadow-md backdrop-blur-sm lg:max-w-[calc(100vw-516px)]">
-        <Link to="/" aria-label="Zu den Projekten" className="px-1">
-          <MiragonMark className="size-5" />
-        </Link>
-        <Button variant="ghost" size="sm" asChild>
-          <Link to="/projects/$project/review" params={{ project }} search={listSearch}>
-            <ArrowLeftIcon data-icon="inline-start" />
-            {held ? 'Vorgemerkt' : 'Prüfliste'}
-          </Link>
-        </Button>
-        <span className="text-muted-foreground tabular-nums" data-testid="queue-position">
-          {nav.index >= 0
-            ? `${nav.index + 1} von ${queue.length}`
-            : queue.length > 0
-              ? `nicht in der Liste (${queue.length} offen)`
-              : held
-                ? 'nichts vorgemerkt'
-                : 'keine offenen Vorschläge'}
-        </span>
-        <div className="flex items-center gap-1">
-          <Button
-            variant="outline"
-            size="icon-sm"
-            aria-label="Vorheriger Vorschlag (K)"
-            title="Vorheriger Vorschlag (K)"
-            disabled={!nav.previous}
-            onClick={() => nav.previous && goTo(nav.previous.id)}
-          >
-            <ChevronLeftIcon />
-          </Button>
-          <Button
-            variant="outline"
-            size="icon-sm"
-            aria-label="Nächster Vorschlag (J)"
-            title="Nächster Vorschlag (J)"
-            disabled={!nav.next}
-            onClick={() => nav.next && goTo(nav.next.id)}
-          >
-            <ChevronRightIcon />
-          </Button>
-        </div>
-        {relation && !sameModel ? (
-          <ToggleGroup
-            type="single"
-            variant="outline"
-            size="sm"
-            spacing={0}
-            value={mode}
-            aria-label="Diagramme"
-            onValueChange={(value) => {
-              if (value !== 'both' && value !== 'from' && value !== 'to') return;
-              void navigate({
-                search: { ...listSearch, ...(value === 'both' ? {} : { pane: value }) },
-                replace: true,
-              });
-            }}
-          >
-            <ToggleGroupItem value="both" disabled={!wide && mode !== 'both'}>
-              Nebeneinander
-            </ToggleGroupItem>
-            <ToggleGroupItem value="from">Von</ToggleGroupItem>
-            <ToggleGroupItem value="to">Nach</ToggleGroupItem>
-          </ToggleGroup>
-        ) : null}
+      {/* where am I, the queue position, the panes: a floating card, on a phone a top bar */}
+      <header
+        className={cn(
+          'absolute z-30 flex flex-wrap items-center gap-2 text-sm',
+          sheet.wide
+            ? 'top-4 left-4 max-w-[calc(100vw-516px)] rounded-xl border bg-card/90 p-2 shadow-md backdrop-blur-sm'
+            : 'inset-x-0 top-0 min-h-14 border-b bg-card/95 px-2 py-2 shadow-sm backdrop-blur-sm',
+        )}
+        data-testid="review-header"
+      >
+        {header}
       </header>
 
-      {/* right: details, history and the decision */}
-      <aside
-        aria-label="Prüfung"
-        className="absolute top-4 right-4 bottom-4 z-30 flex w-[440px] max-w-[calc(100vw-32px)] flex-col overflow-hidden rounded-xl border bg-card/95 shadow-md backdrop-blur-sm"
-      >
-        <div className="flex-1 overflow-y-auto p-4">
-          {relation ? (
-            <ReviewDetails
-              project={project}
-              relation={relation}
-              assertions={assertions.data}
-              resolve={resolve}
-              modelKeys={modelKeys}
-              paneModels={paneModels}
-              onEvidence={(item) =>
-                showEvidence({ modelKey: item.modelKey, elementId: item.elementId })
-              }
-              autoAccept={
-                reviewer
-                  ? {
-                      entries: autoIndex.bySubject.get(relation.id) ?? [],
-                      marks: autoIndex.byAssertion,
-                      canRevoke: owner,
-                    }
-                  : undefined
-              }
-              canAnswerHold={reviewer}
-            />
-          ) : notFound ? (
-            <Alert>
-              <AlertTitle>Relation nicht gefunden</AlertTitle>
-              <AlertDescription>
-                Es gibt sie in „{project}“ nicht, oder du hast keinen Zugriff.{' '}
-                <Link
-                  to="/projects/$project/review"
-                  params={{ project }}
-                  className="text-link underline"
+      <CanvasPanel
+        sheet={sheet}
+        label="Prüfung"
+        size="wide"
+        summary={
+          relation
+            ? `${fromName} → ${toName} · ${formatConfidence(relation.confidence)}`
+            : 'Prüfung'
+        }
+        testId="review-panel"
+        footer={
+          relation ? (
+            <div className="flex flex-col gap-2 border-t bg-card p-4">
+              {reviewer ? (
+                <DecisionPanel
+                  project={project}
+                  relation={relation}
+                  resolve={resolve}
+                  facts={facts}
+                  onDecided={onDecided}
+                  onFormOpen={() => sheet.setExpanded(true)}
+                  onReload={() =>
+                    void queryClient.invalidateQueries({ queryKey: keys.project(project) })
+                  }
+                  holdAnswer={
+                    <Suspense fallback={null}>
+                      <HoldAnswer
+                        project={project}
+                        subject={{ type: 'relation', id: relation.id }}
+                        size="default"
+                        className="justify-start"
+                      />
+                    </Suspense>
+                  }
+                />
+              ) : can.known ? (
+                // Viewers and the read-only demo: no decision panel, so A/R/H/C do nothing.
+                <p
+                  className="flex items-center gap-2 text-sm text-muted-foreground"
+                  data-testid="read-only-review"
                 >
-                  Zur Prüfliste
-                </Link>
-              </AlertDescription>
-            </Alert>
-          ) : loadError ? (
-            <Alert variant="destructive">
-              <AlertTitle>Prüfung konnte nicht geladen werden</AlertTitle>
-              <AlertDescription>
-                <ErrorText error={loadError} />
-              </AlertDescription>
-            </Alert>
-          ) : (
-            <div className="grid h-full place-items-center">
-              <Spinner className="size-6" />
-            </div>
-          )}
-        </div>
-        {relation ? (
-          <div className="flex flex-col gap-2 border-t bg-card p-4">
-            {reviewer ? (
-              <DecisionPanel
-                project={project}
-                relation={relation}
-                resolve={resolve}
-                facts={facts}
-                onDecided={onDecided}
-                onReload={() =>
-                  void queryClient.invalidateQueries({ queryKey: keys.project(project) })
-                }
-              />
-            ) : can.known ? (
-              // Viewers and the read-only demo: no decision panel, so A/R/H/C do nothing.
-              <p
-                className="flex items-center gap-2 text-sm text-muted-foreground"
-                data-testid="read-only-review"
-              >
-                <EyeIcon className="size-4 shrink-0" aria-hidden />
-                {can.demo
-                  ? 'Nur lesen – in der Demo entscheidest du nicht.'
-                  : 'Nur lesen – entscheiden dürfen Bearbeiter und Inhaber.'}
-              </p>
-            ) : null}
-            <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-              <span className="inline-flex items-center gap-1">
+                  <EyeIcon className="size-4 shrink-0" aria-hidden />
+                  {can.demo
+                    ? 'Nur lesen – in der Demo entscheidest du nicht.'
+                    : 'Nur lesen – entscheiden dürfen Bearbeiter und Inhaber.'}
+                </p>
+              ) : null}
+              <p className="flex items-center gap-1 text-xs text-muted-foreground [@media(hover:none)]:hidden">
                 <Kbd>J</Kbd>
                 <Kbd>K</Kbd> weiter, zurück
-              </span>
-              {reviewer ? (
-                <span className="inline-flex items-center gap-1">
-                  <Kbd>A</Kbd> <Kbd>R</Kbd> <Kbd>H</Kbd> <Kbd>C</Kbd> entscheiden
-                </span>
-              ) : null}
-            </p>
+              </p>
+            </div>
+          ) : null
+        }
+      >
+        {relation ? (
+          <ReviewDetails
+            project={project}
+            relation={relation}
+            assertions={assertions.data}
+            resolve={resolve}
+            modelKeys={modelKeys}
+            paneModels={paneModels}
+            onEvidence={(item) =>
+              showEvidence({ modelKey: item.modelKey, elementId: item.elementId })
+            }
+            autoAccept={
+              reviewer
+                ? {
+                    entries: autoIndex.bySubject.get(relation.id) ?? [],
+                    marks: autoIndex.byAssertion,
+                    canRevoke: owner,
+                  }
+                : undefined
+            }
+          />
+        ) : notFound ? (
+          <Alert>
+            <AlertTitle>Relation nicht gefunden</AlertTitle>
+            <AlertDescription>
+              Es gibt sie in „{project}“ nicht, oder du hast keinen Zugriff.{' '}
+              <Link
+                to="/projects/$project/review"
+                params={{ project }}
+                className="text-link underline"
+              >
+                Zu prüfen
+              </Link>
+            </AlertDescription>
+          </Alert>
+        ) : loadError ? (
+          <Alert variant="destructive">
+            <AlertTitle>Prüfung konnte nicht geladen werden</AlertTitle>
+            <AlertDescription>
+              <ErrorText error={loadError} />
+            </AlertDescription>
+          </Alert>
+        ) : (
+          <div className="grid h-full place-items-center">
+            <Spinner className="size-6" />
           </div>
-        ) : null}
-      </aside>
+        )}
+      </CanvasPanel>
     </div>
   );
 }

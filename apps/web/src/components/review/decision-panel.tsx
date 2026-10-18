@@ -7,7 +7,7 @@ import {
   TriangleAlertIcon,
   XIcon,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -41,6 +41,13 @@ export interface DecisionPanelProps {
   onDecided?: (outcome: DecisionOutcome, result: DecisionResult) => void;
   /** Reloads the relation after a conflict. */
   onReload?: () => void;
+  /**
+   * A held relation's answer in the decision grid instead of „Vormerken“ (UX5,
+   * UX-SIMPLIFICATION.md §3.7 item 3): the note dialog of „Offene Fragen“.
+   */
+  holdAnswer?: ReactNode;
+  /** A form opened (reject, hold, correct): the phone's sheet expands to show it (UX5). */
+  onFormOpen?: () => void;
 }
 
 const TOAST_TITLES: Record<DecisionOutcome, string> = {
@@ -77,8 +84,14 @@ function Panel({
   shortcuts = true,
   onDecided,
   onReload,
+  holdAnswer,
+  onFormOpen,
 }: DecisionPanelProps) {
-  const [form, setForm] = useState<Form>(null);
+  const [form, setFormState] = useState<Form>(null);
+  const setForm = (next: Form) => {
+    setFormState(next);
+    if (next !== null) onFormOpen?.();
+  };
   const [conflict, setConflict] = useState<Conflict | null>(null);
   const decide = useDecide(project);
 
@@ -218,18 +231,22 @@ function Panel({
             </span>
             {shortcuts ? <Kbd>R</Kbd> : null}
           </Button>
-          <Button
-            variant="outline"
-            onClick={() => setForm('hold')}
-            disabled={!can.hold || busy}
-            className="justify-between"
-          >
-            <span className="inline-flex items-center gap-1.5">
-              <BookmarkIcon />
-              Vormerken
-            </span>
-            {shortcuts ? <Kbd>H</Kbd> : null}
-          </Button>
+          {relation.status === 'held' && holdAnswer ? (
+            holdAnswer
+          ) : (
+            <Button
+              variant="outline"
+              onClick={() => setForm('hold')}
+              disabled={!can.hold || busy}
+              className="justify-between"
+            >
+              <span className="inline-flex items-center gap-1.5">
+                <BookmarkIcon />
+                Vormerken
+              </span>
+              {shortcuts ? <Kbd>H</Kbd> : null}
+            </Button>
+          )}
           <Button
             variant="outline"
             onClick={() => setForm('correct')}

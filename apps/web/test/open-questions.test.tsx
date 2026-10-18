@@ -438,7 +438,7 @@ describe('tab „Offene Fragen“', () => {
       within(held!)
         .getByRole('link', { name: /Jetzt entscheiden/ })
         .getAttribute('href'),
-    ).toBe('/projects/demo/review/rel_01HELD?view=held');
+    ).toBe('/projects/demo/review/rel_01HELD?view=held&from=open-questions');
     // no refs list any more
     expect(within(held!).queryByRole('list', { name: 'Bezug' })).toBeNull();
   });
@@ -876,7 +876,9 @@ describe('notes (M6 S5a, S5c-1; a hold’s answer since UX2b)', () => {
     ]);
     // a hold is decided where the diagrams are (Q4): „Jetzt entscheiden“ beside its answer
     const decideNow = within(all[0]!).getByRole('link', { name: 'Jetzt entscheiden' });
-    expect(decideNow.getAttribute('href')).toBe('/projects/demo/review/rel_01HELD?view=held');
+    expect(decideNow.getAttribute('href')).toBe(
+      '/projects/demo/review/rel_01HELD?view=held&from=open-questions',
+    );
     expect(within(all[0]!).queryByTestId('question-more-actions')).toBeNull();
     // at most three actions per card
     for (const row of all)

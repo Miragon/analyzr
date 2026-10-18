@@ -2305,7 +2305,8 @@ delivered").
 | „Relationen › Zu prüfen“ (UX5) | 48 rows: 10 controls besides them, 1 per row, 496 words (about 446 at the audit's 42 rows), first row at 297 px, no name cut | 390 px wide (the rows as cards) | 64, 828, 48, first row at 440 px (429 px wide at 390) | first row ≤ 360 px; ≤ 12 controls besides the rows, 1 per row; 450 words at 42 rows; 390 px at 390 |
 | „Wertschöpfungskette“ | 60, 482, first open placement at 1,153 px | – | 61, 483 (UX1) | UX6 |
 | Model view `vertrieb/order-handling` (UX3) | 18, 196, 3 badges; the panel 10 controls, 75 words, the first question ends inside it | `finanzen/gutschrift`: the name in the top bar, the sheet collapsed, the canvas 86 % of the screen | 35, 555; the panel 37, 515, the first question 1,275 px down | the panel ≤ 25 controls, ≤ 300 words, the first question without scrolling; ≤ 3 chips and „Mehr“; ≥ 55 % canvas at 390 |
-| Entry chunk (gzip) | 221.3 KB in 1 chunk (218.1 before UX3, 219.8 after it, 220.7 after UX4) | | 211.0 KB in 7 | < 240 KB, each slice ≤ +3 KB |
+| Review screen, an agent proposal (UX5) | the panel 93 words with „Verlauf“ closed | the sheet collapsed to „Von → Nach · Konfidenz“, the way back and ‹ › on top | 201 words | ≤ 110 words; the way back and ‹ › answer `elementFromPoint` at 390 |
+| Entry chunk (gzip) | 221.9 KB in 1 chunk (218.1 before UX3, 219.8 after it, 220.7 after UX4, 221.3 after UX5 step 1) | | 211.0 KB in 7 | < 240 KB, each slice ≤ +3 KB |
 
 How it talks to the server: only through `@analyzr/client` (generated from the contracts) with
 `baseUrl` = the page's origin. `src/lib/api.ts` wraps `fetch`: on a 401 it calls
@@ -2449,27 +2450,39 @@ and `src/routes/review.tsx`.
   several). Since UX5 a row's one link (the pair, the processes first) and a click on the row
   open the review screen with the same filters, as does „Vorschläge prüfen (n)“ at the first
   item; the views „Gilt“, „Abgelehnt“, „Automatisch angenommen“ and „Alle“ show the results.
-- **Review screen** (`/projects/{key}/review/{relation}`, full viewport like the model view): both
-  endpoint models in bpmn-js side by side (from 1280 px; below that, and with the toggle, one at a
-  time: "Von" / "Nach"; one canvas when both ends lie in one file), endpoints marked and labelled
-  "Von"/"Nach", each pane with model key, engine, stage and "Im Modell"; a pane whose model was
-  deleted says so ("Modell „…“ gibt es nicht mehr") instead of loading. The panel shows type,
-  status, tier, endpoint state, confidence, both endpoints, the version, the agent's question,
-  the callout "Kein Zusammenhang laut Agent" with every current agent no-link on the pair
-  (`Relation.noLinks`: handle, time, "Analyse von {origin}", the reason as plain text, "Ohne
-  Begründung." for an empty one), rationale and evidence (refs into the two endpoint models are
-  buttons that centre and mark the element as "Beleg", switching to its pane when only the other one
-  is shown; refs into other project models link to the model view at that element; anything else
-  stays text; a cited element belongs to its relation, so another relation, reached by link or
-  history, starts without it), the provenance ("Vorgeschlagen von"/"Entschieden von", client,
-  declared procedure and LLM model, tier, confidence, time) and the **timeline** (`GET
-  …/assertions`, oldest first: proposals, withdrawals, decisions, notes with their texts, the
-  assertion the status rests on marked "maßgeblich", links between a correction and the corrected
-  proposal).
+- **Review screen** (`/projects/{key}/review/{relation}`, full viewport like the model view; since
+  UX5, [UX-SIMPLIFICATION.md](UX-SIMPLIFICATION.md) §3.7, the canvas pages' shared panel): both
+  endpoint models in bpmn-js from 1024 px (side by side from 1280, stacked from 1024 to 1279; on a
+  phone, and with the toggle, one at a time: "Von" / "Nach"; one canvas when both ends lie in one
+  file), endpoints marked and labelled "Von"/"Nach", each pane's chip with „Von“ or „Nach“, the
+  process name and „Im Modell“, the model key, engine and stage behind its info button; a pane
+  whose model was deleted says so ("Modell „…“ gibt es nicht mehr") instead of loading. Below
+  1024 px the panel „Prüfung“ is a sheet collapsed to its handle („Bestellanforderung →
+  Lieferantenanlage · 100 %“), the header a top bar above it (back, „1 von 48“, ‹ ›, „Von“ /
+  „Nach“), the canvas ending above the sheet; a decision's form (R, H, C) expands it. The way back
+  says „Zu prüfen“, „Vorgemerkt“ or, opened from „Offene Fragen“ (`?from=open-questions`, a hold's
+  „Jetzt entscheiden“ in the tab), „Offene Fragen“, where the end of the list leads too. The panel
+  shows type, status („Automatisch angenommen“ for an item a rule accepted, owner decision 26 (5);
+  a revoked one says „Automatische Annahme widerrufen“), endpoint state, confidence, both
+  endpoints, the agent's question, the callout "Kein Zusammenhang laut Agent" with every current
+  agent no-link on the pair (`Relation.noLinks`: handle, time, "Analyse von {origin}", the reason as
+  plain text, "Ohne Begründung." for an empty one), a held relation's box (note, question, label,
+  the latest answer, read-only), rationale and evidence by element name (refs into the two
+  endpoint models are buttons that centre and mark the element as "Beleg", switching to its pane
+  when only the other one is shown; refs into other project models link to the model view at that
+  element; anything else stays text; a cited element belongs to its relation, so another relation,
+  reached by link or history, starts without it), and one closed **„Verlauf (n)“** (`GET
+  …/assertions`, oldest first: „Gleicher Name erkannt (analyzr)“, „Vom Agenten vorgeschlagen“,
+  withdrawals, decisions, notes with their texts and the tier, links between a correction and the
+  corrected proposal; an entry shown above keeps only its title, who and when; an auto-acceptance
+  with its rule, revision, agent and „Automatische Annahme widerrufen“ for owners; the relation id
+  and version, client, declared procedure and LLM model behind „Technische Angaben“).
 - **Decisions** at the panel's foot: **Annehmen** (A; "Erneut annehmen" for an accepted relation
   whose endpoint changed, which anchors the decision on the current endpoints; a missing endpoint
   can only be rejected or corrected), **Ablehnen** (R, reason required; agents see it),
-  **Vormerken** (H, note required, question and label optional), **Korrigieren** (C: choose
+  **Vormerken** (H, note required, question and label behind „Frage oder Label ergänzen“ since
+  UX5; on a held relation „Antwort geben“ or „Antwort ergänzen“ takes its place, the note dialog of
+  „Offene Fragen“), **Korrigieren** (C: choose
   which end is wrong, pick an element from the compatible endpoints of the landscape, say why;
   sent as `verdict: correct`, so the server accepts a `manual` relation and rejects the proposal;
   the candidates are one radio group, a single tab stop with the arrow keys moving the choice).
@@ -5381,3 +5394,42 @@ Same machine; UX5 step 1 („Relationen“ and its views, [UX-SIMPLIFICATION.md]
 5. `analyzr-local` rebuilt to the commit afterwards; nothing of the owner's stacks was touched.
 
 Not checked: other browsers than Chromium, a real phone, a screen reader, CI (no e2e job).
+
+### UX5 step 2 (2026-10-18)
+
+Same machine; UX5 step 2 (the review screen and the auto-accept mark,
+[UX-SIMPLIFICATION.md](UX-SIMPLIFICATION.md) §7 "UX5 step 2 as delivered") on
+`feat/integration-and-gaps` on top of step 1.
+
+1. Gates: every gate green; web only, live-run neutral (`git diff --stat eval/reports` empty, the
+   MCP snapshots unchanged, no contract change). Component tests: `test/review-screen.test.tsx`
+   (both panes from 1024 px, stacked below 1280; the phone's sheet with „Von → Nach · Konfidenz“,
+   the top bar without „Nebeneinander“, R expanding the sheet; the way back to „Offene Fragen“; a
+   held relation answered from the decision bar), `review-details.test.tsx` (the header without
+   the tier, the closed „Verlauf (n)“ with „Technische Angaben“, an entry shown above in brief, the
+   hold box read-only), `auto-accept-marks.test.tsx` (one badge „Automatisch angenommen“ with the
+   rule in its tooltip, „97 %“), `decision-panel.test.tsx` and `placement-decision-panel.test.tsx`
+   („Frage oder Label ergänzen“), `open-questions.test.tsx` and `open-question-actions.test.tsx`
+   (`from=open-questions` from the tab, not from the model view), `app.test.tsx`. The bundle guard:
+   the entry 221.9 KB gzip (+0.6).
+2. Scratch stacks of its own, removed with `down -v` and their images afterwards: `analyzr-ux5b`
+   (image `analyzr-ux5b:dev` from the working tree, ports 7617 and 55617: the UI load guard, the
+   whole suite on a fresh database, the review, pipeline and auto-accept flows' screenshots on
+   another fresh one, `analyzr seed` for `screenshots.spec.ts`), the demo image `analyzr-ux5b-demo:dev`
+   (port 7618).
+3. Playwright in Chromium: every spec 87 passed, 21 skipped and 3 failed in the first pass (the
+   new „Verlauf“ holds „Technische Angaben“, a second `summary`: the specs open it by
+   `:scope > summary`; the pipeline spec looked for a raw ref that „Verlauf“ now keeps in brief),
+   then 96 passed and 21 skipped on a fresh database; the UI load guard 23 passed; `demo.spec.ts`
+   14 passed and `analyzr-demo check` 147 against `analyzr-ux5b-demo`. Screenshots retaken: `03`,
+   `m2-01`–`07` and `m2-09`–`12`, `d19-02`, `d19-04`–`06`, `d19-08`, `d19-09`, `demo-03`, `demo-04`,
+   `demo-06` (step 1's inbox included).
+4. The UI load guard's UX5 checks on `nordwind-handel`: the review panel of the first agent
+   proposal 93 words with „Verlauf“ closed (≤ 110), no ids; at 390x844 the sheet collapsed, the way
+   back, ‹ and › answer `elementFromPoint`, 390 px wide; the bpmn.io watermark of every pane
+   answers `elementFromPoint` at its corners and centre at 390 (collapsed and expanded), 800, 1024
+   and 1440 px (the `fixme` gone).
+5. `analyzr-local` rebuilt to the commit afterwards; nothing of the owner's stacks was touched.
+
+Not checked: other browsers than Chromium (the phone is Chromium's mobile emulation), a real
+phone, a screen reader, CI (no e2e job).
