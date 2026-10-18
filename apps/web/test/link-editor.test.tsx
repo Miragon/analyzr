@@ -28,18 +28,18 @@ const mode = (name: string) => screen.getByRole('radio', { name });
 describe('LinkEditor', () => {
   it('starts in the mode of the current link', () => {
     setup('analyzr:process/vertrieb/order#Process_Order');
-    expect(mode('analyzr-Prozess').dataset['state']).toBe('on');
+    expect(mode('Prozess').dataset['state']).toBe('on');
     const picked = screen
       .getAllByTestId('link-process-option')
       .find((o) => o.dataset['state'] === 'checked');
     expect(picked?.dataset['ref']).toBe('vertrieb/order#Process_Order');
-    expect(screen.getByText(/schlägt analyzr „Auftragsabwicklung“/)).toBeTruthy();
+    expect(screen.getByText(/Beim Speichern wird „Auftragsabwicklung“ als Vorschlag/)).toBeTruthy();
   });
 
   it('writes analyzr:process/<ref> from the picker with „Übernehmen“; the search narrows it', async () => {
     const { onChange, user } = setup(null);
     expect(mode('Kein Link').dataset['state']).toBe('on');
-    await user.click(mode('analyzr-Prozess'));
+    await user.click(mode('Prozess'));
     await user.type(screen.getByLabelText('Prozess suchen'), 'mahn');
     const options = screen.getAllByTestId('link-process-option');
     expect(options.map((o) => o.dataset['ref'])).toEqual(['finanzen/mahnwesen#Process_Mahnwesen']);
@@ -56,7 +56,7 @@ describe('LinkEditor', () => {
 
   it('lets the keyboard browse the processes without writing; Enter applies; focus stays', async () => {
     const { onChange, canvasSays, user } = setup(null);
-    await user.click(mode('analyzr-Prozess'));
+    await user.click(mode('Prozess'));
     screen.getByLabelText('Prozess suchen').focus();
     await user.tab();
     const first = screen.getAllByTestId('link-process-option')[0]!;
@@ -76,7 +76,7 @@ describe('LinkEditor', () => {
     // the canvas echoes the link: no remount, the focus stays on the process
     canvasSays('analyzr:process/vertrieb/order#Process_Order');
     expect(document.activeElement).toBe(second);
-    expect(screen.getByText(/schlägt analyzr „Auftragsabwicklung“/)).toBeTruthy();
+    expect(screen.getByText(/Beim Speichern wird „Auftragsabwicklung“ als Vorschlag/)).toBeTruthy();
   });
 
   it('takes over a link change it did not make (an undo on the canvas)', async () => {

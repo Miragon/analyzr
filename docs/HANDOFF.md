@@ -200,7 +200,17 @@ and code are in English.
   (a sheet on a phone with the way back and ‹ › above it, both panes from 1024 px), the panel in 93
   words with one closed „Verlauf“, a hold answered from the decision bar, the way back to „Offene
   Fragen“, „Automatisch angenommen“ as one status badge (Q6) everywhere; web only, live-run
-  neutral. **Next:** UX6 → UX9 (the owner: „Sonst kannst du weitermachen“), alongside S2c (the
+  neutral. **UX6 step 1 „Wertschöpfungskette“** (done 2026-10-19 on the branch, every gate green,
+  the UI load guard and the whole Playwright suite against a scratch stack, the chain's screenshots
+  retaken; UX-SIMPLIFICATION.md §7 "UX6 step 1 as delivered"): the panel with one status line and
+  „Platzierungen prüfen (29)“ at its top, „Zu prüfen“, one list „Ohne Schritt“ for the unplaced
+  processes and the agent's doubts, the tree closed, the stage only when it asks for something
+  („Agent gescheitert · Nochmal versuchen“, „3 Prozesse fällig · Agent starten“); the cards with
+  one „Details“ and a held card answered through „Offene Fragen“; the header „‹ <Projekt>“, name,
+  „Bearbeiten“, „Exportieren“; „nichts angenommen“ on 4 steps instead of 12; panel 75 words and 20
+  controls (319 and 84 before); web only, live-run neutral. **Next:** UX6 step 2 (phone sheet,
+  canvas selection and scale, panel toggle, edit-mode inset, double-click in place, the return to
+  „Offene Fragen“) → UX9 (the owner: „Sonst kannst du weitermachen“), alongside S2c (the
   trust rule),
   S2b's follow-up and S3c; S6 after them; after the owner's
   live runs S5b, S7 and facts v2 as recommended (§7 "M6"; M6 §8 "After S2a").

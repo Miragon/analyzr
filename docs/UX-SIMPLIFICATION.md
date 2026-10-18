@@ -4,7 +4,8 @@ Status: **decided** (owner decision 26, 2026-10-18: every "Ask now" question of 
 the recommended option; HANDOFF §4); proposal of 2026-10-17, revised the same day after a UX and a
 feasibility critique · Branch: `feat/integration-and-gaps` (the first wave UX2a, UX1 and UX2b
 delivered on it on 2026-10-18, §7; the owner's walkthrough the same day, §7 "Owner
-walkthrough"; UX7, UX8, S2b's „Vorschau“, UX3, UX4 and UX5 delivered the same day; next UX6) · Source: four user-need audits of the web UI on the agent-created scratch stack
+walkthrough"; UX7, UX8, S2b's „Vorschau“, UX3, UX4 and UX5 delivered the same day, UX6 step 1 on
+2026-10-19; next UX6 step 2) · Source: four user-need audits of the web UI on the agent-created scratch stack
 `analyzr-uxaudit` (seeded `nordwind-handel` with its chain and a simulation agent run,
 `signavio-beispiel` from the CLI bundle import, two projects made from the raw synthetic Signavio
 export; 1440x900 and 390x844), torn down after the audit · Relates to: HANDOFF §4 decisions 8, 10,
@@ -1838,6 +1839,52 @@ budget (40 KB). Docs: M3-LIVE-RUNS step 6a. Done when: „Platzierungen prüfen 
 header 8 → 4 controls; card 8 → 6; „nichts angenommen“ 12 → 4 on seeded `nordwind-handel`; the
 selected step's computed stroke width is 4 px; at 390 px the project link answers
 `elementFromPoint`.
+
+**UX6 step 1 as delivered** (2026-10-19, on the branch, every gate green; DEVELOPMENT.md "UX6 step
+1"). §3.8 items 1–5 and 10–14, the step view and „Als Liste öffnen“ of item 8 and the edit mode's
+overview of item 7; web only, live-run neutral. The panel without a selection
+(`chain-overview.tsx`): the status line „0 von 32 Prozessen platziert · 29 Vorschläge offen“
+(`chainCoverage`: a process with an accepted or held placement on a live step or outside the chain
+among every process the chain knows), „Platzierungen prüfen (29)“ (= J) at the top, the stage only
+when it asks for something, „Zu prüfen (29)“ (the first 8 rows, „Alle 29 zeigen“; „erneut prüfen“
+the only marker), „Ohne Schritt (3)“ (`unplacedItems`; `unsure-list.tsx` went), „Link nicht
+auflösbar (n)“ only when such a link exists (the summary's numbers and the 44 gap rows went), the
+step tree closed with its top-level rows collapsed and roll-ups (`subtreeCounts`; ArrowRight opens,
+ArrowLeft closes, a chevron by pointer; it opens to give the focus back), then „Außerhalb der
+Kette“, removed steps (without the per-card hint) and the owners' filter. In edit mode the overview
+is the chain's name and the hint; the warning about removed steps went. On the canvas „nichts
+angenommen“ shows only where the step's subtree holds no open proposal or hold (`pendingSteps`,
+12 → 4), and the legend is one line. The card (`placement-card.tsx`): the model path, a status only
+when it is not a plain proposal, one closed „Details“ (tier, „Vorgeschlagen von Agent „agent-sim“
+· …“, the evidence by element and step name through the page's `resolve`, the timeline brief and
+without „maßgeblich“, „Technische Angaben“ in the shared `components/technical-details.tsx`, which
+the review panel uses too), „Im Modell“ and the four decisions; a held card shows its note and
+answers read-only and answers through the note dialog of „Offene Fragen“ in place of „Vormerken“
+(`HoldAnswer`, lazy; a hold without an open question takes a note on the placement). The header
+(`chain-header.tsx` on `CanvasHeader`, which takes no `area` for it): „‹ Nordwind Handel GmbH“, the
+name with the revision behind a disclosure, the chip „3 Prozesse ohne Schritt“ (it scrolls the
+panel to the list), „Bearbeiten“, „Exportieren“; the edit toolbar below. Forms and labels as items
+11 and 12 (the correction note prefilled by the pick, `correctionNote`); the step panel, the step
+view and the empty chain as items 10, 8 and 14. Deviations: the logo stays off the chain's header
+(item 5's „‹ Nordwind Handel GmbH“ only), so the count is 4 besides the chip, which item 2 keeps;
+the agent's doubts lead „Ohne Schritt“ (they wait for a human, the others may not have been judged
+yet); „Wartet auf den Agenten · Agent starten“ is a fourth actionable stage (a queued task waits
+for someone to start the agent), and „fällig · Agent starten“ keeps one button whose popover stays
+open while the line moves on (`RetryAgent` with `chain` and `requeue`). Measured with the UI load
+guard on the scratch stack `analyzr-ux6` (`nordwind-handel` as the guard seeds it, after the
+simulation agent; controls counted with the disclosures' `summary`):
+
+| Done when | Before | After (UX6 step 1) |
+|---|---|---|
+| „Platzierungen prüfen (29)“ at 1440x900 | none; reviews below the fold | at the panel's top, in view, nothing scrolled |
+| The panel at first view: words, controls | 319, 84 | 75, 20 (≤ 150, ≤ 40) |
+| Header controls | 8 | 4 besides the chip „3 Prozesse ohne Schritt“ |
+| Card controls | 8 | 6 („Details“, „Im Modell“, four decisions) |
+| „nichts angenommen“ on the canvas | 12 | 4 |
+
+Next (step 2): the phone sheet, the selected step's outline and the overlays' scale, the panel
+toggle, `INSET.left` in edit mode, the double-click in place, the return to „Offene Fragen“, the
+phone's checks. Not verified: other browsers than Chromium, a real phone, a screen reader.
 
 **UX7 "Hochladen and Agent verbinden".** Files: `components/upload-panel.tsx`, `lib/upload.ts`,
 `components/connect-agent.tsx`, `lib/agent-config.ts`; `packages/bpmn-facts/src/input.ts` and

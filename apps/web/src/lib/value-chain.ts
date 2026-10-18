@@ -2,9 +2,11 @@ import type {
   Placement,
   PlacementSummary,
   StepKind,
+  UnplacedProcess,
   ValueChainDetail,
   ValueChainImpact,
   ValueChainStep,
+  ValueChainUnsure,
   ValueChainViolation,
 } from '@analyzr/client';
 
@@ -111,6 +113,134 @@ export function openCountsByStep(
 /** Open placement items of the chain (the tab count). */
 export function openPlacementCount(detail: Pick<ValueChainDetail, 'placements'>): number {
   return detail.placements.filter(isOpenPlacement).length;
+}
+
+/** A proposal on its unchanged endpoints: the card names no status for it (UX6). */
+export function isPlainProposal(p: Pick<PlacementSummary, 'status' | 'endpointState'>): boolean {
+  return p.status === 'proposed' && p.endpointState === 'ok';
+}
+
+/**
+ * The chain's coverage for the panel's status line (UX6, „0 von 31 Prozessen
+ * platziert“): the processes with a home (an accepted or held placement on a
+ * live step or `@outside`, as „Ohne Schritt“ counts) among every process the
+ * chain knows (its placements' processes still in the models, and those
+ * without a step).
+ */
+export function chainCoverage(
+  placements: readonly Pick<
+    Placement,
+    'process' | 'status' | 'stepLive' | 'elementId' | 'endpoints'
+  >[],
+  unplaced: readonly Pick<UnplacedProcess, 'process'>[],
+): { placed: number; total: number } {
+  const all = new Set(unplaced.map((u) => u.process));
+  const placed = new Set<string>();
+  for (const p of placements) {
+    if (p.status === 'obsolete' || p.endpoints.process === 'missing') continue;
+    all.add(p.process);
+    if (countsAsProcess(p) && (p.stepLive || p.elementId === OUTSIDE_STEP)) placed.add(p.process);
+  }
+  return { placed: placed.size, total: all.size };
+}
+
+/** The step and its ancestors, nearest first. */
+function withAncestors(
+  elementId: string,
+  byId: ReadonlyMap<string, Pick<ValueChainStep, 'elementId' | 'parentId'>>,
+): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  let current = byId.get(elementId);
+  while (current && !seen.has(current.elementId)) {
+    seen.add(current.elementId);
+    out.push(current.elementId);
+    current = current.parentId === null ? undefined : byId.get(current.parentId);
+  }
+  return out;
+}
+
+type Countable = Pick<PlacementSummary, 'elementId' | 'stepLive' | 'status' | 'endpointState'>;
+
+/**
+ * Steps whose subtree (the step and every step below it) holds an open item
+ * or a hold: „nichts angenommen“ on the canvas only where nothing waits for
+ * a decision or an answer (UX6, UX-SIMPLIFICATION.md §3.8 item 3).
+ */
+export function pendingSteps(
+  steps: readonly Pick<ValueChainStep, 'elementId' | 'parentId'>[],
+  placements: readonly Countable[],
+): Set<string> {
+  const byId = new Map(steps.map((s) => [s.elementId, s]));
+  const out = new Set<string>();
+  for (const p of placements) {
+    if (!p.stepLive || !(isOpenPlacement(p) || p.status === 'held')) continue;
+    for (const id of withAncestors(p.elementId, byId)) out.add(id);
+  }
+  return out;
+}
+
+/**
+ * The roll-ups of the step tree (UX6): per step, the processes homed in its
+ * subtree (accepted or held) and its subtree's open items, so a collapsed
+ * row still says „5 offen“.
+ */
+export function subtreeCounts(
+  steps: readonly Pick<ValueChainStep, 'elementId' | 'parentId'>[],
+  placements: readonly Countable[],
+): Map<string, { placed: number; open: number }> {
+  const byId = new Map(steps.map((s) => [s.elementId, s]));
+  const out = new Map<string, { placed: number; open: number }>();
+  for (const p of placements) {
+    if (!p.stepLive) continue;
+    const placed = countsAsProcess(p) ? 1 : 0;
+    const open = isOpenPlacement(p) ? 1 : 0;
+    if (placed + open === 0) continue;
+    for (const id of withAncestors(p.elementId, byId)) {
+      const c = out.get(id) ?? { placed: 0, open: 0 };
+      out.set(id, { placed: c.placed + placed, open: c.open + open });
+    }
+  }
+  return out;
+}
+
+/** A process of „Ohne Schritt“ (UX6): without a home, and the agent's doubt about it, if any. */
+export interface UnplacedItem {
+  process: string;
+  name: string;
+  modelKey: string;
+  /** The baseline's steps (`baseline-prefix/1`), a floor, not an answer. */
+  hints: readonly { step: string; name: string }[];
+  unsure: ValueChainUnsure | null;
+}
+
+/**
+ * „Agent unsicher“ and „Prozesse ohne Schritt“ as one list (UX6,
+ * UX-SIMPLIFICATION.md §3.8 item 2; the same processes as a rule): first
+ * the processes the agent doubted (those without a step in their order, then
+ * any that have a proposal meanwhile; an open process is one without an
+ * accepted or held placement), each with its reason, then the rest.
+ */
+export function unplacedItems(
+  unplaced: readonly Pick<UnplacedProcess, 'process' | 'name' | 'modelKey' | 'hints'>[],
+  unsure: readonly ValueChainUnsure[],
+): UnplacedItem[] {
+  const doubts = new Map(unsure.map((u) => [u.process, u]));
+  const out: UnplacedItem[] = unplaced.map((u) => ({
+    process: u.process,
+    name: u.name ?? splitRef(u.process).elementId,
+    modelKey: u.modelKey,
+    hints: u.hints,
+    unsure: doubts.get(u.process) ?? null,
+  }));
+  const listed = new Set(unplaced.map((u) => u.process));
+  for (const u of unsure) {
+    if (listed.has(u.process)) continue;
+    const { modelKey, elementId } = splitRef(u.process);
+    out.push({ process: u.process, name: u.name ?? elementId, modelKey, hints: [], unsure: u });
+  }
+  // The agent judged these and waits for a human: first.
+  return [...out.filter((i) => i.unsure), ...out.filter((i) => !i.unsure)];
 }
 
 // ------------------------------------------------------------------ steps
@@ -629,20 +759,6 @@ export function colorOfKind(choice: Exclude<KindChoice, 'custom'>): string | und
 
 // ----------------------------------------------------------------- edit mode
 
-/**
- * Head steps that have placements but are missing from the document being
- * edited (the unsaved-changes summary): saving would strand or withdraw them.
- */
-export function stepsMissingFromCanvas(
-  detail: Pick<ValueChainDetail, 'steps'>,
-  elementIds: ReadonlySet<string>,
-): ValueChainStep[] {
-  return detail.steps.filter(
-    (s) =>
-      !elementIds.has(s.elementId) && s.counts.accepted + s.counts.held + s.counts.proposed > 0,
-  );
-}
-
 /** `<key>-r<rev>[-entwurf].vc.json`. */
 export function documentFileName(project: string, rev: number | null, draft: boolean): string {
   return `${project}${rev === null ? '' : `-r${rev}`}${draft ? '-entwurf' : ''}.vc.json`;
@@ -702,6 +818,13 @@ export function processOptions(
     }
   }
   return out.sort((a, b) => a.modelKey.localeCompare(b.modelKey) || a.name.localeCompare(b.name));
+}
+
+/** The note a step picked in „Korrigieren“ prefills (UX6; the contract requires a note). */
+export function correctionNote(option: StepOption): string {
+  return option.elementId === OUTSIDE_STEP
+    ? 'Gehört nicht auf die Kette.'
+    : `Gehört auf „${option.name || option.elementId}“.`;
 }
 
 /** The CLI command that uploads a chain drawn elsewhere (`analyzr value-chain push`, M4 S2). */

@@ -143,7 +143,9 @@ describe('web app', () => {
   it('routes the value chain page (the placement reviewUrl) and the step drill-down', async () => {
     const page = await render('/projects/demo/value-chain?placement=plc_01ABC');
     expect(page).toContain('data-testid="value-chain-page"');
-    expect(page).toContain('href="/projects/demo/review"');
+    // UX6: „‹ <Projekt>“ is the header's one way back
+    expect(page).toContain('data-testid="canvas-back"');
+    expect(page).not.toContain('href="/projects/demo/review"');
     const stepView = await render('/projects/demo/value-chain/steps/step-vertrieb');
     // the drill-down lives in the project layout, its tab marked by prefix
     expect(stepView).toContain('Projektbereiche');

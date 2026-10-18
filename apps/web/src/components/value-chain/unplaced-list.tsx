@@ -1,12 +1,13 @@
-import type { UnplacedProcess } from '@analyzr/client';
 import { Link } from '@tanstack/react-router';
 import { LocateIcon, MapPinIcon } from 'lucide-react';
 import { useRef, useState } from 'react';
 
 import { PlainText } from '@/components/review/plain-text';
+import { TechnicalDetails } from '@/components/technical-details';
 import { Button } from '@/components/ui/button';
+import { formatDateTime, handleName } from '@/lib/labels';
 import { splitRef } from '@/lib/refs';
-import type { StepOption } from '@/lib/value-chain';
+import type { StepOption, UnplacedItem } from '@/lib/value-chain';
 
 import { ManualPlacementForm } from './manual-placement-form';
 
@@ -14,20 +15,25 @@ const FIRST = 8;
 
 export interface UnplacedListProps {
   project: string;
-  processes: readonly UnplacedProcess[];
+  items: readonly UnplacedItem[];
   steps: readonly StepOption[];
   canReview: boolean;
   onSelectStep: (elementId: string) => void;
 }
 
 /**
- * "Prozesse ohne Schritt" (M4 §4): processes with no accepted, held or
- * proposed placement, with up to three `baseline-prefix/1` hints (a click
- * selects the step) and "Platzieren" (a manual placement).
+ * „Ohne Schritt“ (M4 §4; UX6, UX-SIMPLIFICATION.md §3.8 item 2): processes
+ * with no accepted, held or proposed placement, and those the placement
+ * agent could not place, in one list: the name, the agent's reason as one
+ * muted line („Agent unsicher: …“; plain text, an agent wrote it), up to
+ * three `baseline-prefix/1` hints (a click selects the step), „Platzieren“
+ * (a manual placement) and „Im Modell zeigen“; ref, agent and time behind
+ * „Technische Angaben“. A doubted process whose input changed since is
+ * judged again by the next placement task.
  */
 export function UnplacedList({
   project,
-  processes,
+  items,
   steps,
   canReview,
   onSelectStep,
@@ -40,14 +46,7 @@ export function UnplacedList({
     refocus.current = placing;
     setPlacing(null);
   };
-  if (processes.length === 0) {
-    return (
-      <p className="text-sm text-muted-foreground">
-        Jeder Prozess hat einen Schritt oder einen offenen Vorschlag.
-      </p>
-    );
-  }
-  const shown = all ? processes : processes.slice(0, FIRST);
+  const shown = all ? items : items.slice(0, FIRST);
   return (
     <div className="flex flex-col gap-2">
       <ul className="flex flex-col gap-2" aria-label="Prozesse ohne Schritt">
@@ -58,27 +57,29 @@ export function UnplacedList({
               key={u.process}
               data-testid="unplaced-process"
               data-process={u.process}
+              data-unsure={u.unsure ? 'true' : undefined}
               className="flex flex-col gap-1.5 rounded-lg border bg-card p-2.5 text-sm"
             >
               <div className="flex items-start gap-2">
-                <div className="flex min-w-0 flex-1 flex-col">
-                  <PlainText as="span" className="font-medium" text={u.name ?? processId} />
-                  <span className="truncate font-mono text-xs text-muted-foreground">
-                    {u.process}
-                  </span>
-                </div>
+                <PlainText as="span" className="min-w-0 flex-1 font-medium" text={u.name} />
                 <Button variant="ghost" size="icon-xs" asChild>
                   <Link
                     to="/projects/$project/models/$"
                     params={{ project, _splat: u.modelKey }}
                     search={{ element: processId }}
-                    aria-label="Im Modell zeigen"
+                    aria-label={`„${u.name}“ im Modell zeigen`}
                     title="Im Modell zeigen"
                   >
                     <LocateIcon />
                   </Link>
                 </Button>
               </div>
+              {u.unsure ? (
+                <p className="text-xs text-muted-foreground" data-testid="unsure-reason">
+                  Agent unsicher: <PlainText as="span" text={u.unsure.reason} />
+                  {u.unsure.current ? null : ' (Eingaben geändert, der Agent prüft erneut)'}
+                </p>
+              ) : null}
               {u.hints.length > 0 ? (
                 <p className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
                   <span>Passt vielleicht zu:</span>
@@ -102,7 +103,7 @@ export function UnplacedList({
                     target={{
                       kind: 'step',
                       process: u.process,
-                      processName: u.name ?? processId,
+                      processName: u.name,
                       steps,
                       hints: u.hints.map((h) => h.step),
                     }}
@@ -128,13 +129,20 @@ export function UnplacedList({
                   </div>
                 )
               ) : null}
+              <TechnicalDetails
+                rows={[
+                  ['Prozess', u.process],
+                  ['Agent', u.unsure ? handleName(u.unsure.by) : null],
+                  ['Zeitpunkt', u.unsure ? formatDateTime(u.unsure.at) : null],
+                ]}
+              />
             </li>
           );
         })}
       </ul>
-      {processes.length > FIRST ? (
+      {items.length > FIRST ? (
         <Button variant="ghost" size="sm" onClick={() => setAll((a) => !a)}>
-          {all ? 'Weniger zeigen' : `Alle ${processes.length} zeigen`}
+          {all ? 'Weniger zeigen' : `Alle ${items.length} zeigen`}
         </Button>
       ) : null}
     </div>

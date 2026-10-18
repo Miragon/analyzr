@@ -539,12 +539,12 @@ pnpm eval:replay                        # commit the recording with the reports
   pending count stays at 1: `run-headless.sh --skill placements` counts a batch as progress when
   the chain's latest placement task changed or its due count fell (it prints `due: a -> b`), and
   stops only when nothing moved.
-- A placement task that failed (three expired leases) shows „Agent fehlgeschlagen“ on the chain
-  page with „Erneut einplanen“; `analyzr value-chain requeue -p "$RUN_PROJECT"` does the same in the
-  container. Ignore „Als Nächstes“ on „Übersicht“ here as in [step 4](#4-watch-progress): its
-  „Agent starten“ lists `/analyzr:relations …` first, which would start exactly the relations
-  run this project must not have, and its review line invites decisions before the run is
-  complete. A stack upgraded from M4a queues the first placement task of its existing chains at
+- A placement task that failed (three expired leases) shows „Agent gescheitert · Nochmal
+  versuchen“ on the chain page; `analyzr value-chain requeue -p "$RUN_PROJECT"` does the same in the
+  container. Ignore „Als Nächstes“ on „Übersicht“ here as in [step 4](#4-watch-progress), and the
+  „Agent starten“ of the chain's stage line („Wartet auf den Agenten“, „n Prozesse fällig“): both
+  list `/analyzr:relations …` first, which would start exactly the relations run this project must
+  not have, and the review lines invite decisions before the run is complete. A stack upgraded from M4a queues the first placement task of its existing chains at
   start (`queued the first placement task of n value chain(s)` in the log).
 - Work only the placement task in this project (`--skill placements`, `kinds: ["placement"]`):
   the relations tasks the import queued stay queued, and relation proposals of a relations run

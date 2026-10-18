@@ -205,10 +205,7 @@ export function askWhoText(askWho: OpenQuestionAskWho): string {
   return [...new Set([...askWho.stepOwners, ...askWho.lanes])].join(', ');
 }
 
-/** The handle without the `agent:` prefix (as „Übersicht“ shows the holder). */
-export function handleName(handle: string | null): string {
-  return (handle ?? 'Agent').replace(/^agent:/, '');
-}
+export { handleName } from './labels';
 
 // ------------------------------------------------------------------ filters
 

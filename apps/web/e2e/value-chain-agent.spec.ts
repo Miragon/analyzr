@@ -10,12 +10,15 @@ import { DEMO_SKIP, probeServer } from './server-mode';
  * The value chain's placement agent in the browser (M4 §3.2, S5) against a
  * running server with the built UI: a project with the dev landscape and its
  * golden chain (as `analyzr seed --value-chains` creates it) waits for the agent
- * with every process due; `analyzr-agent-sim --kinds placement` (a child process,
- * over MCP with an agent token) works the chain's one placement task; the
- * panel then shows „Wartet auf Prüfung“, nothing due, and „Agent unsicher“
- * with the agent's reasons as text and „Platzieren“, which opens the manual
- * placement form. A reviewer's rejection then makes a process due without a
- * task, and „Aufgabe einplanen“ queues one. No CSP violation on the way. The
+ * with every process due („Wartet auf den Agenten · Agent starten“);
+ * `analyzr-agent-sim --kinds placement` (a child process, over MCP with an
+ * agent token) works the chain's one placement task; the panel then shows no
+ * stage line (nothing due, nothing to start) and the agent's doubts in „Ohne
+ * Schritt“ (UX6) with their reasons as text and „Platzieren“, which opens the
+ * manual placement form. A reviewer's rejection then makes a process due
+ * without a task, and „1 Prozess fällig · Agent starten“ queues one and opens
+ * „Agent starten“, which stays open while the line moves on. No CSP violation
+ * on the way. The
  * dev landscape only; with ANALYZR_SCREENSHOTS_DIR it writes m4-14. Skips itself
  * when no server answers.
  */
@@ -175,12 +178,11 @@ test('before the agent: the chain waits for it, every open process due', async (
   await page.goto(`/projects/${PROJECT}/value-chain`);
   const stage = page.getByTestId('chain-stage');
   await expect(stage).toHaveAttribute('data-stage', 'waiting_for_agent');
-  await expect(stage).toContainText('Wartet auf den Agenten');
-  await expect(page.getByTestId('chain-due')).toHaveText(`${pipeline.due} Prozesse fällig`);
-  await expect(page.getByRole('region', { name: 'Agent unsicher' })).toHaveCount(0);
+  await expect(stage).toHaveText('Wartet auf den AgentenAgent starten');
+  await expect(page.locator('[data-testid=unplaced-process][data-unsure]')).toHaveCount(0);
 });
 
-test('after the agent: waiting for review, nothing due, „Agent unsicher“ with „Platzieren“', async ({
+test('after the agent: no stage line, the agent’s doubts in „Ohne Schritt“ with „Platzieren“', async ({
   page,
 }) => {
   test.setTimeout(120_000);
@@ -197,19 +199,19 @@ test('after the agent: waiting for review, nothing due, „Agent unsicher“ wit
   expect(after.unsure.length).toBeGreaterThan(0);
 
   await page.goto(`/projects/${PROJECT}/value-chain`);
-  const stage = page.getByTestId('chain-stage');
-  await expect(stage).toHaveAttribute('data-stage', 'waiting_for_review');
-  await expect(stage).toContainText('Wartet auf Prüfung');
-  await expect(page.getByTestId('chain-due')).toHaveCount(0);
+  await expect(page.getByTestId('review-placements')).toBeVisible();
+  await expect(page.getByTestId('chain-stage')).toHaveCount(0);
 
-  const section = page.getByRole('region', { name: 'Agent unsicher' });
-  await expect(section.getByRole('heading')).toHaveText(`Agent unsicher(${after.unsure.length})`);
-  const items = section.getByTestId('unsure-process');
-  await expect(items).toHaveCount(after.unsure.length);
+  // the doubted processes lead „Ohne Schritt“, each with its reason
+  const section = page.getByRole('region', { name: 'Ohne Schritt' });
+  const items = section.locator('[data-testid=unplaced-process][data-unsure]');
+  await expect(items).toHaveCount(Math.min(after.unsure.length, 8));
   const first = after.unsure[0];
   const item = section.locator(`[data-process="${first?.process ?? ''}"]`);
-  await expect(item).toContainText(first?.reason ?? '');
-  await expect(item).toContainText(`agent:${AGENT}`);
+  await expect(item.getByTestId('unsure-reason')).toHaveText(
+    `Agent unsicher: ${first?.reason ?? ''}`,
+  );
+  await expect(item.locator('details')).toContainText(AGENT);
   await item.scrollIntoViewIfNeeded();
   await shot(page, 'm4-14-agent-unsure');
 
@@ -222,7 +224,7 @@ test('after the agent: waiting for review, nothing due, „Agent unsicher“ wit
   await expect(item.getByRole('button', { name: 'Platzieren' })).toBeFocused();
 });
 
-test('a reviewer’s rejection makes a process due without a task; „Aufgabe einplanen“ queues it', async ({
+test('a reviewer’s rejection makes a process due without a task; „Agent starten“ queues it', async ({
   page,
 }) => {
   const list = await owner.get(`${CHAIN}/placements?limit=200&status=proposed`);
@@ -242,12 +244,13 @@ test('a reviewer’s rejection makes a process due without a task; „Aufgabe ei
 
   await page.goto(`/projects/${PROJECT}/value-chain`);
   await expect(page.getByTestId('chain-due')).toHaveText('1 Prozess fällig');
-  const hint = page.getByTestId('chain-requeue');
-  await expect(hint).toContainText('Für diese Prozesse ist keine Aufgabe eingeplant');
-  await hint.getByRole('button', { name: 'Aufgabe einplanen' }).click();
-  await expect(page.getByText('Eingeplant', { exact: true })).toBeVisible();
+  await page.getByTestId('requeue-chain').click();
   const stage = page.getByTestId('chain-stage');
   await expect(stage).toHaveAttribute('data-stage', 'waiting_for_agent');
-  await expect(page.getByTestId('chain-requeue')).toHaveCount(0);
+  await expect(stage).toContainText('Wartet auf den Agenten');
+  // the owner's „Agent starten“ opened and stays open while the line moves on
+  await expect(page.getByTestId('agent-start')).toBeVisible();
+  await expect(page.getByTestId('agent-start')).toContainText(`/analyzr:placements ${PROJECT}`);
+  await expect(page.getByTestId('requeue-chain')).toHaveCount(0);
   expect((await detail()).pipeline.stage).toBe('waiting_for_agent');
 });

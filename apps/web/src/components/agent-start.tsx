@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { errorMessage } from '@/lib/api';
 import { useAgentState } from '@/lib/agent-state';
 import { useProjectPermissions } from '@/lib/permissions';
-import { useRequeue } from '@/lib/review-actions';
+import { useRequeue, useRequeueChain } from '@/lib/review-actions';
 import { ANALYZR_REPOSITORY_URL } from '@/lib/server-mode';
 import { toast } from '@/lib/toast';
 
@@ -102,7 +102,7 @@ export function AgentStartPanel({
   );
 }
 
-type ButtonLook = Pick<ComponentProps<typeof Button>, 'variant' | 'size'>;
+type ButtonLook = Pick<ComponentProps<typeof Button>, 'variant' | 'size' | 'className'>;
 
 /**
  * The entry of „Als Nächstes“ and the other places that start the agent:
@@ -153,22 +153,36 @@ export function AgentStart({
 }
 
 /**
- * „Nochmal versuchen“: requeues the models' analyses (permission `write`)
- * and, since a requeue alone runs nothing, opens the popover for owners
- * (clicked again while it is open, it closes it and requeues nothing);
- * editors get a toast and a plain button without a popup.
+ * „Nochmal versuchen“: requeues the models' analyses, or with `chain` the
+ * chain's placement task (permission `write`), and, since a requeue alone
+ * runs nothing, opens the popover for owners (clicked again while it is
+ * open, it closes it and requeues nothing); editors get a toast and a plain
+ * button without a popup. With `chain` and the label „Agent starten“ it is
+ * the chain's „3 Prozesse fällig · Agent starten“ (§2.6); with `requeue`
+ * off it only opens the popover (a task is queued already), so the chain's
+ * line keeps one button, and its open popover, while a requeue moves the
+ * line from „fällig“ to „Wartet auf den Agenten“.
  */
 export function RetryAgent({
   project,
-  modelKeys,
+  modelKeys = [],
+  chain = false,
+  requeue: requeueFirst = true,
   hasChain,
   label = 'Nochmal versuchen',
+  start = false,
   align = 'start',
   testId,
   ...look
 }: {
   project: string;
-  modelKeys: readonly string[];
+  modelKeys?: readonly string[];
+  /** The play icon of „Agent starten“ instead of the retry arrow. */
+  start?: boolean;
+  /** Requeue the value chain's placement task instead of the models' analyses. */
+  chain?: boolean;
+  /** Off: only the popover (owners); nothing for editors. */
+  requeue?: boolean;
   hasChain: boolean;
   label?: string;
   align?: 'start' | 'end';
@@ -177,36 +191,63 @@ export function RetryAgent({
   const { canWrite } = useProjectPermissions(project);
   const state = useAgentState(project);
   const requeue = useRequeue(project);
+  const requeueChain = useRequeueChain(project);
   const [open, setOpen] = useState(false);
-  if (!canWrite) return null;
-  const run = () =>
-    requeue.mutate([...modelKeys], {
-      onSuccess: () => {
-        if (state !== null) setOpen(true);
-        else
-          toast({
-            tone: 'success',
-            title: 'Nochmal eingeplant',
-            description: `${modelKeys.length === 1 ? '1 Modell wartet' : `${modelKeys.length} Modelle warten`} wieder auf den Agenten.`,
-          });
-      },
-      onError: (error) =>
-        toast({
-          tone: 'danger',
-          title: 'Nicht eingeplant',
-          description: errorMessage(error),
-          error,
-        }),
+  if (!canWrite || (!requeueFirst && state === null)) return null;
+  const failed = (error: unknown) =>
+    toast({
+      tone: 'danger',
+      title: 'Nicht eingeplant',
+      description: errorMessage(error),
+      error,
     });
+  const queued = (title: string, description: string) => {
+    if (state !== null) setOpen(true);
+    else toast({ tone: 'success', title, description });
+  };
+  const run = () =>
+    !requeueFirst
+      ? setOpen(true)
+      : chain
+        ? requeueChain.mutate(undefined, {
+            onSuccess: (result) => {
+              const outcome = result.valueChain?.outcome;
+              if (outcome === 'queued' || outcome === 'open')
+                queued('Eingeplant', 'Die Platzierungsaufgabe wartet auf den Agenten.');
+              else if (outcome === 'nothing-due')
+                toast({
+                  tone: 'info',
+                  title: 'Nichts fällig',
+                  description:
+                    'Jeder offene Prozess hat ein Urteil des Agenten auf seinem jetzigen Stand.',
+                });
+              else
+                toast({
+                  tone: 'danger',
+                  title: 'Nicht eingeplant',
+                  description: 'Das Projekt hat keine Wertschöpfungskette.',
+                });
+            },
+            onError: failed,
+          })
+        : requeue.mutate([...modelKeys], {
+            onSuccess: () =>
+              queued(
+                'Nochmal eingeplant',
+                `${modelKeys.length === 1 ? '1 Modell wartet' : `${modelKeys.length} Modelle warten`} wieder auf den Agenten.`,
+              ),
+            onError: failed,
+          });
+  const pending = requeue.isPending || requeueChain.isPending;
   const content = (
     <>
-      <RotateCcwIcon data-icon="inline-start" />
+      {start ? <PlayIcon data-icon="inline-start" /> : <RotateCcwIcon data-icon="inline-start" />}
       {label}
     </>
   );
   if (state === null)
     return (
-      <Button {...look} disabled={requeue.isPending} onClick={run} data-testid={testId}>
+      <Button {...look} disabled={pending} onClick={run} data-testid={testId}>
         {content}
       </Button>
     );
@@ -220,7 +261,7 @@ export function RetryAgent({
         <Button
           {...look}
           {...props}
-          disabled={requeue.isPending}
+          disabled={pending}
           onClick={() => (open ? setOpen(false) : run())}
           data-testid={testId}
         >

@@ -10,7 +10,7 @@ import {
   ArrowLeftIcon,
   ChevronRightIcon,
   ExternalLinkIcon,
-  FolderOpenIcon,
+  ListIcon,
   LocateIcon,
   PlusIcon,
   SearchCheckIcon,
@@ -21,7 +21,7 @@ import { useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { ToneBadge } from '@/components/badges';
 import { PlainText } from '@/components/review/plain-text';
 import { Button } from '@/components/ui/button';
-import { Field, FieldDescription, FieldLabel } from '@/components/ui/field';
+import { Field, FieldLabel } from '@/components/ui/field';
 import { Kbd } from '@/components/ui/kbd';
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -30,7 +30,7 @@ import type { AutoAcceptIndex } from '@/lib/auto-accept';
 import { LINK_KINDS, REACHED_BY_CALL_LABEL, STEP_KINDS } from '@/lib/labels';
 import { MAX_VALUE_CHAIN_NAME_CHARS } from '@/lib/limits';
 import { valueChainStepQuery } from '@/lib/queries';
-import { splitRef } from '@/lib/refs';
+import { splitRef, type RefResolver } from '@/lib/refs';
 import { isTypingTarget } from '@/lib/use-shortcuts';
 import {
   colorOfKind,
@@ -75,7 +75,9 @@ function LinkView({ project, step }: { project: string; step: ValueChainStep }) 
         data-testid="step-link"
       >
         <LocateIcon className="size-3.5 shrink-0" aria-hidden />
-        <span className="truncate font-mono text-xs">{step.linkProcess}</span>
+        <span className="truncate" title={step.linkProcess}>
+          {modelKey}
+        </span>
       </Link>
     );
   }
@@ -149,7 +151,7 @@ function ancestorsOf(
 }
 
 const KIND_CHOICES: { value: KindChoice; label: string }[] = [
-  { value: 'none', label: 'Ohne Farbe (Kern oder Sonstige)' },
+  { value: 'none', label: 'Kern (Standard)' },
   { value: 'management', label: 'Management (lila)' },
   { value: 'support', label: 'Unterstützung (grün)' },
 ];
@@ -183,16 +185,20 @@ export interface StepPanelProps {
   onSetLink: (link: string | null) => void;
   /** The auto-accept ledger (owner decision 19, owners only): marks on the cards. */
   autoIndex?: AutoAcceptIndex;
+  /** Element names for the cards' evidence. */
+  resolve?: RefResolver;
 }
 
 /**
- * The side panel with a step selected (M4 §4): name and path, kind, owners,
- * link, its placements as cards (the review happens here), the roll-up of its
- * sub-steps and the processes reached by call, "Prozess hinzufügen" and the
- * drill-down. In edit mode name, kind (top level) and link are edited on the
- * canvas, each change one undoable command. An org unit shows the steps it
- * owns. "Zur Übersicht" (or Escape) goes back to the overview; the path
- * segments select the parent steps.
+ * The side panel with a step selected (M4 §4; UX6, UX-SIMPLIFICATION.md §3.8
+ * item 10): name and path, the kind on a top-level step, owners, the link
+ * when there is one, its placements as cards (the review happens here), the
+ * roll-up of its sub-steps and the processes reached by call, "Prozess
+ * hinzufügen", the drill-down and the step view („Als Liste öffnen“). In
+ * edit mode name, kind (top level) and link are edited on the canvas, each
+ * change one undoable command, and the element id shows. An org unit shows
+ * the steps it owns. "Zur Übersicht" (or Escape) goes back to the overview;
+ * the path segments select the parent steps.
  */
 export function StepPanel(props: StepPanelProps) {
   const {
@@ -217,6 +223,7 @@ export function StepPanel(props: StepPanelProps) {
     onReload,
     onOpen,
     autoIndex,
+    resolve,
   } = props;
   const [adding, setAdding] = useState(false);
   /** Focus goes back to "Prozess hinzufügen" when the form closes. */
@@ -323,16 +330,20 @@ export function StepPanel(props: StepPanelProps) {
             <PlainText as="span" text={name || 'Ohne Namen'} />
           </h2>
         )}
-        <div className="flex flex-wrap items-center gap-1.5">
-          {step ? (
-            <ToneBadge tone={STEP_KINDS[step.kind].tone} title={STEP_KINDS[step.kind].hint}>
-              {STEP_KINDS[step.kind].label}
-            </ToneBadge>
-          ) : (
-            <ToneBadge tone="info">Neuer Schritt</ToneBadge>
-          )}
-          <span className="font-mono text-xs text-muted-foreground">{elementId}</span>
-        </div>
+        {!step || topLevel || mode === 'edit' ? (
+          <div className="flex flex-wrap items-center gap-1.5">
+            {!step ? (
+              <ToneBadge tone="info">Neuer Schritt</ToneBadge>
+            ) : topLevel ? (
+              <ToneBadge tone={STEP_KINDS[step.kind].tone} title={STEP_KINDS[step.kind].hint}>
+                {STEP_KINDS[step.kind].label}
+              </ToneBadge>
+            ) : null}
+            {mode === 'edit' ? (
+              <span className="font-mono text-xs text-muted-foreground">{elementId}</span>
+            ) : null}
+          </div>
+        ) : null}
       </div>
 
       {mode === 'edit' && canvasInfo && topLevel ? (
@@ -357,10 +368,6 @@ export function StepPanel(props: StepPanelProps) {
               </NativeSelectOption>
             ) : null}
           </NativeSelect>
-          <FieldDescription>
-            Kern ergibt sich aus der Vorgänger-Kette der obersten Ebene; Management und
-            Unterstützung aus der Farbe.
-          </FieldDescription>
         </Field>
       ) : null}
 
@@ -381,13 +388,15 @@ export function StepPanel(props: StepPanelProps) {
         </Section>
       ) : null}
 
-      <Section title="Link">
-        {mode === 'edit' && canvasInfo ? (
+      {mode === 'edit' && canvasInfo ? (
+        <Section title="Link">
           <LinkEditor link={canvasInfo.link} processes={processes} onChange={props.onSetLink} />
-        ) : step ? (
+        </Section>
+      ) : step && step.link !== null ? (
+        <Section title="Link">
           <LinkView project={project} step={step} />
-        ) : null}
-      </Section>
+        </Section>
+      ) : null}
 
       <Section title="Prozesse">
         {!step ? (
@@ -396,10 +405,6 @@ export function StepPanel(props: StepPanelProps) {
           </p>
         ) : (
           <>
-            <p className="text-xs text-muted-foreground" data-testid="step-counts">
-              {step.counts.accepted} angenommen · {step.counts.proposed} vorgeschlagen ·{' '}
-              {step.counts.held} vorgemerkt
-            </p>
             {own.length === 0 ? (
               <p className="text-sm text-muted-foreground">
                 Auf diesem Schritt liegt noch kein Prozess.
@@ -422,6 +427,7 @@ export function StepPanel(props: StepPanelProps) {
                     onDecided={(outcome) => onDecided(p.id, outcome)}
                     onReload={onReload}
                     autoIndex={autoIndex}
+                    resolve={resolve}
                   />
                 ))}
               </ul>
@@ -507,26 +513,27 @@ export function StepPanel(props: StepPanelProps) {
       ) : null}
 
       {step && target ? (
-        <div className="flex flex-wrap gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => onOpen(target)}
-            data-testid="open-step"
-          >
-            {target.kind === 'model' ? (
-              <SearchCheckIcon data-icon="inline-start" />
-            ) : (
-              <FolderOpenIcon data-icon="inline-start" />
-            )}
-            {target.kind === 'model' ? 'Prozess öffnen' : 'Schritt öffnen'}
-          </Button>
+        <div className="flex flex-wrap items-center gap-2">
           {target.kind === 'model' ? (
-            <Button variant="ghost" size="sm" onClick={() => onOpen({ kind: 'step', elementId })}>
-              <FolderOpenIcon data-icon="inline-start" />
-              Schrittansicht
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => onOpen(target)}
+              data-testid="open-step"
+            >
+              <SearchCheckIcon data-icon="inline-start" />
+              Prozess öffnen
             </Button>
           ) : null}
+          <Button
+            variant="ghost"
+            size="xs"
+            onClick={() => onOpen({ kind: 'step', elementId })}
+            data-testid="open-step-list"
+          >
+            <ListIcon data-icon="inline-start" />
+            Als Liste öffnen
+          </Button>
         </div>
       ) : null}
     </div>

@@ -5,7 +5,7 @@ import { ChevronRightIcon, LocateIcon, MapIcon, SearchCheckIcon } from 'lucide-r
 import type { ReactNode } from 'react';
 
 import { AutoAcceptMark } from '@/components/auto-accept-mark';
-import { EndpointStateBadge, StatusBadge, TierBadge, ToneBadge } from '@/components/badges';
+import { EndpointStateBadge, StatusBadge, ToneBadge } from '@/components/badges';
 import { ErrorText } from '@/components/error-text';
 import { PlainText } from '@/components/review/plain-text';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -18,7 +18,7 @@ import { useAutoAcceptIndex } from '@/lib/auto-accept-actions';
 import { LINK_KINDS, REACHED_BY_CALL_LABEL, STEP_KINDS, formatConfidence } from '@/lib/labels';
 import { valueChainStepQuery } from '@/lib/queries';
 import { splitRef } from '@/lib/refs';
-import { isOpenPlacement, isWebUrl, processCount } from '@/lib/value-chain';
+import { isOpenPlacement, isPlainProposal, isWebUrl, processCount } from '@/lib/value-chain';
 
 import { valueChainStepRoute } from './value-chain-step';
 
@@ -55,8 +55,17 @@ function ProcessRow({
       data-placement-id={p.id}
     >
       <span className="flex min-w-0 flex-1 flex-col">
-        <PlainText as="span" className="truncate font-medium" text={p.processName ?? elementId} />
-        <span className="truncate font-mono text-xs text-muted-foreground">{p.process}</span>
+        {/* The row's link goes to its card on the chain (UX6). */}
+        <Link
+          to="/projects/$project/value-chain"
+          params={{ project }}
+          search={{ placement: p.id }}
+          className="truncate font-medium text-link hover:underline"
+          data-testid="step-view-card-link"
+        >
+          <PlainText as="span" text={p.processName ?? elementId} />
+        </Link>
+        <span className="truncate text-xs text-muted-foreground">{modelKey}</span>
         {showStep ? (
           <span className="text-xs text-muted-foreground">
             auf <PlainText as="span" text={p.stepName ?? p.elementId} />
@@ -64,35 +73,26 @@ function ProcessRow({
         ) : null}
       </span>
       <span className="flex flex-wrap items-center gap-1.5">
-        {auto ? <AutoAcceptMark entry={auto} /> : <StatusBadge status={p.status} />}
-        <TierBadge tier={p.tier} />
+        {auto ? (
+          <AutoAcceptMark entry={auto} />
+        ) : isPlainProposal(p) ? null : (
+          <StatusBadge status={p.status} />
+        )}
         <EndpointStateBadge state={p.endpointState} />
         <span className="text-xs text-muted-foreground tabular-nums">
           {formatConfidence(p.confidence)}
         </span>
       </span>
-      <span className="flex gap-1">
-        <Button variant="ghost" size="xs" asChild>
-          <Link
-            to="/projects/$project/models/$"
-            params={{ project, _splat: modelKey }}
-            search={{ element: elementId }}
-          >
-            <LocateIcon data-icon="inline-start" />
-            Im Modell
-          </Link>
-        </Button>
-        <Button variant="ghost" size="xs" asChild>
-          <Link
-            to="/projects/$project/value-chain"
-            params={{ project }}
-            search={{ placement: p.id }}
-          >
-            <MapIcon data-icon="inline-start" />
-            Auf der Kette zeigen
-          </Link>
-        </Button>
-      </span>
+      <Button variant="ghost" size="xs" asChild>
+        <Link
+          to="/projects/$project/models/$"
+          params={{ project, _splat: modelKey }}
+          search={{ element: elementId }}
+        >
+          <LocateIcon data-icon="inline-start" />
+          Im Modell
+        </Link>
+      </Button>
     </li>
   );
 }
@@ -220,9 +220,11 @@ export function StepView() {
           <h2 className="text-2xl font-bold" data-testid="step-view-title">
             <PlainText as="span" text={step.name || step.elementId} />
           </h2>
-          <ToneBadge tone={kind.tone} title={kind.hint}>
-            {kind.label}
-          </ToneBadge>
+          {step.parentId === null ? (
+            <ToneBadge tone={kind.tone} title={kind.hint}>
+              {kind.label}
+            </ToneBadge>
+          ) : null}
           <Button variant="outline" size="sm" asChild className="ml-auto">
             <Link
               to="/projects/$project/value-chain"
@@ -234,41 +236,54 @@ export function StepView() {
             </Link>
           </Button>
         </div>
-        <dl className="grid grid-cols-[max-content_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-sm">
-          <dt className="text-muted-foreground">Verantwortlich</dt>
-          <dd>{step.owners.length === 0 ? '–' : step.owners.map((o) => o.name).join(', ')}</dd>
-          <dt className="text-muted-foreground">Link</dt>
-          <dd className="min-w-0">
-            {step.link === null ? (
-              '–'
-            ) : step.linkKind === 'process' && step.linkResolved && step.linkProcess ? (
-              <Link
-                to="/projects/$project/models/$"
-                params={{ project, _splat: splitRef(step.linkProcess).modelKey }}
-                search={{ element: splitRef(step.linkProcess).elementId }}
-                className="font-mono text-xs text-link hover:underline"
-              >
-                {step.linkProcess}
-              </Link>
-            ) : step.linkKind === 'url' && isWebUrl(step.link) ? (
-              <a
-                href={step.link}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-link hover:underline"
-              >
-                <PlainText as="span" text={step.link} />
-              </a>
-            ) : (
+        {step.owners.length > 0 || step.link !== null ? (
+          <dl className="grid grid-cols-[max-content_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-sm">
+            {step.owners.length > 0 ? (
               <>
-                <PlainText as="span" className="font-mono text-xs break-all" text={step.link} />{' '}
-                <span className="text-xs text-warning">
-                  ({LINK_KINDS[step.linkKind].label}, nicht auflösbar)
-                </span>
+                <dt className="text-muted-foreground">Verantwortlich</dt>
+                <dd>{step.owners.map((o) => o.name).join(', ')}</dd>
+              </>
+            ) : null}
+            {step.link === null ? null : (
+              <>
+                <dt className="text-muted-foreground">Link</dt>
+                <dd className="min-w-0">
+                  {step.linkKind === 'process' && step.linkResolved && step.linkProcess ? (
+                    <Link
+                      to="/projects/$project/models/$"
+                      params={{ project, _splat: splitRef(step.linkProcess).modelKey }}
+                      search={{ element: splitRef(step.linkProcess).elementId }}
+                      className="text-link hover:underline"
+                      title={step.linkProcess}
+                    >
+                      {splitRef(step.linkProcess).modelKey}
+                    </Link>
+                  ) : step.linkKind === 'url' && isWebUrl(step.link) ? (
+                    <a
+                      href={step.link}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-link hover:underline"
+                    >
+                      <PlainText as="span" text={step.link} />
+                    </a>
+                  ) : (
+                    <>
+                      <PlainText
+                        as="span"
+                        className="font-mono text-xs break-all"
+                        text={step.link}
+                      />{' '}
+                      <span className="text-xs text-warning">
+                        ({LINK_KINDS[step.linkKind].label}, nicht auflösbar)
+                      </span>
+                    </>
+                  )}
+                </dd>
               </>
             )}
-          </dd>
-        </dl>
+          </dl>
+        ) : null}
       </div>
 
       {children.length > 0 ? (
@@ -334,7 +349,7 @@ export function StepView() {
                     >
                       <span className="flex min-w-0 flex-1 flex-col">
                         <PlainText as="span" className="font-medium" text={r.name ?? processId} />
-                        <span className="font-mono text-xs text-muted-foreground">{r.process}</span>
+                        <span className="text-xs text-muted-foreground">{modelKey}</span>
                       </span>
                       <Button variant="ghost" size="xs" asChild>
                         <Link
@@ -354,7 +369,7 @@ export function StepView() {
                             data-testid="via-relation"
                           >
                             <SearchCheckIcon data-icon="inline-start" />
-                            via {splitRef(v.caller).elementId}
+                            über Aufruf
                           </Link>
                         </Button>
                       ))}

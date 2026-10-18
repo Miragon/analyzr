@@ -137,9 +137,13 @@ describe('PlacementDecisionPanel', () => {
     expect(shown).toEqual(['s-vertrieb', 's-bonitaet', '@outside']);
     await user.type(within(dialog).getByLabelText('Schritt suchen'), 'Bonität');
     expect(within(dialog).getAllByTestId('correct-step-option')).toHaveLength(1);
+    // the note the contract requires is prefilled by the pick (UX6), until the reviewer writes
     await user.click(within(dialog).getByTestId('correct-step-option'));
+    const note = within(dialog).getByLabelText<HTMLTextAreaElement>('Begründung');
+    expect(note.value).toMatch(/^Gehört auf „.+“\.$/);
+    await user.clear(note);
     expect(disabled(within(dialog).getByRole('button', { name: 'Korrigieren' }))).toBe(true);
-    await user.type(within(dialog).getByLabelText('Begründung'), 'Gehört zur Bonitätsprüfung');
+    await user.type(note, 'Gehört zur Bonitätsprüfung');
     await user.click(within(dialog).getByRole('button', { name: 'Korrigieren' }));
     await findToast('Korrigiert');
     expect(decisions(calls)).toEqual([

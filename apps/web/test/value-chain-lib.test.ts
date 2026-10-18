@@ -30,7 +30,11 @@ import {
   stepBadge,
   stepOptions,
   stepTree,
-  stepsMissingFromCanvas,
+  chainCoverage,
+  correctionNote,
+  pendingSteps,
+  subtreeCounts,
+  unplacedItems,
   violationLine,
 } from '../src/lib/value-chain';
 import { chainDetail, impact, placement, step } from './support/fixtures';
@@ -239,15 +243,83 @@ describe('step tree, pickers and drill-down', () => {
     ]);
   });
 
-  it('lists head steps with placements that the drawing lost', () => {
-    const detail = chainDetail({
-      steps: [
-        step({ elementId: 'a', name: 'A', counts: { accepted: 1, proposed: 0, held: 0 } }),
-        step({ elementId: 'b', name: 'B' }),
-        step({ elementId: 'c', name: 'C', counts: { accepted: 0, proposed: 0, held: 2 } }),
-      ],
+  it('counts the coverage: homed processes among all the chain knows (UX6)', () => {
+    const placements = [
+      placement({ id: 'p1', elementId: 'a', process: 'm#P1', status: 'accepted' }),
+      placement({ id: 'p2', elementId: 'a', process: 'm#P2' }),
+      placement({ id: 'p3', elementId: '@outside', process: 'm#P3', status: 'accepted' }),
+      placement({ id: 'p4', elementId: 'gone', process: 'm#P4', status: 'held', stepLive: false }),
+      placement({
+        id: 'p5',
+        elementId: 'a',
+        process: 'm#P5',
+        status: 'accepted',
+        endpoints: { step: 'ok', process: 'missing' },
+      }),
+      placement({ id: 'p6', elementId: 'a', process: 'm#P1', status: 'rejected' }),
+    ];
+    // P1 (accepted), P3 (outside) are homed; P2 proposed, P4 on a removed step, P6 rejected;
+    // P5's process left the models; P7 has nothing
+    expect(chainCoverage(placements, [{ process: 'm#P4' }, { process: 'm#P7' }])).toEqual({
+      placed: 2,
+      total: 5,
     });
-    expect(stepsMissingFromCanvas(detail, new Set(['a'])).map((s) => s.elementId)).toEqual(['c']);
+  });
+
+  it('marks the steps whose subtree waits for a decision or an answer (UX6)', () => {
+    const steps = [
+      step({ elementId: 'top', name: 'Top', childIds: ['mid'] }),
+      step({ elementId: 'mid', name: 'Mid', parentId: 'top', childIds: ['leaf'] }),
+      step({ elementId: 'leaf', name: 'Leaf', parentId: 'mid' }),
+      step({ elementId: 'other', name: 'Other' }),
+      step({ elementId: 'held', name: 'Held' }),
+    ];
+    const placements = [
+      placement({ id: 'p1', elementId: 'leaf', process: 'm#P1' }),
+      placement({ id: 'p2', elementId: 'other', process: 'm#P2', status: 'rejected' }),
+      placement({ id: 'p3', elementId: 'held', process: 'm#P3', status: 'held' }),
+    ];
+    expect([...pendingSteps(steps, placements)].sort()).toEqual(['held', 'leaf', 'mid', 'top']);
+    expect(subtreeCounts(steps, placements).get('top')).toEqual({ placed: 0, open: 1 });
+    expect(subtreeCounts(steps, placements).get('held')).toEqual({ placed: 1, open: 0 });
+    expect(subtreeCounts(steps, placements).has('other')).toBe(false);
+  });
+
+  it('lists processes without a step with the agent’s doubts, the doubted ones first (UX6)', () => {
+    const unsure = (process: string) => ({
+      process,
+      name: null,
+      reason: 'Kein Schritt passt.',
+      by: 'agent:sim',
+      at: '2026-10-17T20:00:00.000Z',
+      current: true,
+    });
+    const items = unplacedItems(
+      [
+        {
+          process: 'm#A',
+          name: 'A',
+          modelKey: 'm',
+          hints: [{ step: 's', name: 'S', score: 2 }],
+        },
+        { process: 'm#B', name: null, modelKey: 'm', hints: [] },
+      ],
+      [unsure('m#B'), unsure('n#C')],
+    );
+    expect(items.map((i) => [i.process, i.name, i.modelKey, i.unsure?.reason ?? null])).toEqual([
+      ['m#B', 'B', 'm', 'Kein Schritt passt.'],
+      ['n#C', 'C', 'n', 'Kein Schritt passt.'],
+      ['m#A', 'A', 'm', null],
+    ]);
+  });
+
+  it('prefills a correction by the picked step', () => {
+    expect(correctionNote({ elementId: 's', name: 'Versand', path: 'Versand' })).toBe(
+      'Gehört auf „Versand“.',
+    );
+    expect(correctionNote({ elementId: '@outside', name: 'Außerhalb der Kette', path: '' })).toBe(
+      'Gehört nicht auf die Kette.',
+    );
   });
 
   it('builds the process options from the head facts', () => {

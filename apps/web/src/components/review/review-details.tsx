@@ -13,6 +13,7 @@ import type { ReactNode } from 'react';
 import { AutoAcceptMark } from '@/components/auto-accept-mark';
 import { EndpointStateBadge, StatusBadge, TypeLabel } from '@/components/badges';
 import { AutoAcceptProvenance } from '@/components/rules/auto-accept-provenance';
+import { TechnicalDetails } from '@/components/technical-details';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
@@ -71,38 +72,23 @@ export interface ReviewDetailsProps {
 }
 
 /** „Technische Angaben“: the relation's id and version, the proposal's client, procedure and model (P2). */
-function TechnicalDetails({
+function RelationTechnical({
   relation,
   proposal,
 }: {
   relation: Relation;
   proposal: RelationAssertion | null;
 }) {
-  const procedure = proposal ? procedureText(proposal.procedure) : null;
-  const rows = [
-    ['Relation', `${relation.id} · Version ${relation.version}`],
-    ['Client', proposal?.clientId ?? null],
-    ['Verfahren', procedure],
-    ['LLM-Modell', proposal?.llmModel ?? null],
-  ].filter((r): r is [string, string] => r[1] !== null);
   return (
-    <details className="group text-xs text-muted-foreground" data-testid="review-technical">
-      <summary className="inline-flex cursor-pointer list-none items-center gap-1 hover:text-foreground">
-        <ChevronRightIcon
-          className="size-3.5 transition-transform group-open:rotate-90"
-          aria-hidden
-        />
-        Technische Angaben
-      </summary>
-      <dl className="mt-1 grid grid-cols-[max-content_minmax(0,1fr)] gap-x-3 gap-y-0.5">
-        {rows.map(([label, value]) => (
-          <div key={label} className="contents">
-            <dt>{label}</dt>
-            <dd className="font-mono break-all">{value}</dd>
-          </div>
-        ))}
-      </dl>
-    </details>
+    <TechnicalDetails
+      testId="review-technical"
+      rows={[
+        ['Relation', `${relation.id} · Version ${relation.version}`],
+        ['Client', proposal?.clientId],
+        ['Verfahren', proposal ? procedureText(proposal.procedure) : null],
+        ['LLM-Modell', proposal?.llmModel],
+      ]}
+    />
   );
 }
 
@@ -342,7 +328,7 @@ export function ReviewDetails({
               technical={false}
             />
           )}
-          <TechnicalDetails relation={relation} proposal={proposal} />
+          <RelationTechnical relation={relation} proposal={proposal} />
         </div>
       </details>
     </div>

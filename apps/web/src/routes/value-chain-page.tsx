@@ -1,18 +1,12 @@
 import type { SaveValueChainResult } from '@analyzr/client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link, useBlocker } from '@tanstack/react-router';
+import { useBlocker } from '@tanstack/react-router';
 import {
   ChevronLeftIcon,
   ChevronRightIcon,
   DownloadIcon,
-  FileUpIcon,
-  ImageDownIcon,
   MaximizeIcon,
-  PencilIcon,
-  Redo2Icon,
-  SaveIcon,
   TriangleAlertIcon,
-  Undo2Icon,
   XIcon,
   ZoomInIcon,
   ZoomOutIcon,
@@ -20,11 +14,8 @@ import {
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 
 import { ErrorText } from '@/components/error-text';
-import { MiragonMark } from '@/components/page-shell';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Kbd } from '@/components/ui/kbd';
 import { Spinner } from '@/components/ui/spinner';
 import type {
   CanvasElementInfo,
@@ -32,6 +23,7 @@ import type {
   ChainCanvasDocument,
   ChainCanvasHandle,
 } from '@/components/value-chain/chain-canvas-types';
+import { ChainHeader } from '@/components/value-chain/chain-header';
 import { ChainOverview } from '@/components/value-chain/chain-overview';
 import { EmptyChain } from '@/components/value-chain/empty-chain';
 import type { PlacementOutcome } from '@/components/value-chain/placement-decision-panel';
@@ -50,8 +42,8 @@ import { ApiError, errorMessage } from '@/lib/api';
 import { useAutoAcceptIndex } from '@/lib/auto-accept-actions';
 import { downloadText } from '@/lib/download';
 import { clearDraft, draftOffer, listDrafts, writeDraft, type DraftRef } from '@/lib/drafts';
+import { CANVAS_WIDE, useMediaQuery } from '@/lib/media';
 import { useProjectPermissions } from '@/lib/permissions';
-import { formatDateTime } from '@/lib/labels';
 import { OUTSIDE_STEP } from '@/lib/limits';
 import {
   chainRevisionQuery,
@@ -72,9 +64,9 @@ import {
   placementQueue,
   processOptions,
   queueNeighbours,
+  pendingSteps,
   stepBadge,
   stepOptions as buildStepOptions,
-  stepsMissingFromCanvas,
   type DrillDownTarget,
 } from '@/lib/value-chain';
 import { IMPORT_ACCEPT, importErrorText, readImportFile } from '@/lib/value-chain-import';
@@ -92,7 +84,7 @@ interface EditBase {
   chainId: string;
 }
 
-/** Finding labels on the canvas; "nichts angenommen" also on a step with proposals or holds. */
+/** Finding labels on the canvas; „nichts angenommen“ only on a step whose subtree waits for nothing. */
 const FINDING_LABELS = {
   'step-without-process': 'nichts angenommen',
   'unresolved-link': 'Link ungelöst',
@@ -119,7 +111,8 @@ export function ValueChainPage() {
   const revisionQ = useQuery({ ...chainRevisionQuery(project), enabled: exists });
   const models = useQuery(modelsQuery(project));
   const autoIndex = useAutoAcceptIndex(project);
-  const { byModel } = useProjectFacts(project, models.data);
+  const { byModel, resolve } = useProjectFacts(project, models.data);
+  const wide = useMediaQuery(CANVAS_WIDE);
   const processes = useMemo(() => processOptions(byModel.values()), [byModel]);
   const modelKeys = useMemo(() => new Set((models.data ?? []).map((m) => m.key)), [models.data]);
   const placements = useMemo(() => placementsQ.data ?? [], [placementsQ.data]);
@@ -155,7 +148,6 @@ export function ValueChainPage() {
   } | null>(null);
   const [dirty, setDirty] = useState(false);
   const [canvasInfo, setCanvasInfo] = useState<CanvasElementInfo | null>(null);
-  const [canvasIds, setCanvasIds] = useState<ReadonlySet<string> | null>(null);
   const [chainName, setChainName] = useState('');
   const [history, setHistory] = useState({ undo: false, redo: false });
   const [warnings, setWarnings] = useState<number | null>(null);
@@ -207,7 +199,6 @@ export function ValueChainPage() {
     if (mode !== 'edit' || !handle) return;
     try {
       setCanvasInfo(selected ? handle.elementInfo(selected) : null);
-      setCanvasIds(new Set(handle.elementIds()));
       setChainName(handle.chainName());
       setHistory({ undo: handle.canUndo(), redo: handle.canRedo() });
     } catch {
@@ -330,6 +321,8 @@ export function ValueChainPage() {
 
   /** The tree item that takes the focus when the overview opens again ("Zur Übersicht"). */
   const [returnFocus, setReturnFocus] = useState<string | null>(null);
+  /** The header's chip „3 Prozesse ohne Schritt“ scrolls the panel to the list (once per click). */
+  const [revealUnplaced, setRevealUnplaced] = useState(false);
 
   const selectStep = (id: string | null) => {
     // The canvas echoes the page's own selection (also the active placement's step): no change.
@@ -423,7 +416,6 @@ export function ValueChainPage() {
     updateBase(null);
     setDirty(false);
     setCanvasInfo(null);
-    setCanvasIds(null);
     save.reset();
   }
 
@@ -566,8 +558,11 @@ export function ValueChainPage() {
   const overlays = useMemo<CanvasOverlay[]>(() => {
     if (!detail) return [];
     const findings = new Map<string, string[]>();
+    // „nichts angenommen“ only where nothing waits for a decision or an answer (UX6).
+    const pending = pendingSteps(detail.steps, detail.placements);
     for (const f of detail.findings) {
       if (f.kind === 'process-without-step' || f.elementId === null) continue;
+      if (f.kind === 'step-without-process' && pending.has(f.elementId)) continue;
       findings.set(f.elementId, [...(findings.get(f.elementId) ?? []), FINDING_LABELS[f.kind]]);
     }
     return detail.steps.map((s) => {
@@ -703,31 +698,19 @@ export function ValueChainPage() {
               <MaximizeIcon />
             </Button>
           </div>
-          {/* bottom left: legend */}
+          {/* bottom left: the legend in one line (UX6) */}
           <div
-            className="absolute bottom-4 left-4 z-30 flex max-w-[calc(100%-96px)] flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border bg-card/90 px-3 py-1.5 text-xs text-muted-foreground shadow-sm backdrop-blur-sm"
+            className="absolute bottom-4 left-4 z-30 flex max-w-[calc(100%-96px)] flex-wrap items-center gap-x-1.5 gap-y-1 rounded-lg border bg-card/90 px-3 py-1.5 text-xs text-muted-foreground shadow-sm backdrop-blur-sm"
             data-testid="chain-legend"
           >
-            <span className="inline-flex items-center gap-1.5">
-              <span className="analyzr-vc-badge" data-tone="neutral">
-                2 Prozesse
-              </span>
-              angenommen oder vorgemerkt
+            <span className="analyzr-vc-badge" data-tone="warning">
+              3 offen
             </span>
-            <span className="inline-flex items-center gap-1.5">
-              <span className="analyzr-vc-badge" data-tone="warning">
-                1 offen
-              </span>
-              zu prüfen
+            <span>zu prüfen ·</span>
+            <span className="analyzr-vc-badge" data-tone="neutral">
+              2 Prozesse
             </span>
-            <span className="inline-flex items-center gap-1.5">
-              <span className="analyzr-vc-badge" data-tone="finding">
-                nichts angenommen
-              </span>
-              Befund
-            </span>
-            <span>Lila = Management, Grün = Unterstützung, Vorgänger-Kette = Kern</span>
-            {mode === 'view' ? <span>Doppelklick öffnet den Schritt.</span> : null}
+            <span>platziert · lila Management · grün Unterstützung</span>
           </div>
         </div>
       ) : null}
@@ -745,167 +728,38 @@ export function ValueChainPage() {
         </div>
       ) : null}
 
-      {/* top left: where am I, revision, mode */}
-      <header className="absolute top-4 left-4 z-30 flex max-w-[calc(100vw-32px)] flex-col gap-2 rounded-xl border bg-card/90 p-2 text-sm shadow-md backdrop-blur-sm lg:max-w-[calc(100vw-516px)]">
-        <div className="flex flex-wrap items-center gap-1">
-          <Link to="/" aria-label="Zu den Projekten" className="px-1">
-            <MiragonMark className="size-5" />
-          </Link>
-          <Button variant="ghost" size="sm" asChild>
-            <Link to="/projects/$project" params={{ project }}>
-              <ChevronLeftIcon data-icon="inline-start" />
-              <span className="max-w-48 truncate">{info.data?.name ?? project}</span>
-            </Link>
-          </Button>
-          {/* UX1's tab names; UX6 folds the header into the shared canvas header (§3.8 item 5). */}
-          <Button variant="ghost" size="sm" asChild>
-            <Link to="/projects/$project/review" params={{ project }}>
-              Relationen
-            </Link>
-          </Button>
-        </div>
-        <div className="flex flex-wrap items-center gap-2 px-1">
-          <h1 className="truncate text-base font-semibold" data-testid="chain-name">
-            {mode === 'edit' && chainName
-              ? chainName
-              : (detail?.valueChain.name ?? 'Wertschöpfungskette')}
-          </h1>
-          {mode === 'edit' && base ? (
-            <Badge variant="outline" data-testid="chain-rev">
-              {base.rev > 0 ? `r${base.rev}` : 'neu'}
-            </Badge>
-          ) : detail ? (
-            <Badge variant="outline" data-testid="chain-rev">
-              r{detail.valueChain.headRev}
-            </Badge>
-          ) : null}
-          {mode === 'view' && newest ? (
-            <span className="text-xs text-muted-foreground">
-              gespeichert von <span className="font-mono">{newest.handle}</span> ·{' '}
-              {formatDateTime(newest.createdAt)}
-            </span>
-          ) : null}
-          {mode === 'edit' && dirty ? (
-            <Badge
-              variant="outline"
-              className="border-warning bg-warning-soft text-warning"
-              data-testid="unsaved"
-            >
-              Ungespeichert
-            </Badge>
-          ) : null}
-          {mode === 'view' && unplacedCount !== null && unplacedCount > 0 ? (
-            <button
-              type="button"
-              onClick={() => void navigate({ search: {}, replace: true })}
-              className="rounded-sm bg-warning-soft px-1.5 text-xs text-warning hover:underline"
-              data-testid="unplaced-chip"
-            >
-              {unplacedCount === 1
-                ? '1 Prozess ohne Schritt'
-                : `${unplacedCount} Prozesse ohne Schritt`}
-            </button>
-          ) : null}
-        </div>
-        <div className="flex flex-wrap items-center gap-1">
-          {mode === 'view' ? (
-            <>
-              {canReview && exists ? (
-                <Button
-                  size="sm"
-                  onClick={enterEdit}
-                  disabled={!contentQ.data}
-                  data-testid="edit-chain"
-                >
-                  <PencilIcon data-icon="inline-start" />
-                  Bearbeiten
-                </Button>
-              ) : null}
-              {exists ? (
-                <>
-                  <Button variant="ghost" size="sm" onClick={downloadDocument}>
-                    <DownloadIcon data-icon="inline-start" />
-                    .vc.json
-                  </Button>
-                  <Button variant="ghost" size="sm" onClick={downloadSvg}>
-                    <ImageDownIcon data-icon="inline-start" />
-                    SVG
-                  </Button>
-                </>
-              ) : null}
-              {exists ? (
-                <span
-                  className="ml-1 hidden items-center gap-1 text-xs text-muted-foreground xl:inline-flex"
-                  data-testid="key-hint"
-                >
-                  <Kbd>J</Kbd>
-                  <Kbd>K</Kbd> Platzierungen
-                  {canReview ? (
-                    <>
-                      {' '}
-                      · <Kbd>A</Kbd> <Kbd>R</Kbd> <Kbd>H</Kbd> <Kbd>C</Kbd> entscheiden
-                    </>
-                  ) : null}
-                </span>
-              ) : null}
-            </>
-          ) : (
-            <>
-              <Button size="sm" onClick={save.save} disabled={save.busy} data-testid="save-chain">
-                {save.busy ? (
-                  <Spinner data-icon="inline-start" />
-                ) : (
-                  <SaveIcon data-icon="inline-start" />
-                )}
-                Speichern
-              </Button>
-              <Button
-                variant="outline"
-                size="icon-sm"
-                aria-label="Rückgängig"
-                title="Rückgängig (Strg+Z)"
-                disabled={!history.undo}
-                onClick={() => canvas.current?.undo()}
-              >
-                <Undo2Icon />
-              </Button>
-              <Button
-                variant="outline"
-                size="icon-sm"
-                aria-label="Wiederholen"
-                title="Wiederholen (Strg+Y)"
-                disabled={!history.redo}
-                onClick={() => canvas.current?.redo()}
-              >
-                <Redo2Icon />
-              </Button>
-              <Button variant="ghost" size="sm" onClick={downloadDocument}>
-                <DownloadIcon data-icon="inline-start" />
-                .vc.json
-              </Button>
-              {canReview ? (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => fileInput.current?.click()}
-                  data-testid="import-chain"
-                >
-                  <FileUpIcon data-icon="inline-start" />
-                  Importieren
-                </Button>
-              ) : null}
-              <Button
-                variant="outline"
-                size="sm"
-                data-testid="finish-edit"
-                onClick={() => (dirtyNow() ? setLeaving(true) : finishEdit())}
-              >
-                Fertig
-              </Button>
-            </>
-          )}
-        </div>
-      </header>
+      <ChainHeader
+        wide={wide}
+        project={project}
+        projectName={info.data?.name ?? project}
+        mode={mode}
+        name={
+          mode === 'edit' && chainName
+            ? chainName
+            : (detail?.valueChain.name ?? 'Wertschöpfungskette')
+        }
+        revision={newest ? { rev: newest.rev, handle: newest.handle, at: newest.createdAt } : null}
+        editRev={mode === 'edit' && base ? base.rev : null}
+        dirty={dirty}
+        unplacedCount={unplacedCount}
+        onUnplaced={() => {
+          void navigate({ search: {}, replace: true });
+          setRevealUnplaced(true);
+        }}
+        canReview={canReview}
+        exists={exists}
+        canEdit={contentQ.data !== undefined}
+        onEdit={enterEdit}
+        onFile={downloadDocument}
+        onSvg={downloadSvg}
+        saving={save.busy}
+        history={history}
+        onSave={save.save}
+        onUndo={() => canvas.current?.undo()}
+        onRedo={() => canvas.current?.redo()}
+        onImport={() => fileInput.current?.click()}
+        onFinish={() => (dirtyNow() ? setLeaving(true) : finishEdit())}
+      />
 
       {/* right: the panel */}
       {empty ? null : (
@@ -1012,6 +866,7 @@ export function ValueChainPage() {
                 onSetColor={(color) => canvas.current?.setColor(selectedId, color)}
                 onSetLink={(link) => canvas.current?.setLink(selectedId, link)}
                 autoIndex={autoIndex}
+                resolve={resolve}
               />
             ) : detail || mode === 'edit' ? (
               <ChainOverview
@@ -1031,9 +886,11 @@ export function ValueChainPage() {
                 onReload={reload}
                 chainName={chainName}
                 onChainName={(name) => canvas.current?.setChainName(name)}
-                missingSteps={detail && canvasIds ? stepsMissingFromCanvas(detail, canvasIds) : []}
                 focusStepId={returnFocus}
+                revealUnplaced={revealUnplaced}
+                onRevealed={() => setRevealUnplaced(false)}
                 autoIndex={autoIndex}
+                resolve={resolve}
               />
             ) : (
               <div className="grid h-full place-items-center">

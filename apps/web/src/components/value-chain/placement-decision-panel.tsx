@@ -7,7 +7,7 @@ import {
   TriangleAlertIcon,
   XIcon,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 
 import { HoldForm, RejectForm } from '@/components/review/decision-forms';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -48,13 +48,19 @@ export interface PlacementDecisionPanelProps {
   onDecided?: (outcome: PlacementOutcome, result: PlacementDecisionResult) => void;
   /** Reloads after a conflict. */
   onReload?: () => void;
+  /**
+   * A held placement's answer in the grid instead of „Vormerken“ (UX6, as on
+   * the review screen): the note dialog of „Offene Fragen“.
+   */
+  holdAnswer?: ReactNode;
 }
 
 /**
  * The reviewer's actions on one placement (M4 §4): accept (re-confirm a
  * changed one), reject with a reason, hold with a note (question and label
- * optional), or correct to another step. Every decision carries the version
- * the reviewer saw; a 409 says what happened and pauses the shortcuts until
+ * optional), or correct to another step; a held one is answered in place of
+ * „Vormerken“ (`holdAnswer`). Every decision carries the version the reviewer
+ * saw; a 409 says what happened and pauses the shortcuts until
  * "Neuen Stand prüfen". A placement on a removed step, or whose process left
  * the models, can only be rejected or corrected. Another placement starts
  * with a clean panel.
@@ -72,6 +78,7 @@ function Panel({
   showKeys = false,
   onDecided,
   onReload,
+  holdAnswer,
 }: PlacementDecisionPanelProps) {
   const [form, setForm] = useState<Form>(null);
   const [conflict, setConflict] = useState<Conflict | null>(null);
@@ -185,7 +192,7 @@ function Panel({
       ) : form === 'hold' ? (
         <HoldForm
           pending={busy}
-          hint="Vorgemerkte Platzierungen bleiben auf dem Schritt sichtbar; deine Antwort steht an der Platzierung."
+          hint="Die Platzierung bleibt auf dem Schritt sichtbar; die Frage steht unter „Offene Fragen“."
           onCancel={() => setForm(null)}
           onSubmit={(hold) => run('hold', { verdict: 'hold', ...hold, version })}
         />
@@ -216,19 +223,23 @@ function Panel({
             </span>
             {key('R')}
           </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => setForm('hold')}
-            disabled={!can.hold || busy}
-            className="justify-between"
-          >
-            <span className="inline-flex items-center gap-1.5">
-              <BookmarkIcon />
-              Vormerken
-            </span>
-            {key('H')}
-          </Button>
+          {placement.status === 'held' && holdAnswer ? (
+            holdAnswer
+          ) : (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setForm('hold')}
+              disabled={!can.hold || busy}
+              className="justify-between"
+            >
+              <span className="inline-flex items-center gap-1.5">
+                <BookmarkIcon />
+                Vormerken
+              </span>
+              {key('H')}
+            </Button>
+          )}
           <Button
             size="sm"
             variant="outline"

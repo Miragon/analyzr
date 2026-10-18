@@ -50,6 +50,7 @@ interface Detail {
   steps: {
     elementId: string;
     name: string;
+    parentId: string | null;
     counts: { accepted: number; proposed: number; held: number };
   }[];
   placements: Placement[];
@@ -283,6 +284,9 @@ test('empty state, then a chain created in the browser and saved as r1', async (
   await page.goto(`/projects/${EMPTY}/value-chain`);
   const empty = page.getByTestId('empty-chain');
   await expect(empty).toContainText('Noch keine Wertschöpfungskette');
+  // UX6: drawing and importing first, the CLI behind „Per CLI hochladen“
+  await expect(empty.getByTestId('code-block')).toBeHidden();
+  await empty.getByText('Per CLI hochladen').click();
   await expect(empty.getByTestId('code-block')).toHaveText(
     `analyzr value-chain push kette.vc.json -p ${EMPTY}`,
   );
@@ -300,7 +304,11 @@ test('empty state, then a chain created in the browser and saved as r1', async (
   expect(created.valueChain.headRev).toBe(1);
   expect(created.steps.map((s) => [s.elementId, s.name])).toEqual([[id, 'Einkauf']]);
   await finishEdit(page);
-  await expect(page.getByTestId('chain-rev')).toHaveText('r1');
+  // the revision behind the chain's name (UX6)
+  await page.getByTestId('chain-revision').click();
+  await expect(page.getByTestId('chain-revision-text')).toContainText(
+    'Revision 1 · gespeichert von',
+  );
 });
 
 test('the golden dev chain pushed over REST renders with badges and findings', async ({ page }) => {
@@ -312,14 +320,21 @@ test('the golden dev chain pushed over REST renders with badges and findings', a
   await content();
   await chainPage(page);
   await expect(canvas(page)).toHaveAttribute('data-import-warnings', '0');
-  await expect(page.getByTestId('step-tree-item')).toHaveCount(34);
+  // the closed tree: its top-level rows, collapsed (UX6)
+  const pushedSteps = (await detail()).steps;
+  expect(pushedSteps).toHaveLength(34);
+  await page.getByTestId('step-tree').locator('summary').click();
+  await expect(page.getByTestId('step-tree-item')).toHaveCount(
+    pushedSteps.filter((s) => s.parentId === null).length,
+  );
   // the rule tier's four key proposals (equal names), one per step: open, not homed yet
   const badges = canvas(page).locator('.analyzr-vc-badge');
   await expect(badges.filter({ hasText: /^1 offen$/ })).toHaveCount(4);
   await expect(badges.filter({ hasText: /Prozess/ })).toHaveCount(0);
   await expect(badges.filter({ hasText: 'nichts angenommen' }).first()).toBeVisible();
   await expect(page.locator('.djs-element.analyzr-vc-finding').first()).toBeVisible();
-  await expect(page.getByTestId('chain-summary')).toContainText('34 Schritte');
+  await expect(page.getByTestId('chain-summary')).toContainText('4 Vorschläge offen');
+  await expect(page.getByTestId('review-placements')).toHaveText(/^Platzierungen prüfen \(4\)/);
   await expect(page.getByTestId('unplaced-chip')).toBeVisible();
   await shot(page, 'm4-01-chain-view');
 });
@@ -400,7 +415,12 @@ test('agent proposals over REST are reviewed in the panel: A, R, H, C, HTML as t
   await chainPage(page, '?step=step-wareneingang');
   const panel = page.getByTestId('step-panel');
   await expect(panel.getByTestId('placement-card')).toHaveCount(2);
-  await expect(panel.getByTestId('rule-basis')).toHaveText('Regel: gleicher Name');
+  // the rule's basis, like the tier, in the cards' „Details“ (UX6)
+  for (const details of await panel.getByTestId('placement-details').all())
+    await details.locator(':scope > summary').click();
+  await expect(
+    panel.getByTestId('placement-tier').filter({ hasText: /^Grundlage: Gleicher Name$/ }),
+  ).toHaveCount(1);
   await shot(page, 'm4-02-step-panel');
 
   // A
@@ -624,7 +644,7 @@ test('an edit committed by the click on „Fertig“ or a link is not lost', asy
 
   // the same through a link of the header
   await page.getByLabel('Name', { exact: true }).fill('Disposition (beim Link)');
-  await page.getByRole('link', { name: 'Relationen', exact: true }).click();
+  await page.getByTestId('canvas-back').click();
   await expect(dialog).toContainText('Seite verlassen?');
   await expect(page).toHaveURL(new RegExp(`/projects/${PROJECT}/value-chain`));
   await page.keyboard.press('Escape');
@@ -713,7 +733,7 @@ test('link: set via the process picker, undo, set again; the rule proposal; clea
   await enterEdit(page);
   await selectOnCanvas(page, 'step-offene-posten');
   const editor = page.getByTestId('link-editor');
-  await editor.getByRole('radio', { name: 'analyzr-Prozess' }).click();
+  await editor.getByRole('radio', { name: 'Prozess', exact: true }).click();
   await editor.getByLabel('Prozess suchen').fill('Forderungsmanagement');
   const option = editor.locator(`[data-testid=link-process-option][data-ref="${process}"]`);
   await option.click();
@@ -732,7 +752,10 @@ test('link: set via the process picker, undo, set again; the rule proposal; clea
     page.getByTestId('link-editor').getByRole('radio', { name: 'Kein Link' }),
   ).toHaveAttribute('data-state', 'on');
 
-  await page.getByTestId('link-editor').getByRole('radio', { name: 'analyzr-Prozess' }).click();
+  await page
+    .getByTestId('link-editor')
+    .getByRole('radio', { name: 'Prozess', exact: true })
+    .click();
   await page.getByTestId('link-editor').getByLabel('Prozess suchen').fill('Forderungsmanagement');
   // by keyboard: the arrows only move the mark, Enter sets the link; the focus stays in the list
   await page.getByTestId('link-editor').getByLabel('Prozess suchen').press('Tab');
@@ -804,6 +827,7 @@ test('drill-down: double-click opens the step view with sub-steps, processes and
     data: { kind: 'manual', step: 'step-auftragsabwicklung', process: caller, rationale: 'e2e' },
   });
   expect(manual.ok()).toBe(true);
+  const placed = ((await manual.json()) as { placement: { id: string } }).placement.id;
 
   await chainPage(page);
   await shape(page, 'step-vertrieb').dblclick();
@@ -813,9 +837,15 @@ test('drill-down: double-click opens the step view with sub-steps, processes and
   await expect(page.getByTestId('step-breadcrumb')).toContainText(
     /Wertschöpfungskette.*Vertrieb.*Auftragsabwicklung/,
   );
-  const own = page.getByTestId('step-view-placement').filter({ hasText: caller });
+  // UX6: the row names the process and its model; its name links to the card on the chain
+  const own = page.locator(`[data-testid=step-view-placement][data-placement-id="${placed}"]`);
   await expect(own).toBeVisible();
-  await expect(page.getByTestId('reached-by-call')).toContainText(call!.to);
+  await expect(own).toContainText(callerKey);
+  await expect(own.getByTestId('step-view-card-link')).toHaveAttribute(
+    'href',
+    `/projects/${PROJECT}/value-chain?placement=${placed}`,
+  );
+  await expect(page.getByTestId('reached-by-call')).toContainText(call!.to.split('#')[0]!);
   await expect(page.getByTestId('via-relation').first()).toHaveAttribute(
     'href',
     `/projects/${PROJECT}/review/${call!.id}`,

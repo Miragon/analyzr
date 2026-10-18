@@ -3,46 +3,58 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { cn } from 'cn';
 import {
-  ChevronDownIcon,
+  ChevronRightIcon,
   CircleHelpIcon,
   CrosshairIcon,
   ExternalLinkIcon,
   LocateIcon,
-  MessageSquareReplyIcon,
   SearchCheckIcon,
 } from 'lucide-react';
-import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 
 import { AutoAcceptMark } from '@/components/auto-accept-mark';
-import { EndpointStateBadge, StatusBadge, TierBadge } from '@/components/badges';
+import { EndpointStateBadge, StatusBadge } from '@/components/badges';
 import { PlainText } from '@/components/review/plain-text';
-import { ProvenanceList } from '@/components/review/provenance';
 import { AutoAcceptProvenance } from '@/components/rules/auto-accept-provenance';
 import { AssertionTimeline } from '@/components/review/timeline';
+import { TechnicalDetails } from '@/components/technical-details';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Field, FieldLabel } from '@/components/ui/field';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Textarea } from '@/components/ui/textarea';
-import { errorMessage } from '@/lib/api';
 import type { AutoAcceptIndex } from '@/lib/auto-accept';
 import { useIsOwner } from '@/lib/auto-accept-actions';
-import { formatConfidence } from '@/lib/labels';
-import { MAX_NOTE_CHARS } from '@/lib/limits';
+import {
+  TIERS,
+  TIER_FIELD_LABEL,
+  formatConfidence,
+  formatDateTime,
+  handleName,
+  procedureText,
+} from '@/lib/labels';
 import { placementAssertionsQuery } from '@/lib/queries';
-import { splitRef } from '@/lib/refs';
-import { toast } from '@/lib/toast';
-import { placementEvidenceItems, placementStepLabel, type StepOption } from '@/lib/value-chain';
-import { useAddPlacementNote } from '@/lib/value-chain-actions';
+import { bareResolver, splitRef, type RefResolver } from '@/lib/refs';
+import {
+  isPlainProposal,
+  placementEvidenceItems,
+  placementStepLabel,
+  type StepOption,
+} from '@/lib/value-chain';
 
 import { PlacementDecisionPanel, type PlacementOutcome } from './placement-decision-panel';
+
+/**
+ * „Antwort geben“ of a held placement (UX6): the note dialog of „Offene
+ * Fragen“, from the open-questions chunk on first use, as on the review
+ * screen.
+ */
+const HoldAnswer = lazy(() => import('@/components/open-questions/hold-answer'));
 
 export interface PlacementCardProps {
   project: string;
   placement: Placement;
   /** Model keys of the project: evidence refs into them link to the model view. */
   modelKeys: ReadonlySet<string>;
-  /** Steps to correct to (`@outside` included). */
+  /** Steps to correct to (`@outside` included); also the names of cited steps. */
   stepOptions: readonly StepOption[];
   /** `analyzr:process/` link of the placement's step points at this process (rule basis). */
   linkedByStep?: boolean;
@@ -62,6 +74,8 @@ export interface PlacementCardProps {
    * owners.
    */
   autoIndex?: AutoAcceptIndex;
+  /** Element names for the evidence; the bare element id until the facts are loaded. */
+  resolve?: RefResolver;
 }
 
 /** The current proposal of a placement: the one its status rests on, else the latest. */
@@ -80,6 +94,19 @@ function answersSinceHold(placement: Placement, assertions: readonly PlacementAs
   return assertions.slice(at < 0 ? 0 : at + 1).filter((a) => a.kind === 'note');
 }
 
+/** „Vorgeschlagen von Agent „agent-sim“ · 17.10.2026, 22:32“ (UX6, the glossary's words). */
+function proposedByText(a: Pick<PlacementAssertion, 'sourceKind' | 'handle' | 'at'>): string {
+  const when = formatDateTime(a.at);
+  switch (a.sourceKind) {
+    case 'agent':
+      return `Vorgeschlagen von Agent „${handleName(a.handle)}“ · ${when}`;
+    case 'rule':
+      return `Von analyzr erkannt · ${when}`;
+    case 'human':
+      return `Manuell platziert von „${a.handle}“ · ${when}`;
+  }
+}
+
 function PlacementLink({
   project,
   assertion: a,
@@ -94,103 +121,30 @@ function PlacementLink({
       params={{ project }}
       search={{ placement: a.linkedPlacementId }}
       className="text-sm text-link hover:underline"
+      title={a.linkedPlacementId}
     >
       {a.kind === 'decision' && a.verdict === 'reject'
         ? 'Korrigiert durch die manuelle Platzierung'
-        : 'Korrektur dieses Vorschlags'}{' '}
-      <span className="font-mono text-xs">{a.linkedPlacementId}</span>
+        : 'Korrektur dieses Vorschlags'}
     </Link>
   );
 }
 
-function AnswerForm({ project, placementId }: { project: string; placementId: string }) {
-  const id = useId();
-  const [text, setText] = useState('');
-  const add = useAddPlacementNote(project);
-  function submit(event: FormEvent) {
-    event.preventDefault();
-    const answer = text.trim();
-    if (answer === '' || add.isPending) return;
-    add.mutate(
-      { placementId, text: answer },
-      {
-        onSuccess: () => {
-          setText('');
-          toast({ tone: 'success', title: 'Antwort gespeichert' });
-        },
-        onError: (error) =>
-          toast({
-            tone: 'danger',
-            title: 'Antwort nicht gespeichert',
-            description: errorMessage(error),
-            error,
-          }),
-      },
-    );
-  }
-  return (
-    <form
-      onSubmit={submit}
-      onKeyDown={(event) => {
-        if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
-          event.preventDefault();
-          event.currentTarget.requestSubmit();
-        }
-      }}
-      aria-label="Antwort geben"
-      className="flex flex-col gap-2"
-    >
-      <Field>
-        <FieldLabel htmlFor={`${id}-answer`}>Antwort</FieldLabel>
-        <Textarea
-          id={`${id}-answer`}
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          maxLength={MAX_NOTE_CHARS}
-          placeholder="Was hat die Klärung ergeben?"
-          className="min-h-12"
-        />
-      </Field>
-      <div className="flex justify-end">
-        <Button type="submit" size="sm" disabled={text.trim() === '' || add.isPending}>
-          <MessageSquareReplyIcon data-icon="inline-start" />
-          Antwort speichern
-        </Button>
-      </div>
-    </form>
-  );
-}
-
-function Toggle({
-  open,
-  onToggle,
-  children,
-}: {
-  open: boolean;
-  onToggle: () => void;
-  children: ReactNode;
-}) {
-  return (
-    <Button variant="ghost" size="xs" aria-expanded={open} onClick={onToggle}>
-      <ChevronDownIcon
-        data-icon="inline-start"
-        className={cn('transition-transform', open ? 'rotate-180' : '')}
-      />
-      {children}
-    </Button>
-  );
-}
-
 /**
- * One placement as the reviewer reads it (M4 §4, like the M2 review screen):
- * process and status, tier, endpoint state and confidence; who it rests on;
- * the rationale, question and hold note as plain text; evidence and history
- * on demand; the answer field of a held placement; and the decision at the
- * foot. The active card (from `?placement=`, else the first open one) takes
- * the A/R/H/C shortcuts and scrolls into view when it becomes active (J/K, a
- * `reviewUrl` to a card far down the overview); its key hints show only while
- * the keys work. A click on the card focuses it, so in edit mode the panel
- * (and with it the keys) takes over from the canvas.
+ * One placement as the reviewer reads it (M4 §4; UX6, UX-SIMPLIFICATION.md
+ * §3.8 item 4): process, its model path and the confidence; a status only
+ * when it is not a plain proposal (the auto-accept mark stays, decision 19);
+ * the rationale, the agent's question in its box, a hold's note and its
+ * answers read-only, all as plain text; one closed „Details“ with the tier,
+ * who proposed it and when, the evidence by name, the history (entries shown
+ * above only by title, who and when) and „Technische Angaben“; „Im Modell“;
+ * and the decision at the foot, where a held placement is answered through
+ * the note dialog of „Offene Fragen“ in place of „Vormerken“. The active card
+ * (from `?placement=`, else the first open one) takes the A/R/H/C shortcuts
+ * and scrolls into view when it becomes active (J/K, a `reviewUrl` to a card
+ * far down the overview); its key hints show only while the keys work. A
+ * click on the card focuses it, so in edit mode the panel (and with it the
+ * keys) takes over from the canvas.
  */
 export function PlacementCard({
   project,
@@ -207,9 +161,9 @@ export function PlacementCard({
   onDecided,
   onReload,
   autoIndex,
+  resolve = bareResolver,
 }: PlacementCardProps) {
-  const [evidenceOpen, setEvidenceOpen] = useState(false);
-  const [historyOpen, setHistoryOpen] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
   // Revoking an auto-acceptance is the owners' (the marks are every reviewer's).
   const owner = useIsOwner(project);
   const self = useRef<HTMLLIElement>(null);
@@ -219,7 +173,7 @@ export function PlacementCard({
   const held = p.status === 'held';
   const assertions = useQuery({
     ...placementAssertionsQuery(project, p.id),
-    enabled: evidenceOpen || historyOpen || held,
+    enabled: detailsOpen || held,
   });
   const { modelKey, elementId: processId } = splitRef(p.process);
   const name = p.processName ?? processId;
@@ -227,8 +181,10 @@ export function PlacementCard({
   const auto = autoIndex?.inForce.get(p.id);
   const autoEntries = autoIndex?.bySubject.get(p.id) ?? [];
   const proposal = assertions.data ? currentProposal(p, assertions.data) : null;
+  const proposer = proposal ?? (prov?.kind === 'proposal' ? prov : null);
   const evidence = proposal ? placementEvidenceItems(proposal.evidence, modelKeys) : [];
   const answers = held && assertions.data ? answersSinceHold(p, assertions.data) : [];
+  const stepName = (id: string) => stepOptions.find((s) => s.elementId === id)?.name || id;
   const textLabel =
     prov?.kind === 'decision'
       ? prov.verdict === 'reject'
@@ -237,6 +193,26 @@ export function PlacementCard({
           ? 'Notiz'
           : 'Notiz zur Entscheidung'
       : 'Begründung';
+  // The texts above keep only their title, who and when in the history.
+  const shownAbove = new Set(
+    [prov?.assertionId, ...answers.map((a) => a.id)].filter((id): id is string => !!id),
+  );
+  const badges = [
+    auto ? <AutoAcceptMark key="auto" entry={auto} /> : null,
+    !auto && !isPlainProposal(p) ? <StatusBadge key="status" status={p.status} /> : null,
+    <EndpointStateBadge key="endpoint" state={p.endpointState} />,
+    p.endpoints.process === 'missing' ? (
+      <Badge key="gone" variant="outline">
+        Prozess fehlt
+      </Badge>
+    ) : !p.stepLive ? (
+      <Badge key="gone" variant="outline">
+        Schritt entfernt
+      </Badge>
+    ) : null,
+  ];
+  const showBadges =
+    auto || !isPlainProposal(p) || p.endpoints.process === 'missing' || !p.stepLive;
 
   return (
     <li
@@ -259,8 +235,8 @@ export function PlacementCard({
       <div className="flex items-start gap-2">
         <div className="flex min-w-0 flex-1 flex-col">
           <PlainText as="span" className="font-semibold" text={name} />
-          <span className="truncate font-mono text-xs text-muted-foreground" title={p.process}>
-            {p.process}
+          <span className="truncate text-xs text-muted-foreground" data-testid="placement-model">
+            {modelKey}
           </span>
           {showStep ? (
             <span className="text-xs text-muted-foreground">
@@ -272,22 +248,8 @@ export function PlacementCard({
           {formatConfidence(p.confidence)}
         </span>
       </div>
-      <div className="flex flex-wrap items-center gap-1.5">
-        {auto ? <AutoAcceptMark entry={auto} /> : <StatusBadge status={p.status} />}
-        <TierBadge tier={p.tier} />
-        <EndpointStateBadge state={p.endpointState} />
-        {p.endpoints.process === 'missing' ? (
-          <Badge variant="outline">Prozess fehlt</Badge>
-        ) : !p.stepLive ? (
-          <Badge variant="outline">Schritt entfernt</Badge>
-        ) : null}
-      </div>
+      {showBadges ? <div className="flex flex-wrap items-center gap-1.5">{badges}</div> : null}
 
-      {prov?.sourceKind === 'rule' ? (
-        <p className="text-xs text-muted-foreground" data-testid="rule-basis">
-          Regel: {linkedByStep ? 'Link des Schritts' : 'gleicher Name'}
-        </p>
-      ) : null}
       {prov?.rationale ? (
         <div>
           <p className="text-xs font-medium text-muted-foreground">{textLabel}</p>
@@ -313,28 +275,126 @@ export function PlacementCard({
           </Badge>
         </span>
       ) : null}
-
-      {prov ? (
-        <details className="group text-xs">
-          <summary className="cursor-pointer text-muted-foreground select-none">Herkunft</summary>
-          <div className="flex flex-col gap-2 pt-2">
-            {autoEntries.length > 0 ? (
-              <AutoAcceptProvenance project={project} entries={autoEntries} canRevoke={owner} />
-            ) : null}
-            <ProvenanceList provenance={prov} />
-          </div>
-        </details>
+      {held && answers.length > 0 ? (
+        <ol aria-label="Antworten" className="flex flex-col gap-1.5">
+          {answers.map((a) => (
+            <li
+              key={a.id}
+              data-testid="placement-answer"
+              className="border-l-2 border-success pl-2.5"
+            >
+              <span className="text-xs text-muted-foreground">Antwort: </span>
+              {a.rationale ? <PlainText as="span" text={a.rationale} /> : null}
+            </li>
+          ))}
+        </ol>
       ) : null}
 
-      <div className="flex flex-wrap items-center gap-1">
-        <Toggle open={evidenceOpen} onToggle={() => setEvidenceOpen((o) => !o)}>
-          Belege
-        </Toggle>
-        <Toggle open={historyOpen} onToggle={() => setHistoryOpen((o) => !o)}>
-          Verlauf
-        </Toggle>
+      <div className="flex items-start gap-2">
+        <details
+          className="group min-w-0 flex-1 text-xs"
+          data-testid="placement-details"
+          onToggle={(e) => setDetailsOpen(e.currentTarget.open)}
+        >
+          <summary className="inline-flex cursor-pointer list-none items-center gap-1 py-0.5 text-muted-foreground select-none hover:text-foreground">
+            <ChevronRightIcon
+              className="size-3.5 transition-transform group-open:rotate-90"
+              aria-hidden
+            />
+            Details
+          </summary>
+          <div className="flex flex-col gap-3 pt-2">
+            <div className="flex flex-col gap-0.5 text-muted-foreground">
+              <p data-testid="placement-tier">
+                {TIER_FIELD_LABEL}: {TIERS[p.tier].label}
+                {prov?.sourceKind === 'rule' && linkedByStep ? ' (über den Link des Schritts)' : ''}
+              </p>
+              {proposer ? <p data-testid="placement-proposer">{proposedByText(proposer)}</p> : null}
+            </div>
+            {assertions.isPending ? (
+              <Skeleton className="h-16 w-full" />
+            ) : (
+              <>
+                {evidence.length > 0 ? (
+                  <ul className="flex flex-col gap-1" aria-label="Belege">
+                    {evidence.map((item, i) => (
+                      <li key={i} className="min-w-0">
+                        {item.kind === 'ref' ? (
+                          <Link
+                            to="/projects/$project/models/$"
+                            params={{ project, _splat: item.modelKey }}
+                            search={{ element: item.elementId }}
+                            className="inline-flex max-w-full items-center gap-1.5 text-link hover:underline"
+                            title={`Im Modell ${item.modelKey} öffnen`}
+                            data-testid="evidence-link"
+                          >
+                            <ExternalLinkIcon className="size-3.5 shrink-0" aria-hidden />
+                            <PlainText
+                              as="span"
+                              className="truncate"
+                              text={resolve(item.text).label ?? item.elementId}
+                            />
+                          </Link>
+                        ) : item.kind === 'relation' ? (
+                          <Link
+                            to="/projects/$project/review/$relation"
+                            params={{ project, relation: item.relationId }}
+                            className="inline-flex max-w-full items-center gap-1.5 text-link hover:underline"
+                            title={item.relationId}
+                            data-testid="evidence-relation"
+                          >
+                            <SearchCheckIcon className="size-3.5 shrink-0" aria-hidden />
+                            Relation ansehen
+                          </Link>
+                        ) : item.kind === 'step' ? (
+                          <button
+                            type="button"
+                            onClick={() => onSelectStep(item.elementId)}
+                            className="inline-flex max-w-full items-center gap-1.5 text-left text-link hover:underline"
+                            data-testid="evidence-step"
+                          >
+                            <CrosshairIcon className="size-3.5 shrink-0" aria-hidden />
+                            <PlainText
+                              as="span"
+                              className="truncate"
+                              text={`Schritt „${stepName(item.elementId)}“`}
+                            />
+                          </button>
+                        ) : (
+                          <PlainText as="span" className="text-muted-foreground" text={item.text} />
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+                {autoEntries.length > 0 ? (
+                  <AutoAcceptProvenance project={project} entries={autoEntries} canRevoke={owner} />
+                ) : null}
+                {assertions.data ? (
+                  <AssertionTimeline
+                    assertions={assertions.data}
+                    renderLink={(a) => <PlacementLink project={project} assertion={a} />}
+                    marks={autoIndex?.byAssertion}
+                    brief={shownAbove}
+                    technical={false}
+                  />
+                ) : null}
+              </>
+            )}
+            <TechnicalDetails
+              testId="placement-technical"
+              rows={[
+                ['Platzierung', `${p.id} · Version ${p.version}`],
+                ['Prozess', p.process],
+                ['Client', proposal?.clientId ?? prov?.clientId],
+                ['Verfahren', procedureText((proposal ?? prov)?.procedure ?? null)],
+                ['LLM-Modell', proposal?.llmModel ?? prov?.llmModel],
+              ]}
+            />
+          </div>
+        </details>
         {modelKeys.has(modelKey) ? (
-          <Button variant="ghost" size="xs" asChild className="ml-auto">
+          <Button variant="ghost" size="xs" asChild className="shrink-0">
             <Link
               to="/projects/$project/models/$"
               params={{ project, _splat: modelKey }}
@@ -346,77 +406,6 @@ export function PlacementCard({
           </Button>
         ) : null}
       </div>
-      {evidenceOpen ? (
-        assertions.isPending ? (
-          <Skeleton className="h-8 w-full" />
-        ) : evidence.length === 0 ? (
-          <p className="text-xs text-muted-foreground">Keine Belege angegeben.</p>
-        ) : (
-          <ul className="flex flex-col gap-1" aria-label="Belege">
-            {evidence.map((item, i) => (
-              <li key={i} className="min-w-0">
-                {item.kind === 'ref' ? (
-                  <Link
-                    to="/projects/$project/models/$"
-                    params={{ project, _splat: item.modelKey }}
-                    search={{ element: item.elementId }}
-                    className="inline-flex max-w-full items-center gap-1.5 text-link hover:underline"
-                    data-testid="evidence-link"
-                  >
-                    <ExternalLinkIcon className="size-3.5 shrink-0" aria-hidden />
-                    <span className="truncate font-mono text-xs">{item.text}</span>
-                  </Link>
-                ) : item.kind === 'relation' ? (
-                  <Link
-                    to="/projects/$project/review/$relation"
-                    params={{ project, relation: item.relationId }}
-                    className="inline-flex max-w-full items-center gap-1.5 text-link hover:underline"
-                    data-testid="evidence-relation"
-                  >
-                    <SearchCheckIcon className="size-3.5 shrink-0" aria-hidden />
-                    <span className="truncate font-mono text-xs">{item.relationId}</span>
-                  </Link>
-                ) : item.kind === 'step' ? (
-                  <button
-                    type="button"
-                    onClick={() => onSelectStep(item.elementId)}
-                    className="inline-flex max-w-full items-center gap-1.5 text-left text-link hover:underline"
-                    data-testid="evidence-step"
-                  >
-                    <CrosshairIcon className="size-3.5 shrink-0" aria-hidden />
-                    <span className="truncate font-mono text-xs">{item.text}</span>
-                  </button>
-                ) : (
-                  <PlainText as="span" className="text-xs text-muted-foreground" text={item.text} />
-                )}
-              </li>
-            ))}
-          </ul>
-        )
-      ) : null}
-      {historyOpen ? (
-        assertions.data ? (
-          <AssertionTimeline
-            assertions={assertions.data}
-            basisId={prov?.assertionId ?? null}
-            renderLink={(a) => <PlacementLink project={project} assertion={a} />}
-            marks={autoIndex?.byAssertion}
-          />
-        ) : (
-          <Skeleton className="h-16 w-full" />
-        )
-      ) : null}
-
-      {held && answers.length > 0 ? (
-        <ol aria-label="Antworten" className="flex flex-col gap-1.5">
-          {answers.map((a) => (
-            <li key={a.id} data-testid="placement-answer" className="border-l-2 pl-2.5">
-              {a.rationale ? <PlainText text={a.rationale} /> : null}
-            </li>
-          ))}
-        </ol>
-      ) : null}
-      {held && canReview ? <AnswerForm project={project} placementId={p.id} /> : null}
 
       {canReview ? (
         <PlacementDecisionPanel
@@ -428,6 +417,15 @@ export function PlacementCard({
           showKeys={active && shortcuts}
           onDecided={(outcome) => onDecided(outcome)}
           onReload={onReload}
+          holdAnswer={
+            <Suspense fallback={null}>
+              <HoldAnswer
+                project={project}
+                subject={{ type: 'placement', id: p.id }}
+                className="justify-start"
+              />
+            </Suspense>
+          }
         />
       ) : null}
     </li>

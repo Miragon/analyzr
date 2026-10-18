@@ -1,4 +1,4 @@
-import { FileUpIcon, PlusIcon } from 'lucide-react';
+import { ChevronRightIcon, FileUpIcon, PlusIcon } from 'lucide-react';
 
 import { CodeBlock } from '@/components/copy-button';
 import { MiragonMark } from '@/components/page-shell';
@@ -14,10 +14,12 @@ import {
 import { pushCommand } from '@/lib/value-chain';
 
 /**
- * The value chain page of a project without a chain (M4 §4): editors draw one
- * here (nothing is stored before the first save), import a `.vc.json` (for
- * example one an agent drafted with `draft_value_chain`, M4 §3.3) into the
- * editor, or push one with the CLI; viewers only read that there is none yet.
+ * The value chain page of a project without a chain (M4 §4; UX6,
+ * UX-SIMPLIFICATION.md §3.8 item 14): editors draw one here (nothing is
+ * stored before the first save) or import a `.vc.json` (for example one an
+ * agent drafted with `draft_value_chain`, M4 §3.3) into the editor, both
+ * first; the CLI command waits behind „Per CLI hochladen“. Viewers only read
+ * that there is none yet.
  */
 export function EmptyChain({
   project,
@@ -40,19 +42,12 @@ export function EmptyChain({
         <EmptyTitle>Noch keine Wertschöpfungskette</EmptyTitle>
         <EmptyDescription>
           {canReview
-            ? 'Zeichne die Wertschöpfungskette deines Projekts hier im Editor, importiere eine .vc.json (etwa einen Entwurf deines Agenten) oder lade sie mit der CLI hoch:'
+            ? 'Zeichne die Kette hier oder importiere eine .vc.json (etwa den Entwurf deines Agenten).'
             : 'Für dieses Projekt hat noch niemand eine Wertschöpfungskette angelegt.'}
         </EmptyDescription>
       </EmptyHeader>
       {canReview ? (
         <EmptyContent className="max-w-lg">
-          <div className="w-full text-left">
-            <CodeBlock
-              code={pushCommand(project)}
-              label="Befehl für die CLI"
-              copyLabel="Befehl kopieren"
-            />
-          </div>
           <div className="flex flex-wrap justify-center gap-2">
             <Button onClick={onCreate} data-testid="create-chain">
               <PlusIcon data-icon="inline-start" />
@@ -63,6 +58,22 @@ export function EmptyChain({
               Importieren
             </Button>
           </div>
+          <details className="group w-full text-left text-sm" data-testid="push-command">
+            <summary className="inline-flex cursor-pointer list-none items-center gap-1 text-muted-foreground hover:text-foreground">
+              <ChevronRightIcon
+                className="size-4 transition-transform group-open:rotate-90"
+                aria-hidden
+              />
+              Per CLI hochladen
+            </summary>
+            <div className="mt-2">
+              <CodeBlock
+                code={pushCommand(project)}
+                label="Befehl für die CLI"
+                copyLabel="Befehl kopieren"
+              />
+            </div>
+          </details>
         </EmptyContent>
       ) : null}
     </Empty>

@@ -363,8 +363,8 @@ describe('the chain page card', () => {
         />,
       );
       const card = await screen.findByTestId('placement-card');
-      await userEvent.setup().click(within(card).getByText('Herkunft'));
-      expect(within(card).getByTestId('auto-accept-provenance')).toBeTruthy();
+      await userEvent.setup().click(within(card).getByText('Details'));
+      expect(await within(card).findByTestId('auto-accept-provenance')).toBeTruthy();
       if (revoke) expect(await within(card).findByTestId('revoke-one')).toBeTruthy();
       else {
         await waitFor(() => expect(within(card).queryByTestId('revoke-one')).toBeNull());

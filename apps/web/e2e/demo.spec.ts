@@ -102,6 +102,7 @@ const WRITE_BUTTONS = [/^Vorschlag prüfen$/, /^Auf der Kette prüfen$/];
 const WRITE_TEST_IDS = [
   'add-process',
   'requeue-chain',
+  'chain-agent-start',
   'import-chain',
   'save-chain',
   'edit-chain',
@@ -294,7 +295,7 @@ for (const project of PROJECTS) {
     await expect(page.getByTestId('value-chain-page')).toBeVisible();
     await expect(page.getByTestId('vc-canvas')).toBeVisible();
     await expect(page.getByTestId('chain-overview')).toBeVisible();
-    await expect(page.getByTestId('chain-stage')).toBeVisible();
+    await expect(page.getByTestId('chain-summary')).toBeVisible();
     await expect(page.getByTestId('edit-chain')).toHaveCount(0);
     await expect(page.getByTestId('import-chain')).toHaveCount(0);
     await noWriteActions(page);
@@ -307,11 +308,12 @@ for (const project of PROJECTS) {
     if (project === 'nordwind-handel') await shot(page, '05-value-chain');
     // From the overview: a step, its panel, then the step view.
     await page.goto(`/projects/${project}/value-chain`);
+    await page.getByTestId('step-tree').locator('summary').click();
     const item = page.getByTestId('step-tree-item').first();
     await item.click();
     await expect(page.getByTestId('step-panel')).toBeVisible();
     await noWriteActions(page);
-    await page.getByTestId('open-step').click();
+    await page.getByTestId('open-step-list').click();
     await expect(page.getByTestId('step-view')).toBeVisible();
     await noWriteActions(page);
   });

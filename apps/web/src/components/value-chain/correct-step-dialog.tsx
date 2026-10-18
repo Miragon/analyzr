@@ -13,7 +13,7 @@ import {
 import { Field, FieldLabel } from '@/components/ui/field';
 import { Textarea } from '@/components/ui/textarea';
 import { MAX_NOTE_CHARS } from '@/lib/limits';
-import type { StepOption } from '@/lib/value-chain';
+import { correctionNote, type StepOption } from '@/lib/value-chain';
 
 import { StepOptionLabel } from './step-options';
 
@@ -31,7 +31,8 @@ export interface CorrectStepDialogProps {
 /**
  * "Korrigieren" for a placement (M4 §4): the process belongs on another step
  * (or outside the chain). The server accepts it there as a `manual` placement
- * and rejects this one with the same note.
+ * and rejects this one with the same note, which picking a step prefills
+ * („Gehört auf „Versand“.“) until the reviewer writes their own.
  */
 export function CorrectStepDialog({
   open,
@@ -45,14 +46,26 @@ export function CorrectStepDialog({
   const [search, setSearch] = useState('');
   const [picked, setPicked] = useState<string | null>(null);
   const [note, setNote] = useState('');
+  /** The note the last pick prefilled: a later pick replaces it, never the reviewer's own text. */
+  const [prefilled, setPrefilled] = useState('');
 
   function close(next: boolean) {
     if (!next) {
       setPicked(null);
       setSearch('');
       setNote('');
+      setPrefilled('');
     }
     onOpenChange(next);
+  }
+
+  function pick(step: string | null) {
+    setPicked(step);
+    const option = options.find((o) => o.elementId === step);
+    if (!option || (note.trim() !== '' && note !== prefilled)) return;
+    const text = correctionNote(option);
+    setNote(text);
+    setPrefilled(text);
   }
 
   function submit(event: FormEvent) {
@@ -77,8 +90,7 @@ export function CorrectStepDialog({
           <DialogHeader>
             <DialogTitle>Platzierung korrigieren</DialogTitle>
             <DialogDescription id={`${id}-desc`}>
-              Wähle den Schritt, auf den „{processName}“ gehört. analyzr nimmt den Prozess dort als
-              manuelle Platzierung an und lehnt diese mit deiner Begründung ab.
+              „{processName}“ kommt auf den gewählten Schritt; der Vorschlag wird abgelehnt.
             </DialogDescription>
           </DialogHeader>
           <PickerList
@@ -87,7 +99,7 @@ export function CorrectStepDialog({
             searchText={(o) => `${o.name} ${o.path} ${o.elementId}`}
             render={(o) => <StepOptionLabel option={o} />}
             value={picked}
-            onChange={setPicked}
+            onChange={pick}
             search={search}
             onSearch={setSearch}
             searchLabel="Schritt suchen"

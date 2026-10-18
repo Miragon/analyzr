@@ -49,7 +49,9 @@ import { userPath } from './user-path';
  * in a project of its own per run, „Agent starten“ after an amendment, the
  * ghost button „Notiz“); UX5's „Zu prüfen“ (the first proposal, the
  * controls, the words per row, the cards on a phone) and review screen (the
- * panel's words, the way back on a phone, the watermark).
+ * panel's words, the way back on a phone, the watermark); UX6's chain (the
+ * primary in view, the panel's and the header's controls and words, the
+ * card's controls, „nichts angenommen“ on 4 steps).
  */
 
 const ROOT = join(import.meta.dirname, '../../..');
@@ -584,7 +586,14 @@ test('UX1 consistency: every badge, „Als Nächstes“ and „Offene Punkte“ 
   await settle(page, `/projects/${NORDWIND}/review`, '[data-testid=queue-row]');
   await expect(page.getByTestId('queue-row')).toHaveCount(relations);
   await page.goto(`/projects/${NORDWIND}/value-chain`);
-  await expect(page.getByTestId('open-placement')).toHaveCount(placements, { timeout: 30_000 });
+  await expect(page.getByTestId('review-placements')).toHaveText(
+    new RegExp(`^Platzierungen prüfen \\(${placements}\\)`),
+    { timeout: 30_000 },
+  );
+  // „Zu prüfen“ shows its first rows; „Alle n zeigen“ the rest (UX6)
+  const all = page.getByTestId('open-placements-all');
+  if ((await all.count()) > 0) await all.click();
+  await expect(page.getByTestId('open-placement')).toHaveCount(placements);
   await settle(
     page,
     `/projects/${NORDWIND}/review?model=einkauf%2Fbestellanforderung`,
@@ -651,9 +660,88 @@ test('UX1: the other two projects and the projects list, desktop and mobile', as
 
 // ------------------------------------------------------------------ measured for the next slices
 
-test('the other screens, measured (budgets come with UX6)', async ({ page }) => {
-  await settle(page, `/projects/${NORDWIND}/value-chain`, '[data-testid=chain-overview]');
-  await measure(page, NORDWIND, 'Kette', '[data-testid=open-placement]');
+const CONTROLS =
+  'button, a[href], input, select, textarea, [role=tab], [role=menuitem], [role=radio], [role=checkbox], [role=switch]';
+
+// ------------------------------------------------------------------ the chain (UX6)
+
+/** UX6's budgets (§7 "UX6", done when), on `nordwind-handel` after the simulation agent. */
+const CHAIN_BUDGET = {
+  panelWords: 150,
+  panelControls: 40,
+  /** Besides the chip „3 Prozesse ohne Schritt“, which leads to the panel's list (§3.8 item 2). */
+  headerControls: 4,
+  cardControls: 6,
+  /** „nichts angenommen“ only on steps whose subtree waits for nothing (12 before). */
+  quietLabels: 4,
+} as const;
+
+test('UX6 desktop: „Platzierungen prüfen (n)“ in view, the panel within 40 controls and 150 words, the header in 4, the card in 6, „nichts angenommen“ on 4 steps', async ({
+  page,
+}) => {
+  const chain = await json<{ placements: { status: string; endpointState: string }[] }>(
+    `/api/v1/projects/${NORDWIND}/value-chains/main`,
+  );
+  const open = chain.placements.filter(
+    (p) => p.status === 'proposed' || (p.status === 'accepted' && p.endpointState !== 'ok'),
+  ).length;
+  await settle(page, `/projects/${NORDWIND}/value-chain`, '[data-testid=chain-summary]');
+  await measure(page, NORDWIND, 'Kette', '[data-testid=review-placements]');
+  const primary = page.getByTestId('review-placements');
+  await expect(primary).toHaveText(new RegExp(`^Platzierungen prüfen \\(${open}\\)`));
+  await expect(primary).toBeInViewport({ ratio: 1 });
+  const load = await page.evaluate((selector) => {
+    // checkVisibility: a closed disclosure's content (content-visibility: hidden) is not shown
+    const visible = (el: Element) => {
+      const r = el.getBoundingClientRect();
+      return r.width > 0 && r.height > 0 && el.checkVisibility({ visibilityProperty: true });
+    };
+    // a disclosure's summary is a control too
+    const controls = (root: Element) =>
+      [...root.querySelectorAll(`${selector}, summary`)].filter(visible);
+    const words = (el: Element) =>
+      (el as HTMLElement).innerText.split(/\s+/).filter((w) => /[\p{L}\p{N}]/u.test(w)).length;
+    const panel = document.querySelector('aside[aria-label="Wertschöpfungskette: Details"]')!;
+    const header = document.querySelector('[data-testid=chain-header]')!;
+    return {
+      panelWords: words(panel),
+      panelControls: controls(panel).length,
+      headerControls: controls(header).filter(
+        (c) => c.getAttribute('data-testid') !== 'unplaced-chip',
+      ).length,
+      quiet: [...document.querySelectorAll('[data-testid=vc-canvas] .analyzr-vc-badge')].filter(
+        (b) => b.textContent === 'nichts angenommen',
+      ).length,
+      scrolled: panel.querySelector('.overflow-y-auto')?.scrollTop ?? 0,
+    };
+  }, CONTROLS);
+  console.log(`UX6 chain: ${JSON.stringify(load)}`);
+  expect(load.scrolled).toBe(0);
+  expect(load.panelWords).toBeLessThanOrEqual(CHAIN_BUDGET.panelWords);
+  expect(load.panelControls).toBeLessThanOrEqual(CHAIN_BUDGET.panelControls);
+  expect(load.headerControls).toBeLessThanOrEqual(CHAIN_BUDGET.headerControls);
+  expect(load.quiet).toBe(CHAIN_BUDGET.quietLabels);
+  expect(await page.getByTestId('chain-overview').innerText()).not.toMatch(ID_PATTERN);
+
+  // the first card: „Details“, „Im Modell“ and the four decisions
+  await primary.click();
+  const card = page.locator('[data-testid=placement-card][data-active=true]');
+  await expect(card).toBeVisible();
+  const cardControls = await card.evaluate(
+    (el, selector) =>
+      [...el.querySelectorAll(`${selector}, summary`)]
+        .filter((c) => {
+          const r = c.getBoundingClientRect();
+          return r.width > 0 && r.height > 0 && c.checkVisibility({ visibilityProperty: true });
+        })
+        .map((c) => (c as HTMLElement).innerText.trim()),
+    CONTROLS,
+  );
+  console.log(`UX6 card: ${JSON.stringify(cardControls)}`);
+  expect(cardControls.length).toBeLessThanOrEqual(CHAIN_BUDGET.cardControls);
+  expect(await card.innerText()).not.toMatch(ID_PATTERN);
+  // the model path, not the ref (the simulation agent's rationale may cite one: its text)
+  expect(await card.getByTestId('placement-model').innerText()).not.toContain('#');
 });
 
 // ------------------------------------------------------------------ „Relationen › Zu prüfen“ (UX5)
@@ -671,9 +759,6 @@ const REVIEW_BUDGET = {
   words: 450,
   auditRows: 42,
 } as const;
-
-const CONTROLS =
-  'button, a[href], input, select, textarea, [role=tab], [role=menuitem], [role=radio], [role=checkbox], [role=switch]';
 
 test('UX5 desktop: „Zu prüfen“ with the first proposal ≤ 360 px, one link per row, ≤ 12 controls besides, 450 words at 42 rows, no name cut', async ({
   page,

@@ -105,6 +105,9 @@ const BUDGET = 40 * 1024;
  * status line, the key tier's bulk dialog and the shared pipeline state.
  * 221.9 KB after UX5 step 2: the review screen on the shared panel (sheet,
  * top bar, stacked panes, the pane chip's info), the closed „Verlauf“.
+ * 222.1 KB after UX6 step 1: the canvas header without an area, the chain's
+ * „Agent starten“ on `RetryAgent`; the chain's panel, cards and header load
+ * with its route chunk.
  */
 const ENTRY_CEILING = 240 * 1024;
 

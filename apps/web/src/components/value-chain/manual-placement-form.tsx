@@ -160,7 +160,7 @@ export function ManualPlacementForm({
           required
           className="min-h-12"
         />
-        <FieldDescription>Die Platzierung gilt sofort (Stufe Manuell).</FieldDescription>
+        <FieldDescription>Die Platzierung gilt sofort.</FieldDescription>
       </Field>
       <div className="flex justify-end gap-2">
         <Button type="button" variant="outline" size="sm" onClick={onCancel}>

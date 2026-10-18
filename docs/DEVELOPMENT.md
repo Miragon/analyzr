@@ -190,7 +190,7 @@ link editor](screenshots/m4-03-edit-link.png), [the dry run before a rename](scr
 The placement pipeline and Import (M4 S5, `e2e/value-chain-draft.spec.ts` and
 `e2e/value-chain-agent.spec.ts`): [an invented draft imported into a new chain, unsaved](screenshots/m4-12-import.png),
 [the impact dialog of an import that replaces the golden chain](screenshots/m4-13-import-impact.png),
-[the agent's stage and „Agent unsicher“ after the simulation agent's placement task](screenshots/m4-14-agent-unsure.png).
+[the panel after the simulation agent's placement task: „Platzierungen prüfen“, „Zu prüfen“ and its doubts in „Ohne Schritt“](screenshots/m4-14-agent-unsure.png).
 
 ![Relations of nordwind-handel: rule acceptances and key-tier proposals](screenshots/03-relations.png)
 
@@ -2303,10 +2303,10 @@ delivered").
 | „Hochladen“ before an import (UX7) | 13 controls, 49 words; the dropzone 38 words | – | 71 words | the dropzone ≤ 45 words |
 | „Agent verbinden“, empty project (UX7) | 23 controls (the closed „Erweitert“ counted), 172 words; the token form 2 visible controls | – | the form 6 controls | the form: name and button |
 | „Relationen › Zu prüfen“ (UX5) | 48 rows: 10 controls besides them, 1 per row, 496 words (about 446 at the audit's 42 rows), first row at 297 px, no name cut | 390 px wide (the rows as cards) | 64, 828, 48, first row at 440 px (429 px wide at 390) | first row ≤ 360 px; ≤ 12 controls besides the rows, 1 per row; 450 words at 42 rows; 390 px at 390 |
-| „Wertschöpfungskette“ | 60, 482, first open placement at 1,153 px | – | 61, 483 (UX1) | UX6 |
+| „Wertschöpfungskette“ (UX6 step 1) | 24, 195, „Platzierungen prüfen (29)“ at 63 px; the panel 20 controls, 75 words; the header 4 controls besides the chip; the card 6; „nichts angenommen“ on 4 steps | UX6 step 2 | 60, 482, first open placement at 1,153 px; the panel 84, 319 (the audit); the header 8; the card 8; 12 labels | the panel ≤ 40 controls, ≤ 150 words, the primary in view; header 4; card 6; 4 labels |
 | Model view `vertrieb/order-handling` (UX3) | 18, 196, 3 badges; the panel 10 controls, 75 words, the first question ends inside it | `finanzen/gutschrift`: the name in the top bar, the sheet collapsed, the canvas 86 % of the screen | 35, 555; the panel 37, 515, the first question 1,275 px down | the panel ≤ 25 controls, ≤ 300 words, the first question without scrolling; ≤ 3 chips and „Mehr“; ≥ 55 % canvas at 390 |
 | Review screen, an agent proposal (UX5) | the panel 93 words with „Verlauf“ closed | the sheet collapsed to „Von → Nach · Konfidenz“, the way back and ‹ › on top | 201 words | ≤ 110 words; the way back and ‹ › answer `elementFromPoint` at 390 |
-| Entry chunk (gzip) | 221.9 KB in 1 chunk (218.1 before UX3, 219.8 after it, 220.7 after UX4, 221.3 after UX5 step 1) | | 211.0 KB in 7 | < 240 KB, each slice ≤ +3 KB |
+| Entry chunk (gzip) | 222.1 KB in 1 chunk (218.1 before UX3, 219.8 after it, 220.7 after UX4, 221.3 after UX5 step 1, 221.9 after step 2) | | 211.0 KB in 7 | < 240 KB, each slice ≤ +3 KB |
 
 How it talks to the server: only through `@analyzr/client` (generated from the contracts) with
 `baseUrl` = the page's origin. `src/lib/api.ts` wraps `fetch`: on a 401 it calls
@@ -2546,8 +2546,10 @@ manual placements, notes), `drafts.ts`, `ulid.ts`, `zod-csp.ts`, `download.ts`.
   `canvas/check-document.ts`) replaces the drawing with a `.vc.json` after the size, JSON and
   schema checks and a confirmation when the drawing has content or unsaved edits; the canvas
   re-lays every connection (`ChainCanvasDocument.relayout`) and the drawing stays unsaved until
-  „Speichern“. The panel without a selection shows the placement agent's stage with the due count
-  and „Agent unsicher (n)“ (`unsure-list.tsx`) with „Platzieren“.
+  „Speichern“. The panel without a selection shows the placement agent's stage when it asks for
+  something („Agent arbeitet“, „Agent gescheitert · Nochmal versuchen“, „Wartet auf den Agenten ·
+  Agent starten“, „3 Prozesse fällig · Agent starten“) and the agent's doubts at the top of „Ohne
+  Schritt“ („Agent unsicher: …“, `unplaced-list.tsx`) with „Platzieren“ (UX6).
 - **Modes.** View mode is the renderer's `NavigatedViewer` (pan, zoom, select; double-click
   opens the step), edit mode ("Bearbeiten", editors only) its `Modeler` with palette, context pad,
   direct editing and undo/redo; "Fertig" leaves edit mode (asking before unsaved changes are
@@ -2568,36 +2570,59 @@ manual placements, notes), `drafts.ts`, `ulid.ts`, `zod-csp.ts`, `download.ts`.
 - **Overlays.** Above each step one row of labels: "3 Prozesse · 2 offen" (processes accepted or
   held on the step; open = proposed, or accepted with a changed or missing endpoint; a step with
   only a proposal reads "1 offen"), the finding labels "nichts angenommen" (topmost step without an
-  accepted process on it or below, also when it has proposals or holds) and "Link ungelöst"; the
-  step tree and the step view count "offen" the same way; findings also dash the step's outline, the
-  selected step gets a wider one, an element a refused save names is outlined red with "Fehler beim
-  Speichern". The legend explains the colours (Lila = Management, Grün = Unterstützung,
-  Vorgänger-Kette = Kern).
-- **Panel.** Without a selection: summary, step tree (one tab stop; arrow keys, Home/End,
-  ArrowRight to a sub-step, ArrowLeft to the parent, Enter or Space opens), open placements in
-  review order with "Alle erneut bestätigen (n)" (accepted placements whose step or process
-  changed, all or nothing with ids, versions and `expectedCount`; those on removed steps or with a
-  missing process are listed apart for a rejection or correction), findings, processes without a
-  step (hints, "Platzieren"), "Außerhalb der Kette", "Auf entfernten Schritten". With a step:
-  "Zur Übersicht" (also Escape; the focus returns to that step in the tree), the path (each
-  segment selects that parent), name, kind, owners, link, counts, the placement cards, the
-  sub-steps' processes, "Über Aufrufe erreicht", "Prozess hinzufügen" (a manual placement,
-  accepted at once, rationale prefilled „Manuell zugeordnet.“; its search field takes the focus,
-  which returns to the button when the form closes) and "Schritt öffnen". Import warnings of the
-  renderer show at the top of the panel and can be closed.
-- **Review.** Placement cards show process, status, tier, endpoint state, confidence, rule basis,
-  rationale, question and hold note as plain text, provenance, evidence and the timeline on
-  demand, an answer field on held cards, and the decision (M2's reject and hold forms; correct
-  picks another step or „Außerhalb der Kette“). One card is active (`?placement=`, else the first
-  open one on the step) and scrolls into view when it becomes active: A/R/H/C act on it, J/K move
+  accepted process on it or below, and since UX6 only when nothing in its subtree waits for a
+  decision or an answer: `pendingSteps`) and "Link ungelöst"; the step tree and the step view count
+  "offen" the same way; findings also dash the step's outline, the selected step gets a wider one,
+  an element a refused save names is outlined red with "Fehler beim Speichern". The legend is one
+  line: „3 offen“ zu prüfen · „2 Prozesse“ platziert · lila Management · grün Unterstützung.
+- **Header** (UX6, `chain-header.tsx` on the shared `CanvasHeader`): „‹ <Projekt>“ as the way
+  back, the chain's name with its revision behind a disclosure („Revision 3 · gespeichert von
+  owner · …“), the chip „3 Prozesse ohne Schritt“ (scrolls the panel to the list), „Bearbeiten“
+  and „Exportieren“ („Datei (.vc.json)“, „Bild (SVG)“); in edit mode the base revision and
+  „Ungespeichert“ beside the name and the toolbar below („Speichern“, undo, redo, „Exportieren“,
+  „Importieren“, „Fertig“).
+- **Panel.** Without a selection (UX6): one status line („0 von 31 Prozessen platziert · 29
+  Vorschläge offen“, `chainCoverage`), „Platzierungen prüfen (29)“ (= J, the first open
+  placement), the stage when it asks for something, „Zu prüfen (n)“ in review order (the first 8,
+  „Alle n zeigen“; a marker only on „erneut prüfen“) with "Alle erneut bestätigen (n)" (accepted
+  placements whose step or process changed, all or nothing with ids, versions and
+  `expectedCount`; those on removed steps or with a missing process are listed apart for a
+  rejection or correction), „Ohne Schritt (n)“ (`unplacedItems`: the agent's doubts first with
+  „Agent unsicher: …“, then the processes without a step; hints, „Platzieren“, „Im Modell zeigen“,
+  ref, agent and time behind „Technische Angaben“), „Link nicht auflösbar (n)“ when a step has such
+  a link, the step tree closed („Schritte (n)“: its top-level rows collapsed with roll-ups,
+  `subtreeCounts`; one tab stop; arrow keys, Home/End, ArrowRight opens a step or goes to its first
+  sub-step, ArrowLeft closes it or goes to the parent, Enter or Space selects, the chevron opens by
+  pointer), "Außerhalb der Kette", "Auf entfernten Schritten" and the owners' filter of
+  auto-accepted placements; the process and step gaps are answered in „Offene Fragen“. In edit mode
+  the overview is the chain's name and „Wähle einen Schritt, um ihn zu bearbeiten. Gespeichert wird
+  erst mit „Speichern“.“ With a step: "Zur Übersicht" (also Escape; the focus returns to that step
+  in the tree, which opens for it), the path (each segment selects that parent), name, the kind on
+  a top-level step, owners, the link when there is one (the element id in edit mode only), the
+  placement cards, the sub-steps' processes, "Über Aufrufe erreicht", "Prozess hinzufügen" (a
+  manual placement, accepted at once, rationale prefilled „Manuell zugeordnet.“; its search field
+  takes the focus, which returns to the button when the form closes), „Prozess öffnen“ for a linked
+  step and „Als Liste öffnen“ (the step view). Import warnings of the renderer show at the top of
+  the panel and can be closed.
+- **Review.** Placement cards (UX6) show process, its model path and confidence, a status only
+  when it is not a plain proposal (the auto-accept mark stays), endpoint state, rationale, question
+  and a hold's note and answers as plain text, one closed „Details“ (tier and the rule's basis,
+  „Vorgeschlagen von Agent „…“ · <Zeit>“, the evidence by element or step name, auto-accept
+  provenance, the timeline with entries shown above kept to title, who and when, and „Technische
+  Angaben“: placement id and version, ref, client, procedure, model), „Im Modell“, and the decision
+  (M2's reject and hold forms, the hold's question and label folded; correct picks another step or
+  „Außerhalb der Kette“ and prefills „Gehört auf „<Schritt>“.“). A held card answers through the
+  note dialog of „Offene Fragen“ („Antwort geben“ in place of „Vormerken“; a hold without an open
+  question takes a note on the placement). One card is active (`?placement=`, else the first open
+  one on the step) and scrolls into view when it becomes active: A/R/H/C act on it, J/K move
   through the chain's open placements and after a decision the page moves on. In edit mode the
   keys work only while the panel has focus (the Modeler binds H, L, S, C and E on the canvas); a
-  click on a card gives the panel the focus, and the key hints show only while the keys work
-  (viewers see only "J K Platzierungen"). A 409 shows "Die Platzierung wurde
-  inzwischen geändert" and pauses the keys until "Neuen Stand prüfen".
+  click on a card gives the panel the focus, and the key hints show only while the keys work. A
+  409 shows "Die Platzierung wurde inzwischen geändert" and pauses the keys until "Neuen Stand
+  prüfen".
 - **Editing in the panel.** The name (Enter or leaving the field), the kind of a top-level step
-  ("Art": no colour, Management = purple, Unterstützung = green; core comes from the predecessor
-  chain) and the link: "Kein Link", "analyzr-Prozess" (a picker over the head processes; a click or
+  ("Art": „Kern (Standard)“, Management = purple, Unterstützung = green; core comes from the
+  predecessor chain) and the link: "Kein Link", „Prozess“ (a picker over the head processes; a click or
   the arrow keys only mark a process, "Übernehmen" or Enter writes
   `analyzr:process/<model_key>#<process_id>`, which the save turns into a key-tier proposal and the
   double-click follows into the model view) or "Anderer Link" (≤ 2,000 characters, no control or
@@ -2614,7 +2639,7 @@ manual placements, notes), `drafts.ts`, `ulid.ts`, `zod-csp.ts`, `download.ts`.
   offers "Neuere Revision laden" (your version downloads as `.vc.json` first) or "Weiter
   bearbeiten" ([Troubleshooting](#troubleshooting)); a 422 lists the violations with the elements'
   names (a click selects them). A banner says when someone saved a newer revision meanwhile.
-  Downloads: the head or the drawing as `.vc.json`, the drawing as SVG.
+  „Exportieren“: the head or the drawing as `.vc.json`, the drawing as SVG.
 - **Drafts.** Unsaved edits are kept in `localStorage` per project, chain and base revision (a
   chain not saved yet under `new:r0`, compared with the empty chain); entering edit mode offers to
   restore a draft of the current head, or to download or discard one of an older revision. The
@@ -2623,8 +2648,10 @@ manual placements, notes), `drafts.ts`, `ulid.ts`, `zod-csp.ts`, `download.ts`.
   a draft is removed only by a save, an `unchanged` answer, "Verwerfen" or editing back to the
   base. Leaving the page while dirty asks first ("Weiter bearbeiten" is the default, also on
   Escape); a reload keeps the draft.
-- **Drill-down.** Double-click (view mode) or "Schritt öffnen": a resolved `analyzr:process/` link
-  opens the model view at that process, any other step the step view.
+- **Drill-down.** Double-click (view mode): a resolved `analyzr:process/` link opens the model
+  view at that process, any other step the step view („Als Liste öffnen“ in the panel). The step
+  view names a process by name and model path (the row's name links to its card on the chain), a
+  kind only on a top-level step, owners and link only when set.
 - **CSS.** The renderer's stylesheet (with diagram-js' own) comes with the chunk; analyzr's rules
   are scoped under `.analyzr-vc`. The Playwright CSS check proves the bpmn-js review screen looks
   the same after the chain page and the other way round.
@@ -5433,3 +5460,42 @@ Same machine; UX5 step 2 (the review screen and the auto-accept mark,
 
 Not checked: other browsers than Chromium (the phone is Chromium's mobile emulation), a real
 phone, a screen reader, CI (no e2e job).
+
+### UX6 step 1 (2026-10-19)
+
+Same machine; UX6 step 1 (the chain's panel, header, cards, forms and texts,
+[UX-SIMPLIFICATION.md](UX-SIMPLIFICATION.md) §7 "UX6 step 1 as delivered") on
+`feat/integration-and-gaps` on top of UX5.
+
+1. Gates: every gate green; web only, live-run neutral (`git diff --stat eval/reports` empty, the
+   MCP snapshots unchanged, no contract change; the placements procedure's „Agent unsicher“ stays
+   true: the reason line reads „Agent unsicher: …“). Component tests: `test/value-chain-page.test.tsx`
+   (the status line, „Platzierungen prüfen (2)“ starting at the first open placement, „Zu prüfen“
+   without markers, no gap rows, „Ohne Schritt“ with the agent's doubt first, the closed tree with
+   collapsed rows and roll-ups and its keys, „nichts angenommen“ only where nothing waits, the
+   header's way back, revision disclosure and „Exportieren“, the stage only when it asks for
+   something, „Agent starten“ scheduling the task), `placement-card.test.tsx` (new: the model path,
+   no status on a plain proposal, six controls, „Details“ with tier, proposer, evidence by name, the
+   brief timeline and „Technische Angaben“; a hold answered through the note dialog),
+   `value-chain-lib.test.ts` (`chainCoverage`, `pendingSteps`, `subtreeCounts`, `unplacedItems`,
+   `correctionNote`), `placement-decision-panel.test.tsx` (the prefilled correction note),
+   `step-view.test.tsx`, `link-editor.test.tsx`, `auto-accept-marks.test.tsx`, `app.test.tsx`. The
+   bundle guard: the entry 222.1 KB gzip (+0.2), the chain-only code 13.4 KB (≤ 40).
+2. Scratch stacks of its own, removed with `down -v` and their images afterwards: `analyzr-ux6`
+   (image `analyzr-ux6:dev` from the working tree, ports 7619 and 55619, `analyzr seed`, the UI load
+   guard with `ANALYZR_UI_LOAD_NORDWIND=nordwind-ux6`, so it seeded its own `nordwind-handel` state
+   beside the seeded one), the demo image `analyzr-ux6-demo:dev` (port 7620).
+3. Playwright in Chromium: the chain specs 22 passed and 1 failed in the first pass (two `summary`
+   in a card's „Details“: the spec opens it by `:scope > summary`), then every spec 96 passed and 21
+   skipped; the UI load guard 23 passed; `demo.spec.ts` 14 passed and `analyzr-demo check` 147
+   against `analyzr-ux6-demo`. Screenshots retaken: `m4-01`–`08`, `m4-12`–`14`, `demo-05`, `d19-09`.
+4. The UI load guard's UX6 checks on `nordwind-handel` after the simulation agent: „Platzierungen
+   prüfen (29)“ at the panel's top and in view (nothing scrolled), the panel 75 words and 20
+   controls with the disclosures' summaries (≤ 150, ≤ 40), the header 4 controls besides the chip,
+   the first card 6 („Details“, „Im Modell“, the four decisions), „nichts angenommen“ on 4 steps,
+   no ids in the panel or on the card. Counting needs `checkVisibility`: Chromium keeps a closed
+   `details`' content laid out (`content-visibility: hidden`), so its rects are not zero.
+5. `analyzr-local` rebuilt to the commit afterwards; nothing of the owner's stacks was touched.
+
+Not checked: other browsers than Chromium, a real phone (the chain's phone layout is step 2), a
+screen reader, CI (no e2e job).

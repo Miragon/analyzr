@@ -130,9 +130,11 @@ describe('step view (drill-down)', () => {
     expect(own.getByRole('link', { name: /Im Modell/ }).getAttribute('href')).toBe(
       '/projects/demo/models/vertrieb/order?element=Process_Order',
     );
-    expect(own.getByRole('link', { name: /Auf der Kette zeigen/ }).getAttribute('href')).toBe(
+    // UX6: the row's name links to its card on the chain; no tier, no ref
+    expect(own.getByTestId('step-view-card-link').getAttribute('href')).toBe(
       '/projects/demo/value-chain?placement=plc_own',
     );
+    expect(rows[0]!.textContent).not.toContain('#Process_Order');
     expect(rows[1]!.textContent).toContain('auf Prüfung');
 
     const called = within(screen.getByTestId('reached-by-call'));

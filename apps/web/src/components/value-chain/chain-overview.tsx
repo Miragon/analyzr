@@ -1,25 +1,28 @@
 import type { Placement, UnplacedProcess, ValueChainDetail, ValueChainStep } from '@analyzr/client';
-import { CheckCheckIcon, RotateCcwIcon, TriangleAlertIcon, WandSparklesIcon } from 'lucide-react';
-import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { cn } from 'cn';
+import { ArrowRightIcon, CheckCheckIcon, ChevronRightIcon, WandSparklesIcon } from 'lucide-react';
+import { forwardRef, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 
-import { STAGE_ICONS, ToneBadge } from '@/components/badges';
+import { RetryAgent } from '@/components/agent-start';
 import { PlainText } from '@/components/review/plain-text';
 import { Button } from '@/components/ui/button';
+import { Kbd } from '@/components/ui/kbd';
 import { Skeleton } from '@/components/ui/skeleton';
-import { errorMessage } from '@/lib/api';
+import { Spinner } from '@/components/ui/spinner';
 import type { AutoAcceptIndex } from '@/lib/auto-accept';
-import { CHAIN_STAGES, STEP_KINDS, VALUE_CHAIN_FINDING_KINDS } from '@/lib/labels';
+import { STEP_KINDS } from '@/lib/labels';
 import { MAX_VALUE_CHAIN_NAME_CHARS, OUTSIDE_STEP } from '@/lib/limits';
-import { useRequeueChain } from '@/lib/review-actions';
-import { toast } from '@/lib/toast';
+import type { RefResolver } from '@/lib/refs';
 import {
-  isOpenPlacement,
-  openCountsByStep,
+  chainCoverage,
+  isPlainProposal,
   placementQueue,
   placementStepLabel,
   processCount,
   reconfirmCandidates,
   stepTree,
+  subtreeCounts,
+  unplacedItems,
   type StepNode,
   type StepOption,
 } from '@/lib/value-chain';
@@ -29,21 +32,16 @@ import { CommitField } from './commit-field';
 import { PlacementCard } from './placement-card';
 import type { PlacementOutcome } from './placement-decision-panel';
 import { UnplacedList } from './unplaced-list';
-import { UnsureList } from './unsure-list';
 
-function Section({
-  title,
-  count,
-  children,
-  action,
-}: {
-  title: string;
-  count?: number;
-  children: ReactNode;
-  action?: ReactNode;
-}) {
+/** Rows of „Zu prüfen“ before „Alle n zeigen“ (J/K and the primary walk all of them). */
+const FIRST_OPEN = 8;
+
+const Section = forwardRef<
+  HTMLElement,
+  { title: string; count?: number; children: ReactNode; action?: ReactNode }
+>(function Section({ title, count, children, action }, ref) {
   return (
-    <section aria-label={title} className="flex flex-col gap-2">
+    <section ref={ref} aria-label={title} className="flex scroll-mt-4 flex-col gap-2">
       <div className="flex items-center gap-2">
         <h3 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
           {title}
@@ -54,19 +52,38 @@ function Section({
       {children}
     </section>
   );
+});
+
+/** The visible tree's ids in display order (depth first, expanded nodes only). */
+function treeOrder(nodes: readonly StepNode[], expanded: ReadonlySet<string>): string[] {
+  return nodes.flatMap((n) => [
+    n.step.elementId,
+    ...(expanded.has(n.step.elementId) ? treeOrder(n.children, expanded) : []),
+  ]);
 }
 
-/** The tree's ids in display order (depth first). */
-function treeOrder(nodes: readonly StepNode[]): string[] {
-  return nodes.flatMap((n) => [n.step.elementId, ...treeOrder(n.children)]);
+/** The ids from the top level down to `id` (excluded). */
+function ancestorIds(id: string, steps: readonly ValueChainStep[]): string[] {
+  const byId = new Map(steps.map((s) => [s.elementId, s]));
+  const out: string[] = [];
+  const seen = new Set<string>([id]);
+  let parent = byId.get(id)?.parentId ?? null;
+  while (parent !== null && !seen.has(parent)) {
+    seen.add(parent);
+    out.unshift(parent);
+    parent = byId.get(parent)?.parentId ?? null;
+  }
+  return out;
 }
 
 function TreeItems({
   nodes,
   level,
   tabStop,
-  open,
+  expanded,
+  counts,
   onSelect,
+  onToggle,
   onFocusItem,
   onKey,
 }: {
@@ -74,30 +91,51 @@ function TreeItems({
   level: number;
   /** The one item in the tab order (roving tabindex). */
   tabStop: string | null;
-  /** Open items per step (`isOpenPlacement`, like the canvas badges). */
-  open: ReadonlyMap<string, number>;
+  expanded: ReadonlySet<string>;
+  /** Roll-ups per step: processes homed and open items in its subtree. */
+  counts: ReadonlyMap<string, { placed: number; open: number }>;
   onSelect: (id: string) => void;
+  onToggle: (id: string) => void;
   onFocusItem: (id: string) => void;
   onKey: (event: KeyboardEvent<HTMLElement>, node: StepNode) => void;
 }) {
   return nodes.map((node) => {
     const { step, children } = node;
-    const pending = open.get(step.elementId) ?? 0;
-    const placed = step.counts.accepted + step.counts.held;
+    const open = expanded.has(step.elementId);
+    const c = counts.get(step.elementId) ?? { placed: 0, open: 0 };
     return (
       <li key={step.elementId} role="none" className="flex flex-col">
         <div
           role="treeitem"
           aria-level={level}
+          aria-expanded={children.length > 0 ? open : undefined}
           tabIndex={step.elementId === tabStop ? 0 : -1}
           data-testid="step-tree-item"
           data-element-id={step.elementId}
           onClick={() => onSelect(step.elementId)}
           onFocus={() => onFocusItem(step.elementId)}
           onKeyDown={(e) => onKey(e, node)}
-          className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-sm outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50"
-          style={{ paddingLeft: `${8 + (level - 1) * 16}px` }}
+          className="flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-sm outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50"
+          style={{ paddingLeft: `${4 + (level - 1) * 16}px` }}
         >
+          {children.length > 0 ? (
+            // A pointer shortcut for ArrowRight/ArrowLeft; the row itself selects the step.
+            <span
+              aria-hidden
+              className="grid size-4 shrink-0 place-items-center rounded-sm text-muted-foreground hover:bg-accent"
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggle(step.elementId);
+              }}
+              data-testid="step-tree-toggle"
+            >
+              <ChevronRightIcon
+                className={cn('size-3.5 transition-transform', open ? 'rotate-90' : '')}
+              />
+            </span>
+          ) : (
+            <span aria-hidden className="size-4 shrink-0" />
+          )}
           <PlainText
             as="span"
             className="min-w-0 flex-1 truncate"
@@ -106,31 +144,25 @@ function TreeItems({
           {level === 1 && step.kind !== 'core' ? (
             <span className="text-xs text-muted-foreground">{STEP_KINDS[step.kind].label}</span>
           ) : null}
-          {placed > 0 ? (
-            <span
-              className="text-xs tabular-nums text-muted-foreground"
-              title="angenommen oder vorgemerkt"
-            >
-              {processCount(placed)}
+          {c.placed > 0 ? (
+            <span className="text-xs tabular-nums text-muted-foreground">
+              {processCount(c.placed)}
             </span>
           ) : null}
-          {pending > 0 ? (
-            <span
-              className="text-xs tabular-nums text-warning"
-              title="Vorschläge und erneut zu bestätigende Platzierungen"
-            >
-              {pending} offen
-            </span>
+          {c.open > 0 ? (
+            <span className="text-xs tabular-nums text-warning">{c.open} offen</span>
           ) : null}
         </div>
-        {children.length > 0 ? (
+        {children.length > 0 && open ? (
           <ul role="group" className="flex flex-col">
             <TreeItems
               nodes={children}
               level={level + 1}
               tabStop={tabStop}
-              open={open}
+              expanded={expanded}
+              counts={counts}
               onSelect={onSelect}
+              onToggle={onToggle}
               onFocusItem={onFocusItem}
               onKey={onKey}
             />
@@ -142,25 +174,29 @@ function TreeItems({
 }
 
 /**
- * The step tree (WAI-ARIA tree, every node open): one tab stop (roving
- * tabindex); ArrowDown/ArrowUp move, Home/End jump to the first and last
- * step, ArrowRight goes to the first sub-step, ArrowLeft to the parent;
- * Enter or Space selects. `focusStepId` takes the focus when the tree mounts
- * (back from a step's panel).
+ * The step tree (WAI-ARIA tree; UX6: its top-level rows, collapsed, with
+ * roll-ups): one tab stop (roving tabindex); ArrowDown/ArrowUp move,
+ * Home/End jump to the first and last visible step, ArrowRight opens a
+ * closed step or goes to its first sub-step, ArrowLeft closes an open one or
+ * goes to the parent; Enter or Space selects. `focusStepId` takes the focus
+ * when the tree mounts (back from a step's panel), its ancestors opened.
  */
 function StepTree({
   steps,
-  open,
+  counts,
   focusStepId,
   onSelect,
 }: {
   steps: readonly ValueChainStep[];
-  open: ReadonlyMap<string, number>;
+  counts: ReadonlyMap<string, { placed: number; open: number }>;
   focusStepId: string | null;
   onSelect: (id: string) => void;
 }) {
   const tree = stepTree(steps);
-  const order = treeOrder(tree);
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(
+    () => new Set(focusStepId === null ? [] : ancestorIds(focusStepId, steps)),
+  );
+  const order = treeOrder(tree, expanded);
   const [current, setCurrent] = useState<string | null>(focusStepId);
   const tabStop = current !== null && order.includes(current) ? current : (order[0] ?? null);
   const root = useRef<HTMLUListElement>(null);
@@ -175,6 +211,13 @@ function StepTree({
       }
     }
   };
+  const toggle = (id: string, open?: boolean) =>
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (open ?? !next.has(id)) next.add(id);
+      else next.delete(id);
+      return next;
+    });
 
   useEffect(() => {
     if (focusStepId !== null) focusItem(focusStepId);
@@ -184,6 +227,7 @@ function StepTree({
 
   function onKey(event: KeyboardEvent<HTMLElement>, { step, children }: StepNode) {
     const at = order.indexOf(step.elementId);
+    const open = expanded.has(step.elementId);
     let target: string | undefined;
     switch (event.key) {
       case 'Enter':
@@ -204,9 +248,19 @@ function StepTree({
         target = order.at(-1);
         break;
       case 'ArrowRight':
+        if (children.length > 0 && !open) {
+          event.preventDefault();
+          toggle(step.elementId, true);
+          return;
+        }
         target = children[0]?.step.elementId;
         break;
       case 'ArrowLeft':
+        if (children.length > 0 && open) {
+          event.preventDefault();
+          toggle(step.elementId, false);
+          return;
+        }
         target = step.parentId ?? undefined;
         break;
       default:
@@ -222,8 +276,10 @@ function StepTree({
         nodes={tree}
         level={1}
         tabStop={tabStop}
-        open={open}
+        expanded={expanded}
+        counts={counts}
         onSelect={onSelect}
+        onToggle={toggle}
         onFocusItem={setCurrent}
         onKey={onKey}
       />
@@ -249,127 +305,96 @@ export interface ChainOverviewProps {
   /** Edit mode: the chain's name on the canvas and how to change it. */
   chainName?: string;
   onChainName?: (name: string) => void;
-  /** Edit mode: head steps with placements missing from the drawing. */
-  missingSteps?: readonly ValueChainStep[];
   /** The tree item to focus when the overview opens (back from that step's panel). */
   focusStepId?: string | null;
+  /** Scroll „Ohne Schritt“ into view (the header's chip), then report it done. */
+  revealUnplaced?: boolean;
+  onRevealed?: () => void;
   /**
    * The auto-accept ledger (owner decision 19, owners only): marks on the
    * cards and the filter „Nur automatisch angenommene“.
    */
   autoIndex?: AutoAcceptIndex;
+  /** Element names for the cards' evidence. */
+  resolve?: RefResolver;
 }
 
 /**
- * The stage of the chain's placement pipeline (M4 §3.5): where the agent
- * stands, and how many processes the next placement task judges (`due`).
- * When the task failed, or processes are due without a queued or claimed
- * task (reviewers' decisions and notes make processes due but queue
- * nothing; chains from before the pipeline), reviewers can queue it here.
+ * The stage of the chain's placement pipeline (M4 §3.5), only when there is
+ * something to do or wait for (UX6, UX-SIMPLIFICATION.md §3.8 item 1, §2.6):
+ * „Agent arbeitet“; „Agent gescheitert · Nochmal versuchen“ (requeues the
+ * task, then „Agent starten“ for owners); „Wartet auf den Agenten · Agent
+ * starten“ while a task is queued; „3 Prozesse fällig · Agent starten“ when
+ * processes are due without a queued or claimed task (reviewers' decisions
+ * and notes make processes due but queue nothing; chains from before the
+ * pipeline), which schedules the task first. Editors see the lines with a
+ * plain button and no popover, viewers the text only.
  */
-function PipelineStage({
+function StageLine({
   project,
   pipeline,
-  canReview,
 }: {
   project: string;
   pipeline: ValueChainDetail['pipeline'];
-  canReview: boolean;
 }) {
-  const stage = CHAIN_STAGES[pipeline.stage];
-  const requeue = useRequeueChain(project);
   const failed = pipeline.stage === 'agent_failed';
-  const open = pipeline.task?.state === 'queued' || pipeline.task?.state === 'claimed';
-  const idle = !failed && !open && pipeline.due > 0;
-
-  function queue() {
-    requeue.mutate(undefined, {
-      onSuccess: (result) => {
-        const outcome = result.valueChain?.outcome;
-        if (outcome === 'queued' || outcome === 'open') {
-          toast({
-            tone: 'success',
-            title: outcome === 'queued' ? 'Eingeplant' : 'Schon eingeplant',
-            description: 'Die Platzierungsaufgabe wartet auf einen Agenten.',
-          });
-        } else if (outcome === 'nothing-due') {
-          toast({
-            tone: 'info',
-            title: 'Nichts fällig',
-            description:
-              'Jeder offene Prozess hat ein Urteil des Agenten auf seinem jetzigen Stand.',
-          });
-        } else {
-          toast({
-            tone: 'danger',
-            title: 'Nicht eingeplant',
-            description: 'Das Projekt hat keine Wertschöpfungskette.',
-          });
-        }
-      },
-      onError: (error) =>
-        toast({
-          tone: 'danger',
-          title: 'Nicht eingeplant',
-          description: errorMessage(error),
-          error,
-        }),
-    });
-  }
-
+  const claimed = pipeline.task?.state === 'claimed';
+  const queued = pipeline.task?.state === 'queued';
+  const due = !failed && !claimed && !queued && pipeline.due > 0;
+  if (!failed && !claimed && !queued && !due) return null;
+  const text = claimed
+    ? 'Agent arbeitet'
+    : failed
+      ? 'Agent gescheitert'
+      : queued
+        ? 'Wartet auf den Agenten'
+        : pipeline.due === 1
+          ? '1 Prozess fällig'
+          : `${pipeline.due} Prozesse fällig`;
   return (
-    <div className="flex flex-col gap-1.5">
-      <p
-        className="flex flex-wrap items-center gap-1.5 text-sm text-muted-foreground"
-        data-testid="chain-stage"
-        data-stage={pipeline.stage}
+    <p
+      className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-sm text-muted-foreground"
+      data-testid="chain-stage"
+      data-stage={pipeline.stage}
+    >
+      {claimed ? <Spinner className="size-3.5" /> : null}
+      <span
+        className={cn(failed ? 'text-danger' : '', due ? 'tabular-nums' : '')}
+        data-testid={due ? 'chain-due' : undefined}
       >
-        <span>Platzierungen durch den Agenten:</span>
-        <ToneBadge tone={stage.tone} icon={STAGE_ICONS[pipeline.stage]} title={stage.hint}>
-          {stage.label}
-        </ToneBadge>
-        {pipeline.due > 0 ? (
-          <span className="tabular-nums" data-testid="chain-due">
-            {pipeline.due === 1 ? '1 Prozess fällig' : `${pipeline.due} Prozesse fällig`}
-          </span>
-        ) : null}
-      </p>
-      {failed || idle ? (
-        <div
-          className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground"
-          data-testid="chain-requeue"
-        >
-          <span>
-            {failed
-              ? 'Plane die Aufgabe erneut ein, damit ein Agent sie übernimmt.'
-              : 'Für diese Prozesse ist keine Aufgabe eingeplant (Entscheidungen und Notizen planen keine ein).'}
-          </span>
-          {canReview ? (
-            <Button
-              size="xs"
-              variant="outline"
-              disabled={requeue.isPending}
-              onClick={queue}
-              data-testid="requeue-chain"
-            >
-              <RotateCcwIcon data-icon="inline-start" />
-              {failed ? 'Erneut einplanen' : 'Aufgabe einplanen'}
-            </Button>
-          ) : null}
-        </div>
-      ) : null}
-    </div>
+        {text}
+      </span>
+      {/* One button through „fällig“ → „Wartet auf den Agenten“: its popover stays open. */}
+      {claimed ? null : (
+        <RetryAgent
+          project={project}
+          chain
+          requeue={!queued}
+          hasChain
+          start={!failed}
+          label={failed ? 'Nochmal versuchen' : 'Agent starten'}
+          variant="link"
+          size="sm"
+          className="h-auto px-0"
+          testId={queued ? 'chain-agent-start' : 'requeue-chain'}
+        />
+      )}
+    </p>
   );
 }
 
 /**
- * The side panel without a selection (M4 §4): the chain in brief with the
- * stage of its placement pipeline, the step tree (one tab stop; arrows,
- * Home/End, Enter), the open reviews with the bulk re-confirm, findings,
- * processes the agent was unsure about, processes without a step, placements
- * outside the chain and on removed steps (that section first while it holds
- * the active card); in edit mode also the chain's name and what the unsaved
- * drawing removes.
+ * The side panel without a selection (M4 §4; UX6, UX-SIMPLIFICATION.md §3.8
+ * items 1–3): one status line („0 von 31 Prozessen platziert · 29 Vorschläge
+ * offen“) and „Platzierungen prüfen (29)“ (= J), the pipeline's stage when
+ * there is something to do, „Zu prüfen“ (a marker only on what to re-check),
+ * „Ohne Schritt“ (unplaced processes and the agent's doubts in one list),
+ * „Link nicht auflösbar“ when a step has such a link, the step tree closed
+ * (its top-level rows collapsed, with roll-ups; one tab stop, arrows,
+ * Home/End, Enter), placements outside the chain and on removed steps (that
+ * section first while it holds the active card), and the owners' filter of
+ * auto-accepted placements. In edit mode it shrinks to the chain's name and
+ * a hint; the review sections return with „Fertig“.
  */
 export function ChainOverview(props: ChainOverviewProps) {
   const {
@@ -388,23 +413,54 @@ export function ChainOverview(props: ChainOverviewProps) {
     onDecided,
     onReload,
     autoIndex,
+    resolve,
   } = props;
   const [bulkOpen, setBulkOpen] = useState(false);
   const [onlyAuto, setOnlyAuto] = useState(false);
+  const [allOpen, setAllOpen] = useState(false);
+  const unplacedSection = useRef<HTMLElement>(null);
+  const { revealUnplaced = false, onRevealed } = props;
+  useEffect(() => {
+    if (!revealUnplaced) return;
+    unplacedSection.current?.scrollIntoView({ block: 'start' });
+    onRevealed?.();
+  }, [revealUnplaced, onRevealed]);
+
+  if (mode === 'edit') {
+    return (
+      <div className="flex flex-col gap-4" data-testid="chain-overview">
+        {props.onChainName ? (
+          <CommitField
+            id="vc-chain-name"
+            label="Name der Kette"
+            value={props.chainName ?? ''}
+            maxLength={MAX_VALUE_CHAIN_NAME_CHARS}
+            required
+            onCommit={props.onChainName}
+          />
+        ) : null}
+        <p className="text-sm text-muted-foreground" data-testid="edit-hint">
+          {detail
+            ? 'Wähle einen Schritt, um ihn zu bearbeiten. Gespeichert wird erst mit „Speichern“.'
+            : 'Neue Kette: Ziehe Schritte aus der Palette links oder importiere eine .vc.json. Gespeichert wird erst mit „Speichern“.'}
+        </p>
+      </div>
+    );
+  }
+
   const autoAccepted = autoIndex ? placements.filter((p) => autoIndex.inForce.has(p.id)) : [];
   const steps = detail?.steps ?? [];
   const queue = placementQueue(placements, steps);
   const reconfirm = reconfirmCandidates(placements);
   const outside = placements.filter((p) => p.elementId === OUTSIDE_STEP);
   const removed = placements.filter((p) => p.elementId !== OUTSIDE_STEP && !p.stepLive);
-  const findings = detail?.findings ?? [];
-  const withoutStep = findings.filter((f) => f.kind === 'process-without-step');
-  const stepFindings = findings.filter((f) => f.kind !== 'process-without-step');
+  const unresolved = (detail?.findings ?? []).filter((f) => f.kind === 'unresolved-link');
+  const withoutStep = unplaced ? unplacedItems(unplaced, detail?.unsure ?? []) : undefined;
   const stepName = (id: string | null) => steps.find((s) => s.elementId === id)?.name ?? id ?? '';
 
   // The active card's section leads when it holds the active card (a `reviewUrl` or J/K into
   // `@outside` or a removed step): the card is in view at once, and the sections above it that
-  // load later ("Prozesse ohne Schritt") cannot push it away.
+  // load later („Ohne Schritt“) cannot push it away.
   const activeGroup = outside.some((p) => p.id === activePlacementId)
     ? 'outside'
     : removed.some((p) => p.id === activePlacementId)
@@ -427,6 +483,7 @@ export function ChainOverview(props: ChainOverviewProps) {
       onDecided={(outcome) => onDecided(p.id, outcome)}
       onReload={onReload}
       autoIndex={autoIndex}
+      resolve={resolve}
     />
   );
 
@@ -476,84 +533,50 @@ export function ChainOverview(props: ChainOverviewProps) {
     removed.length > 0 ? (
       <Section title="Auf entfernten Schritten" count={removed.length}>
         <p className="text-xs text-muted-foreground">
-          Diese Schritte gibt es nicht mehr; analyzr kennt nur noch ihre ID. Lehne die Platzierungen
-          ab oder korrigiere sie auf einen anderen Schritt.
+          Diese Schritte gibt es nicht mehr. Lehne die Platzierungen ab oder korrigiere sie auf
+          einen anderen Schritt.
         </p>
         <ul className="flex flex-col gap-2">{removed.map(card)}</ul>
       </Section>
     ) : null;
 
+  const coverage = withoutStep ? chainCoverage(placements, unplaced ?? []) : null;
+  const shownQueue = allOpen ? queue : queue.slice(0, FIRST_OPEN);
+
   return (
     <div className="flex flex-col gap-5" data-testid="chain-overview">
-      {autoFilter}
-      {mode === 'edit' && props.onChainName ? (
-        <CommitField
-          id="vc-chain-name"
-          label="Name der Kette"
-          value={props.chainName ?? ''}
-          maxLength={MAX_VALUE_CHAIN_NAME_CHARS}
-          required
-          onCommit={props.onChainName}
-        />
-      ) : null}
-      {mode === 'edit' && props.missingSteps && props.missingSteps.length > 0 ? (
-        <div
-          className="flex gap-2 rounded-lg border border-warning/40 bg-warning-soft px-3 py-2 text-sm"
-          data-testid="unsaved-removed"
-        >
-          <TriangleAlertIcon className="mt-0.5 size-4 shrink-0 text-warning" aria-hidden />
-          <div className="min-w-0">
-            <p className="font-medium">Entfernte Schritte mit Platzierungen</p>
-            <p className="text-muted-foreground">
-              Speicherst du so, bleiben ihre Platzierungen als offene Punkte:
-            </p>
-            <ul className="mt-1 list-disc pl-4">
-              {props.missingSteps.map((s) => (
-                <li key={s.elementId}>
-                  <PlainText as="span" text={s.name || s.elementId} />
-                </li>
-              ))}
-            </ul>
-          </div>
-        </div>
-      ) : null}
-
       {activeGroup === 'outside' ? outsideSection : null}
       {activeGroup === 'removed' ? removedSection : null}
 
       {detail ? (
-        <p className="text-sm text-muted-foreground" data-testid="chain-summary">
-          {steps.length} Schritte · {placements.filter((p) => p.status === 'accepted').length}{' '}
-          angenommen · {placements.filter(isOpenPlacement).length} offen ·{' '}
-          {placements.filter((p) => p.status === 'held').length} vorgemerkt · {findings.length}{' '}
-          Befunde
-        </p>
-      ) : mode === 'edit' ? (
-        <p className="text-sm text-muted-foreground">
-          Neue Kette: Ziehe Schritte aus der Palette links oder importiere eine .vc.json.
-          Gespeichert wird erst mit „Speichern“.
-        </p>
+        <div className="flex flex-col items-start gap-2.5">
+          {coverage ? (
+            <p className="text-sm" data-testid="chain-summary">
+              {coverage.placed} von {coverage.total}{' '}
+              {coverage.total === 1 ? 'Prozess' : 'Prozessen'} platziert
+              {queue.length > 0
+                ? ` · ${queue.length === 1 ? '1 Vorschlag' : `${queue.length} Vorschläge`} offen`
+                : ''}
+            </p>
+          ) : (
+            <Skeleton className="h-5 w-64" />
+          )}
+          {queue[0] ? (
+            <Button onClick={() => onSelectPlacement(queue[0]!.id)} data-testid="review-placements">
+              Platzierungen prüfen ({queue.length})
+              <ArrowRightIcon data-icon="inline-end" />
+              <Kbd className="ml-1 border-transparent bg-white/20 text-current">J</Kbd>
+            </Button>
+          ) : null}
+          <StageLine project={project} pipeline={detail.pipeline} />
+        </div>
       ) : (
         <Skeleton className="h-5 w-full" />
       )}
-      {detail ? (
-        <PipelineStage project={project} pipeline={detail.pipeline} canReview={canReview} />
-      ) : null}
 
-      {steps.length > 0 ? (
-        <Section title="Schritte" count={steps.length}>
-          <StepTree
-            steps={steps}
-            open={openCountsByStep(placements)}
-            focusStepId={props.focusStepId ?? null}
-            onSelect={onSelectStep}
-          />
-        </Section>
-      ) : null}
-
-      {detail ? (
+      {detail && queue.length > 0 ? (
         <Section
-          title="Offene Prüfungen"
+          title="Zu prüfen"
           count={queue.length}
           action={
             canReview && reconfirm.selectable.length > 0 ? (
@@ -569,112 +592,52 @@ export function ChainOverview(props: ChainOverviewProps) {
             ) : null
           }
         >
-          {queue.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Keine Platzierung wartet auf dich.</p>
-          ) : (
-            <ul className="flex flex-col gap-1" aria-label="Offene Platzierungen">
-              {queue.map((p) => (
-                <li key={p.id}>
-                  <button
-                    type="button"
-                    data-testid="open-placement"
-                    data-placement-id={p.id}
-                    onClick={() => onSelectPlacement(p.id)}
-                    className="flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-sm hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
-                  >
-                    <span className="flex min-w-0 flex-1 flex-col">
-                      <PlainText
-                        as="span"
-                        className="truncate font-medium"
-                        text={p.processName ?? p.process}
-                      />
-                      <span className="truncate text-xs text-muted-foreground">
-                        <PlainText as="span" text={placementStepLabel(p)} />
-                      </span>
-                    </span>
-                    <span className="text-xs text-muted-foreground">
-                      {p.status === 'proposed' ? 'Vorschlag' : 'erneut prüfen'}
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Section>
-      ) : null}
-
-      {detail ? (
-        <Section title="Befunde" count={findings.length}>
-          {findings.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Keine Befunde.</p>
-          ) : (
-            <ul className="flex flex-col gap-1.5" aria-label="Befunde der Kette">
-              {withoutStep.length > 0 ? (
-                <li
-                  className="text-sm"
-                  data-testid="chain-finding"
-                  data-kind="process-without-step"
+          <ul className="flex flex-col gap-0.5" aria-label="Offene Platzierungen">
+            {shownQueue.map((p) => (
+              <li key={p.id}>
+                <button
+                  type="button"
+                  data-testid="open-placement"
+                  data-placement-id={p.id}
+                  onClick={() => onSelectPlacement(p.id)}
+                  className="flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-sm hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
                 >
-                  <ToneBadge tone="warning">
-                    {VALUE_CHAIN_FINDING_KINDS['process-without-step'].label}
-                  </ToneBadge>{' '}
-                  {withoutStep.length === 1 ? '1 Prozess' : `${withoutStep.length} Prozesse`} ohne
-                  angenommenen Schritt
-                  {withoutStep.some((f) => f.state === 'proposed')
-                    ? `, ${withoutStep.filter((f) => f.state === 'proposed').length} mit offenem Vorschlag`
-                    : ''}
-                  {withoutStep.some((f) => f.state === 'held')
-                    ? `, ${withoutStep.filter((f) => f.state === 'held').length} vorgemerkt`
-                    : ''}
-                  .
-                </li>
-              ) : null}
-              {stepFindings.map((f) => (
-                <li
-                  key={`${f.kind}:${f.elementId}`}
-                  className="flex flex-wrap items-center gap-1.5 text-sm"
-                  data-testid="chain-finding"
-                  data-kind={f.kind}
-                >
-                  <ToneBadge tone="warning">{VALUE_CHAIN_FINDING_KINDS[f.kind].label}</ToneBadge>
-                  <button
-                    type="button"
-                    className="text-link hover:underline"
-                    onClick={() => f.elementId && onSelectStep(f.elementId)}
-                  >
-                    <PlainText as="span" text={stepName(f.elementId)} />
-                  </button>
-                  {f.link ? (
+                  <span className="flex min-w-0 flex-1 flex-col">
                     <PlainText
                       as="span"
-                      className="truncate font-mono text-xs text-muted-foreground"
-                      text={f.link}
+                      className="truncate font-medium"
+                      text={p.processName ?? p.process}
                     />
-                  ) : null}
-                </li>
-              ))}
-            </ul>
-          )}
+                    <span className="truncate text-xs text-muted-foreground">
+                      <PlainText as="span" text={placementStepLabel(p)} />
+                    </span>
+                  </span>
+                  {isPlainProposal(p) ? null : (
+                    <span className="text-xs text-warning">erneut prüfen</span>
+                  )}
+                </button>
+              </li>
+            ))}
+          </ul>
+          {queue.length > FIRST_OPEN ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setAllOpen((a) => !a)}
+              data-testid="open-placements-all"
+            >
+              {allOpen ? 'Weniger zeigen' : `Alle ${queue.length} zeigen`}
+            </Button>
+          ) : null}
         </Section>
       ) : null}
 
-      {detail && detail.unsure.length > 0 ? (
-        <Section title="Agent unsicher" count={detail.unsure.length}>
-          <UnsureList
-            project={project}
-            items={detail.unsure}
-            steps={stepOptions}
-            canReview={canReview}
-          />
-        </Section>
-      ) : null}
-
-      {detail ? (
-        <Section title="Prozesse ohne Schritt" count={unplaced?.length}>
-          {unplaced ? (
+      {detail && (withoutStep === undefined || withoutStep.length > 0) ? (
+        <Section ref={unplacedSection} title="Ohne Schritt" count={withoutStep?.length}>
+          {withoutStep ? (
             <UnplacedList
               project={project}
-              processes={unplaced}
+              items={withoutStep}
               steps={stepOptions}
               canReview={canReview}
               onSelectStep={onSelectStep}
@@ -685,8 +648,64 @@ export function ChainOverview(props: ChainOverviewProps) {
         </Section>
       ) : null}
 
+      {unresolved.length > 0 ? (
+        <Section title="Link nicht auflösbar" count={unresolved.length}>
+          <ul className="flex flex-col gap-1.5" aria-label="Links, die analyzr nicht auflöst">
+            {unresolved.map((f) => (
+              <li
+                key={`${f.kind}:${f.elementId}`}
+                className="flex min-w-0 flex-wrap items-center gap-x-2 text-sm"
+                data-testid="chain-finding"
+                data-kind={f.kind}
+              >
+                <button
+                  type="button"
+                  className="text-link hover:underline"
+                  onClick={() => f.elementId && onSelectStep(f.elementId)}
+                >
+                  <PlainText as="span" text={stepName(f.elementId)} />
+                </button>
+                {f.link ? (
+                  <PlainText
+                    as="span"
+                    className="min-w-0 truncate font-mono text-xs text-muted-foreground"
+                    text={f.link}
+                  />
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </Section>
+      ) : null}
+
+      {steps.length > 0 ? (
+        <details
+          className="group flex flex-col gap-2"
+          data-testid="step-tree"
+          open={props.focusStepId ? true : undefined}
+        >
+          <summary className="flex cursor-pointer list-none items-center gap-1.5 text-xs font-semibold tracking-wide text-muted-foreground uppercase hover:text-foreground">
+            <ChevronRightIcon
+              className="size-4 transition-transform group-open:rotate-90"
+              aria-hidden
+            />
+            Schritte <span className="tabular-nums">({steps.length})</span>
+          </summary>
+          <div className="pt-2">
+            <StepTree
+              steps={steps}
+              counts={subtreeCounts(steps, placements)}
+              focusStepId={props.focusStepId ?? null}
+              onSelect={onSelectStep}
+            />
+          </div>
+        </details>
+      ) : null}
+
       {activeGroup === 'outside' ? null : outsideSection}
       {activeGroup === 'removed' ? null : removedSection}
+
+      {autoFilter}
 
       {canReview ? (
         <BulkReconfirmDialog

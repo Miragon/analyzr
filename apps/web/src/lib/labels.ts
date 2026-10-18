@@ -357,6 +357,11 @@ export function formatConfidence(confidence: number | null): string {
 const dateFormat = new Intl.DateTimeFormat('de-DE', { dateStyle: 'medium', timeStyle: 'short' });
 const dayFormat = new Intl.DateTimeFormat('de-DE', { dateStyle: 'medium' });
 
+/** The handle without the `agent:` prefix (as „Übersicht“ shows the holder). */
+export function handleName(handle: string | null): string {
+  return (handle ?? 'Agent').replace(/^agent:/, '');
+}
+
 export function formatDateTime(iso: string): string {
   return dateFormat.format(new Date(iso));
 }
@@ -421,9 +426,9 @@ export const STEP_KIND_ORDER: readonly StepKind[] = ['core', 'management', 'supp
 export const LINK_KINDS: Record<LinkKind, Presentation> = {
   none: { label: 'Kein Link', tone: 'neutral', hint: 'Der Schritt verweist auf nichts.' },
   process: {
-    label: 'analyzr-Prozess',
+    label: 'Prozess',
     tone: 'info',
-    hint: 'Verweist auf einen Prozess des Projekts; ergibt einen Schlüssel-Vorschlag.',
+    hint: 'Verweist auf einen Prozess des Projekts; ergibt einen Vorschlag für den Schritt.',
   },
   url: { label: 'Webadresse', tone: 'neutral', hint: 'Eine http(s)-Adresse.' },
   opaque: {

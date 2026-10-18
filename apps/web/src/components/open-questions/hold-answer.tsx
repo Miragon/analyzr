@@ -25,6 +25,7 @@ import { CARD_ACTION_LABELS, holdAnswered } from '@/lib/open-questions';
 import { allPages, keys } from '@/lib/queries';
 import { useAddNote } from '@/lib/review-actions';
 import { toast } from '@/lib/toast';
+import { useAddPlacementNote } from '@/lib/value-chain-actions';
 
 import { NoteDialog } from './note-dialog';
 import { useNoteDialog } from './use-note-dialog';
@@ -55,11 +56,12 @@ const heldOpenQuestionsQuery = (project: string) =>
  * (UX2b, owner decision 26: one place to answer a hold): the button opens
  * the tab's note dialog for the hold's open question, so a note from here,
  * from its card and from the customer's CSV land on the same item; once the
- * hold has its answer, „Antwort ergänzen“. A held relation without such an
- * item (an end of it is missing from the head models, so it asks nothing in
- * „Offene Fragen“), or while the list cannot be loaded, is answered on the
- * relation itself, as before UX2b. Loaded lazily by the „Vorgemerkt“ list
- * and the review screen (reviewers only).
+ * hold has its answer, „Antwort ergänzen“. A held relation or placement
+ * without such an item (an end of it is missing from the head models, or the
+ * placement's step was removed, so it asks nothing in „Offene Fragen“), or
+ * while the list cannot be loaded, is answered on the item itself, as before
+ * UX2b. Loaded lazily by the „Vorgemerkt“ list, the review screen and the
+ * chain's placement cards (reviewers only).
  */
 export default function HoldAnswer({
   project,
@@ -80,9 +82,7 @@ export default function HoldAnswer({
     (q) => q.subject.type === subject.type && q.subject.id === subject.id,
   );
   if (!question) {
-    return subject.type === 'relation' ? (
-      <RelationAnswer project={project} relationId={subject.id} className={className} size={size} />
-    ) : null;
+    return <ItemAnswer project={project} subject={subject} className={className} size={size} />;
   }
   return (
     <>
@@ -102,17 +102,18 @@ export default function HoldAnswer({
 }
 
 /**
- * The answer as a note on the held relation (`POST …/relations/{r}/notes`),
- * in the note dialog's words, for a hold without an open question.
+ * The answer as a note on the held relation or placement (`POST
+ * …/relations/{r}/notes`, `…/placements/{p}/notes`), in the note dialog's
+ * words, for a hold without an open question.
  */
-function RelationAnswer({
+function ItemAnswer({
   project,
-  relationId,
+  subject,
   className,
   size,
 }: {
   project: string;
-  relationId: string;
+  subject: { type: 'relation' | 'placement'; id: string };
   className?: string | undefined;
   size: 'sm' | 'default';
 }) {
@@ -120,35 +121,38 @@ function RelationAnswer({
   const [open, setOpen] = useState(false);
   const [text, setText] = useState('');
   const [error, setError] = useState<unknown>(null);
-  const add = useAddNote(project);
+  const addRelationNote = useAddNote(project);
+  const addPlacementNote = useAddPlacementNote(project);
+  const pending = addRelationNote.isPending || addPlacementNote.isPending;
   const empty = text.trim() === '';
+  const where = subject.type === 'relation' ? 'an der Relation' : 'an der Platzierung';
 
   function submit(event: FormEvent) {
     event.preventDefault();
-    if (empty || add.isPending) return;
+    if (empty || pending) return;
     setError(null);
-    add.mutate(
-      { relationId, text: text.trim() },
-      {
-        onSuccess: () => {
-          setOpen(false);
-          setText('');
-          toast({
-            tone: 'success',
-            title: 'Antwort gespeichert',
-            description: `Gespeichert an der Relation. ${HOLD_STAYS}`,
-          });
-        },
-        onError: setError,
+    const done = {
+      onSuccess: () => {
+        setOpen(false);
+        setText('');
+        toast({
+          tone: 'success',
+          title: 'Antwort gespeichert',
+          description: `Gespeichert ${where}. ${HOLD_STAYS}`,
+        });
       },
-    );
+      onError: setError,
+    };
+    if (subject.type === 'relation')
+      addRelationNote.mutate({ relationId: subject.id, text: text.trim() }, done);
+    else addPlacementNote.mutate({ placementId: subject.id, text: text.trim() }, done);
   }
 
   return (
     <Dialog
       open={open}
       onOpenChange={(next) => {
-        if (add.isPending) return;
+        if (pending) return;
         setOpen(next);
         if (!next) setError(null);
       }}
@@ -164,7 +168,7 @@ function RelationAnswer({
           <DialogHeader>
             <DialogTitle>{CARD_ACTION_LABELS.answer}</DialogTitle>
             <DialogDescription>
-              Die Antwort wird an der Relation gespeichert. {HOLD_STAYS}
+              Die Antwort wird {where} gespeichert. {HOLD_STAYS}
             </DialogDescription>
           </DialogHeader>
           <Field>
@@ -191,13 +195,13 @@ function RelationAnswer({
             <Button
               type="button"
               variant="outline"
-              disabled={add.isPending}
+              disabled={pending}
               onClick={() => setOpen(false)}
             >
               Abbrechen
             </Button>
-            <Button type="submit" disabled={empty || add.isPending}>
-              {add.isPending ? (
+            <Button type="submit" disabled={empty || pending}>
+              {pending ? (
                 <Spinner data-icon="inline-start" />
               ) : (
                 <MessageSquarePlusIcon data-icon="inline-start" />

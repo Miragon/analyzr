@@ -91,7 +91,7 @@ export function LinkEditor({ link, processes, onChange }: LinkEditorProps) {
         }}
       >
         <ToggleGroupItem value="none">Kein Link</ToggleGroupItem>
-        <ToggleGroupItem value="process">analyzr-Prozess</ToggleGroupItem>
+        <ToggleGroupItem value="process">Prozess</ToggleGroupItem>
         <ToggleGroupItem value="other">Anderer Link</ToggleGroupItem>
       </ToggleGroup>
 
@@ -139,8 +139,8 @@ export function LinkEditor({ link, processes, onChange }: LinkEditorProps) {
             <p className="flex flex-1 gap-2 text-xs text-muted-foreground">
               <KeyRoundIcon className="mt-0.5 size-3.5 shrink-0" aria-hidden />
               {currentProcess
-                ? `Beim Speichern schlägt analyzr „${currentProcess.name}“ für diesen Schritt vor (Grundlage „Gleicher Name“); die Entscheidung bleibt bei dir. Doppelklick auf den Schritt öffnet dann das Modell.`
-                : 'Der übernommene Prozess wird beim Speichern für diesen Schritt vorgeschlagen (Grundlage „Gleicher Name“); die Entscheidung bleibt bei dir.'}
+                ? `Beim Speichern wird „${currentProcess.name}“ als Vorschlag für diesen Schritt angelegt.`
+                : 'Beim Speichern wird der übernommene Prozess als Vorschlag für diesen Schritt angelegt.'}
             </p>
             <Button
               type="button"
@@ -183,10 +183,7 @@ export function LinkEditor({ link, processes, onChange }: LinkEditorProps) {
             {touched && problem ? (
               <FieldError>{problem}</FieldError>
             ) : (
-              <FieldDescription>
-                http(s)-Adressen öffnen sich in einem neuen Tab; anderen Text behält analyzr
-                unverändert und meldet ihn als „Link nicht auflösbar“.
-              </FieldDescription>
+              <FieldDescription>Webadressen öffnen sich in einem neuen Tab.</FieldDescription>
             )}
           </Field>
         </form>

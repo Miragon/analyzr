@@ -337,44 +337,112 @@ describe('value chain page', () => {
     expect(screen.queryByTestId('unsaved')).toBeNull();
   });
 
-  it('shows the overview: summary, step tree, open reviews, findings, unplaced and @outside', async () => {
-    setup('/projects/demo/value-chain');
+  it('shows the overview: coverage, „Platzierungen prüfen“, „Zu prüfen“, „Ohne Schritt“, the closed tree and @outside (UX6)', async () => {
+    const { user } = setup('/projects/demo/value-chain');
     const overview = await screen.findByTestId('chain-overview');
+    // P_Inv is homed; P_Order and P_Old are proposed, P_Ship has nothing
     await waitFor(() =>
-      expect(screen.getByTestId('chain-summary').textContent).toContain('2 Schritte'),
+      expect(screen.getByTestId('chain-summary').textContent).toBe(
+        '1 von 4 Prozessen platziert · 2 Vorschläge offen',
+      ),
     );
+    expect(screen.getByTestId('review-placements').textContent).toBe('Platzierungen prüfen (2)J');
+    const rows = within(overview).getAllByTestId('open-placement');
+    expect(rows.map((i) => i.dataset['placementId'])).toEqual(['plc_open', 'plc_out']);
+    // a plain proposal carries no marker
+    expect(rows.map((r) => r.textContent)).toEqual([
+      'P_OrderAuftrag',
+      'Altes VerfahrenAußerhalb der Kette',
+    ]);
+    // the gaps stay answerable in „Offene Fragen“; only unresolvable links are listed here
+    expect(within(overview).queryAllByTestId('chain-finding')).toEqual([]);
+    expect(within(overview).queryByRole('region', { name: 'Befunde' })).toBeNull();
+    const without = within(overview).getByRole('region', { name: 'Ohne Schritt' });
+    expect((await within(without).findByTestId('unplaced-process')).textContent).toContain(
+      'Versand',
+    );
+    // the tree: closed, its top-level rows collapsed with their roll-ups
+    const tree = screen.getByTestId<HTMLDetailsElement>('step-tree');
+    expect(tree.open).toBe(false);
     expect(
       within(overview)
         .getAllByTestId('step-tree-item')
-        .map((i) => i.dataset['elementId']),
-    ).toEqual(['s-vertrieb', 's-auftrag']);
-    expect(
-      within(overview)
-        .getAllByTestId('open-placement')
-        .map((i) => i.dataset['placementId']),
-    ).toEqual(['plc_open', 'plc_out']);
-    const findings = within(overview).getAllByTestId('chain-finding');
-    expect(findings.map((f) => f.dataset['kind'])).toEqual([
-      'process-without-step',
-      'step-without-process',
-    ]);
-    expect(findings[0]!.textContent).toContain(
-      '1 Prozess ohne angenommenen Schritt, 1 mit offenem Vorschlag',
-    );
-    expect((await within(overview).findByTestId('unplaced-process')).textContent).toContain(
-      'Versand',
-    );
+        .map((i) => [i.dataset['elementId'], i.getAttribute('aria-expanded'), i.textContent]),
+    ).toEqual([['s-vertrieb', 'false', 'Vertrieb1 Prozess1 offen']]);
     expect(within(overview).getByLabelText('Außerhalb der Kette').textContent).toContain(
       'Archivkopie von v/order#P_Order.',
     );
-    // badges and finding labels on the canvas
+    // badges on the canvas; „nichts angenommen“ not on Vertrieb, whose sub-step waits for a decision
+    await waitFor(() => expect(stub().dataset['overlays']).toBe('s-auftrag:1 Prozess · 1 offen'));
+    // the header: the project as the way back, the revision behind the chain's name
+    const header = screen.getByTestId('chain-header');
+    expect(within(header).getByTestId('canvas-back').getAttribute('href')).toBe('/projects/demo');
+    expect(within(header).queryByText(/gespeichert von/)).toBeNull();
+    await user.click(within(header).getByTestId('chain-revision'));
+    expect((await screen.findByTestId('chain-revision-text')).textContent).toBe(
+      'Revision 3 · gespeichert von owner · 09.10.2026, 10:00',
+    );
+    expect(screen.getByTestId('unplaced-chip').textContent).toBe('1 Prozess ohne Schritt');
+    await user.click(within(header).getByTestId('chain-export'));
+    expect(
+      within(screen.getByTestId('chain-export-menu'))
+        .getAllByRole('menuitem')
+        .map((m) => m.textContent),
+    ).toEqual(['Datei (.vc.json)', 'Bild (SVG)']);
+  });
+
+  it('labels „nichts angenommen“ only on steps whose subtree waits for nothing (UX6)', async () => {
+    const lager = step({ elementId: 's-lager', name: 'Lager' });
+    setup('/projects/demo/value-chain', {
+      chain: chainDetail({
+        ...detail,
+        steps: [...steps, lager],
+        placements,
+        findings: [
+          ...detail.findings,
+          {
+            kind: 'step-without-process',
+            elementId: 's-lager',
+            process: null,
+            link: null,
+            state: null,
+            calledFrom: [],
+            detail: 'x',
+          },
+        ],
+      }),
+    });
     await waitFor(() =>
       expect(stub().dataset['overlays']).toBe(
-        's-vertrieb:nichts angenommen,s-auftrag:1 Prozess · 1 offen',
+        's-auftrag:1 Prozess · 1 offen,s-lager:nichts angenommen',
       ),
     );
-    expect(screen.getByText(/gespeichert von/).textContent).toContain('owner');
-    expect(screen.getByTestId('unplaced-chip').textContent).toBe('1 Prozess ohne Schritt');
+  });
+
+  it('scrolls to „Ohne Schritt“ from the header’s chip, from a step too, once per click', async () => {
+    const scroll = vi.spyOn(Element.prototype, 'scrollIntoView');
+    const { router, user } = setup('/projects/demo/value-chain?step=s-auftrag');
+    await screen.findByTestId('step-panel');
+    await user.click(await screen.findByTestId('unplaced-chip'));
+    await waitFor(() => expect(router.state.location.search).toEqual({}));
+    const section = await screen.findByRole('region', { name: 'Ohne Schritt' });
+    await waitFor(() => expect(scroll.mock.contexts).toContain(section));
+    const times = () =>
+      scroll.mock.contexts.filter(
+        (c) => c instanceof Element && c.getAttribute('aria-label') === 'Ohne Schritt',
+      ).length;
+    const once = times();
+    // back from a step later: no scroll of its own
+    await user.click(within(section).getByRole('button', { name: 'Auftrag' }));
+    await user.click(await screen.findByTestId('panel-back'));
+    await screen.findByRole('region', { name: 'Ohne Schritt' });
+    expect(times()).toBe(once);
+  });
+
+  it('starts the review at the first open placement („Platzierungen prüfen“, J)', async () => {
+    const { router, user } = setup('/projects/demo/value-chain');
+    await user.click(await screen.findByTestId('review-placements'));
+    await waitFor(() => expect(router.state.location.search).toEqual({ placement: 'plc_open' }));
   });
 
   it('selects the placement and its step from ?placement=, the step from ?step=', async () => {
@@ -639,7 +707,7 @@ describe('value chain page: drafts and unsaved changes', () => {
     await editMode(user);
     canvas.text = EDITED;
     canvas.pending = true;
-    await user.click(screen.getByRole('link', { name: 'Relationen' }));
+    await user.click(screen.getByTestId('canvas-back'));
     const dialog = await screen.findByTestId('discard-dialog');
     expect(dialog.textContent).toContain('Seite verlassen?');
     expect(router.state.location.pathname).toBe('/projects/demo/value-chain');
@@ -708,9 +776,11 @@ describe('value chain page: keyboard and focus', () => {
     await waitFor(() => expect(router.state.location.search).toEqual({ step: 's-vertrieb' }));
     await user.click(await screen.findByTestId('panel-back'));
     await waitFor(() => expect(router.state.location.search).toEqual({}));
+    // the closed tree opens to give the focus back
     const items = await screen.findAllByTestId('step-tree-item');
+    expect(screen.getByTestId<HTMLDetailsElement>('step-tree').open).toBe(true);
     await waitFor(() => expect(document.activeElement).toBe(items[0]));
-    expect(items.map((i) => i.tabIndex)).toEqual([0, -1]);
+    expect(items.map((i) => i.tabIndex)).toEqual([0]);
     // Enter opens it again; Escape in the panel goes back
     await user.keyboard('{Enter}');
     const again = await screen.findByTestId('step-panel');
@@ -719,27 +789,37 @@ describe('value chain page: keyboard and focus', () => {
     await waitFor(() => expect(router.state.location.search).toEqual({}));
   });
 
-  it('makes the step tree one tab stop: arrows, Home, End, left to the parent, right to a child', async () => {
+  it('makes the step tree one tab stop: arrows, Home, End; right opens, then to a child; left closes, then to the parent', async () => {
     const { user } = setup('/projects/demo/value-chain');
-    await waitFor(() => expect(screen.getAllByTestId('step-tree-item')).toHaveLength(2));
-    const items = screen.getAllByTestId('step-tree-item');
-    expect(items.map((i) => i.tabIndex)).toEqual([0, -1]);
-    // every node is open and cannot be collapsed: no aria-expanded to announce
-    expect(items.filter((i) => i.hasAttribute('aria-expanded'))).toEqual([]);
-    items[0]!.focus();
-    await user.keyboard('{ArrowDown}');
-    expect(document.activeElement).toBe(items[1]);
-    expect(items.map((i) => i.tabIndex)).toEqual([-1, 0]);
-    await user.keyboard('{Home}');
-    expect(document.activeElement).toBe(items[0]);
-    await user.keyboard('{End}');
-    expect(document.activeElement).toBe(items[1]);
-    await user.keyboard('{ArrowLeft}');
-    expect(document.activeElement).toBe(items[0]);
+    await user.click(await screen.findByText('Schritte'));
+    const item = (id: string) =>
+      screen
+        .getAllByTestId('step-tree-item')
+        .find((i) => i.dataset['elementId'] === id) as HTMLElement;
+    expect(screen.getAllByTestId('step-tree-item')).toHaveLength(1);
+    expect(item('s-vertrieb').getAttribute('aria-expanded')).toBe('false');
+    item('s-vertrieb').focus();
     await user.keyboard('{ArrowRight}');
-    expect(document.activeElement).toBe(items[1]);
-    // "offen" in the tree counts like the canvas badge
-    expect(items[1]!.textContent).toBe('Auftrag1 Prozess1 offen');
+    expect(item('s-vertrieb').getAttribute('aria-expanded')).toBe('true');
+    expect(screen.getAllByTestId('step-tree-item').map((i) => i.tabIndex)).toEqual([0, -1]);
+    await user.keyboard('{ArrowRight}');
+    expect(document.activeElement).toBe(item('s-auftrag'));
+    expect(screen.getAllByTestId('step-tree-item').map((i) => i.tabIndex)).toEqual([-1, 0]);
+    await user.keyboard('{Home}');
+    expect(document.activeElement).toBe(item('s-vertrieb'));
+    await user.keyboard('{End}');
+    expect(document.activeElement).toBe(item('s-auftrag'));
+    await user.keyboard('{ArrowLeft}');
+    expect(document.activeElement).toBe(item('s-vertrieb'));
+    // "offen" in the tree counts like the canvas badge, a parent sums its subtree
+    expect(item('s-auftrag').textContent).toBe('Auftrag1 Prozess1 offen');
+    expect(item('s-vertrieb').textContent).toBe('Vertrieb1 Prozess1 offen');
+    await user.keyboard('{ArrowLeft}');
+    expect(item('s-vertrieb').getAttribute('aria-expanded')).toBe('false');
+    expect(screen.getAllByTestId('step-tree-item')).toHaveLength(1);
+    // the chevron opens it too; the row itself selects the step
+    await user.click(screen.getByTestId('step-tree-toggle'));
+    expect(screen.getAllByTestId('step-tree-item')).toHaveLength(2);
   });
 
   it('scrolls the active card into view (an @outside placement far down the overview)', async () => {
@@ -768,7 +848,6 @@ describe('value chain page: keyboard and focus', () => {
         .find((c) => c.dataset['active'] === 'true') as HTMLElement;
     await waitFor(() => expect(active()).toBeTruthy());
     expect(within(active()).getByText('R')).toBeTruthy();
-    expect(screen.getByTestId('key-hint').textContent).toContain('entscheiden');
     // edit mode: the keys work only while the panel has the focus
     await editMode(user);
     await waitFor(() => expect(within(active()).queryByText('R')).toBeNull());
@@ -777,10 +856,14 @@ describe('value chain page: keyboard and focus', () => {
     await waitFor(() => expect(within(active()).getByText('R')).toBeTruthy());
   });
 
-  it('gives viewers the J/K hint without the decision keys', async () => {
-    setup('/projects/demo/value-chain', { role: 'viewer' });
-    const hint = await screen.findByTestId('key-hint');
-    expect(hint.textContent).toBe('JK Platzierungen');
+  it('gives viewers „Platzierungen prüfen“ with J, the cards without decisions', async () => {
+    const { user } = setup('/projects/demo/value-chain', { role: 'viewer' });
+    await user.click(await screen.findByTestId('review-placements'));
+    const cards = await screen.findAllByTestId('placement-card');
+    expect(cards.find((c) => c.dataset['active'] === 'true')?.dataset['placementId']).toBe(
+      'plc_open',
+    );
+    expect(screen.queryByTestId('placement-decision')).toBeNull();
   });
 
   it('keeps the focus in the name field after Enter and when the canvas echoes the name', async () => {
@@ -1100,46 +1183,68 @@ describe('value chain page: the placement agent (M4 §3.2)', () => {
     ],
   });
 
-  it('shows the stage with the due count, and what the agent was unsure about', async () => {
+  it('shows what is due with „Agent starten“, and the agent’s doubt in „Ohne Schritt“', async () => {
     const { user } = setup('/projects/demo/value-chain', { chain: agentDetail });
     const stage = await screen.findByTestId('chain-stage');
     expect(stage.dataset['stage']).toBe('waiting_for_review');
-    expect(stage.textContent).toContain('Wartet auf Prüfung');
-    expect(screen.getByTestId('chain-due').textContent).toBe('3 Prozesse fällig');
-    const section = screen.getByRole('region', { name: 'Agent unsicher' });
-    expect(within(section).getByRole('heading').textContent).toBe('Agent unsicher(1)');
-    const item = within(section).getByTestId('unsure-process');
-    expect(item.dataset['process']).toBe('v/foerder#P_Antrag');
-    // The reason as plain text, never HTML.
-    expect(item.textContent).toContain('<b>Dokumentation</b>');
+    expect(stage.textContent).toBe('3 Prozesse fälligAgent starten');
+    const section = screen.getByRole('region', { name: 'Ohne Schritt' });
+    expect(within(section).getByRole('heading').textContent).toBe('Ohne Schritt(2)');
+    const item = (await within(section).findAllByTestId('unplaced-process')).find(
+      (i) => i.dataset['process'] === 'v/foerder#P_Antrag',
+    ) as HTMLElement;
+    expect(item.dataset['unsure']).toBe('true');
+    // The reason as plain text, never HTML; the agent's handle behind „Technische Angaben“.
+    expect(within(item).getByTestId('unsure-reason').textContent).toBe(
+      'Agent unsicher: Kein Schritt beschreibt Fördermittel; <b>Dokumentation</b> leer.',
+    );
     expect(item.querySelector('b')).toBeNull();
-    expect(item.textContent).toContain('agent:claude');
+    expect(item.querySelector('details')?.textContent).toContain('claude');
     await user.click(within(item).getByRole('button', { name: /Platzieren/ }));
     expect(within(item).getByRole('button', { name: /Abbrechen/ })).toBeTruthy();
   });
 
   it.each([
-    ['waiting_for_agent', 'Wartet auf den Agenten'],
-    ['agent_working', 'Agent arbeitet'],
-    ['agent_failed', 'Agent fehlgeschlagen'],
-    ['waiting_for_clarification', 'Wartet auf Klärung'],
-    ['incorporated', 'Eingearbeitet'],
-  ] as const)('names the stage %s „%s“', async (stage, label) => {
+    ['waiting_for_agent', 'queued', 'Wartet auf den Agenten'],
+    ['agent_working', 'claimed', 'Agent arbeitet'],
+    ['agent_failed', 'failed', 'Agent gescheitertNochmal versuchen'],
+  ] as const)('names the stage %s only while it asks for something', async (stage, state, text) => {
     setup('/projects/demo/value-chain', {
-      chain: { ...agentDetail, pipeline: { ...agentDetail.pipeline, stage, due: 0 }, unsure: [] },
+      chain: {
+        ...agentDetail,
+        pipeline: {
+          ...agentDetail.pipeline,
+          stage,
+          task: { ...agentDetail.pipeline.task!, state },
+          due: 0,
+        },
+        unsure: [],
+      },
     });
-    expect((await screen.findByTestId('chain-stage')).textContent).toContain(label);
+    expect((await screen.findByTestId('chain-stage')).textContent).toBe(text);
     expect(screen.queryByTestId('chain-due')).toBeNull();
-    expect(screen.queryByRole('region', { name: 'Agent unsicher' })).toBeNull();
   });
 
-  it('gives viewers the unsure list without „Platzieren“', async () => {
+  it.each(['waiting_for_review', 'waiting_for_clarification', 'incorporated'] as const)(
+    'shows no stage line for %s with nothing due',
+    async (stage) => {
+      setup('/projects/demo/value-chain', {
+        chain: { ...agentDetail, pipeline: { ...agentDetail.pipeline, stage, due: 0 } },
+      });
+      await screen.findByTestId('chain-summary');
+      expect(screen.queryByTestId('chain-stage')).toBeNull();
+    },
+  );
+
+  it('gives viewers the doubted process without „Platzieren“', async () => {
     setup('/projects/demo/value-chain', { role: 'viewer', chain: agentDetail });
-    const item = await screen.findByTestId('unsure-process');
-    expect(within(item).queryByRole('button', { name: /Platzieren/ })).toBeNull();
+    const items = await screen.findAllByTestId('unplaced-process');
+    expect(items.map((i) => i.dataset['process'])).toEqual(['v/foerder#P_Antrag', 'v/ship#P_Ship']);
+    for (const item of items)
+      expect(within(item).queryByRole('button', { name: /Platzieren/ })).toBeNull();
   });
 
-  it('queues the placement task for processes due without one („Aufgabe einplanen“)', async () => {
+  it('schedules the placement task for processes due without one („Agent starten“)', async () => {
     const { calls, state, user } = setup('/projects/demo/value-chain', {
       chain: agentDetail,
       routes: {
@@ -1157,9 +1262,8 @@ describe('value chain page: the placement agent (M4 §3.2)', () => {
       },
     });
     // The task is done and 3 processes are due: a reviewer's decisions queue nothing.
-    const hint = await screen.findByTestId('chain-requeue');
-    expect(hint.textContent).toContain('Für diese Prozesse ist keine Aufgabe eingeplant');
-    await user.click(within(hint).getByRole('button', { name: /Aufgabe einplanen/ }));
+    const stage = await screen.findByTestId('chain-stage');
+    await user.click(within(stage).getByRole('button', { name: /Agent starten/ }));
     await waitFor(() =>
       expect(calls.find((c) => c.path.endsWith('/analyses/requeue'))?.body).toEqual({
         valueChain: true,
@@ -1169,10 +1273,12 @@ describe('value chain page: the placement agent (M4 §3.2)', () => {
     await waitFor(() =>
       expect(screen.getByTestId('chain-stage').dataset['stage']).toBe('waiting_for_agent'),
     );
-    expect(screen.queryByTestId('chain-requeue')).toBeNull();
+    // no token in this stub: the owner's „Agent starten“ waits for one (the popover's state)
+    expect(screen.getByTestId('chain-stage').textContent).toBe('Wartet auf den Agenten');
+    expect(screen.queryByTestId('requeue-chain')).toBeNull();
   });
 
-  it('offers „Erneut einplanen“ after a failed task and reports when nothing is due', async () => {
+  it('offers „Nochmal versuchen“ after a failed task and reports when nothing is due', async () => {
     const { user } = setup('/projects/demo/value-chain', {
       chain: {
         ...agentDetail,
@@ -1188,8 +1294,7 @@ describe('value chain page: the placement agent (M4 §3.2)', () => {
           json({ items: [], valueChain: { outcome: 'nothing-due', taskId: null } }),
       },
     });
-    const hint = await screen.findByTestId('chain-requeue');
-    await user.click(within(hint).getByRole('button', { name: /Erneut einplanen/ }));
+    await user.click(await screen.findByTestId('requeue-chain'));
     expect(await screen.findByText('Nichts fällig')).toBeTruthy();
   });
 
@@ -1204,13 +1309,15 @@ describe('value chain page: the placement agent (M4 §3.2)', () => {
         },
       },
     });
-    expect((await screen.findByTestId('chain-due')).textContent).toBe('3 Prozesse fällig');
-    expect(screen.queryByTestId('chain-requeue')).toBeNull();
+    expect((await screen.findByTestId('chain-stage')).textContent).toBe('Agent arbeitet');
+    expect(screen.queryByTestId('chain-due')).toBeNull();
+    expect(screen.queryByTestId('requeue-chain')).toBeNull();
   });
 
-  it('shows viewers why processes are due, without the button', async () => {
+  it('shows viewers what is due, without the button', async () => {
     setup('/projects/demo/value-chain', { role: 'viewer', chain: agentDetail });
-    const hint = await screen.findByTestId('chain-requeue');
-    expect(within(hint).queryByRole('button')).toBeNull();
+    const stage = await screen.findByTestId('chain-stage');
+    expect(stage.textContent).toBe('3 Prozesse fällig');
+    expect(within(stage).queryByRole('button')).toBeNull();
   });
 });
