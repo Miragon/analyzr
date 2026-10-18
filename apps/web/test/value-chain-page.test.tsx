@@ -379,8 +379,9 @@ describe('value chain page', () => {
     expect(within(header).getByTestId('canvas-back').getAttribute('href')).toBe('/projects/demo');
     expect(within(header).queryByText(/gespeichert von/)).toBeNull();
     await user.click(within(header).getByTestId('chain-revision'));
-    expect((await screen.findByTestId('chain-revision-text')).textContent).toBe(
-      'Revision 3 · gespeichert von owner · 09.10.2026, 10:00',
+    // the time in the runner's zone (CI runs in UTC)
+    expect((await screen.findByTestId('chain-revision-text')).textContent).toMatch(
+      /^Revision 3 · gespeichert von owner · 09\.10\.2026, \d\d:00$/,
     );
     expect(screen.getByTestId('unplaced-chip').textContent).toBe('1 Prozess ohne Schritt');
     await user.click(within(header).getByTestId('chain-export'));
