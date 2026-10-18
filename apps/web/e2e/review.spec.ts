@@ -405,7 +405,7 @@ test('held list: answer a held question in the note dialog of „Offene Fragen�
   await dialog
     .getByLabel('Deine Antwort')
     .fill('Ja, Logistik bestätigt: auch bei Expresslieferungen.');
-  await dialog.getByRole('button', { name: 'Antwort speichern' }).click();
+  await dialog.getByRole('button', { name: 'Antwort speichern (nicht änderbar)' }).click();
   await expect(page.getByTestId('toast').filter({ hasText: 'Antwort gespeichert' })).toBeVisible();
   await expect(item.getByTestId('held-answer')).toContainText('auch bei Expresslieferungen');
   await shot(page, 'm2-04-held');

@@ -33,7 +33,6 @@ export function AmendPanel({ q, action, project, resolve, onDone, onCancel }: Pa
       targets={amend.targets}
       {...(amend.replaces ? { replaces: amend.replaces } : {})}
       suggested={suggested}
-      questionId={q.id}
       resolve={resolve}
       onDone={onDone}
       onCancel={onCancel}

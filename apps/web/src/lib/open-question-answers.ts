@@ -30,6 +30,7 @@ import {
 } from '@analyzr/contracts/personal-data';
 
 import { MAX_ANSWER_CHARS, MAX_ANSWER_SHEET_BODY_BYTES, MAX_ANSWER_SHEET_ROWS } from './limits';
+import { CARD_ACTION_LABELS, linkWithAmend } from './open-questions';
 
 /**
  * Notes on open questions (M6 §4.8 b, since S5c-1; S5a's answers), the web's
@@ -82,8 +83,11 @@ export const AGENTS_SENTENCE =
 export const AGENTS_SENTENCE_ANSWER =
   'Die Agenten berücksichtigen die Antwort, sobald sie diese Relation neu bewerten.';
 
-/** Notes are append-only (M6 §7: no erasure path), said next to the note field. */
-export const NOTE_PERMANENT = 'Eine gespeicherte Notiz lässt sich nicht mehr ändern oder löschen.';
+/** Notes are append-only (M6 §7: no erasure path): the save button says so (UX4). */
+export const NOTE_SAVE_LABEL = 'Notiz speichern (nicht änderbar)';
+
+/** A hold's answer is a note, append-only as well (UX4). */
+export const ANSWER_SAVE_LABEL = 'Antwort speichern (nicht änderbar)';
 
 /**
  * Answers are notes, append-only as well (said in the sheet dialog and next
@@ -124,23 +128,41 @@ export function noteKeepsOpen(question: {
   return endsByAction(question) ? NOTE_KEEPS_OPEN : NOTE_UNTIL_IMPORT;
 }
 
+/** An action as the note dialog reads it (the amendment's entry, UX4). */
+type NoteAction = Pick<OpenQuestionAction, 'type'> &
+  Partial<Pick<OpenQuestionAction, 'label' | 'pick' | 'multiple' | 'amend'>>;
+
+/**
+ * The entry an item's amendment is set with, as its card names it: „Ziel
+ * wählen …“ or „Partner wählen …“ where it shares the link's entry (UX4),
+ * else its own label („Dokumentation ergänzen …“); `null` without one.
+ */
+function amendEntryLabel(actions: readonly NoteAction[] | undefined): string | null {
+  if (!actions) return null;
+  const joined = linkWithAmend(actions);
+  if (joined)
+    return joined.link.pick === 'process'
+      ? CARD_ACTION_LABELS.chooseTarget
+      : CARD_ACTION_LABELS.choosePartner;
+  return actions.find((a) => a.type === 'amend')?.label ?? null;
+}
+
 /**
  * What the dialog says about where the note goes and what it does (M6 §4.5,
- * §4.8 b), by the item's subject and kind: a relation's note reaches the
- * agents with the pair's next judgement (a held relation stays held); on a
- * placement an agent asked about, the note makes the process due (nothing
- * is queued); a held placement keeps homing its process, so no agent gets
- * it until the reviewer decides the hold; every other note stays with the
- * question, and the dialog points at the path that works today: the
- * model's documentation and a new import (for steps and the chain, which
- * no model documents, the value chain itself or the missing model's import).
- * A note never ends the item: its action does, or, for an item whose only
+ * §4.8 b, UX4), by the item's subject and kind: a relation's note reaches
+ * the agents with the pair's next judgement (a held relation stays held); on
+ * a placement an agent asked about, the note makes the process due (nothing
+ * is queued); a held placement keeps homing its process, so no agent gets it
+ * until the reviewer decides the hold; every other note stays with the
+ * question and goes into the export, and where the item can be amended, the
+ * dialog names the entry that writes the missing value into the model. A
+ * note never ends the item: its action does, or, for an item whose only
  * action is the note, the model's next import.
  */
 export function noteEffectText(
   question: Pick<OpenQuestion, 'kind'> & {
     subject: Pick<OpenQuestionSubject, 'type'>;
-    actions?: readonly Pick<OpenQuestionAction, 'type'>[];
+    actions?: readonly NoteAction[];
   },
 ): string {
   const held = question.kind === 'held';
@@ -160,18 +182,15 @@ export function noteEffectText(
             keepsOpen;
     case 'step':
     case 'value-chain':
-      return (
-        'Die Notiz wird bei der Frage gespeichert, angezeigt und exportiert; die Agenten sehen sie noch nicht. ' +
-        `${keepsOpen} Fehlt ein Modell, importiere es.`
-      );
     case 'ref':
     case 'process':
-    case 'model':
+    case 'model': {
+      const amend = amendEntryLabel(question.actions);
       return (
-        'Die Notiz wird bei der Frage gespeichert, angezeigt und exportiert; die Agenten sehen sie noch nicht. ' +
-        `${keepsOpen} Gehört das Fehlende ins Modell, ergänze es im Quellwerkzeug und importiere das Modell erneut: ` +
-        'Ein neuer Stand plant das Modell neu ein.'
+        `Die Notiz bleibt bei der Frage und geht mit in den Export. ${keepsOpen}` +
+        (amend ? ` Fehlt ein Wert im Modell? Trag ihn mit „${amend}“ ein.` : '')
       );
+    }
   }
 }
 

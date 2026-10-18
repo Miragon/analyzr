@@ -17,7 +17,9 @@ import {
   linkExclusions,
   linkPreview,
   processChoices,
+  processSection,
   refusalText,
+  subjectHints,
   subjectProcess,
   undoPlan,
   undoable,
@@ -88,7 +90,7 @@ const resolve = resolverOf(
 );
 
 describe('pickers', () => {
-  it('lists processes as „Name (Modell)“: the suggested first, the item’s own left out', () => {
+  it('lists processes as „Name – Modell“: the suggested first, the item’s own left out', () => {
     expect(
       processChoices(facts, { suggested: ['b/pay#P_Refund'], exclude: ['a/shop#P_Shop'] }).map(
         (c) => [c.ref, c.name, c.suggested],
@@ -118,6 +120,80 @@ describe('pickers', () => {
     expect(endpointChoices(facts, 'a/shop#Sig_Done').map((c) => c.ref)[0]).toBe('b/pay#Sig_Catch');
     expect(catchesOnly(facts, 'a/shop#Catch_Paid')).toBe(true);
     expect(catchesOnly(facts, 'a/shop#Sig_Done')).toBe(false);
+  });
+});
+
+describe('„Passt vermutlich“ (UX4)', () => {
+  const named = (modelKey: string, processes: [string, string][]): ModelFacts => ({
+    modelKey,
+    processes: processes.map(([processId, name]) => ({
+      ref: `${modelKey}#${processId}`,
+      processId,
+      name,
+      participantName: null,
+    })),
+    facts: [],
+  });
+  const landscape = [
+    named('finanzen/forderungsmanagement', [['Process_Forderung', 'Forderungsmanagement']]),
+    named('finanzen/inkasso', [['Process_Inkasso', 'Inkasso']]),
+    named('finanzen/ruecklastschrift', [['Process_RLS', 'Rücklastschrift']]),
+    named('finanzen/gutschrift', [['Process_Gut', 'Gutschrift']]),
+    named('vertrieb/auftrag', [['Process_Auftrag', 'Auftrag anlegen']]),
+    named('einkauf/bestellung', [['Process_Best', 'Bestellung']]),
+  ];
+  const likely = (hints: string[], suggested: string[] = []) =>
+    processChoices(landscape, {
+      hints,
+      suggested,
+      exclude: ['finanzen/forderungsmanagement#Process_Forderung'],
+    })
+      .filter((c) => c.likely)
+      .map((c) => c.name);
+
+  it('ranks the best fits to the call’s label or its unresolved value after the suggested ones', () => {
+    expect(likely(['Forderung an Inkasso übergeben'])).toEqual(['Inkasso']);
+    expect(likely(['Process_Inkasso'])).toEqual(['Inkasso']);
+    expect(likely(['RuecklastschriftEingegangen'])).toEqual(['Rücklastschrift']);
+    expect(likely(['Gutschrift erstellen'])).toEqual(['Gutschrift']);
+    // a suggested process stays under „Vorgeschlagen“, not twice
+    expect(likely(['Inkasso'], ['finanzen/inkasso#Process_Inkasso'])).toEqual([]);
+    // generic and technical words alone fit nothing
+    expect(likely(['Daten senden', 'Process_1'])).toEqual([]);
+    const all = processChoices(landscape, { hints: ['Forderung an Inkasso übergeben'] });
+    expect(all.map((c) => [c.name, processSection(c)])).toEqual([
+      ['Inkasso', 'Passt vermutlich'],
+      ['Forderungsmanagement', 'Passt vermutlich'],
+      // then the rest by name, not by model key
+      ['Auftrag anlegen', 'Alle Prozesse'],
+      ['Bestellung', 'Alle Prozesse'],
+      ['Gutschrift', 'Alle Prozesse'],
+      ['Rücklastschrift', 'Alle Prozesse'],
+    ]);
+  });
+
+  it('reads the hints from the subject’s fact: its label, its value, its name', () => {
+    const withCall: ModelFacts[] = [
+      {
+        modelKey: 'a',
+        processes: [],
+        facts: [
+          fact({
+            modelKey: 'a',
+            elementId: 'Call_1',
+            kind: 'call',
+            label: 'Forderung an Inkasso übergeben',
+            keyRaw: 'Process_Inkasso',
+          }),
+        ],
+      },
+    ];
+    expect(
+      subjectHints(withCall, { subject: { type: 'ref', id: 'a#Call_1' }, subjectLabel: '„x“' }),
+    ).toEqual(['Forderung an Inkasso übergeben', 'Process_Inkasso']);
+    expect(
+      subjectHints(withCall, { subject: { type: 'ref', id: 'a#Gone' }, subjectLabel: '„Gone“' }),
+    ).toEqual(['„Gone“']);
   });
 });
 

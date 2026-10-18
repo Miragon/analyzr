@@ -9,7 +9,7 @@ import type {
 import { personalDataHint, personalDataWarnings } from '@analyzr/contracts/personal-data';
 import { useQueries, useQueryClient } from '@tanstack/react-query';
 import { cn } from 'cn';
-import { InboxIcon, InfoIcon, SaveIcon, TriangleAlertIcon } from 'lucide-react';
+import { ChevronRightIcon, InfoIcon, SaveIcon, TriangleAlertIcon } from 'lucide-react';
 import { useEffect, useId, useMemo, useState, type FormEvent, type KeyboardEvent } from 'react';
 
 import { ErrorText } from '@/components/error-text';
@@ -25,35 +25,34 @@ import {
   AMEND_HINT,
   AMEND_PERSONAL_DATA_HINT,
   AMENDMENT_VALUE_LIMITS,
-  COLLECT_HINT,
   amendableQuery,
-  collectAmendments,
   fieldLabel,
   isNotFound,
   normalizeAmendmentValue,
   refusalLabel,
-  savedToast,
-  useAmendSave,
+  useAmendDraft,
+  useClaimedConfirm,
+  useSavedToast,
   valueProblemText,
   valueText,
   type PendingAmendment,
 } from '@/lib/amendments';
-
-import { nameWords } from '@/lib/generic-names';
+import { bestFits, nameWords } from '@/lib/generic-names';
 import type { RefResolver } from '@/lib/refs';
-import { toast } from '@/lib/toast';
 
-import { AmendSaveProblem, AmendSummary } from './amend-summary';
+import { AmendEffect } from './amend-summary';
 
 /**
- * The amend form (M6 §4.8 c "Web", decision 25): one field per target, as
- * the question's `amend` action or the model view's „Ergänzen“ names them;
- * a process picker for a call target („Vorgeschlagen“ first), text with the
- * landscape's names (a picked partner is accepted with the name) or the
- * labels elsewhere, documentation; the personal-data warning, the value as
- * it will be stored, the hint that the next import keeps it. „Speichern“
- * runs the dry run and shows its summary (effect and cost) before the save;
- * „Sammeln“ keeps the amendments in the page for one save per model.
+ * The amend form (M6 §4.8 c "Web", decision 25; UX4): one field per target,
+ * as the question's `amend` action or the model view's „Ergänzen“ names
+ * them; a process picker for a call target („Vorgeschlagen“ first, then
+ * „Passt vermutlich“), text with the landscape's names (a picked partner is
+ * accepted with the name) or the labels elsewhere, documentation; the
+ * personal-data warning, the value as it will be stored. The dry run runs by
+ * itself once the values settle, so the effect and the cost stand above the
+ * one „Speichern“ (a second confirmation only when an agent holds the
+ * model's task); the hint that the next import keeps the amendment sits
+ * behind a disclosure. After the save the toast offers „Agent starten“.
  */
 
 export interface AmendTarget {
@@ -76,11 +75,9 @@ export interface AmendFormProps {
   replaces?: string;
   /** Process refs a live proposal already names (the question's `link` suggestions): listed first. */
   suggested?: readonly string[];
-  /** The question the form was opened at (a collected amendment remembers it). */
-  questionId?: string;
   resolve?: RefResolver;
-  /** Saved, collected or nothing to change: the form closes. */
-  onDone: (how: 'saved' | 'collected' | 'unchanged') => void;
+  /** Saved: the form closes. */
+  onDone: () => void;
   onCancel: () => void;
 }
 
@@ -209,6 +206,41 @@ const processSearch = (p: ChoiceProcess) =>
 
 interface ChoiceProcess extends AmendProcessSuggestion {
   suggested: boolean;
+  /** „Vorgeschlagen“, „Passt vermutlich“, or none (the rest, by name). */
+  section: 'Vorgeschlagen' | 'Passt vermutlich' | null;
+}
+
+/**
+ * A call target's processes (UX-SIMPLIFICATION.md §3.4 item 2): the ones a
+ * live proposal names first, then the three best fits by name, then the
+ * rest by name and model.
+ */
+function rankedProcesses(
+  field: AmendableField,
+  suggested: readonly string[],
+  hints: readonly string[],
+): ChoiceProcess[] {
+  const all = [...(field.suggestions.processes ?? [])].sort(
+    (a, b) =>
+      a.name.localeCompare(b.name, 'de') ||
+      (a.modelName ?? a.modelKey).localeCompare(b.modelName ?? b.modelKey, 'de'),
+  );
+  const first = suggested.flatMap((ref) => {
+    const p = all.find((x) => x.ref === ref);
+    return p ? [{ ...p, suggested: true, section: 'Vorgeschlagen' as const }] : [];
+  });
+  const taken = new Set(first.map((p) => p.ref));
+  const likely = bestFits(
+    all.filter((p) => !taken.has(p.ref)),
+    (p) => p.name,
+    hints,
+  ).map((p) => ({ ...p, suggested: false, section: 'Passt vermutlich' as const }));
+  for (const p of likely) taken.add(p.ref);
+  return [
+    ...first,
+    ...likely,
+    ...all.filter((p) => !taken.has(p.ref)).map((p) => ({ ...p, suggested: false, section: null })),
+  ];
 }
 
 function ProcessOption({ p }: { p: ChoiceProcess }) {
@@ -216,8 +248,8 @@ function ProcessOption({ p }: { p: ChoiceProcess }) {
     <span className="flex min-w-0 flex-col">
       <span className="truncate font-medium">
         {p.name}{' '}
-        <span className="font-normal text-muted-foreground">({p.modelName ?? p.modelKey})</span>
-        {p.suggested ? <span className="sr-only">, vorgeschlagen</span> : null}
+        <span className="font-normal text-muted-foreground">– {p.modelName ?? p.modelKey}</span>
+        {p.section ? <span className="sr-only">, {p.section.toLowerCase()}</span> : null}
       </span>
       <span className="truncate font-mono text-xs text-muted-foreground">
         {p.processId}
@@ -233,28 +265,20 @@ function CallTargetField({
   value,
   onChange,
   suggested,
+  hints,
   autoFocus,
 }: {
   field: AmendableField;
   value: FieldValue;
   onChange: (next: FieldValue) => void;
   suggested: readonly string[];
+  /** What the call names (its label, its value): the best fits come next, „Passt vermutlich“. */
+  hints: readonly string[];
   autoFocus: boolean;
 }) {
   const [search, setSearch] = useState('');
-  const items = useMemo(() => {
-    const all = field.suggestions.processes ?? [];
-    const first = suggested.flatMap((ref) => {
-      const p = all.find((x) => x.ref === ref);
-      return p ? [{ ...p, suggested: true }] : [];
-    });
-    const firstRefs = new Set(first.map((p) => p.ref));
-    return [
-      ...first,
-      ...all.filter((p) => !firstRefs.has(p.ref)).map((p) => ({ ...p, suggested: false })),
-    ];
-  }, [field.suggestions.processes, suggested]);
-  const sectioned = items.some((p) => p.suggested);
+  const items = useMemo(() => rankedProcesses(field, suggested, hints), [field, suggested, hints]);
+  const sectioned = items.some((p) => p.section !== null);
   const picked = items.find((p) => p.ref === value.target);
   return (
     <div className="flex flex-col gap-2">
@@ -274,9 +298,7 @@ function CallTargetField({
         testId="amend-option"
         valueAttribute="ref"
         autoFocus={autoFocus}
-        {...(sectioned
-          ? { sectionOf: (p: ChoiceProcess) => (p.suggested ? 'Vorgeschlagen' : 'Alle Prozesse') }
-          : {})}
+        {...(sectioned ? { sectionOf: (p: ChoiceProcess) => p.section ?? 'Alle Prozesse' } : {})}
       />
       {picked?.ambiguous ? (
         <p className="flex items-start gap-1.5 text-sm text-warning" data-testid="amend-ambiguous">
@@ -509,6 +531,23 @@ function TextField({
 
 // ------------------------------------------------------------------ the form
 
+/** „Und beim nächsten Import?“: that the next import keeps the amendment (M6 §4.8 c), behind a disclosure. */
+export function ImportHint() {
+  return (
+    <details className="group text-xs text-muted-foreground" data-testid="amend-hint">
+      <summary className="inline-flex cursor-pointer list-none items-center gap-1 rounded-sm hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none">
+        <InfoIcon className="size-3.5" aria-hidden />
+        Und beim nächsten Import?
+        <ChevronRightIcon
+          className="size-3.5 transition-transform group-open:rotate-90"
+          aria-hidden
+        />
+      </summary>
+      <p className="mt-1">{AMEND_HINT}</p>
+    </details>
+  );
+}
+
 export function AmendForm({
   project,
   modelId,
@@ -517,13 +556,13 @@ export function AmendForm({
   targets,
   replaces,
   suggested = [],
-  questionId,
   resolve,
   onDone,
   onCancel,
 }: AmendFormProps) {
   const queryClient = useQueryClient();
-  const collectHintId = useId();
+  const effectId = useId();
+  const claimedId = useId();
   const elementIds = useMemo(() => [...new Set(targets.map((t) => t.elementId))], [targets]);
   const results = useQueries({
     queries: elementIds.map((elementId) => amendableQuery(project, modelId, elementId)),
@@ -537,33 +576,7 @@ export function AmendForm({
   const failed = results.find((r) => r.isError && !isNotFound(r.error));
   const [values, setValues] = useState<Record<string, FieldValue>>({});
   const name = modelName ?? modelKey;
-
-  const save = useAmendSave({
-    project,
-    modelId,
-    onSaved: (result) => {
-      toast(savedToast(result, name));
-      onDone('saved');
-    },
-    onUnchanged: () => {
-      toast({
-        tone: 'info',
-        title: 'Schon so ergänzt',
-        description: 'Die Werte stehen schon so im Modell; nichts geändert.',
-      });
-      onDone('unchanged');
-    },
-  });
-
-  // A conflict loads the fields again, so the next „Speichern“ starts from the new head.
-  const conflict = save.state.phase === 'conflict';
-  useEffect(() => {
-    if (!conflict) return;
-    for (const elementId of elementIds)
-      void queryClient.invalidateQueries({
-        queryKey: amendableQuery(project, modelId, elementId).queryKey,
-      });
-  }, [conflict, elementIds, modelId, project, queryClient]);
+  const savedToastOf = useSavedToast(project);
 
   const rows = targets.map((t) => {
     const element = elements.get(t.elementId);
@@ -577,49 +590,42 @@ export function AmendForm({
   const revs = [...elements.values()].map((e) => e.headRev);
   const rev = revs.length > 0 ? Math.min(...revs) : null;
   const settable = rows.some((r) => r.field?.settable);
-  const canSend = !loading && !problems && pending.length > 0 && rev !== null && !save.busy;
+  const items = !loading && !problems && pending.length > 0 ? pending.map((p) => p.item) : null;
+  const request = items !== null && rev !== null ? JSON.stringify({ items, rev }) : null;
+
+  const draft = useAmendDraft({
+    project,
+    modelId,
+    items,
+    rev,
+    onSaved: (result) => {
+      savedToastOf(result, name);
+      onDone();
+    },
+  });
+  const { check } = draft;
+  const confirm = useClaimedConfirm(check, request);
+
+  // A conflict loads the fields again, so the next dry run starts from the new head.
+  const conflict = check.phase === 'conflict';
+  useEffect(() => {
+    if (!conflict) return;
+    for (const elementId of elementIds)
+      void queryClient.invalidateQueries({
+        queryKey: amendableQuery(project, modelId, elementId).queryKey,
+      });
+  }, [conflict, elementIds, modelId, project, queryClient]);
+
+  const canSave = check.phase === 'ready' && !draft.saving;
 
   const set = (t: AmendTarget, next: FieldValue) => {
-    if (save.state.phase === 'refused' || save.state.phase === 'error' || conflict) save.reset();
     setValues((now) => ({ ...now, [keyOf(t)]: next }));
   };
 
   function submit(event?: FormEvent) {
     event?.preventDefault();
-    if (!canSend || rev === null) return;
-    save.check(
-      pending.map((p) => p.item),
-      rev,
-    );
-  }
-
-  function collect() {
-    if (!canSend || rev === null) return;
-    const total = collectAmendments(
-      pending.map((p) => ({
-        ...p,
-        project,
-        modelId,
-        modelKey,
-        modelName: name,
-        rev,
-        ...(questionId ? { questionId } : {}),
-      })),
-    );
-    if (total === null) {
-      toast({
-        tone: 'warning',
-        title: 'Sammlung voll',
-        description: 'Höchstens 20 Ergänzungen je Modell; speichere zuerst die Sammlung.',
-      });
-      return;
-    }
-    toast({
-      tone: 'success',
-      title: 'Gesammelt',
-      description: `${total === 1 ? '1 Ergänzung' : `${total} Ergänzungen`} für „${name}“ gesammelt; „Speichern“ in der Leiste speichert sie zusammen.`,
-    });
-    onDone('collected');
+    if (!canSave) return;
+    if (confirm.confirm()) draft.save();
   }
 
   function keys(event: KeyboardEvent<HTMLFormElement>) {
@@ -630,18 +636,6 @@ export function AmendForm({
       event.preventDefault();
       submit();
     }
-  }
-
-  if (save.state.phase === 'confirm' || save.state.phase === 'saving') {
-    return (
-      <AmendSummary
-        project={project}
-        state={save.state}
-        pending={pending}
-        onConfirm={save.confirm}
-        onBack={save.reset}
-      />
-    );
   }
 
   let first = true;
@@ -680,11 +674,15 @@ export function AmendForm({
               data-op={t.op}
               data-element={t.elementId}
             >
+              {/* A text field names its field itself; a call target's picker does not. */}
               <legend className="mb-1 text-sm font-medium">
-                {t.label}{' '}
-                <span className="font-normal text-muted-foreground">
-                  · {field?.fieldLabel ?? fieldLabel(t.op)}
-                </span>
+                {t.label}
+                {t.op === 'call-target' || !field?.settable ? (
+                  <span className="font-normal text-muted-foreground">
+                    {' '}
+                    · {field?.fieldLabel ?? fieldLabel(t.op)}
+                  </span>
+                ) : null}
               </legend>
               {!field ? (
                 <p className="text-sm text-muted-foreground">
@@ -703,6 +701,7 @@ export function AmendForm({
                       value={value}
                       onChange={(next) => set(t, next)}
                       suggested={suggested}
+                      hints={[t.label, field.value ?? '', field.uploadedValue ?? '']}
                       autoFocus={autoFocus()}
                     />
                   ) : t.op === 'message-name' ? (
@@ -733,51 +732,47 @@ export function AmendForm({
         })
       )}
       {settable ? (
-        <p
-          className="flex items-start gap-2 text-xs text-muted-foreground"
-          data-testid="amend-hint"
-        >
-          <InfoIcon className="mt-0.5 size-3.5 shrink-0" aria-hidden />
-          {AMEND_HINT}
-        </p>
+        <AmendEffect
+          project={project}
+          check={check}
+          pending={pending}
+          effectId={effectId}
+          claimedId={claimedId}
+        />
       ) : null}
-      <AmendSaveProblem state={save.state} pending={pending} />
-      {settable ? (
-        <p
-          id={collectHintId}
-          className="text-xs text-muted-foreground sm:text-right"
-          data-testid="amend-collect-hint"
-        >
-          {COLLECT_HINT}
-        </p>
-      ) : null}
+      {settable ? <ImportHint /> : null}
       <div className="flex flex-wrap justify-end gap-2">
-        <Button type="button" variant="outline" size="sm" onClick={onCancel} disabled={save.busy}>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={onCancel}
+          disabled={draft.saving}
+        >
           Abbrechen
         </Button>
         {settable ? (
-          <>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={collect}
-              disabled={!canSend}
-              aria-describedby={collectHintId}
-              data-testid="amend-collect"
-            >
-              <InboxIcon data-icon="inline-start" />
-              Sammeln
-            </Button>
-            <Button type="submit" size="sm" disabled={!canSend} data-testid="amend-submit">
-              {save.state.phase === 'checking' ? (
-                <Spinner data-icon="inline-start" />
-              ) : (
-                <SaveIcon data-icon="inline-start" />
-              )}
-              Speichern
-            </Button>
-          </>
+          <Button
+            type="submit"
+            size="sm"
+            variant={confirm.armed ? 'destructive' : 'default'}
+            disabled={!canSave}
+            aria-describedby={
+              check.phase === 'ready'
+                ? confirm.claimed
+                  ? `${effectId} ${claimedId}`
+                  : effectId
+                : undefined
+            }
+            data-testid="amend-submit"
+          >
+            {draft.saving || check.phase === 'checking' ? (
+              <Spinner data-icon="inline-start" />
+            ) : (
+              <SaveIcon data-icon="inline-start" />
+            )}
+            {confirm.armed ? 'Trotzdem speichern' : 'Speichern'}
+          </Button>
         ) : null}
       </div>
     </form>

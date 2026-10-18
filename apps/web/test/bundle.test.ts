@@ -19,10 +19,10 @@ import { build, type Plugin, type UserConfig } from 'vite';
  *    nor the open-questions page, its components and libs (M6 S4, S5a and
  *    S5c-1, the tab's route chunk and the model view's lazy section, which
  *    also carries the collapsed subprocess's „Verknüpfen mit …“); nor the
- *    model amendments (M6 S5c-2: the amend form with „Sammeln“, the model
- *    view's „Ergänzen“ with its history, the header's badge and downloads,
- *    the change list), which load with the tab and the model view's own
- *    lazy module.
+ *    model amendments (M6 S5c-2: the amend form with its inline dry run since
+ *    UX4, the model view's „Ergänzen“ with its history, the header's badge
+ *    and „Mehr“, the change list), which load with the tab and the model
+ *    view's own lazy module.
  *    Of `@analyzr/contracts`, only the zod-free `paths.ts` (the upload's file
  *    rule, M6 S1), `open-question-labels.ts` (M6 S4), `open-question-csv.ts`
  *    and `personal-data.ts` (M6 S5a: the answer sheet's reader and the
@@ -98,6 +98,9 @@ const BUDGET = 40 * 1024;
  * panel with its sheet and light tabs, the canvas header, the media query
  * hook and the model view's relation cards and legend; „Mehr“ with its
  * revisions and „Herkunft“ dialog loads with the amendments chunk only.
+ * 220.7 KB after UX4: the root's host for „Agent starten“ from a toast and
+ * the rule that joins a link and its amendment into one card entry; the
+ * pickers, the inline dry run and the removal of „Sammeln“ are lazy.
  */
 const ENTRY_CEILING = 240 * 1024;
 
@@ -256,8 +259,8 @@ const isOpenQuestionsModule = (id: string) =>
   ].some((path) => id === path || id.startsWith(path));
 
 /**
- * Model amendments (M6 S5c-2): the amend form, the collection's bar, the
- * model view's section, header parts and the change list, and their lib.
+ * Model amendments (M6 S5c-2): the amend form, the model view's section,
+ * header parts and the change list, and their lib.
  */
 const isAmendmentsModule = (id: string) =>
   [join(WEB, 'src/components/amendments') + sep, join(WEB, 'src/lib/amendments.ts')].some(

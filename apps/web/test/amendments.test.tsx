@@ -1,15 +1,16 @@
 /**
- * Model amendments in the web (M6 §4.8 c, S5c-2): the amend form at a
- * question (a call target's process picker with „Vorgeschlagen“ first, the
- * dry run's summary with the effect and the cost before the save, the
- * warning for a claimed task, a refusal, a head that changed meanwhile),
- * „Sammeln“ (several questions' amendments in one bar, one dry run and one
- * request), the amendment-conflict item's actions („Wert aus dem Quellsystem
+ * Model amendments in the web (M6 §4.8 c, S5c-2; UX4): one entry for a link
+ * or the amendment of the same gap („Ziel wählen …“, „Partner wählen …“,
+ * „Im Modell eintragen (statt nur zu verknüpfen)“ sends exactly one of
+ * them), the amend form at a question (the dry run inline with the effect
+ * and the cost above one „Speichern“, the second confirmation for a claimed
+ * task, a refusal, a head that changed meanwhile; „Agent starten“ in the
+ * toast), the amendment-conflict item's actions („Wert aus dem Quellsystem
  * übernehmen“, „Meine Ergänzung behalten“, all of a model), the model view's
  * „Ergänzen“ (fields, history with „Zurücknehmen“, the header's badge and
  * downloads), the models table's mark with the change list, and the pure
- * helpers (the sentence, the normalized value, the collection, the plan,
- * the upload result's counts, the canvas's resolution of a message).
+ * helpers (the sentence, the normalized value, the plan, the upload result's
+ * counts, the canvas's resolution of a message).
  */
 import type {
   AmendModelItem,
@@ -29,20 +30,15 @@ import { QueryClient } from '@tanstack/react-query';
 import { createMemoryHistory } from '@tanstack/react-router';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { App } from '../src/app';
 import {
   amendedElements,
-  collectAmendments,
-  collectedByModel,
-  discardCollected,
   effectSentence,
   normalizeAmendmentValue,
   planCounts,
-  resetCollected,
   revisionOrigin,
-  type CollectedAmendment,
 } from '../src/lib/amendments';
 import { resolveAmended, type DiagramElement } from '../src/lib/bpmn-elements';
 import {
@@ -55,7 +51,7 @@ import {
 } from '../src/lib/queries';
 import { amendmentCountsText } from '../src/lib/upload';
 import { createAppRouter } from '../src/router';
-import { fact, model, openQuestion, openQuestionPage } from './support/fixtures';
+import { agentToken, fact, model, openQuestion, openQuestionPage } from './support/fixtures';
 import { findToast, json, stubApi, type Call } from './support/render';
 
 const PROJECT = '/api/v1/projects/demo';
@@ -63,8 +59,6 @@ const BASE = `${PROJECT}/open-questions`;
 const LOCAL: Health = { status: 'ok', version: '0.1.0-test', db: 'ok' };
 const NOW = '2026-10-17T10:00:00.000Z';
 const HASH = 'a'.repeat(64);
-
-afterEach(() => resetCollected());
 
 // ------------------------------------------------------------------ the landscape
 
@@ -109,6 +103,13 @@ const FACTS: RevisionFacts[] = [
         eventDef: 'none',
         processId: 'Process_Order',
       }),
+      fact({
+        modelKey: 'a/order',
+        elementId: 'Send_Invoice',
+        kind: 'msg_throw',
+        label: 'Rechnung senden',
+        processId: 'Process_Order',
+      }),
     ],
     messageFlows: [],
   },
@@ -117,7 +118,16 @@ const FACTS: RevisionFacts[] = [
     revisionId: models[1]!.headRevisionId,
     factsVersion: '1',
     processes: [proc('b/billing', 'Process_Billing', 'Rechnungsstellung')],
-    facts: [],
+    facts: [
+      fact({
+        modelKey: 'b/billing',
+        elementId: 'Catch_Invoice',
+        kind: 'msg_catch',
+        label: 'Rechnung empfangen',
+        processId: 'Process_Billing',
+        attrs: { messageName: 'Rechnung' },
+      }),
+    ],
     messageFlows: [],
   },
   {
@@ -233,6 +243,43 @@ const CALL_FIELD = field({
   value: '',
   uploadedValue: '',
   suggestions: { processes: PROCESSES },
+});
+
+/** A nameless message endpoint's field: the landscape's names, one with a partner. */
+const MESSAGE_FIELD = field({
+  op: 'message-name',
+  elementId: 'Send_Invoice',
+  element: 'endpoint',
+  suggestions: {
+    names: [
+      {
+        name: 'Mahnung',
+        endpoints: [
+          {
+            ref: 'c/payment#Throw_Dun',
+            kind: 'msg_throw',
+            name: 'Mahnung senden',
+            processName: 'Zahlungsdienst',
+            modelKey: 'c/payment',
+            partner: false,
+          },
+        ],
+      },
+      {
+        name: 'Rechnung',
+        endpoints: [
+          {
+            ref: 'b/billing#Catch_Invoice',
+            kind: 'msg_catch',
+            name: 'Rechnung empfangen',
+            processName: 'Rechnungsstellung',
+            modelKey: 'b/billing',
+            partner: true,
+          },
+        ],
+      },
+    ],
+  },
 });
 
 /** The amendable fields the forms read, by element. */
@@ -596,91 +643,267 @@ async function fromMenu(user: ReturnType<typeof userEvent.setup>, item: HTMLElem
 
 // ------------------------------------------------------------------ the form at a question
 
-describe('the amend form at a question (M6 S5c-2)', () => {
-  it('sets a call target: „Vorgeschlagen“ first, the dry run’s summary, then the save', async () => {
-    const { calls, user } = setup('/projects/demo/open-questions');
+const actionPosts = (calls: readonly Call[], id: string) =>
+  calls.filter((c) => c.method === 'POST' && c.path === `${BASE}/${id}/actions`);
+const options = (scope: HTMLElement, testId = 'action-option') =>
+  within(scope)
+    .getAllByTestId(testId)
+    .map((o) => o.dataset['ref']);
+
+describe('one entry for a link or an amendment (UX4, M6 S5c-2)', () => {
+  it('„Ziel wählen …“: the pick, „Im Modell eintragen“ checked, the dry run inline, one „Speichern“', async () => {
+    const { calls, user } = setup('/projects/demo/open-questions', {
+      routes: {
+        [`GET ${PROJECT}/agent-tokens`]: () =>
+          json({ items: [agentToken({ id: 'agt_01A', name: 'claude' })] }),
+      },
+    });
     const item = await row('q-00000000000000d1');
-    expect(primary(item).textContent).toBe('Aufrufziel eintragen …');
+    // the amendment and „Nur verknüpfen …“ are one entry, nothing of them in the menu
+    expect(primary(item).textContent).toBe('Ziel wählen …');
+    await user.click(within(item).getByTestId('question-more-actions'));
+    expect((await screen.findAllByRole('menuitem')).map((m) => m.textContent)).toEqual([
+      'Liegt außerhalb der Landschaft',
+      'Notiz hinzufügen',
+      'Kennung kopieren',
+    ]);
+    await user.keyboard('{Escape}');
     await user.click(primary(item));
     const panel = await within(item).findByTestId('question-action-panel');
-    const form = await within(panel).findByTestId('amend-form');
     // the process the question's link suggests comes first, under „Vorgeschlagen“
-    await waitFor(() => expect(within(form).getAllByTestId('amend-option')).toHaveLength(2));
+    await waitFor(() => expect(options(panel)).toHaveLength(2));
+    expect(options(panel)).toEqual(['c/payment#Process_Pay', 'b/billing#Process_Billing']);
     expect(
-      within(form)
+      within(panel)
         .getAllByTestId('picker-section')
         .map((s) => s.textContent),
     ).toEqual(['Vorgeschlagen', 'Alle Prozesse']);
-    expect(
-      within(form)
-        .getAllByTestId('amend-option')
-        .map((o) => o.dataset['ref']),
-    ).toEqual(['c/payment#Process_Pay', 'b/billing#Process_Billing']);
-    expect(within(form).getByTestId('amend-current').textContent).toBe('Bisher: leer');
-    expect(within(form).getByTestId('amend-hint').textContent).toContain(
-      'Der nächste Import aus dem Quellsystem behält die Ergänzung',
+    // „Name – Modell“, no id in the text
+    expect(within(panel).getAllByTestId('action-option')[1]!.textContent).toBe(
+      'Rechnungsstellung – b/billing',
     );
-    await user.click(within(form).getAllByTestId('amend-option')[1]!);
-    await user.click(within(form).getByTestId('amend-submit'));
+    expect(within(panel).queryByTestId('action-in-model')).toBeNull();
+    await user.click(within(panel).getAllByTestId('action-option')[1]!);
 
-    // the dry run: If-Match of the head the form read, nothing written yet
-    const summary = await within(panel).findByTestId('amend-summary');
+    // no key yet: the amendment was the item's primary action, so the box starts checked
+    const box = within(panel).getByTestId('action-in-model');
+    expect(box.getAttribute('aria-checked')).toBe('true');
+    const effect = await within(panel).findByTestId('amend-effect', {}, { timeout: 4_000 });
+    expect(effect.textContent).toBe(
+      'Danach: 1 Aufruf angenommen, 1 Befund erledigt. Die Agenten beurteilen 214 mögliche Relationen neu, sobald du den Agenten startest.',
+    );
     const [dry] = amendPosts(calls);
     expect(dry!.search).toBe('?dryRun=true');
     expect(dry!.headers['if-match']).toBe('"r3"');
     expect(dry!.body).toEqual({
       items: [{ elementId: 'Call_1', op: 'call-target', target: 'b/billing#Process_Billing' }],
     });
-    expect(within(summary).getByTestId('amend-effect').textContent).toBe(
-      'Danach: 1 Aufruf angenommen, 1 Befund erledigt, 214 Paare (mögliche Verbindungen zu anderen Modellen) werden von den Agenten neu beurteilt.',
+    expect(within(panel).getByTestId('amend-hint').textContent).toContain(
+      'Der nächste Import aus dem Quellsystem behält die Ergänzung',
     );
-    // The process the human picked, by its name, with its id.
-    expect(within(summary).getByTestId('amend-summary-after').textContent).toBe(
-      'Prozess „Rechnungsstellung“ Process_Billing',
-    );
-    expect(within(summary).queryByTestId('amend-claimed')).toBeNull();
-
-    await user.click(within(summary).getByTestId('amend-confirm'));
-    expect(await findToast('Ergänzung gespeichert')).toBeDefined();
+    // click 3: „Speichern“ sends the amendment only, never the link
+    const save = within(panel).getByTestId('action-submit');
+    expect(save.textContent).toBe('Speichern');
+    await user.click(save);
+    const toast = await findToast('Ergänzung gespeichert');
     const posts = amendPosts(calls);
-    expect(posts).toHaveLength(2);
-    expect(posts[1]!.search).toBe('?dryRun=false');
+    expect(posts.map((p) => p.search)).toEqual(['?dryRun=true', '?dryRun=false']);
     expect(posts[1]!.headers['if-match']).toBe('"r3"');
     expect(posts[1]!.body).toEqual(dry!.body);
+    expect(actionPosts(calls, 'q-00000000000000d1')).toHaveLength(0);
     await waitFor(() =>
       expect(
         screen.queryAllByTestId('open-question').map((r) => r.dataset['questionId']),
       ).not.toContain('q-00000000000000d1'),
     );
+    // the toast offers „Agent starten“ (§2.6): the agents judge the pairs once started
+    await user.click(within(toast).getByTestId('toast-action'));
+    expect((await screen.findByTestId('agent-start-host')).textContent).toContain(
+      '/analyzr:relations demo',
+    );
   });
 
-  it('warns before a save that cancels a claimed relations task', async () => {
+  it('unchecked, only the link is sent; „+ Notiz“ opens the note', async () => {
     const list = fixtures();
-    const { user } = setup('/projects/demo/open-questions', {
+    const { calls, user } = setup('/projects/demo/open-questions', {
+      list,
+      routes: {
+        [`POST ${BASE}/q-00000000000000d1/actions`]: () =>
+          json({
+            result: 'applied',
+            question: null,
+            relations: [],
+            placements: [],
+            answer: null,
+            warnings: [],
+          }),
+      },
+    });
+    const item = await row('q-00000000000000d1');
+    await user.click(primary(item));
+    const panel = await within(item).findByTestId('question-action-panel');
+    await waitFor(() => expect(options(panel)).toHaveLength(2));
+    await user.click(within(panel).getAllByTestId('action-option')[0]!);
+    await user.click(within(panel).getByTestId('action-in-model'));
+    expect(within(panel).getByTestId('action-in-model').getAttribute('aria-checked')).toBe('false');
+    expect(within(panel).getByTestId('action-preview').textContent).toContain(
+      'Legt eine angenommene Relation',
+    );
+    expect(within(panel).queryByTestId('action-note')).toBeNull();
+    await user.click(within(panel).getByTestId('action-note-toggle'));
+    await user.type(within(panel).getByTestId('action-note'), 'Laut Fachbereich');
+    const submit = within(panel).getByTestId('action-submit');
+    expect(submit.textContent).toBe('Verknüpfen');
+    await user.click(submit);
+    await waitFor(() => expect(actionPosts(calls, 'q-00000000000000d1')).toHaveLength(1));
+    expect(actionPosts(calls, 'q-00000000000000d1')[0]!.body).toEqual({
+      type: 'link',
+      targets: ['c/payment#Process_Pay'],
+      note: 'Laut Fachbereich',
+    });
+    // a dry run may have run while it was checked; nothing was saved
+    expect(amendPosts(calls).every((c) => c.search === '?dryRun=true')).toBe(true);
+  });
+
+  it('a changed head on the dry run sends nothing, not even the link, and loads the field again', async () => {
+    const list = fixtures();
+    const { calls, user } = setup('/projects/demo/open-questions', {
+      list,
+      routes: {
+        [`POST ${M}/amendments`]: amendRoute(list, {
+          dry: () =>
+            json(
+              {
+                type: 'urn:analyzr:problem:revision-conflict',
+                title: 'Revision conflict',
+                status: 412,
+                code: 'revision-conflict',
+                headRev: 4,
+              },
+              412,
+            ),
+        }),
+      },
+    });
+    const item = await row('q-00000000000000d1');
+    await user.click(primary(item));
+    const panel = await within(item).findByTestId('question-action-panel');
+    await waitFor(() => expect(options(panel)).toHaveLength(2));
+    await user.click(within(panel).getAllByTestId('action-option')[1]!);
+    const conflict = await within(panel).findByTestId('amend-conflict', {}, { timeout: 4_000 });
+    expect(conflict.textContent).toContain('Es ist jetzt r4.');
+    expect(within(panel).getByTestId<HTMLButtonElement>('action-submit').disabled).toBe(true);
+    expect(amendPosts(calls).every((c) => c.search === '?dryRun=true')).toBe(true);
+    expect(actionPosts(calls, 'q-00000000000000d1')).toHaveLength(0);
+  });
+
+  it('asks a second time when an agent holds the model’s task', async () => {
+    const list = fixtures();
+    const { calls, user } = setup('/projects/demo/open-questions', {
       list,
       routes: { [`POST ${M}/amendments`]: amendRoute(list, { taskClaimed: true }) },
     });
     const item = await row('q-00000000000000d1');
     await user.click(primary(item));
-    const form = await within(item).findByTestId('amend-form');
-    await waitFor(() => expect(within(form).getAllByTestId('amend-option')).toHaveLength(2));
-    await user.click(within(form).getAllByTestId('amend-option')[0]!);
-    await user.click(within(form).getByTestId('amend-submit'));
-    const summary = await within(item).findByTestId('amend-summary');
-    expect(within(summary).getByTestId('amend-claimed').textContent).toContain(
+    const panel = await within(item).findByTestId('question-action-panel');
+    await waitFor(() => expect(options(panel)).toHaveLength(2));
+    await user.click(within(panel).getAllByTestId('action-option')[0]!);
+    const claimed = await within(panel).findByTestId('amend-claimed', {}, { timeout: 4_000 });
+    expect(claimed.textContent).toContain(
       'Ein Agent bearbeitet dieses Modell gerade; seine Arbeit geht verloren.',
     );
-    expect(within(summary).getByTestId('amend-confirm').textContent).toBe('Trotzdem speichern');
-    // „Zurück“ returns to the form with the pick kept
-    await user.click(within(summary).getByRole('button', { name: 'Zurück' }));
-    const again = await within(item).findByTestId('amend-form');
-    expect(
-      within(again)
-        .getAllByTestId('amend-option')
-        .find((o) => o.getAttribute('aria-checked') === 'true')?.dataset['ref'],
-    ).toBe('c/payment#Process_Pay');
+    const submit = within(panel).getByTestId('action-submit');
+    expect(submit.textContent).toBe('Speichern');
+    await user.click(submit);
+    expect(submit.textContent).toBe('Trotzdem speichern');
+    expect(amendPosts(calls).map((c) => c.search)).toEqual(['?dryRun=true']);
+    await user.click(submit);
+    expect(await findToast('Ergänzung gespeichert')).toBeDefined();
+    expect(amendPosts(calls).map((c) => c.search)).toEqual(['?dryRun=true', '?dryRun=false']);
   });
 
+  it('„Partner wählen …“: a partner’s name in the model, or only the link for a whole process', async () => {
+    const list = [
+      openQuestion({
+        id: 'q-00000000000000e1',
+        kind: 'message-partner-missing',
+        subject: { type: 'ref', id: 'a/order#Send_Invoice' },
+        subjectLabel: '„Rechnung senden“',
+        refs: ['a/order#Send_Invoice'],
+        actions: [
+          {
+            type: 'amend',
+            primary: true,
+            label: 'Nachrichtennamen im Modell eintragen …',
+            amend: amendOf([
+              {
+                elementId: 'Send_Invoice',
+                op: 'message-name',
+                label: 'Nachrichten-Zwischenereignis „Rechnung senden“',
+              },
+            ]),
+          },
+          { type: 'link', primary: false, label: 'Nur verknüpfen …', pick: 'endpoint' },
+          NOTE,
+        ],
+      }),
+    ] as OpenQuestion[];
+    const { calls, user } = setup('/projects/demo/open-questions', {
+      list,
+      routes: {
+        [`POST ${M}/amendments`]: amendRoute(list),
+        ...amendableRoutes({ Send_Invoice: element('Send_Invoice', [MESSAGE_FIELD]) }),
+      },
+    });
+    const item = await row('q-00000000000000e1');
+    expect(primary(item).textContent).toBe('Partner wählen …');
+    // a card whose only further action is the note shows it as a ghost button
+    expect(within(item).queryByTestId('question-more-actions')).toBeNull();
+    expect(
+      within(item)
+        .getAllByTestId('question-action')
+        .map((b) => [b.textContent, b.dataset['action']]),
+    ).toEqual([
+      ['Partner wählen …', 'link'],
+      ['Notiz', 'note'],
+    ]);
+    await user.click(primary(item));
+    const panel = await within(item).findByTestId('question-action-panel');
+    await waitFor(() => expect(options(panel)).toContain('b/billing#Catch_Invoice'));
+    // a whole process: no name to write, only the link
+    await user.click(
+      within(panel)
+        .getAllByTestId('action-option')
+        .find((o) => o.dataset['ref'] === 'c/payment#Process_Pay')!,
+    );
+    const box = within(panel).getByTestId('action-in-model');
+    expect(box.getAttribute('aria-checked')).toBe('false');
+    expect((box as HTMLButtonElement).disabled).toBe(true);
+    expect(within(panel).getByTestId('action-in-model-reason').textContent).toContain(
+      'nur verknüpfen',
+    );
+    // the partner endpoint: its name in the model, which pairs both
+    await user.click(
+      within(panel)
+        .getAllByTestId('action-option')
+        .find((o) => o.dataset['ref'] === 'b/billing#Catch_Invoice')!,
+    );
+    expect(within(panel).getByTestId('action-in-model').getAttribute('aria-checked')).toBe('true');
+    await within(panel).findByTestId('amend-effect', {}, { timeout: 4_000 });
+    expect(amendPosts(calls)[0]!.body).toEqual({
+      items: [
+        {
+          elementId: 'Send_Invoice',
+          op: 'message-name',
+          after: 'Rechnung',
+          partner: 'b/billing#Catch_Invoice',
+        },
+      ],
+    });
+  });
+});
+
+describe('the amend form at a question (M6 S5c-2, UX4)', () => {
   it('names a refusal in German and writes nothing; a changed head loads the fields again', async () => {
     const list = fixtures();
     let dryRuns = 0;
@@ -718,20 +941,22 @@ describe('the amend form at a question (M6 S5c-2)', () => {
     const item = await row('q-00000000000000d2');
     await user.click(primary(item));
     const form = await within(item).findByTestId('amend-form');
+    // no „Sammeln“ any more (UX4): one „Speichern“
+    expect(within(form).queryByText('Sammeln')).toBeNull();
     const text = await within(form).findByTestId('amend-text');
     await user.type(text, 'Nimmt Aufträge an');
-    await user.click(within(form).getByTestId('amend-submit'));
-    const refused = await within(form).findByTestId('amend-refused');
+    const refused = await within(form).findByTestId('amend-refused', {}, { timeout: 4_000 });
     expect(refused.textContent).toContain(
       'Prozess „Auftrag“ · Dokumentation: Nur für offene Fragen.',
     );
     expect(refused.textContent).toContain('Nichts gespeichert.');
+    expect(within(form).getByTestId<HTMLButtonElement>('amend-submit').disabled).toBe(true);
 
     const reads = () =>
       calls.filter((c) => c.path === `${M}/elements/Process_Order/amendable`).length;
     const before = reads();
-    await user.click(within(form).getByTestId('amend-submit'));
-    const conflict = await within(form).findByTestId('amend-conflict');
+    await user.type(text, '.');
+    const conflict = await within(form).findByTestId('amend-conflict', {}, { timeout: 4_000 });
     expect(conflict.textContent).toContain('Es ist jetzt r4.');
     await waitFor(() => expect(reads()).toBeGreaterThan(before));
     expect(amendPosts(calls).every((c) => c.search === '?dryRun=true')).toBe(true);
@@ -763,11 +988,10 @@ describe('the amend form at a question (M6 S5c-2)', () => {
     ).toContain(
       'Der Text enthält vermutlich eine E-Mail-Adresse. Prüf bitte, ob das wirklich gespeichert werden soll: keine Namen oder anderen personenbezogenen Daten.',
     );
-    expect(amendPosts(calls)).toHaveLength(0);
+    // only dry runs (of valid values), never a save
+    expect(amendPosts(calls).every((c) => c.search === '?dryRun=true')).toBe(true);
   });
-});
 
-describe('a message name at a question (M6 S5c-2)', () => {
   it('picks a partner’s name, which accepts the pair, or takes free text', async () => {
     const list = [
       openQuestion({
@@ -797,45 +1021,7 @@ describe('a message name at a question (M6 S5c-2)', () => {
       list,
       routes: {
         [`POST ${M}/amendments`]: amendRoute(list),
-        ...amendableRoutes({
-          Send_Invoice: element('Send_Invoice', [
-            field({
-              op: 'message-name',
-              elementId: 'Send_Invoice',
-              element: 'endpoint',
-              suggestions: {
-                names: [
-                  {
-                    name: 'Mahnung',
-                    endpoints: [
-                      {
-                        ref: 'c/payment#Throw_Dun',
-                        kind: 'msg_throw',
-                        name: 'Mahnung senden',
-                        processName: 'Zahlungsdienst',
-                        modelKey: 'c/payment',
-                        partner: false,
-                      },
-                    ],
-                  },
-                  {
-                    name: 'Rechnung',
-                    endpoints: [
-                      {
-                        ref: 'b/billing#Catch_Invoice',
-                        kind: 'msg_catch',
-                        name: 'Rechnung empfangen',
-                        processName: 'Rechnungsstellung',
-                        modelKey: 'b/billing',
-                        partner: true,
-                      },
-                    ],
-                  },
-                ],
-              },
-            }),
-          ]),
-        }),
+        ...amendableRoutes({ Send_Invoice: element('Send_Invoice', [MESSAGE_FIELD]) }),
       },
     });
     const item = await row('q-00000000000000e1');
@@ -858,110 +1044,23 @@ describe('a message name at a question (M6 S5c-2)', () => {
     expect(within(form).getByTestId('amend-partner').textContent).toContain(
       'Mit dem Speichern nimmst du den Vorschlag zwischen beiden an.',
     );
-    await user.click(within(form).getByTestId('amend-submit'));
-    await within(item).findByTestId('amend-summary');
-    expect(amendPosts(calls)[0]!.body).toEqual({
-      items: [
-        {
-          elementId: 'Send_Invoice',
-          op: 'message-name',
-          after: 'Rechnung',
-          partner: 'b/billing#Catch_Invoice',
-        },
-      ],
-    });
+    await waitFor(
+      () =>
+        expect(amendPosts(calls).at(-1)?.body).toEqual({
+          items: [
+            {
+              elementId: 'Send_Invoice',
+              op: 'message-name',
+              after: 'Rechnung',
+              partner: 'b/billing#Catch_Invoice',
+            },
+          ],
+        }),
+      { timeout: 4_000 },
+    );
     // typing again makes it free text: no partner
-    await user.click(within(item).getByRole('button', { name: 'Zurück' }));
-    const again = await within(item).findByTestId('amend-text');
-    await user.type(again, 'sausgang');
+    await user.type(text, 'sausgang');
     expect(within(item).queryByTestId('amend-partner')).toBeNull();
-  });
-});
-
-// ------------------------------------------------------------------ „Sammeln“
-
-describe('„Sammeln“: several amendments of a model, one save (M6 S5c-2)', () => {
-  it('collects at two questions, shows one bar and saves with one dry run and one request', async () => {
-    const { calls, user } = setup('/projects/demo/open-questions');
-    const doc = await row('q-00000000000000d2');
-    await user.click(primary(doc));
-    const docForm = await within(doc).findByTestId('amend-form');
-    await user.type(await within(docForm).findByTestId('amend-text'), 'Nimmt Aufträge an.');
-    await user.click(within(docForm).getByTestId('amend-collect'));
-    expect(await findToast('Gesammelt')).toBeDefined();
-    expect(within(doc).queryByTestId('amend-form')).toBeNull();
-    expect(within(doc).getByTestId('question-collected').textContent).toBe('gesammelt');
-    expect((await screen.findByTestId('collect-bar-text')).textContent).toBe(
-      '1 Ergänzung für „Auftrag“ gesammelt',
-    );
-
-    const names = await row('q-00000000000000d3');
-    await user.click(primary(names));
-    const namesForm = await within(names).findByTestId('amend-form');
-    const [start, end] = await within(namesForm).findAllByTestId('amend-text');
-    await user.type(start!, 'Auftrag eingegangen');
-    await user.type(end!, 'Auftrag erledigt');
-    await user.click(within(namesForm).getByTestId('amend-collect'));
-    const bar = await screen.findByTestId('collect-bar');
-    await waitFor(() =>
-      expect(within(bar).getByTestId('collect-bar-text').textContent).toBe(
-        '3 Ergänzungen für „Auftrag“ gesammelt',
-      ),
-    );
-    expect(amendPosts(calls)).toHaveLength(0);
-    await user.click(within(bar).getByTestId('collect-bar-toggle'));
-    expect(
-      within(bar)
-        .getAllByTestId('collect-bar-item')
-        .map((i) => i.textContent),
-    ).toEqual([
-      'Prozess „Auftrag“ · Dokumentation: „Nimmt Aufträge an.“',
-      'Startereignis „StartEvent_1“ · Name: „Auftrag eingegangen“',
-      'Endereignis „EndEvent_1“ · Name: „Auftrag erledigt“',
-    ]);
-
-    await user.click(within(bar).getByTestId('collect-bar-save'));
-    const summary = await within(bar).findByTestId('amend-summary');
-    expect(within(summary).getAllByTestId('amend-summary-item')).toHaveLength(3);
-    expect(within(summary).getByTestId('amend-effect').textContent).toBe(
-      'Danach: 214 Paare (mögliche Verbindungen zu anderen Modellen) werden von den Agenten neu beurteilt.',
-    );
-    await user.click(within(summary).getByTestId('amend-confirm'));
-    expect(await findToast('3 Ergänzungen gespeichert')).toBeDefined();
-    const posts = amendPosts(calls);
-    expect(posts.map((p) => p.search)).toEqual(['?dryRun=true', '?dryRun=false']);
-    expect(posts[1]!.headers['if-match']).toBe('"r3"');
-    expect(posts[1]!.body).toEqual({
-      items: [
-        { elementId: 'Process_Order', op: 'process-documentation', after: 'Nimmt Aufträge an.' },
-        { elementId: 'StartEvent_1', op: 'event-name', after: 'Auftrag eingegangen' },
-        { elementId: 'EndEvent_1', op: 'event-name', after: 'Auftrag erledigt' },
-      ],
-    });
-    await waitFor(() => expect(screen.queryByTestId('collect-bar')).toBeNull());
-  });
-
-  it('discards one collected amendment or all of them', async () => {
-    const { user } = setup('/projects/demo/open-questions');
-    const names = await row('q-00000000000000d3');
-    await user.click(primary(names));
-    const form = await within(names).findByTestId('amend-form');
-    const [start, end] = await within(form).findAllByTestId('amend-text');
-    await user.type(start!, 'A');
-    await user.type(end!, 'B');
-    await user.click(within(form).getByTestId('amend-collect'));
-    const bar = await screen.findByTestId('collect-bar');
-    await user.click(within(bar).getByTestId('collect-bar-toggle'));
-    await user.click(
-      within(bar).getByRole('button', {
-        name: 'Startereignis „StartEvent_1“ aus der Sammlung entfernen',
-      }),
-    );
-    expect(within(bar).getByTestId('collect-bar-text').textContent).toBe(
-      '1 Ergänzung für „Auftrag“ gesammelt',
-    );
-    await user.click(within(bar).getByTestId('collect-bar-discard'));
-    await waitFor(() => expect(screen.queryByTestId('collect-bar')).toBeNull());
   });
 });
 
@@ -1007,7 +1106,7 @@ describe('the amendment-conflict item’s actions (M6 S5c-2)', () => {
     // Its cost first, from the dry run; nothing withdrawn yet.
     const confirm = await within(item).findByTestId('withdraw-confirm');
     expect((await within(confirm).findByTestId('withdraw-effect')).textContent).toBe(
-      'Der Wert aus dem Quellsystem gilt; analyzr nimmt seine Ergänzung zurück. Das Modell bekommt eine neue Revision ohne diese Ergänzung; danach: 5 Paare (mögliche Verbindungen zu anderen Modellen) werden von den Agenten neu beurteilt.',
+      'Der Wert aus dem Quellsystem gilt; analyzr nimmt seine Ergänzung zurück. Das Modell bekommt eine neue Revision ohne diese Ergänzung. Die Agenten beurteilen 5 mögliche Relationen neu, sobald du den Agenten startest.',
     );
     expect(within(confirm).getByTestId('withdraw-claimed').textContent).toContain(
       'Ein Agent bearbeitet dieses Modell gerade',
@@ -1047,8 +1146,8 @@ describe('the amendment-conflict item’s actions (M6 S5c-2)', () => {
     expect(within(form).getByTestId('amend-current').textContent).toBe(
       'Bisher: „Process_Neu“ · in analyzr ergänzt',
     );
-    await user.click(within(form).getByTestId('amend-submit'));
-    await within(item).findByTestId('amend-summary');
+    // the prefilled value is checked at once
+    await within(form).findByTestId('amend-effect', {}, { timeout: 4_000 });
     expect(amendPosts(calls)[0]!.body).toEqual({
       items: [
         {
@@ -1192,7 +1291,7 @@ describe('the model view’s „Ergänzen“, badge and downloads (M6 S5c-2)', (
     await user.click(within(history[0]!).getByTestId('amend-withdraw'));
     const confirm = await within(history[0]!).findByTestId('withdraw-confirm');
     expect((await within(confirm).findByTestId('withdraw-effect')).textContent).toContain(
-      '1 Paar (eine mögliche Verbindung zu einem anderen Modell) wird von den Agenten neu beurteilt',
+      'Die Agenten beurteilen 1 mögliche Relation neu, sobald du den Agenten startest.',
     );
     expect(withdrawn.n).toBe(0);
     await user.click(within(confirm).getByTestId('withdraw-confirm-button'));
@@ -1391,7 +1490,7 @@ describe('amendment helpers (M6 S5c-2)', () => {
   };
   const rel = { relation: null, type: 'message' as const, from: 'a#x', to: 'b#y' };
 
-  it('names the effect and the cost in one German sentence', () => {
+  it('names the effect, and the cost in a sentence of its own', () => {
     expect(
       effectSentence({
         effect: none,
@@ -1412,16 +1511,14 @@ describe('amendment helpers (M6 S5c-2)', () => {
         cost: { factsChange: true, pairsToRejudge: 1, taskClaimed: false },
       }),
     ).toBe(
-      'Danach: 1 Vorschlag zum gewählten Partner angenommen, 2 neue Vorschläge zum Prüfen, 1 neuer Befund, 2 Relationen entfallen, 1 angenommene Relation muss neu bestätigt werden, 1 manuelle Verknüpfung durch die Ergänzung ersetzt, 1 Paar (eine mögliche Verbindung zu einem anderen Modell) wird von den Agenten neu beurteilt.',
+      'Danach: 1 Vorschlag zum gewählten Partner angenommen, 2 neue Vorschläge zum Prüfen, 1 neuer Befund, 2 Relationen entfallen, 1 angenommene Relation muss neu bestätigt werden, 1 manuelle Verknüpfung durch die Ergänzung ersetzt. Die Agenten beurteilen 1 mögliche Relation neu, sobald du den Agenten startest.',
     );
     expect(
       effectSentence({
         effect: none,
         cost: { factsChange: true, pairsToRejudge: 1214, taskClaimed: true },
       }),
-    ).toBe(
-      'Danach: 1.214 Paare (mögliche Verbindungen zu anderen Modellen) werden von den Agenten neu beurteilt.',
-    );
+    ).toBe('Die Agenten beurteilen 1.214 mögliche Relationen neu, sobald du den Agenten startest.');
   });
 
   it('normalizes a value as the server stores it', () => {
@@ -1445,26 +1542,6 @@ describe('amendment helpers (M6 S5c-2)', () => {
     });
     expect(normalizeAmendmentValue('event-name', '   ')).toEqual({ ok: false, problem: 'empty' });
     expect(normalizeAmendmentValue('event-name', '=x')).toEqual({ ok: true, value: '=x' });
-  });
-
-  it('keeps one collected amendment per model, element and op, at most 20 per model', () => {
-    const c = (elementId: string, after: string, modelId = 'mdl_A'): CollectedAmendment => ({
-      project: 'demo',
-      modelId,
-      modelKey: modelId,
-      modelName: modelId,
-      rev: 1,
-      label: elementId,
-      display: after,
-      item: { elementId, op: 'event-name', after },
-    });
-    expect(
-      collectAmendments([c('E1', 'a'), c('E2', 'b'), c('E1', 'c'), c('E1', 'x', 'mdl_B')]),
-    ).toBe(3);
-    const groups = collectedByModel([c('E1', 'z', 'mdl_C')], 'demo');
-    expect(groups.map((g) => g.items.length)).toEqual([1]);
-    expect(collectAmendments(Array.from({ length: 20 }, (_, i) => c(`N${i}`, 'n')))).toBeNull();
-    discardCollected('mdl_A', 'event-name\u0000E2');
   });
 
   it('reads the head’s plan: counts, the elements written, the origin', () => {

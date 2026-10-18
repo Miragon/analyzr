@@ -476,6 +476,60 @@ describe('open questions: cards (UX2b)', () => {
     expect(cardActions(marked)).toEqual({ primary: undefined, secondary: undefined, menu: [] });
   });
 
+  it('joins a link and the amendment of the same gap into one entry that chooses (UX4, Q5)', () => {
+    const amend = (op: 'call-target' | 'message-name', primary: boolean): Action => ({
+      type: 'amend',
+      primary,
+      label: op === 'call-target' ? 'Ziel im Modell eintragen …' : 'Nachrichtennamen …',
+      amend: {
+        modelId: 'mdl_01X',
+        modelKey: 'a/order',
+        targets: [{ elementId: 'E_1', op, label: 'E' }],
+      },
+    });
+    const link = (pick: 'process' | 'endpoint', primary: boolean): Action => ({
+      type: 'link',
+      primary,
+      label: primary ? 'Verknüpfen mit …' : 'Nur verknüpfen …',
+      pick,
+    });
+    // no target yet: the amendment led, so the entry starts with „Im Modell eintragen“
+    const call = cardActions(
+      openQuestion({
+        id: 'q-000000000000000c',
+        actions: [amend('call-target', true), link('process', false), OUTSIDE, NOTE],
+      }),
+    );
+    expect(call.primary?.label).toBe(CARD_ACTION_LABELS.chooseTarget);
+    expect(call.primary?.action.type).toBe('link');
+    expect(call.primary?.amend?.first).toBe(true);
+    expect(call.menu.map((c) => c.label)).toEqual([
+      'Liegt außerhalb der Landschaft',
+      'Notiz hinzufügen',
+    ]);
+    // a name that pairs with nothing: the link led, the box starts unchecked
+    const message = cardActions(
+      openQuestion({
+        id: 'q-000000000000000d',
+        kind: 'message-partner-missing',
+        actions: [link('endpoint', true), amend('message-name', false), NOTE],
+      }),
+    );
+    expect(message.primary?.label).toBe(CARD_ACTION_LABELS.choosePartner);
+    expect(message.primary?.amend?.first).toBe(false);
+    expect(message.menu.map((c) => c.label)).toEqual(['Notiz hinzufügen']);
+    // a link of several targets or of a pair stays its own entry
+    const several = cardActions(
+      openQuestion({
+        id: 'q-000000000000000e',
+        actions: [{ ...link('process', true), multiple: true }, amend('call-target', false)],
+      }),
+    );
+    expect(several.primary?.label).toBe('Verknüpfen mit …');
+    expect(several.primary?.amend).toBeUndefined();
+    expect(several.menu.map((c) => c.label)).toEqual(['Ziel im Modell eintragen …']);
+  });
+
   it('says what an item ranks by from two on and whom to ask, without the folder', () => {
     expect(unlocksText(finding)).toBe('Betrifft 4 offene Entscheidungen');
     expect(unlocksText(held)).toBe('Betrifft 2 offene Entscheidungen');

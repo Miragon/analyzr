@@ -62,7 +62,6 @@ import { toast } from '@/lib/toast';
 import { AmendForm } from './amend-form';
 import { WithdrawConfirm } from './withdraw-confirm';
 
-export { default as CollectBar } from './collect-bar';
 /** The change list for the project's export hub on „Übersicht“ (UX1), loaded with this module. */
 // eslint-disable-next-line react-refresh/only-export-components -- a lazy module's helper
 export { downloadChangeList } from '@/lib/amendments';
@@ -72,8 +71,8 @@ export { downloadChangeList } from '@/lib/amendments';
  * module the view imports several times (so it adds one chunk): the section
  * „Ergänzen“ for the selected element (its amendable fields with the form,
  * its history with „Zurücknehmen“), the header's badge „In analyzr ergänzt
- * (n)“ naming the uploaded revision with the downloads and the revisions,
- * the collection's bar, and the change list for the models tab.
+ * (n)“ naming the uploaded revision, „Mehr“ with the downloads and the
+ * revisions, and the change list for the models tab.
  */
 
 // ------------------------------------------------------------------ the section

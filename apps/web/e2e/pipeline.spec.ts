@@ -444,7 +444,7 @@ test('reject with a reason (twice) and hold with a question; answer it in the he
   await item.getByRole('button', { name: 'Antwort geben' }).click();
   const dialog = page.getByTestId('note-dialog');
   await dialog.getByLabel('Deine Antwort').fill('Nein, nur Zuordnungen aus dem Zahlungseingang.');
-  await dialog.getByRole('button', { name: 'Antwort speichern' }).click();
+  await dialog.getByRole('button', { name: 'Antwort speichern (nicht änderbar)' }).click();
   await expect(page.getByTestId('toast').filter({ hasText: 'Antwort gespeichert' })).toBeVisible();
   await expect(item.getByTestId('held-answer')).toContainText('nur Zuordnungen');
   // the answer is a note: the status stays held

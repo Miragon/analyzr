@@ -10,9 +10,10 @@ import { DEMO_SKIP, probeServer } from './server-mode';
  * models written for this test: „Auftrag abwickeln“ (a call activity without
  * a target, unnamed start and end events, no documentation) and
  * „Rechnungsstellung“. In the browser: the call target set at its question
- * (the dry run's summary with the effect and the cost before the save);
- * „Sammeln“ at two questions (the documentation and both event names), one
- * bar, one dry run and one save; the model view's „Ergänzen“ with the
+ * through the one entry „Ziel wählen …“ with „Im Modell eintragen“ (UX4:
+ * the dry run inline, then one „Speichern“, no link sent); the
+ * documentation and both event names, each form checking itself and saving
+ * once (no „Sammeln“ since UX4); the model view's „Ergänzen“ with the
  * element's field and history, the overlay „ergänzt“ on the amended shapes,
  * the header's badge naming the uploaded revision, the revisions, both
  * downloads and the change list, „Zurücknehmen“; the models table's mark;
@@ -214,48 +215,59 @@ function amendRequests(page: Page): Request[] {
   return seen;
 }
 
-test('sets a call target at its question: the dry run’s summary first, then the save', async ({
+/** The link writes the page sends (`POST …/open-questions/{q}/actions`). */
+function actionRequests(page: Page): Request[] {
+  const seen: Request[] = [];
+  page.on('request', (request) => {
+    if (request.method() === 'POST' && /\/open-questions\/[^/]+\/actions$/.test(request.url()))
+      seen.push(request);
+  });
+  return seen;
+}
+
+const dryRuns = (sent: readonly Request[]) =>
+  sent.map((r) => new URL(r.url()).searchParams.get('dryRun'));
+
+test('sets a call target at its question: one entry, the dry run inline, then one „Speichern“ (UX4)', async ({
   page,
 }) => {
   const order = await modelOf(ORDER_KEY);
   expect(order.headRev).toBe(1);
   const call = await questionOf('call-target-unknown');
+  // the API keeps both actions; the web joins them into one entry
   expect(call.actions.find((a) => a.primary)?.label).toBe('Ziel im Modell eintragen …');
+  expect(call.actions.map((a) => a.label)).toContain('Nur verknüpfen …');
   const sent = amendRequests(page);
+  const links = actionRequests(page);
 
   await page.goto(`/projects/${PROJECT}/open-questions?kind=call-target-unknown`);
   const row = item(page, call.id);
-  await expect(primaryOf(row)).toHaveText('Ziel im Modell eintragen …');
-  await primaryOf(row).click();
-  const form = row.getByTestId('amend-form');
-  await expect(form.getByLabel('Aufgerufenen Prozess suchen')).toBeFocused();
-  await expect(form.getByTestId('amend-current')).toHaveText('Bisher: leer');
-  await expect(form.getByTestId('amend-hint')).toContainText(
-    'Der nächste Import aus dem Quellsystem behält die Ergänzung',
-  );
-  await form.getByLabel('Aufgerufenen Prozess suchen').fill('Rechnungs');
-  await form
-    .locator(`[data-testid=amend-option][data-ref="${BILLING_KEY}#Process_Rechnung"]`)
-    .click();
-  await form.getByTestId('amend-submit').click();
-
-  const summary = row.getByTestId('amend-summary');
-  // The process the human picked, by its name, with its id.
-  await expect(summary.getByTestId('amend-summary-after')).toHaveText(
-    'Prozess „Rechnungsstellung“ Process_Rechnung',
-  );
-  await expect(summary.getByTestId('amend-effect')).toContainText(
+  await expect(primaryOf(row)).toHaveText('Ziel wählen …');
+  await primaryOf(row).click(); // 1
+  const panel = row.getByTestId('question-action-panel');
+  await expect(panel.getByLabel('Prozess suchen')).toBeFocused();
+  await panel.getByLabel('Prozess suchen').fill('Rechnungs');
+  await panel
+    .locator(`[data-testid=action-option][data-ref="${BILLING_KEY}#Process_Rechnung"]`)
+    .click(); // 2
+  // no target in the model yet: „Im Modell eintragen“ starts checked; the dry run runs by itself
+  await expect(panel.getByTestId('action-in-model')).toHaveAttribute('aria-checked', 'true');
+  await expect(panel.getByTestId('amend-effect')).toContainText(
     /^Danach: 1 Aufruf angenommen, 1 Befund erledigt/,
   );
+  await expect(panel.getByTestId('amend-hint')).toContainText('Und beim nächsten Import?');
   // nothing written by the dry run
-  expect(sent.map((r) => new URL(r.url()).searchParams.get('dryRun'))).toEqual(['true']);
+  expect(dryRuns(sent)).toEqual(['true']);
   expect(sent[0]!.headers()['if-match']).toBe('"r1"');
   expect((await modelOf(ORDER_KEY)).headRev).toBe(1);
 
-  await summary.getByTestId('amend-confirm').click();
+  await expect(panel.getByTestId('action-submit')).toHaveText('Speichern');
+  await panel.getByTestId('action-submit').click(); // 3
   await expect(toast(page, 'Ergänzung gespeichert')).toBeVisible();
   await expect(row).toHaveCount(0);
-  expect(sent.map((r) => new URL(r.url()).searchParams.get('dryRun'))).toEqual(['true', 'false']);
+  expect(dryRuns(sent)).toEqual(['true', 'false']);
+  // only the amendment: its re-derivation makes the link
+  expect(links).toHaveLength(0);
   // the uploaded revision stays; the amended one is the head, and the rule tier accepted the call
   const after = await modelOf(ORDER_KEY);
   expect(after.headRev).toBe(2);
@@ -273,7 +285,7 @@ test('sets a call target at its question: the dry run’s summary first, then th
   ).toBe(true);
 });
 
-test('„Sammeln“: the documentation and both event names in one bar, one dry run, one save', async ({
+test('the documentation and both event names: each form checks itself and saves once (UX4)', async ({
   page,
 }) => {
   const doc = await questionOf('undocumented-process');
@@ -285,19 +297,18 @@ test('„Sammeln“: the documentation and both event names in one bar, one dry 
   await expect(primaryOf(docRow)).toHaveText('Dokumentation ergänzen …');
   await primaryOf(docRow).click();
   const docForm = docRow.getByTestId('amend-form');
+  // no „Sammeln“ any more
+  await expect(docForm.getByRole('button', { name: 'Sammeln' })).toHaveCount(0);
   await docForm
     .getByTestId('amend-text')
     .fill('Nimmt Aufträge an,   prüft sie und stellt die Rechnung.');
   await expect(docForm.getByTestId('amend-stored-as')).toHaveText(
     'Gespeichert wird: „Nimmt Aufträge an, prüft sie und stellt die Rechnung.“',
   );
-  await docForm.getByTestId('amend-collect').click();
-  await expect(toast(page, 'Gesammelt')).toBeVisible();
-  await expect(docRow.getByTestId('question-collected')).toHaveText('gesammelt');
-  const bar = page.getByTestId('collect-bar');
-  await expect(bar.getByTestId('collect-bar-text')).toHaveText(
-    '1 Ergänzung für „Auftrag abwickeln“ gesammelt',
-  );
+  await expect(docForm.getByTestId('amend-effect')).toBeVisible();
+  await docForm.getByTestId('amend-submit').click();
+  await expect(toast(page, 'Ergänzung gespeichert')).toBeVisible();
+  await expect(docRow).toHaveCount(0);
 
   const namesRow = item(page, names.id);
   await primaryOf(namesRow).click();
@@ -305,29 +316,24 @@ test('„Sammeln“: the documentation and both event names in one bar, one dry 
   await expect(namesForm.getByTestId('amend-text')).toHaveCount(2);
   const eventField = (id: string) =>
     namesForm.locator(`[data-testid=amend-field][data-element="${id}"]`);
+  // the field names itself („Name“): the legend says whose it is, once (UX4)
   await expect(eventField('Start_Auftrag').locator('legend')).toHaveText(
-    'Startereignis „Start_Auftrag“ · Name',
+    'Startereignis „Start_Auftrag“',
   );
   await eventField('Start_Auftrag').getByTestId('amend-text').fill('Auftrag eingegangen');
   await eventField('End_Auftrag').getByTestId('amend-text').fill('Auftrag erledigt');
-  await namesForm.getByTestId('amend-collect').click();
-  await expect(bar.getByTestId('collect-bar-text')).toHaveText(
-    '3 Ergänzungen für „Auftrag abwickeln“ gesammelt',
-  );
-  // nothing sent while collecting
-  expect(sent).toHaveLength(0);
-
-  await bar.getByTestId('collect-bar-save').click();
-  const summary = bar.getByTestId('amend-summary');
-  await expect(summary.getByTestId('amend-summary-item')).toHaveCount(3);
-  await expect(summary.getByTestId('amend-effect')).toContainText('Danach:');
-  await summary.getByTestId('amend-confirm').click();
-  await expect(toast(page, '3 Ergänzungen gespeichert')).toBeVisible();
-  await expect(bar).toHaveCount(0);
-  await expect(docRow).toHaveCount(0);
+  await expect(namesForm.getByTestId('amend-effect')).toBeVisible();
+  await namesForm.getByTestId('amend-submit').click();
+  await expect(toast(page, '2 Ergänzungen gespeichert')).toBeVisible();
   await expect(namesRow).toHaveCount(0);
-  expect(sent.map((r) => new URL(r.url()).searchParams.get('dryRun'))).toEqual(['true', 'false']);
-  // one request: the three amendments share the seq of one `model.amended` event
+  // two saves, each after a dry run of exactly what it saved
+  const saves = sent.flatMap((r, i) => (dryRuns(sent)[i] === 'false' ? [i] : []));
+  expect(saves).toHaveLength(2);
+  for (const i of saves) {
+    expect(dryRuns(sent)[i - 1]).toBe('true');
+    expect(sent[i - 1]!.postData()).toBe(sent[i]!.postData());
+  }
+  // the two names in one request: they share the seq of one `model.amended` event
   const listed = (
     (await (await owner.get(`${API}/amendments?modelKey=${ORDER_KEY}`)).json()) as {
       items: { elementId: string; op: string; seq: number; state: string }[];
@@ -338,8 +344,8 @@ test('„Sammeln“: the documentation and both event names in one bar, one dry 
     'event-name Start_Auftrag applied',
     'process-documentation Process_Auftrag applied',
   ]);
-  expect(new Set(listed.map((a) => a.seq)).size).toBe(1);
-  expect((await modelOf(ORDER_KEY)).headRev).toBe(3);
+  expect(new Set(listed.filter((a) => a.op === 'event-name').map((a) => a.seq)).size).toBe(1);
+  expect((await modelOf(ORDER_KEY)).headRev).toBe(4);
 });
 
 test('the model view: „Ergänzen“ with the history, the overlay, the badge, the downloads, „Zurücknehmen“', async ({
@@ -352,6 +358,7 @@ test('the model view: „Ergänzen“ with the history, the overlay, the badge, 
     }
   ).items;
   expect(revisions.map((r) => [r.rev, r.source.kind])).toEqual([
+    [4, 'amendment'],
     [3, 'amendment'],
     [2, 'amendment'],
     [1, 'import'],
@@ -388,7 +395,8 @@ test('the model view: „Ergänzen“ with the history, the overlay, the badge, 
   await page.getByTestId('model-more').click();
   await page.getByTestId('menu-revisions').click();
   await expect(page.getByTestId('model-revision')).toHaveText([
-    /^r3 · in analyzr ergänzt \(aus r1\) · .* · Kopf$/,
+    /^r4 · in analyzr ergänzt \(aus r1\) · .* · Kopf$/,
+    /^r3 · in analyzr ergänzt \(aus r1\) · /,
     /^r2 · in analyzr ergänzt \(aus r1\) · /,
     /^r1 · importiert · /,
   ]);
@@ -439,7 +447,7 @@ test('the model view: „Ergänzen“ with the history, the overlay, the badge, 
   await expect(history).toHaveAttribute('data-state', 'withdrawn');
   await expect(history).toContainText('zurückgenommen');
   await expect(overlays).toHaveCount(2);
-  expect((await modelOf(ORDER_KEY)).headRev).toBe(4);
+  expect((await modelOf(ORDER_KEY)).headRev).toBe(5);
   expect((await questions({ kind: 'call-target-unknown' })).length).toBe(1);
 });
 

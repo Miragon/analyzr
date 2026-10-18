@@ -759,16 +759,17 @@ describe('actions in the tab „Offene Fragen“ (M6 S5c-1)', () => {
     expect(button.getAttribute('aria-expanded')).toBe('true');
     const panel = within(item).getByTestId('question-action-panel');
     expect(button.getAttribute('aria-controls')).toBe(panel.id);
-    // „Name (Modell)“, the suggested first, the item's own process left out
+    // „Name – Modell“, the suggested first, then the rest by name (UX4), the item's own
+    // process left out
     expect(options(panel)).toEqual([
       'c/payment#Process_Pay',
-      'b/billing#Process_Billing',
-      'd/dup#Process_Dup',
       'e/dup#Process_Dup',
+      'd/dup#Process_Dup',
+      'b/billing#Process_Billing',
     ]);
     expect(sections(panel)).toEqual(['Vorgeschlagen', 'Alle Prozesse']);
-    expect(within(panel).getAllByTestId('action-option')[0]!.textContent).toContain(
-      'Zahlungsdienst (c/payment)',
+    expect(within(panel).getAllByTestId('action-option')[0]!.textContent).toBe(
+      'Zahlungsdienst – c/payment, vorgeschlagen',
     );
     // the search field has the focus and narrows the list
     expect(document.activeElement).toBe(within(panel).getByLabelText('Prozess suchen'));
@@ -777,10 +778,13 @@ describe('actions in the tab „Offene Fragen“ (M6 S5c-1)', () => {
     expect(within(panel).getByTestId('action-preview').textContent).toBe(
       'Nimmt den Vorschlag „Zahlung abwickeln“ → „Zahlungsdienst“ an.',
     );
-    await user.click(within(panel).getAllByTestId('action-option')[1]!);
+    await user.click(within(panel).getAllByTestId('action-option')[3]!);
     expect(within(panel).getByTestId('action-preview').textContent).toBe(
       'Legt eine angenommene Relation „Zahlung abwickeln“ → „Rechnungsstellung“ an.',
     );
+    // „+ Notiz“ opens the note (UX4)
+    expect(within(panel).queryByTestId('action-note')).toBeNull();
+    await user.click(within(panel).getByTestId('action-note-toggle'));
     await user.type(within(panel).getByTestId('action-note'), '  Laut Fachbereich.  ');
     await user.click(within(panel).getByTestId('action-submit'));
 
@@ -839,8 +843,8 @@ describe('actions in the tab „Offene Fragen“ (M6 S5c-1)', () => {
     const boxes = within(panel).getAllByRole('checkbox');
     expect(boxes).toHaveLength(4);
     expect(within(panel).getByText('0 von höchstens 10 gewählt')).toBeDefined();
-    await user.click(boxes[0]!);
-    await user.click(boxes[1]!);
+    await user.click(boxes[2]!);
+    await user.click(boxes[3]!);
     expect(within(panel).getByText('2 von höchstens 10 gewählt')).toBeDefined();
     expect(
       within(panel).getByTestId('action-preview').textContent.split('an.').filter(Boolean),
@@ -860,15 +864,16 @@ describe('actions in the tab „Offene Fragen“ (M6 S5c-1)', () => {
     const item = await row('q-00000000000000b4');
     await user.click(primary(item));
     const panel = within(item).getByTestId('question-action-panel');
-    // a thrown message: the catches of other processes, then whole processes; no throw
+    // a thrown message: the catches of other processes, then whole processes; no throw; the
+    // best fits to „Rechnung senden“ first (UX4)
     expect(options(panel)).toEqual([
       'b/billing#Catch_Invoice',
       'b/billing#Process_Billing',
-      'c/payment#Process_Pay',
-      'd/dup#Process_Dup',
       'e/dup#Process_Dup',
+      'd/dup#Process_Dup',
+      'c/payment#Process_Pay',
     ]);
-    expect(sections(panel)).toEqual(['Rechnungsstellung (b/billing)', 'Ganzer Prozess']);
+    expect(sections(panel)).toEqual(['Passt vermutlich', 'Ganzer Prozess']);
     await user.click(within(panel).getAllByTestId('action-option')[0]!);
     expect(within(panel).getByTestId('action-preview').textContent).toBe(
       'Legt eine angenommene Relation „Rechnung senden“ → „Rechnung empfangen“ an.',
@@ -985,15 +990,24 @@ describe('actions in the tab „Offene Fragen“ (M6 S5c-1)', () => {
       name: 'Andere Kopien in der Wertschöpfungskette auf „außerhalb“ setzen',
     });
     expect(outside.getAttribute('aria-checked')).toBe('true');
+    // the copies by their model's path, the shared id behind „Technische Angaben“ (UX4)
+    expect(
+      within(panel)
+        .getAllByTestId('action-option')
+        .map((o) => o.textContent),
+    ).toEqual(['d/dupAuftrag prüfen (alt)', 'e/dupAuftrag prüfen']);
+    expect(within(panel).getByTestId('action-copy-technical').textContent).toContain(
+      'Prozess-ID in jeder Kopie: Process_Dup',
+    );
+    expect(within(panel).queryByTestId('action-copy-delete-hint')).toBeNull();
     await user.click(within(panel).getAllByTestId('action-option')[1]!);
+    // „+ Notiz“ opens the note, prefilled with the valid copy
+    await user.click(within(panel).getByTestId('action-note-toggle'));
     expect(within(panel).getByTestId<HTMLTextAreaElement>('action-note').value).toBe(
       'Gültig ist „Auftrag prüfen“ in e/dup; die anderen Kopien sind veraltet oder Varianten.',
     );
     expect(within(panel).getByTestId('action-preview').textContent).toBe(
       'Entscheidet die 2 offenen Aufrufe zu den Kopien: angenommen zu „Auftrag prüfen“, abgelehnt zu den anderen Kopien. Ändern kannst du jede Entscheidung danach unter „Relationen“.',
-    );
-    expect(within(panel).getByTestId('action-copy-delete-hint').textContent).toContain(
-      'analyzr models delete d/dup -p demo',
     );
     await user.click(within(panel).getByTestId('action-submit'));
     const toast = await findToast('Gültige Kopie gewählt');
@@ -1423,11 +1437,13 @@ describe('„Verknüpfen mit …“ on a collapsed subprocess (M6 S5c-1)', () =>
         .getAllByTestId('action-option')
         .map((o) => o.dataset['ref']),
     ).toEqual([
-      'b/billing#Process_Billing',
       'c/payment#Process_Pay',
-      'd/dup#Process_Dup',
       'e/dup#Process_Dup',
+      'd/dup#Process_Dup',
+      'b/billing#Process_Billing',
     ]);
+    // the subprocess's name „Zahlung“ ranks „Zahlungsdienst“ first (UX4)
+    expect(sections(form)).toEqual(['Passt vermutlich', 'Alle Prozesse']);
     await user.click(
       within(form)
         .getAllByTestId('action-option')

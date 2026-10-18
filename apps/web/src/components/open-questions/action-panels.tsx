@@ -1,4 +1,6 @@
 import type {
+  AmendModelItem,
+  AmendableField,
   OpenQuestion,
   OpenQuestionAction,
   OpenQuestionActionBody,
@@ -8,9 +10,19 @@ import type {
 import { PERSONAL_DATA_HINT, personalDataWarnings } from '@analyzr/contracts/personal-data';
 import { useQuery } from '@tanstack/react-query';
 import { cn } from 'cn';
-import { InfoIcon, LinkIcon, MapPinIcon, SearchIcon, TriangleAlertIcon } from 'lucide-react';
+import {
+  InfoIcon,
+  LinkIcon,
+  MapPinIcon,
+  PlusIcon,
+  SaveIcon,
+  SearchIcon,
+  TriangleAlertIcon,
+} from 'lucide-react';
 import { useId, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 
+import { ImportHint } from '@/components/amendments/amend-form';
+import { AmendEffect } from '@/components/amendments/amend-summary';
 import { PICKER_SHOWN, PickerList, PickerTruncated } from '@/components/picker-list';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -22,13 +34,19 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Spinner } from '@/components/ui/spinner';
 import { Textarea } from '@/components/ui/textarea';
 import { StepOptionLabel } from '@/components/value-chain/step-options';
+import {
+  amendableQuery,
+  refusalLabel,
+  useAmendDraft,
+  useClaimedConfirm,
+  useSavedToast,
+} from '@/lib/amendments';
 import { ApiError, errorMessage } from '@/lib/api';
 import { nameWords } from '@/lib/generic-names';
 import { MAX_ANSWER_CHARS, MAX_LINK_TARGETS } from '@/lib/limits';
 import { personalDataHint } from '@/lib/open-question-answers';
 import { useQuestionAction } from '@/lib/open-question-actions';
 import {
-  SUGGESTED,
   catchesOnly,
   chooseCopyNote,
   chooseCopyPreview,
@@ -41,14 +59,17 @@ import {
   pairValue,
   placePreview,
   processChoices,
+  processSection,
   refName,
   refusalText,
+  subjectHints,
   type EndpointChoice,
   type ModelFacts,
   type ProcessChoice,
 } from '@/lib/open-question-pickers';
+import { useProjectPermissions } from '@/lib/permissions';
 import { modelsQuery, valueChainQuery } from '@/lib/queries';
-import type { RefResolver } from '@/lib/refs';
+import { splitRef, type RefResolver } from '@/lib/refs';
 import { conflictOf } from '@/lib/review';
 import { useProjectFacts } from '@/lib/use-project-facts';
 import { stepOptions, type StepOption } from '@/lib/value-chain';
@@ -61,7 +82,10 @@ import { useActionFeedback } from './action-feedback';
  * write before it does. They open below the item, in the tab and in the
  * model view's section, and load with those lazy chunks only. A `decide` has
  * no panel since UX2b: it is decided where the diagrams are (owner decision
- * 26, Q4), the review screen or the chain.
+ * 26, Q4), the review screen or the chain. Since UX4 a link and the
+ * amendment of the same gap share one entry („Ziel wählen …“, „Partner
+ * wählen …“): after the pick, „Im Modell eintragen (statt nur zu
+ * verknüpfen)“ chooses which one is sent, never both.
  */
 
 export interface PanelProps {
@@ -69,16 +93,29 @@ export interface PanelProps {
   action: OpenQuestionAction;
   project: string;
   resolve: RefResolver;
+  /** The `amend` the link shares its entry with (UX4), and whether it was the item's primary action. */
+  amend?: { action: OpenQuestionAction; first: boolean } | undefined;
   /** The action ran (the item changed or left the list). */
   onDone: () => void;
   onCancel: () => void;
 }
 
-/** The head facts of every model, as the pickers read them. */
-function useModelFacts(project: string): { facts: ModelFacts[]; loading: boolean } {
+/** The head facts of every model, as the pickers read them, and the models' names. */
+function useModelFacts(project: string): {
+  facts: ModelFacts[];
+  loading: boolean;
+  modelName: (key: string) => string;
+} {
   const models = useQuery(modelsQuery(project));
   const { byModel, loading } = useProjectFacts(project, models.data);
-  return useMemo(() => ({ facts: [...byModel.values()], loading }), [byModel, loading]);
+  return useMemo(() => {
+    const names = new Map((models.data ?? []).map((m) => [m.key, m.name ?? m.key]));
+    return {
+      facts: [...byModel.values()],
+      loading,
+      modelName: (key: string) => names.get(key) ?? key,
+    };
+  }, [byModel, loading, models.data]);
 }
 
 const isGone = (error: unknown) =>
@@ -111,10 +148,12 @@ export function NoteField({
   value,
   onChange,
   description,
+  autoFocus = false,
 }: {
   value: string;
   onChange: (value: string) => void;
   description: string;
+  autoFocus?: boolean;
 }) {
   const id = useId();
   const hint = personalDataHint(useMemo(() => personalDataWarnings(value), [value]));
@@ -127,6 +166,7 @@ export function NoteField({
         onChange={(e) => onChange(e.target.value)}
         maxLength={MAX_ANSWER_CHARS}
         className="min-h-12"
+        autoFocus={autoFocus}
         aria-describedby={`${id}-desc ${id}-personal`}
         data-testid="action-note"
       />
@@ -146,6 +186,38 @@ export function NoteField({
         ) : null}
       </p>
     </Field>
+  );
+}
+
+/**
+ * „+ Notiz“ (UX-SIMPLIFICATION.md §3.4 item 5): the optional note of a link,
+ * a placement or the valid copy behind a link; once opened, the field with
+ * its hint. Only an opened note is sent.
+ */
+export function OptionalNote({
+  open,
+  onOpen,
+  ...field
+}: {
+  open: boolean;
+  onOpen: () => void;
+  value: string;
+  onChange: (value: string) => void;
+  description: string;
+}) {
+  if (open) return <NoteField {...field} autoFocus />;
+  return (
+    <Button
+      type="button"
+      variant="link"
+      size="sm"
+      className="self-start px-0"
+      onClick={onOpen}
+      data-testid="action-note-toggle"
+    >
+      <PlusIcon data-icon="inline-start" />
+      Notiz
+    </Button>
   );
 }
 
@@ -171,6 +243,8 @@ function PanelForm({
   onCancel,
   submitLabel,
   submitIcon,
+  submitVariant = 'default',
+  submitDescribedBy,
   canSubmit,
   pending,
   error,
@@ -181,6 +255,8 @@ function PanelForm({
   onCancel: () => void;
   submitLabel: string;
   submitIcon: ReactNode;
+  submitVariant?: 'default' | 'destructive';
+  submitDescribedBy?: string | undefined;
   canSubmit: boolean;
   pending: boolean;
   error: string | null;
@@ -212,7 +288,9 @@ function PanelForm({
         <Button
           type="submit"
           size="sm"
+          variant={submitVariant}
           disabled={!canSubmit || pending}
+          aria-describedby={submitDescribedBy}
           data-testid="action-submit"
         >
           {pending ? <Spinner data-icon="inline-start" /> : submitIcon}
@@ -256,34 +334,36 @@ function useSubmit(props: PanelProps) {
 
 // --------------------------------------------------------------- link
 
-function ProcessLabel({ c }: { c: ProcessChoice }) {
+/** Said to screen readers after a ranked option's name. */
+const rankText = (c: { suggested: boolean; likely: boolean }) =>
+  c.suggested ? ', vorgeschlagen' : c.likely ? ', passt vermutlich' : '';
+
+/** „Name – Modellname“ (UX4); the ref only in the tooltip (P2). */
+export function ProcessLabel({ c, modelName }: { c: ProcessChoice; modelName: string }) {
   return (
-    <span className="flex min-w-0 flex-col">
-      <span className="truncate font-medium">
-        {c.name} <span className="font-normal text-muted-foreground">({c.modelKey})</span>
-        {c.suggested ? <span className="sr-only">, vorgeschlagen</span> : null}
-      </span>
-      <span className="truncate font-mono text-xs text-muted-foreground">{c.ref}</span>
+    <span className="min-w-0 truncate" title={c.ref}>
+      <span className="font-medium">{c.name}</span>
+      <span className="text-muted-foreground"> – {modelName}</span>
+      {rankText(c) ? <span className="sr-only">{rankText(c)}</span> : null}
     </span>
   );
 }
 
-function EndpointLabel({ c }: { c: EndpointChoice }) {
+function EndpointLabel({ c, modelName }: { c: EndpointChoice; modelName: string }) {
   return (
-    <span className="flex min-w-0 flex-col">
+    <span className="flex min-w-0 flex-col" title={c.ref}>
       <span className="truncate font-medium">
         {c.kind === 'process' ? `Ganzer Prozess „${c.name}“` : c.name}
-        {c.suggested ? <span className="sr-only">, vorgeschlagen</span> : null}
+        {rankText(c) ? <span className="sr-only">{rankText(c)}</span> : null}
       </span>
       <span className="truncate text-xs text-muted-foreground">
-        {c.kind === 'process' ? c.modelKey : `${c.processName} (${c.modelKey})`}
+        {c.kind === 'process' ? modelName : `${c.processName} – ${modelName}`}
       </span>
     </span>
   );
 }
 
 const processSearch = (c: ProcessChoice) => `${c.name} ${c.modelKey} ${c.ref}`;
-const processSection = (c: ProcessChoice) => (c.suggested ? SUGGESTED : 'Alle Prozesse');
 
 /**
  * Several processes at once (`call-target-dynamic`: the possible targets,
@@ -296,12 +376,14 @@ function MultiProcessPicker({
   onChange,
   max,
   label,
+  modelName,
 }: {
   items: readonly ProcessChoice[];
   values: readonly string[];
   onChange: (values: string[]) => void;
   max: number;
   label: string;
+  modelName: (key: string) => string;
 }) {
   const id = useId();
   const [search, setSearch] = useState('');
@@ -314,7 +396,7 @@ function MultiProcessPicker({
           return words.every((w) => hay.includes(w));
         });
   const full = values.length >= max;
-  const sectioned = items.some((c) => c.suggested);
+  const sectioned = items.some((c) => c.suggested || c.likely);
   return (
     <div className="flex flex-col gap-2">
       <Field>
@@ -373,7 +455,7 @@ function MultiProcessPicker({
                       )
                     }
                   />
-                  <ProcessLabel c={c} />
+                  <ProcessLabel c={c} modelName={modelName(c.modelKey)} />
                 </Label>
               </li>
             );
@@ -388,35 +470,106 @@ function MultiProcessPicker({
   );
 }
 
+/** The amendment a pick makes, or why the pick can only be linked. */
+type InModel = { item: AmendModelItem } | { reason: string | null };
+
+/**
+ * „Im Modell eintragen“ for the picked target (UX4): a call target the
+ * landscape offers as a process, or a partner whose name the endpoint can
+ * take (the name's partner pairs both); else the reason it can only be
+ * linked. `null` reason while the field loads.
+ */
+function inModelFor(
+  field: AmendableField | undefined,
+  amend: OpenQuestionAction,
+  picked: string | null,
+): InModel {
+  const target = amend.amend?.targets[0];
+  if (!field || !target || picked === null) return { reason: null };
+  if (!field.settable) return { reason: `${refusalLabel(field.reason)}.` };
+  const replaces = field.live?.id ?? amend.amend?.replaces;
+  const base = { elementId: target.elementId, op: target.op, ...(replaces ? { replaces } : {}) };
+  if (target.op === 'call-target') {
+    return field.suggestions.processes?.some((p) => p.ref === picked)
+      ? { item: { ...base, target: picked } }
+      : { reason: 'Diesen Prozess kann analyzr nicht als Aufrufziel eintragen; nur verknüpfen.' };
+  }
+  for (const n of field.suggestions.names ?? [])
+    if (n.endpoints.some((e) => e.ref === picked && e.partner))
+      return { item: { ...base, after: n.name, partner: picked } };
+  return {
+    reason:
+      'Der gewählte Partner hat keinen Namen, den analyzr hier eintragen könnte; nur verknüpfen.',
+  };
+}
+
 /**
  * `link`: a process, endpoint or pair picker (the targets a live proposal
- * names first, under „Vorgeschlagen“), an optional note, and the sentence
- * naming what it will write.
+ * names first, under „Vorgeschlagen“, then „Passt vermutlich“), „+ Notiz“,
+ * and the sentence naming what it will write. With the item's `amend`
+ * (UX4, owner decision 26 Q5), editors and owners choose after the pick:
+ * „Im Modell eintragen (statt nur zu verknüpfen)“, checked where the
+ * amendment was the item's primary action (no key or name yet). Checked,
+ * only the amendment is sent (its re-derivation makes the link; the dry
+ * run's effect and cost stand above „Speichern“); unchecked, only the link.
  */
 export function LinkPanel(props: PanelProps) {
-  const { q, action, resolve, project, onCancel } = props;
-  const { facts, loading } = useModelFacts(project);
+  const { q, action, resolve, project, onCancel, onDone } = props;
+  const id = useId();
+  const { facts, loading, modelName } = useModelFacts(project);
+  const { canWrite } = useProjectPermissions(project);
   const [search, setSearch] = useState('');
   const [picked, setPicked] = useState<string | null>(null);
   const [many, setMany] = useState<string[]>([]);
   const [note, setNote] = useState('');
+  const [noteOpen, setNoteOpen] = useState(false);
+  const [choice, setChoice] = useState<boolean | null>(null);
   const { submit, pending, error } = useSubmit(props);
   const multiple = action.multiple === true;
   const suggested = useMemo(() => action.suggested ?? [], [action.suggested]);
+  const hints = useMemo(() => subjectHints(facts, q), [facts, q]);
+
+  // The amendment the entry can choose instead (editors and owners: it needs `write`).
+  const amend = canWrite && props.amend?.action.amend ? props.amend : undefined;
+  const target = amend?.action.amend?.targets[0];
+  const element = useQuery({
+    ...amendableQuery(project, amend?.action.amend?.modelId ?? '', target?.elementId ?? ''),
+    enabled: amend !== undefined && target !== undefined,
+  });
+  const field = element.data?.fields.find((f) => f.op === target?.op);
+  const inModel = amend ? inModelFor(field, amend.action, picked) : { reason: null };
+  const possible = 'item' in inModel;
+  const checked = possible && (choice ?? amend?.first ?? false);
+  const items = checked && 'item' in inModel ? [inModel.item] : null;
+  const rev = element.data?.headRev ?? null;
+  const request = items !== null && rev !== null ? JSON.stringify({ items, rev }) : null;
+  const savedToastOf = useSavedToast(project);
+  const draft = useAmendDraft({
+    project,
+    modelId: amend?.action.amend?.modelId ?? '',
+    items,
+    rev,
+    onSaved: (result) => {
+      savedToastOf(result, modelName(amend?.action.amend?.modelKey ?? ''));
+      onDone();
+    },
+  });
+  const confirm = useClaimedConfirm(draft.check, request);
 
   const processes = useMemo(
     () =>
       action.pick === 'process'
-        ? processChoices(facts, { suggested, exclude: linkExclusions(facts, q, action) })
+        ? processChoices(facts, { suggested, exclude: linkExclusions(facts, q, action), hints })
         : [],
-    [facts, action, suggested, q],
+    [facts, action, suggested, q, hints],
   );
   const endpoints = useMemo(
-    () => (action.pick === 'endpoint' ? endpointChoices(facts, q.subject.id, suggested) : []),
-    [facts, action.pick, suggested, q.subject.id],
+    () =>
+      action.pick === 'endpoint' ? endpointChoices(facts, q.subject.id, suggested, hints) : [],
+    [facts, action.pick, suggested, q.subject.id, hints],
   );
-  // „Vorgeschlagen“ and „Alle Prozesse“ as headings only when a proposal names a target.
-  const sectioned = processes.some((c) => c.suggested);
+  // „Vorgeschlagen“, „Passt vermutlich“ and „Alle Prozesse“ as headings only when one is ranked.
+  const sectioned = processes.some((c) => c.suggested || c.likely);
   const pairs = action.pairs ?? [];
   const pair: TypedPair | undefined =
     action.pick === 'pair' ? pairs.find((p) => pairValue(p) === picked) : undefined;
@@ -434,8 +587,8 @@ export function LinkPanel(props: PanelProps) {
         : []
       : linkPreview(q, action, targets, resolve, incoming);
 
-  const canSubmit = action.pick === 'pair' ? pair !== undefined : targets.length > 0;
-  const trimmed = note.trim();
+  const canLink = action.pick === 'pair' ? pair !== undefined : targets.length > 0;
+  const trimmed = noteOpen ? note.trim() : '';
 
   let picker: ReactNode;
   if (loading && facts.length === 0 && action.pick !== 'pair') {
@@ -468,7 +621,7 @@ export function LinkPanel(props: PanelProps) {
         items={endpoints}
         valueOf={(c) => c.ref}
         searchText={(c) => `${c.name} ${c.processName} ${c.modelKey} ${c.ref}`}
-        render={(c) => <EndpointLabel c={c} />}
+        render={(c) => <EndpointLabel c={c} modelName={modelName(c.modelKey)} />}
         value={picked}
         onChange={setPicked}
         search={search}
@@ -491,6 +644,7 @@ export function LinkPanel(props: PanelProps) {
         onChange={setMany}
         max={MAX_LINK_TARGETS}
         label="Mögliche Ziele"
+        modelName={modelName}
       />
     );
   } else {
@@ -499,7 +653,7 @@ export function LinkPanel(props: PanelProps) {
         items={processes}
         valueOf={(c) => c.ref}
         searchText={processSearch}
-        render={(c) => <ProcessLabel c={c} />}
+        render={(c) => <ProcessLabel c={c} modelName={modelName(c.modelKey)} />}
         value={picked}
         onChange={setPicked}
         search={search}
@@ -516,16 +670,38 @@ export function LinkPanel(props: PanelProps) {
     );
   }
 
+  const effectId = `${id}-effect`;
+  const claimedId = `${id}-claimed`;
   return (
     <PanelForm
-      label={action.label}
+      label={
+        props.amend
+          ? target?.op === 'call-target'
+            ? 'Ziel wählen'
+            : 'Partner wählen'
+          : action.label
+      }
       onCancel={onCancel}
-      submitLabel="Verknüpfen"
-      submitIcon={<LinkIcon data-icon="inline-start" />}
-      canSubmit={canSubmit}
-      pending={pending}
-      error={error}
-      onSubmit={() =>
+      submitLabel={checked ? (confirm.armed ? 'Trotzdem speichern' : 'Speichern') : 'Verknüpfen'}
+      submitIcon={
+        checked ? <SaveIcon data-icon="inline-start" /> : <LinkIcon data-icon="inline-start" />
+      }
+      submitVariant={confirm.armed ? 'destructive' : 'default'}
+      submitDescribedBy={
+        checked && draft.check.phase === 'ready'
+          ? confirm.claimed
+            ? `${effectId} ${claimedId}`
+            : effectId
+          : undefined
+      }
+      canSubmit={checked ? draft.check.phase === 'ready' : canLink}
+      pending={checked ? draft.saving || draft.check.phase === 'checking' : pending}
+      error={checked ? null : error}
+      onSubmit={() => {
+        if (checked) {
+          if (confirm.confirm()) draft.save();
+          return;
+        }
         void submit(
           action.pick === 'pair' && pair
             ? {
@@ -535,16 +711,54 @@ export function LinkPanel(props: PanelProps) {
               }
             : { type: 'link', targets, ...(trimmed ? { note: trimmed } : {}) },
           'link',
-        )
-      }
+        );
+      }}
     >
       {picker}
-      <NoteField
-        value={note}
-        onChange={setNote}
-        description="Steht mit in der Begründung der Relation."
-      />
-      <Preview lines={preview} />
+      {amend && picked !== null ? (
+        <div className="flex flex-col gap-1">
+          <div className="flex items-start gap-2">
+            <Checkbox
+              id={`${id}-in-model`}
+              checked={checked}
+              disabled={!possible}
+              onCheckedChange={(next) => setChoice(next === true)}
+              data-testid="action-in-model"
+            />
+            <Label htmlFor={`${id}-in-model`} className="text-sm leading-snug font-normal">
+              Im Modell eintragen (statt nur zu verknüpfen)
+            </Label>
+          </div>
+          {!possible && inModel.reason ? (
+            <p className="pl-6 text-xs text-muted-foreground" data-testid="action-in-model-reason">
+              {inModel.reason}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+      {checked ? (
+        <>
+          <AmendEffect
+            project={project}
+            check={draft.check}
+            pending={items?.map((item) => ({ item, label: q.subjectLabel, display: '' })) ?? []}
+            effectId={effectId}
+            claimedId={claimedId}
+          />
+          <ImportHint />
+        </>
+      ) : (
+        <>
+          <OptionalNote
+            open={noteOpen}
+            onOpen={() => setNoteOpen(true)}
+            value={note}
+            onChange={setNote}
+            description="Steht mit in der Begründung der Relation."
+          />
+          <Preview lines={preview} />
+        </>
+      )}
     </PanelForm>
   );
 }
@@ -562,12 +776,13 @@ export function PlacePanel(props: PanelProps) {
     ...valueChainQuery(project),
     enabled: action.pick === 'step' || q.subject.type === 'step',
   });
-  const { facts, loading } = useModelFacts(project);
+  const { facts, loading, modelName } = useModelFacts(project);
   const [search, setSearch] = useState('');
   const [picked, setPicked] = useState<string | null>(null);
   const [note, setNote] = useState('');
+  const [noteOpen, setNoteOpen] = useState(false);
   const { submit, pending, error } = useSubmit(props);
-  const trimmed = note.trim();
+  const trimmed = noteOpen ? note.trim() : '';
   const steps = useMemo(
     () => (chain.data ? stepOptions(chain.data.steps, { outside: true }) : []),
     [chain.data],
@@ -598,7 +813,7 @@ export function PlacePanel(props: PanelProps) {
           items={processes}
           valueOf={(c) => c.ref}
           searchText={processSearch}
-          render={(c) => <ProcessLabel c={c} />}
+          render={(c) => <ProcessLabel c={c} modelName={modelName(c.modelKey)} />}
           value={picked}
           onChange={setPicked}
           search={search}
@@ -665,7 +880,9 @@ export function PlacePanel(props: PanelProps) {
       }}
     >
       {picker}
-      <NoteField
+      <OptionalNote
+        open={noteOpen}
+        onOpen={() => setNoteOpen(true)}
         value={note}
         onChange={setNote}
         description="Steht mit in der Begründung der Platzierung."
@@ -681,8 +898,10 @@ export function PlacePanel(props: PanelProps) {
  * `choose-copy`: the valid copy of a duplicated process id; the calls
  * towards the copies are accepted towards it and rejected towards the
  * others, all or nothing. With the value chain, the other copies not yet on
- * a step go to „außerhalb“ (checked by default). The note, prefilled, is a
- * note on the item. No „Rückgängig“: the decisions are changed in the review.
+ * a step go to „außerhalb“ (checked by default). The copies by their model's
+ * path (UX4), the shared process id behind „Technische Angaben“; „+ Notiz“
+ * opens the note prefilled with the valid copy, a note on the item. No
+ * „Rückgängig“: the decisions are changed in the review.
  */
 export function ChooseCopyPanel(props: PanelProps) {
   const { q, action, resolve, project, onCancel } = props;
@@ -690,16 +909,14 @@ export function ChooseCopyPanel(props: PanelProps) {
   const chain = useQuery(valueChainQuery(project));
   const [picked, setPicked] = useState<string | null>(null);
   const [note, setNote] = useState('');
+  const [noteOpen, setNoteOpen] = useState(false);
   const [edited, setEdited] = useState(false);
   const [outside, setOutside] = useState(true);
   const { submit, pending, error } = useSubmit(props);
   const copies = action.choices ?? [];
   const calls = action.decides ?? [];
   const hasChain = chain.isSuccess;
-  // The other copies' models: candidates for `analyzr models delete` once a copy is chosen.
-  const others = [
-    ...new Set(copies.filter((ref) => ref !== picked).map((ref) => ref.slice(0, ref.indexOf('#')))),
-  ];
+  const processIds = [...new Set(copies.map((ref) => splitRef(ref).elementId))];
 
   return (
     <PanelForm
@@ -712,7 +929,7 @@ export function ChooseCopyPanel(props: PanelProps) {
       error={error}
       onSubmit={() => {
         if (picked === null) return;
-        const trimmed = note.trim();
+        const trimmed = noteOpen ? note.trim() : '';
         void submit(
           {
             type: 'choose-copy',
@@ -728,11 +945,11 @@ export function ChooseCopyPanel(props: PanelProps) {
       <PickerList
         items={copies}
         valueOf={(ref) => ref}
-        searchText={(ref) => `${refName(resolve, ref)} ${ref}`}
+        searchText={(ref) => `${splitRef(ref).modelKey} ${refName(resolve, ref)}`}
         render={(ref) => (
           <span className="flex min-w-0 flex-col">
-            <span className="truncate font-medium">{refName(resolve, ref)}</span>
-            <span className="truncate font-mono text-xs text-muted-foreground">{ref}</span>
+            <span className="truncate font-medium">{splitRef(ref).modelKey}</span>
+            <span className="truncate text-xs text-muted-foreground">{refName(resolve, ref)}</span>
           </span>
         )}
         value={picked}
@@ -750,6 +967,15 @@ export function ChooseCopyPanel(props: PanelProps) {
         valueAttribute="ref"
         searchable={false}
       />
+      {processIds.length > 0 ? (
+        <details className="text-xs text-muted-foreground" data-testid="action-copy-technical">
+          <summary className="cursor-pointer hover:text-foreground">Technische Angaben</summary>
+          <p className="mt-1">
+            Prozess-ID in jeder Kopie:{' '}
+            <span className="font-mono break-all">{processIds.join(', ')}</span>
+          </p>
+        </details>
+      ) : null}
       {hasChain ? (
         <div className="flex items-start gap-2">
           <Checkbox
@@ -763,7 +989,9 @@ export function ChooseCopyPanel(props: PanelProps) {
           </Label>
         </div>
       ) : null}
-      <NoteField
+      <OptionalNote
+        open={noteOpen}
+        onOpen={() => setNoteOpen(true)}
         value={note}
         onChange={(value) => {
           setNote(value);
@@ -771,13 +999,6 @@ export function ChooseCopyPanel(props: PanelProps) {
         }}
         description="Wird als Notiz an der Frage gespeichert."
       />
-      <p className="text-xs text-muted-foreground" data-testid="action-copy-delete-hint">
-        Ein veraltetes Modell löschst du mit{' '}
-        <code className="font-mono break-all">
-          analyzr models delete {picked ? others.join(' ') : '<Modell>'} -p {project}
-        </code>
-        ; das ändert nichts an den Entscheidungen hier.
-      </p>
       <Preview lines={picked ? [chooseCopyPreview(calls.length, refName(resolve, picked))] : []} />
     </PanelForm>
   );

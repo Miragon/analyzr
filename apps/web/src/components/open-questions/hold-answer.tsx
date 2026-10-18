@@ -20,7 +20,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { Textarea } from '@/components/ui/textarea';
 import { api, errorMessage, unwrap } from '@/lib/api';
 import { MAX_NOTE_CHARS, MAX_PAGE_LIMIT } from '@/lib/limits';
-import { ANSWER_PERMANENT, HOLD_STAYS } from '@/lib/open-question-answers';
+import { ANSWER_SAVE_LABEL, HOLD_STAYS } from '@/lib/open-question-answers';
 import { CARD_ACTION_LABELS, holdAnswered } from '@/lib/open-questions';
 import { allPages, keys } from '@/lib/queries';
 import { useAddNote } from '@/lib/review-actions';
@@ -174,9 +174,7 @@ function RelationAnswer({
               placeholder="Was hat die Klärung ergeben?"
               className="min-h-28"
             />
-            <FieldDescription>
-              {PERSONAL_DATA_HINT}. {ANSWER_PERMANENT}
-            </FieldDescription>
+            <FieldDescription>{PERSONAL_DATA_HINT}.</FieldDescription>
           </Field>
           {error ? (
             <Alert variant="destructive">
@@ -199,7 +197,7 @@ function RelationAnswer({
               ) : (
                 <MessageSquarePlusIcon data-icon="inline-start" />
               )}
-              Antwort speichern
+              {ANSWER_SAVE_LABEL}
             </Button>
           </DialogFooter>
         </form>

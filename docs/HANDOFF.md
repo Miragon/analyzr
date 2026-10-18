@@ -97,7 +97,7 @@ and code are in English.
   computed from the uploaded bytes by byte-preserving splices, re-applied at every import (a
   value the tool changed becomes „Ergänzung nicht mehr anwendbar“), withdrawals, the cost before
   every save and withdrawal, the change list and both BPMN downloads, the form at a question with
-  „Sammeln“ and „Ergänzen“ in the model view, `analyzr models amend|pull`, `analyzr questions
+  „Sammeln“ (removed in UX4) and „Ergänzen“ in the model view, `analyzr models amend|pull`, `analyzr questions
   amend` and `analyzr amendments`; live-run neutral; two points for the owner (§8: one Modeler
   save of each golden fixture, the optional `If-Match` on withdrawals). **S2a "Provenance,
   manifest, stable identity"** (done 2026-10-17 on the branch, every gate green; M6 §8 "S2a as
@@ -178,8 +178,16 @@ and code are in English.
   „Relationen (n)“ filtered by a selected element, two-line relation cards, the crumb as the one
   way back, at most three chips and „Mehr“ (Herkunft, Revisionen, the downloads); the panel 10
   controls and 75 words on `vertrieb/order-handling` (37 and 515 before), „Gutschrift“ on a phone
-  shows its name with the canvas at 86 %; web only, live-run neutral. **Next:** UX4 → UX5 → UX6 →
-  UX9 (the owner: „Sonst kannst du weitermachen“), alongside S2c (the trust rule),
+  shows its name with the canvas at 86 %; web only, live-run neutral. **UX4 „Frage-Aktionen“**
+  (done 2026-10-18 on the branch, every gate green, the UI load guard and the whole Playwright
+  suite against a scratch stack; UX-SIMPLIFICATION.md §7 "UX4 as delivered"): a link and the
+  amendment of the same gap are one entry („Ziel wählen …“, „Partner wählen …“) whose box „Im
+  Modell eintragen (statt nur zu verknüpfen)“ sends exactly one of them (owner decision 26 Q5),
+  ranked pickers („Vorgeschlagen“, „Passt vermutlich“, then by name), „Sammeln“ removed, the dry
+  run inline above one „Speichern“ and „Agent starten“ in the toast after it, „+ Notiz“, the
+  copies by path, the ghost button „Notiz“, the note dialog's texts per case; web only,
+  live-run neutral. **Next:** UX5 → UX6 → UX9 (the owner: „Sonst kannst du weitermachen“),
+  alongside S2c (the trust rule),
   S2b's follow-up and S3c; S6 after them; after the owner's
   live runs S5b, S7 and facts v2 as recommended (§7 "M6"; M6 §8 "After S2a").
 
@@ -953,7 +961,7 @@ every import with the question „Ergänzung nicht mehr anwendbar“ (both value
 „Meine Ergänzung behalten“ only over a value that does not resolve), withdrawals with their cost
 and an optional `If-Match`, the cost of each save shown in its dry run, the change list (what to
 carry over first, each element with its id) and both BPMN downloads, the form at the question
-with „Sammeln“ and „Ergänzen“ in the model view, `analyzr models amend|pull`, `analyzr questions
+with „Sammeln“ (removed in UX4) and „Ergänzen“ in the model view, `analyzr models amend|pull`, `analyzr questions
 amend` and `analyzr amendments list|export|withdraw`; live-run neutral. **S2a "Provenance,
 manifest, stable identity"** (**done 2026-10-17** on the branch, every gate green; M6 §8 "S2a as
 delivered"): the manifest `analyzr-import.json` read by `analyzr import` and sent per batch (an
@@ -990,7 +998,7 @@ model from a question card, is fixed with a labelled button on the card. **Next*
 proposed order (Q10), which the owner kept („Sonst kannst du weitermachen“): UX7 („Hochladen“, „Agent verbinden“; done 2026-10-18, UX-SIMPLIFICATION.md §7 "UX7 as delivered") → UX8 (done 2026-10-18, "UX8 as delivered"; S2a's web
 parts: „Herkunft“, the badges, the manifest of a dropped folder) → S2b (`importImpact`, the dry
 runs, the deletion impact, absent keys within `source.scope`; done 2026-10-18 except its follow-up) → UX3 (model view; done 2026-10-18, "UX3 as delivered") → UX4 (question
-actions) → UX5 („Relationen“ and the review screen) → UX6 (value chain) → UX9 (result views,
+actions; done 2026-10-18, "UX4 as delivered") → UX5 („Relationen“ and the review screen) → UX6 (value chain) → UX9 (result views,
 „Annahmeregeln“, the projects summary), alongside S2c (the trust rule of decision 24.2) and S3c
 (renderer and spec YAML, the ad-hoc converter path, the bundled CLI); then S6 (interviews); after
 the owner's live runs S5b, S7 and facts v2 as recommended (M6 §3.11 and §6: the reindex with

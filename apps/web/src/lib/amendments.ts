@@ -25,19 +25,29 @@ import {
   AMENDMENT_STATE_LABELS,
 } from '@analyzr/contracts/amendment-labels';
 import { personalDataList } from '@analyzr/contracts/personal-data';
-import { queryOptions, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import {
+  queryOptions,
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type QueryClient,
+} from '@tanstack/react-query';
+import { useEffect, useRef, useState } from 'react';
 
+import { useNavigate } from '@tanstack/react-router';
+
+import { requestAgentStart } from './agent-start-request';
+import { useAgentState } from './agent-state';
 import { ApiError, api, errorMessage, unwrap, unwrapWithResponse } from './api';
 import { downloadBlob } from './download';
 import { keys } from './queries';
+import { toast } from './toast';
 
 /**
  * Model amendments in the web (M6 §4.8 c, decision 25, slice S5c-2): the
  * amendable fields of an element, the dry run and the save with `If-Match`,
  * the sentence naming the effect and the cost before every save, the values
- * normalized as the server stores them, „Sammeln“ (amendments kept in the
- * page per model until one save), withdrawals, the head's plan for the
+ * normalized as the server stores them, withdrawals, the head's plan for the
  * badge and the overlays, both BPMN downloads and the change list. Loaded
  * with the tab's page and the model view's lazy section only, never with the
  * entry (the bundle guard, decision 21).
@@ -74,10 +84,6 @@ export const CLAIMED_WARNING =
  * since the field itself asks for a name (of a message, an event).
  */
 export const AMEND_PERSONAL_DATA_HINT = 'Keine Personennamen oder anderen personenbezogenen Daten';
-
-/** Why „Sammeln“ helps, shown where the human decides (not only as a tooltip). */
-export const COLLECT_HINT =
-  'Mehrere Ergänzungen an diesem Modell? „Sammeln“ und zusammen speichern – dann wird nur einmal neu beurteilt.';
 
 /** Why a field no question names cannot be set, and where it is changed instead. */
 export const ONLY_OPEN_QUESTIONS_TEXT =
@@ -200,8 +206,9 @@ const count = (n: number, one: string, many: string) => (n === 1 ? `1 ${one}` : 
 
 /**
  * What a save will set off, said before it (M6 §4.8 c "Web"): „Danach: 1
- * Aufruf angenommen, 1 Befund erledigt, 214 Paare werden neu beurteilt.“,
- * from the dry run's effect and cost.
+ * Aufruf angenommen, 1 Befund erledigt.“ from the dry run's effect, and its
+ * cost as its own sentence (UX4: „Die Agenten beurteilen 15 mögliche
+ * Relationen neu, sobald du den Agenten startest.“).
  */
 export function effectSentence(result: Pick<AmendModelResult, 'effect' | 'cost'>): string {
   const { effect, cost } = result;
@@ -235,21 +242,26 @@ export function effectSentence(result: Pick<AmendModelResult, 'effect' | 'cost'>
     effect.retired.length > 0
       ? `${count(effect.retired.length, 'manuelle Verknüpfung', 'manuelle Verknüpfungen')} durch die Ergänzung ersetzt`
       : null,
-    pairsText(cost),
   ].filter((p): p is string => p !== null);
-  return parts.length === 0 ? 'Danach: sonst ändert sich nichts.' : `Danach: ${parts.join(', ')}.`;
+  const rejudge = rejudgeText(cost);
+  if (parts.length === 0) return rejudge ?? 'Danach: sonst ändert sich nichts.';
+  return `Danach: ${parts.join(', ')}.${rejudge ? ` ${rejudge}` : ''}`;
 }
 
 /**
- * The cost part of a sentence: the pairs the agents judge again, said with
- * what a pair is („mögliche Verbindungen zu anderen Modellen“); `null`
- * without.
+ * The cost as a sentence: the pairs the agents judge again, as „mögliche
+ * Relationen“, and when (UX4: the agents run when the owner starts them);
+ * `null` without.
  */
-function pairsText(cost: Pick<AmendModelResult['cost'], 'factsChange' | 'pairsToRejudge'>) {
+export function rejudgeText(
+  cost: Pick<AmendModelResult['cost'], 'factsChange' | 'pairsToRejudge'>,
+): string | null {
   if (!cost.factsChange || cost.pairsToRejudge <= 0) return null;
-  return cost.pairsToRejudge === 1
-    ? '1 Paar (eine mögliche Verbindung zu einem anderen Modell) wird von den Agenten neu beurteilt'
-    : `${cost.pairsToRejudge.toLocaleString('de-DE')} Paare (mögliche Verbindungen zu anderen Modellen) werden von den Agenten neu beurteilt`;
+  const n =
+    cost.pairsToRejudge === 1
+      ? '1 mögliche Relation'
+      : `${cost.pairsToRejudge.toLocaleString('de-DE')} mögliche Relationen`;
+  return `Die Agenten beurteilen ${n} neu, sobald du den Agenten startest.`;
 }
 
 /**
@@ -267,8 +279,8 @@ export function withdrawEffectSentence(
     count === 1
       ? 'Das Modell bekommt eine neue Revision ohne diese Ergänzung'
       : `Das Modell bekommt eine neue Revision ohne diese ${count} Ergänzungen`;
-  const pairs = result.cost ? pairsText(result.cost) : null;
-  return pairs === null ? `${what}; sonst ändert sich nichts.` : `${what}; danach: ${pairs}.`;
+  const rejudge = result.cost ? rejudgeText(result.cost) : null;
+  return rejudge === null ? `${what}; sonst ändert sich nichts.` : `${what}. ${rejudge}`;
 }
 
 /** What the personal-data check found in a stored value, said after the dry run; `null` without. */
@@ -356,7 +368,7 @@ export const isNotFound = (error: unknown): boolean =>
 
 // ------------------------------------------------------------- saving
 
-/** One amendment the form or the collection sends, with what the summary shows. */
+/** One amendment the form sends, with what the form shows of it. */
 export interface PendingAmendment {
   item: AmendModelItem;
   /** German, e.g. „Aufrufaktivität „Rechnung stellen““. */
@@ -367,12 +379,18 @@ export interface PendingAmendment {
   field?: string;
 }
 
-/** The state of a save: dry run, its summary, the save, and what can go wrong. */
-export type AmendSaveState =
+/**
+ * What the inline dry run says about the values as they stand (UX4,
+ * UX-SIMPLIFICATION.md §3.4 item 4): nothing to check yet, checking, ready
+ * to save (with the dry run's effect and cost), already so in the model, or
+ * why it would not go through.
+ */
+export type AmendCheck =
   | { phase: 'idle' }
   | { phase: 'checking' }
-  | { phase: 'confirm'; dry: AmendModelResult; rev: number }
-  | { phase: 'saving'; dry: AmendModelResult; rev: number }
+  | { phase: 'ready'; dry: AmendModelResult; rev: number }
+  /** Every value is already so in the model: nothing to save. */
+  | { phase: 'unchanged' }
   /** An item is not applicable (the dry run's items, or a refused save's). */
   | { phase: 'refused'; items: AmendModelItemResult[] }
   /** 412 `revision-conflict`: the model changed since the form was read. */
@@ -390,8 +408,8 @@ function refusedItems(error: unknown): AmendModelItemResult[] | null {
     : null;
 }
 
-/** What a refused dry run or save means for the state machine. */
-export function stateOfAmendError(error: unknown): AmendSaveState {
+/** What a refused dry run or save means for the form. */
+export function checkOfAmendError(error: unknown): AmendCheck {
   if (error instanceof ApiError && error.status === 412) {
     const headRev = (error.problem as Record<string, unknown>)['headRev'];
     return { phase: 'conflict', headRev: typeof headRev === 'number' ? headRev : null };
@@ -411,92 +429,118 @@ export function stateOfAmendError(error: unknown): AmendSaveState {
   return { phase: 'error', message: errorMessage(error) };
 }
 
+/** What a dry run's answer means for the form. */
+function checkOfDryRun(dry: AmendModelResult, rev: number): AmendCheck {
+  if (dry.items.some((i) => i.outcome === 'not-applicable'))
+    return { phase: 'refused', items: dry.items };
+  if (dry.outcome === 'unchanged') return { phase: 'unchanged' };
+  return { phase: 'ready', dry, rev };
+}
+
 /** Refreshes everything of the project: the new head, its facts, relations and questions. */
 function invalidateProject(queryClient: QueryClient, project: string) {
   return queryClient.invalidateQueries({ queryKey: keys.project(project) });
 }
 
+/** How long the values stay unchanged before the dry run runs (typing pauses). */
+export const CHECK_DELAY_MS = 400;
+
+/** `value` once it has stayed the same for `ms` (compared as a string). */
+function useSettled(value: string | null, ms: number): string | null {
+  const [settled, setSettled] = useState(value);
+  useEffect(() => {
+    const timer = setTimeout(() => setSettled(value), ms);
+    return () => clearTimeout(timer);
+  }, [value, ms]);
+  return settled;
+}
+
 /**
- * Saving amendments of one model (M6 §4.8 c): `check` runs the dry run with
- * `If-Match: "r<rev>"` and shows its summary (the effect, the cost, each
- * value as it will be stored), `confirm` saves with the same precondition;
- * nothing is written before the human confirmed the summary. A dry run whose
- * items are all identical to their live amendments ends at once.
+ * Amendments of one model as a draft (M6 §4.8 c, UX4): the dry run runs by
+ * itself once the values have settled, with `If-Match: "r<rev>"`, so the
+ * effect and the cost stand above „Speichern“ before anything is written;
+ * `save` writes exactly the values the dry run checked, with the same
+ * precondition. Nothing is sent while `items` is `null` or empty.
  */
-export function useAmendSave({
+export function useAmendDraft({
   project,
   modelId,
+  items,
+  rev,
   onSaved,
-  onUnchanged,
 }: {
   project: string;
   modelId: string;
+  /** The items the values make, or `null` while one cannot be sent yet. */
+  items: readonly AmendModelItem[] | null;
+  /** The head the form read (`ETag`). */
+  rev: number | null;
   onSaved: (result: AmendModelResult) => void;
-  onUnchanged?: () => void;
 }) {
   const queryClient = useQueryClient();
-  const [state, setState] = useState<AmendSaveState>({ phase: 'idle' });
-  const items = useRef<AmendModelItem[]>([]);
-  const latest = useRef({ onSaved, onUnchanged });
-  useEffect(() => {
-    latest.current = { onSaved, onUnchanged };
-  });
-
-  async function post(body: AmendModelItem[], rev: number, dryRun: boolean) {
-    return unwrap(
+  const request =
+    items !== null && items.length > 0 && rev !== null ? JSON.stringify({ items, rev }) : null;
+  const settled = useSettled(request, CHECK_DELAY_MS);
+  const post = (body: readonly AmendModelItem[], at: number, dryRun: boolean) =>
+    unwrap(
       amendModel({
         client: api,
         path: { project, model: modelId },
         query: { dryRun: dryRun ? 'true' : 'false' },
-        headers: precondition(rev),
-        body: { items: body },
+        headers: precondition(at),
+        body: { items: [...body] },
       }),
     );
-  }
-
-  async function check(next: readonly AmendModelItem[], rev: number) {
-    items.current = [...next];
-    setState({ phase: 'checking' });
-    let dry: AmendModelResult;
-    try {
-      dry = await post(items.current, rev, true);
-    } catch (error) {
-      setState(stateOfAmendError(error));
-      return;
-    }
-    if (dry.items.some((i) => i.outcome === 'not-applicable')) {
-      setState({ phase: 'refused', items: dry.items });
-      return;
-    }
-    if (dry.outcome === 'unchanged') {
-      setState({ phase: 'idle' });
-      latest.current.onUnchanged?.();
-      return;
-    }
-    setState({ phase: 'confirm', dry, rev });
-  }
-
-  async function confirm() {
-    if (state.phase !== 'confirm') return;
-    const { dry, rev } = state;
-    setState({ phase: 'saving', dry, rev });
-    try {
-      const saved = await post(items.current, rev, false);
-      setState({ phase: 'idle' });
+  const dry = useQuery({
+    // Outside the project's keys: a save's refresh must not run it again on the old head (the
+    // fields reload instead, and their new head makes a new request).
+    queryKey: ['amend-dry-run', project, modelId, settled] as const,
+    queryFn: () => {
+      const { items: body, rev: at } = JSON.parse(settled ?? '{}') as {
+        items: AmendModelItem[];
+        rev: number;
+      };
+      return post(body, at, true);
+    },
+    enabled: settled !== null && settled === request,
+    staleTime: 0,
+    gcTime: 0,
+    retry: false,
+  });
+  const latest = useRef(onSaved);
+  useEffect(() => {
+    latest.current = onSaved;
+  });
+  const save = useMutation({
+    mutationFn: ({ body, at }: { body: readonly AmendModelItem[]; at: number }) =>
+      post(body, at, false),
+    onSuccess: async (saved) => {
       await invalidateProject(queryClient, project);
-      latest.current.onSaved(saved);
-    } catch (error) {
-      setState(stateOfAmendError(error));
-      void invalidateProject(queryClient, project);
-    }
-  }
+      latest.current(saved);
+    },
+    onError: () => void invalidateProject(queryClient, project),
+  });
+
+  let check: AmendCheck;
+  if (request === null) check = { phase: 'idle' };
+  else if (settled !== request || dry.isFetching || dry.isPending) check = { phase: 'checking' };
+  else if (dry.isError) check = checkOfAmendError(dry.error);
+  else check = checkOfDryRun(dry.data, rev ?? 0);
+  // A refused save says why where the check stood, until the values change.
+  const failed =
+    save.isError &&
+    save.variables &&
+    JSON.stringify({ items: save.variables.body, rev: save.variables.at }) === request;
+  if (failed) check = checkOfAmendError(save.error);
 
   return {
-    state,
-    check: (next: readonly AmendModelItem[], rev: number) => void check(next, rev),
-    confirm: () => void confirm(),
-    reset: () => setState({ phase: 'idle' }),
-    busy: state.phase === 'checking' || state.phase === 'saving',
+    check,
+    saving: save.isPending,
+    /** Saves the values the ready dry run checked. */
+    save: () => {
+      if (check.phase !== 'ready' || items === null) return;
+      save.mutate({ body: items, at: check.rev });
+    },
   };
 }
 
@@ -520,6 +564,60 @@ export function savedToast(
     tone: 'success',
     title: recorded === 1 ? 'Ergänzung gespeichert' : `${recorded} Ergänzungen gespeichert`,
     description: `${quote(modelName)} ist jetzt r${result.model.headRev}. ${effectSentence(result)}`,
+  };
+}
+
+/**
+ * The toast after a save (UX-SIMPLIFICATION.md §2.6): the new head and what
+ * it set off, and for the owner „Agent starten“ (or „Agent verbinden“
+ * without a token), since the new head waits for the agent and the agents
+ * judge the changed pairs only when started.
+ */
+export function useSavedToast(project: string) {
+  const agent = useAgentState(project);
+  const navigate = useNavigate();
+  return (result: Parameters<typeof savedToast>[0], modelName: string) => {
+    const base = savedToast(result, modelName);
+    // A new head always waits for the agent (its relations task is queued again).
+    const recorded = result.outcome !== 'unchanged';
+    toast(
+      recorded && agent === 'start'
+        ? {
+            ...base,
+            action: { label: 'Agent starten', onAction: () => requestAgentStart(project) },
+          }
+        : recorded && agent === 'connect'
+          ? {
+              ...base,
+              action: {
+                label: 'Agent verbinden',
+                onAction: () =>
+                  void navigate({ to: '/projects/$project/agents', params: { project } }),
+              },
+            }
+          : base,
+    );
+  };
+}
+
+/**
+ * „Speichern“ under the inline dry run: saves what the dry run checked; when
+ * an agent holds the model's task, the first click asks again („Trotzdem
+ * speichern“).
+ */
+export function useClaimedConfirm(check: AmendCheck, request: string | null) {
+  const [armedFor, setArmedFor] = useState<string | null>(null);
+  const claimed = check.phase === 'ready' && check.dry.cost.taskClaimed;
+  const armed = claimed && armedFor !== null && armedFor === request;
+  return {
+    claimed,
+    armed,
+    /** Whether the click may save now (else it armed the second confirmation). */
+    confirm: (): boolean => {
+      if (!claimed || armed) return true;
+      setArmedFor(request);
+      return false;
+    },
   };
 }
 
@@ -654,119 +752,4 @@ export async function downloadChangeList(
     ),
     blobOf(data, response, format === 'csv' ? 'text/csv' : 'text/markdown'),
   );
-}
-
-// ------------------------------------------------------------- „Sammeln“
-
-/** An amendment kept in the page until its model's collection is saved. */
-export interface CollectedAmendment extends PendingAmendment {
-  /** The project (the collection lives in the page, across projects). */
-  project: string;
-  modelId: string;
-  modelKey: string;
-  /** The model's name for the bar, else its key. */
-  modelName: string;
-  /** The head the form was read at (`If-Match` of the collection's save). */
-  rev: number;
-  /** The question it was collected at, if any (the item says „gesammelt“). */
-  questionId?: string;
-}
-
-/** The key of a collected amendment within its model: one per element and op. */
-export const collectedKey = (item: Pick<AmendModelItem, 'op' | 'elementId'>) =>
-  `${item.op}\u0000${item.elementId}`;
-
-let collected: readonly CollectedAmendment[] = [];
-const collectListeners = new Set<() => void>();
-
-function emitCollected(next: readonly CollectedAmendment[]) {
-  collected = next;
-  for (const listener of collectListeners) listener();
-}
-
-/**
- * Keeps amendments in the page (M6 §4.8 c "Web", „Sammeln“): a later one of
- * the same model, element and op replaces the earlier; at most
- * {@link MAX_AMENDMENT_ITEMS} per model (one request). Returns how many the
- * model's collection holds, or `null` when it would hold too many.
- */
-export function collectAmendments(add: readonly CollectedAmendment[]): number | null {
-  const next = [...collected];
-  for (const a of add) {
-    const at = next.findIndex(
-      (c) => c.modelId === a.modelId && collectedKey(c.item) === collectedKey(a.item),
-    );
-    if (at >= 0) next[at] = a;
-    else next.push(a);
-  }
-  const modelIds = new Set(add.map((a) => a.modelId));
-  for (const id of modelIds) {
-    if (next.filter((c) => c.modelId === id).length > MAX_AMENDMENT_ITEMS) return null;
-  }
-  emitCollected(next);
-  return next.filter((c) => modelIds.has(c.modelId)).length;
-}
-
-/** Drops one collected amendment, or every one of a model. */
-export function discardCollected(modelId: string, key?: string): void {
-  emitCollected(
-    collected.filter(
-      (c) => c.modelId !== modelId || (key !== undefined && collectedKey(c.item) !== key),
-    ),
-  );
-}
-
-/** For tests: an empty collection. */
-export function resetCollected(): void {
-  emitCollected([]);
-}
-
-function subscribeCollected(listener: () => void) {
-  collectListeners.add(listener);
-  return () => collectListeners.delete(listener);
-}
-const getCollected = () => collected;
-
-/** Every collected amendment, in the order collected. */
-export function useCollected(): readonly CollectedAmendment[] {
-  return useSyncExternalStore(subscribeCollected, getCollected, getCollected);
-}
-
-/**
- * Asks before the page is left (reload, closed tab) while amendments are
- * collected: the collection lives in the page only.
- */
-export function useCollectedLeaveGuard(): void {
-  const pending = useCollected().length > 0;
-  useEffect(() => {
-    if (!pending) return;
-    const warn = (event: BeforeUnloadEvent) => {
-      event.preventDefault();
-    };
-    window.addEventListener('beforeunload', warn);
-    return () => window.removeEventListener('beforeunload', warn);
-  }, [pending]);
-}
-
-/** A project's collected amendments grouped per model, in the order their first one was collected. */
-export function collectedByModel(
-  list: readonly CollectedAmendment[],
-  project: string,
-): { modelId: string; modelKey: string; modelName: string; items: CollectedAmendment[] }[] {
-  const groups = new Map<
-    string,
-    { modelId: string; modelKey: string; modelName: string; items: CollectedAmendment[] }
-  >();
-  for (const c of list) {
-    if (c.project !== project) continue;
-    const group = groups.get(c.modelId) ?? {
-      modelId: c.modelId,
-      modelKey: c.modelKey,
-      modelName: c.modelName,
-      items: [],
-    };
-    group.items.push(c);
-    groups.set(c.modelId, group);
-  }
-  return [...groups.values()];
 }

@@ -1,11 +1,8 @@
 import type { AmendModelItemResult } from '@analyzr/client';
 import { Link } from '@tanstack/react-router';
-import { cn } from 'cn';
-import { ArrowRightIcon, InfoIcon, SaveIcon, TriangleAlertIcon } from 'lucide-react';
-import { useId, type KeyboardEvent } from 'react';
+import { InfoIcon, TriangleAlertIcon } from 'lucide-react';
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import {
   CLAIMED_WARNING,
@@ -13,21 +10,18 @@ import {
   fieldLabel,
   itemWarning,
   refusalLabel,
-  valueText,
-  type AmendSaveState,
+  type AmendCheck,
   type PendingAmendment,
 } from '@/lib/amendments';
 
 /**
- * The dry run's summary before a save (M6 §4.8 c "Web"): each amendment
- * with the value as it will be stored (before → after), the personal-data
- * check's findings, the sentence naming the effect and the cost („Danach: …
- * 214 Paare werden neu beurteilt.“), the warning when an agent holds the
- * model's task, and the confirmation (described by the effect sentence and
- * the warning; Escape goes back); and the states a save can end in (not
- * applicable, changed meanwhile, refused). A call target shows the process
- * the human picked by its name. Shared by the amend form and the
- * collection's bar.
+ * The inline dry run above „Speichern“ (M6 §4.8 c "Web", UX4,
+ * UX-SIMPLIFICATION.md §3.4 item 4): while the values settle „Wirkung wird
+ * geprüft …“; then the sentence naming the effect and the cost („Danach: 1
+ * Aufruf angenommen. Die Agenten beurteilen 15 mögliche Relationen neu, …“),
+ * the personal-data check's findings per value, the warning when an agent
+ * holds the model's task (its save asks a second time), or why it would not
+ * go through (not applicable, changed meanwhile, refused).
  */
 
 /** The pending amendment a result item belongs to (by element and op). */
@@ -54,84 +48,65 @@ function fieldOf(
   return pendingOf(item, pending)?.field ?? fieldLabel(item.op);
 }
 
-export function AmendSummary({
+export function AmendEffect({
   project,
-  state,
+  check,
   pending,
-  onConfirm,
-  onBack,
-  compact = false,
+  effectId,
+  claimedId,
 }: {
   project: string;
-  state: Extract<AmendSaveState, { phase: 'confirm' | 'saving' }>;
+  check: AmendCheck;
   pending: readonly PendingAmendment[];
-  onConfirm: () => void;
-  onBack: () => void;
-  /** In the collection's bar: the list scrolls, so „Zurück“ and „Jetzt speichern“ stay in view. */
-  compact?: boolean;
+  /** The effect sentence's id, which „Speichern“ is described by. */
+  effectId: string;
+  /** The claimed warning's id. */
+  claimedId: string;
 }) {
-  const { dry } = state;
-  const saving = state.phase === 'saving';
-  const claimed = dry.cost.taskClaimed;
-  const effectId = useId();
-  const claimedId = useId();
-  function keyDown(event: KeyboardEvent<HTMLDivElement>) {
-    if (event.key === 'Escape' && !saving) {
-      event.preventDefault();
-      event.stopPropagation();
-      onBack();
-    }
-  }
-  return (
-    <div className="flex flex-col gap-3" onKeyDown={keyDown} data-testid="amend-summary">
-      <ul
-        className={cn('flex flex-col gap-2 text-sm', compact && 'max-h-[40vh] overflow-y-auto')}
-        aria-label="Was gespeichert wird"
+  if (check.phase === 'idle') return null;
+  if (check.phase === 'checking')
+    return (
+      <p
+        role="status"
+        className="flex items-center gap-2 text-sm text-muted-foreground"
+        data-testid="amend-checking"
       >
-        {dry.items.map((item) => {
-          const warning = itemWarning(item);
-          // A call target as the human picked it: the process by its name, its id small.
-          const picked = item.op === 'call-target' ? pendingOf(item, pending)?.display : undefined;
-          return (
-            <li
-              key={`${item.op}:${item.elementId}`}
-              className="flex flex-col gap-0.5"
-              data-testid="amend-summary-item"
-              data-outcome={item.outcome}
-            >
-              <span className="font-medium">
-                {labelOf(item, pending)}{' '}
-                <span className="font-normal text-muted-foreground">
-                  · {fieldOf(item, pending)}
-                </span>
-              </span>
-              <span className="flex flex-wrap items-center gap-1.5 break-words">
-                <span className="text-muted-foreground">{valueText(item.before)}</span>
-                <ArrowRightIcon className="size-3.5 shrink-0" aria-label="wird zu" />
-                <span data-testid="amend-summary-after">
-                  {picked && item.after && picked !== item.after ? (
-                    <>
-                      Prozess „{picked}“{' '}
-                      <span className="font-mono text-xs text-muted-foreground">{item.after}</span>
-                    </>
-                  ) : (
-                    valueText(item.after)
-                  )}
-                </span>
-                {item.outcome === 'unchanged' ? (
-                  <span className="text-xs text-muted-foreground">(schon so ergänzt)</span>
-                ) : null}
-              </span>
-              {warning ? (
-                <span className="flex items-start gap-1.5 text-warning">
-                  <TriangleAlertIcon className="mt-0.5 size-4 shrink-0" aria-hidden />
-                  {warning}
-                </span>
-              ) : null}
-            </li>
-          );
-        })}
-      </ul>
+        <Spinner className="size-4" />
+        Wirkung wird geprüft …
+      </p>
+    );
+  if (check.phase === 'unchanged')
+    return (
+      <p
+        role="status"
+        className="flex items-start gap-2 text-sm text-muted-foreground"
+        data-testid="amend-unchanged"
+      >
+        <InfoIcon className="mt-0.5 size-4 shrink-0" aria-hidden />
+        Steht schon so im Modell; nichts zu speichern.
+      </p>
+    );
+  if (check.phase !== 'ready') return <AmendSaveProblem check={check} pending={pending} />;
+  const { dry } = check;
+  const warnings = dry.items.flatMap((item) => {
+    const warning = itemWarning(item);
+    return warning ? [{ item, warning }] : [];
+  });
+  return (
+    <div className="flex flex-col gap-2" role="status" data-testid="amend-check">
+      {warnings.map(({ item, warning }) => (
+        <p
+          key={`${item.op}:${item.elementId}`}
+          className="flex items-start gap-1.5 text-sm text-warning"
+          data-testid="amend-warning"
+        >
+          <TriangleAlertIcon className="mt-0.5 size-4 shrink-0" aria-hidden />
+          <span>
+            {pending.length > 1 ? `${labelOf(item, pending)} · ${fieldOf(item, pending)}: ` : ''}
+            {warning}
+          </span>
+        </p>
+      ))}
       <p className="flex items-start gap-2 text-sm" id={effectId} data-testid="amend-effect">
         <InfoIcon className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden />
         <span>
@@ -152,7 +127,7 @@ export function AmendSummary({
           ) : null}
         </span>
       </p>
-      {claimed ? (
+      {dry.cost.taskClaimed ? (
         <Alert variant="destructive" id={claimedId} data-testid="amend-claimed">
           <TriangleAlertIcon />
           <AlertTitle>{CLAIMED_WARNING}</AlertTitle>
@@ -161,41 +136,20 @@ export function AmendSummary({
           </AlertDescription>
         </Alert>
       ) : null}
-      <div className="flex flex-wrap justify-end gap-2">
-        <Button type="button" variant="outline" size="sm" onClick={onBack} disabled={saving}>
-          Zurück
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant={claimed ? 'destructive' : 'default'}
-          onClick={onConfirm}
-          disabled={saving}
-          autoFocus
-          aria-describedby={claimed ? `${effectId} ${claimedId}` : effectId}
-          data-testid="amend-confirm"
-        >
-          {saving ? <Spinner data-icon="inline-start" /> : <SaveIcon data-icon="inline-start" />}
-          {claimed ? 'Trotzdem speichern' : 'Jetzt speichern'}
-        </Button>
-      </div>
     </div>
   );
 }
 
-/** Why the dry run or the save refused, changed meanwhile, or failed; `null` otherwise. */
+/** Why the dry run or the save refused, changed meanwhile, or failed. */
 export function AmendSaveProblem({
-  state,
+  check,
   pending,
-  conflictText = 'Die Werte sind neu geladen; prüf sie und speichere noch einmal.',
 }: {
-  state: AmendSaveState;
+  check: Extract<AmendCheck, { phase: 'refused' | 'conflict' | 'error' }>;
   pending: readonly PendingAmendment[];
-  /** What to do after a 412 (the form reloads its fields; the bar checks again). */
-  conflictText?: string;
 }) {
-  if (state.phase === 'refused') {
-    const refused = state.items.filter((i) => i.outcome === 'not-applicable');
+  if (check.phase === 'refused') {
+    const refused = check.items.filter((i) => i.outcome === 'not-applicable');
     return (
       <Alert variant="destructive" data-testid="amend-refused">
         <AlertTitle>
@@ -216,24 +170,21 @@ export function AmendSaveProblem({
       </Alert>
     );
   }
-  if (state.phase === 'conflict') {
+  if (check.phase === 'conflict') {
     return (
       <Alert variant="destructive" data-testid="amend-conflict">
         <AlertTitle>Das Modell hat sich inzwischen geändert</AlertTitle>
         <AlertDescription>
-          {state.headRev !== null ? `Es ist jetzt r${state.headRev}. ` : ''}
-          {conflictText} Nichts gespeichert.
+          {check.headRev !== null ? `Es ist jetzt r${check.headRev}. ` : ''}
+          Die Werte werden neu geladen; prüf sie, bevor du speicherst. Nichts gespeichert.
         </AlertDescription>
       </Alert>
     );
   }
-  if (state.phase === 'error') {
-    return (
-      <Alert variant="destructive" data-testid="amend-error">
-        <AlertTitle>Nicht gespeichert</AlertTitle>
-        <AlertDescription>{state.message}</AlertDescription>
-      </Alert>
-    );
-  }
-  return null;
+  return (
+    <Alert variant="destructive" data-testid="amend-error">
+      <AlertTitle>Nicht gespeichert</AlertTitle>
+      <AlertDescription>{check.message}</AlertDescription>
+    </Alert>
+  );
 }

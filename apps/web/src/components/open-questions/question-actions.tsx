@@ -10,7 +10,6 @@ import {
   CopyCheckIcon,
   CopyIcon,
   EarthIcon,
-  InboxIcon,
   LinkIcon,
   MapPinIcon,
   MessageSquarePlusIcon,
@@ -29,7 +28,6 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Spinner } from '@/components/ui/spinner';
-import { useCollected } from '@/lib/amendments';
 import { ApiError, errorMessage } from '@/lib/api';
 import { useQuestionAction } from '@/lib/open-question-actions';
 import { CARD_ACTION_LABELS, actionLink, cardActions, type CardAction } from '@/lib/open-questions';
@@ -46,7 +44,9 @@ import { AmendPanel, WithdrawAllPanel, WithdrawOnePanel } from './amend-panel';
  * reviewers only, at most three actions (UX-SIMPLIFICATION.md §3.3 item 5):
  * the primary one, one beside it where the card needs two (a hold's
  * „Jetzt entscheiden“, an amendment conflict's „Meine Ergänzung behalten“),
- * the rest under „Weitere Aktionen“ with „Kennung kopieren“ last. A panel
+ * the rest under „Weitere Aktionen“ with „Kennung kopieren“ last, or, when
+ * the note is the only one left, the ghost button „Notiz“ (UX4). A link and
+ * the amendment of the same gap share one entry („Ziel wählen …“, UX4). A panel
  * opens below the item for the actions that pick something (link, place,
  * choose the copy, amend, a withdrawal's cost); one click runs the rest (the
  * outside mark, „Gehört zu keinem Schritt“, requeue); „Link korrigieren“
@@ -312,8 +312,6 @@ export function QuestionActions({
   const act = useQuestionAction(project);
   const requeue = useRequeue(project);
   const feedback = useActionFeedback(project, resolve);
-  // An amendment collected at this item waits in the collection's bar („Sammeln“).
-  const collected = useCollected().some((c) => c.questionId === q.id);
   /** The one-click action that runs (its button shows a spinner). */
   const [running, setRunning] = useState<string | null>(null);
 
@@ -440,17 +438,24 @@ export function QuestionActions({
         {/* Keyed, so a button that changes places (a hold's „Antwort geben“ once answered)
             stays the same element and keeps the focus the note dialog gives back. */}
         {[primary ? button(primary, true) : null, secondary ? button(secondary, false) : null]}
-        <ActionHint action={primary?.action} />
-        {collected ? (
-          <span
-            className="inline-flex items-center gap-1 text-xs text-primary"
-            data-testid="question-collected"
+        {/* The joined entry's hint is its amendment's („in analyzr ergänzt“). */}
+        <ActionHint action={primary?.amend?.action.hint ? primary.amend.action : primary?.action} />
+        {menu.length === 1 && menu[0]?.action.type === 'note' ? (
+          // One entry, the note: a ghost button instead of a menu (UX-SIMPLIFICATION.md §3.4 item 7).
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={busy}
+            onClick={(event) => choose(menu[0]!, event.currentTarget)}
+            aria-describedby={describedBy}
+            data-testid="question-action"
+            data-action="note"
+            data-primary={false}
           >
-            <InboxIcon className="size-3.5" aria-hidden />
-            gesammelt
-          </span>
-        ) : null}
-        {menu.length > 0 ? (
+            <MessageSquarePlusIcon data-icon="inline-start" />
+            {CARD_ACTION_LABELS.note}
+          </Button>
+        ) : menu.length > 0 ? (
           <DropdownMenu modal={false}>
             <DropdownMenuTrigger asChild>
               <Button
@@ -527,6 +532,7 @@ export function QuestionActions({
           <ActionPanel
             q={q}
             action={current.action}
+            amend={current.amend}
             project={project}
             resolve={resolve}
             onCancel={closePanel}

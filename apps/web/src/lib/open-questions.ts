@@ -624,12 +624,43 @@ export const CARD_ACTION_LABELS = {
   openProposal: 'Vorschlag öffnen',
   /** The id, in the menu instead of on the card (P2). */
   copyId: 'Kennung kopieren',
+  /** A call's link and its amendment in one entry (UX4, Q5). */
+  chooseTarget: 'Ziel wählen …',
+  /** A message or signal endpoint's link and its amendment in one entry (UX4, Q5). */
+  choosePartner: 'Partner wählen …',
+  /** A card whose only further action is the note: a ghost button instead of a menu (UX4). */
+  note: 'Notiz',
 } as const;
 
 /** An action as the card offers it: the API's action with the web's label. */
 export interface CardAction {
   action: OpenQuestionAction;
   label: string;
+  /**
+   * The `amend` of the same gap, joined into this `link`'s entry (UX4,
+   * owner decision 26 Q5), and whether it was the item's primary action.
+   */
+  amend?: { action: OpenQuestionAction; first: boolean };
+}
+
+/**
+ * The link and the amendment that answer the same gap (UX-SIMPLIFICATION.md
+ * §3.4 item 1): a call's single target with `call-target`, a message or
+ * signal endpoint's partner with `message-name`; else `null`.
+ */
+export function linkWithAmend<
+  T extends Pick<OpenQuestionAction, 'type' | 'pick' | 'multiple' | 'amend'>,
+>(actions: readonly T[]): { link: T; amend: T } | null {
+  const link = actions.find(
+    (a) =>
+      a.type === 'link' && a.multiple !== true && (a.pick === 'process' || a.pick === 'endpoint'),
+  );
+  if (!link) return null;
+  const op = link.pick === 'process' ? 'call-target' : 'message-name';
+  const amend = actions.find(
+    (a) => a.type === 'amend' && a.amend?.targets.length === 1 && a.amend.targets[0]?.op === op,
+  );
+  return amend ? { link, amend } : null;
 }
 
 /** The card's actions (UX2b): one primary, at most one visible second, the rest in a menu. */
@@ -664,8 +695,10 @@ export function cardActionLabel(
  * beside it; every other item shows the API's
  * primary action, an amendment conflict also „Meine Ergänzung behalten“
  * beside „Wert aus dem Quellsystem übernehmen“; the rest goes in the menu.
- * An outside mark that counts leaves nothing to do but take it back (the
- * done card), so the arrangement is empty then.
+ * A link and the amendment of the same gap are one entry, „Ziel wählen …“
+ * or „Partner wählen …“ (UX4), primary when either was. An outside mark
+ * that counts leaves nothing to do but take it back (the done card), so the
+ * arrangement is empty then.
  */
 export function cardActions(q: Pick<OpenQuestion, 'kind' | 'actions' | 'answers'>): CardActions {
   const marked = q.answers.some((a) => a.role === 'outside-mark' && a.withdrawal === null);
@@ -674,6 +707,27 @@ export function cardActions(q: Pick<OpenQuestion, 'kind' | 'actions' | 'answers'
     action,
     label: cardActionLabel(q, action),
   });
+  // A link and the amendment of the same gap: one entry that chooses (UX4).
+  const joined = linkWithAmend(q.actions);
+  if (joined) {
+    const entry: CardAction = {
+      action: joined.link,
+      label:
+        joined.link.pick === 'process'
+          ? CARD_ACTION_LABELS.chooseTarget
+          : CARD_ACTION_LABELS.choosePartner,
+      amend: { action: joined.amend, first: joined.amend.primary },
+    };
+    const rest = q.actions.filter((a) => a !== joined.link && a !== joined.amend);
+    const primaryRest = rest.find((a) => a.primary);
+    if (joined.link.primary || joined.amend.primary || !primaryRest)
+      return { primary: entry, secondary: undefined, menu: rest.map(card) };
+    return {
+      primary: card(primaryRest),
+      secondary: undefined,
+      menu: [entry, ...rest.filter((a) => a !== primaryRest).map(card)],
+    };
+  }
   let primary: OpenQuestionAction | undefined;
   let secondary: OpenQuestionAction | undefined;
   if (q.kind === 'held') {

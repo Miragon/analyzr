@@ -22,10 +22,10 @@ import { ApiError, errorMessage } from '@/lib/api';
 import { MAX_ANSWER_CHARS } from '@/lib/limits';
 import { useAddQuestionNote } from '@/lib/open-question-actions';
 import {
-  ANSWER_PERMANENT,
+  ANSWER_SAVE_LABEL,
   ANSWER_TARGET_LABELS,
   HOLD_STAYS,
-  NOTE_PERMANENT,
+  NOTE_SAVE_LABEL,
   answerTargetOf,
   charCountText,
   noteEffectText,
@@ -54,8 +54,8 @@ const isUnknownQuestion = (error: unknown) =>
  * a hold, from its card in „Offene Fragen“, the „Vorgemerkt“ row and the
  * review screen; UX-SIMPLIFICATION.md §2.4): the reviewer adds a note to one
  * open question (≤ 2,000
- * characters, no personal data). The dialog says that a stored note cannot
- * be changed or deleted, and where it goes (`noteEffectText`, by the item's
+ * characters, no personal data). Its save button says that a stored note
+ * cannot be changed (UX4), the dialog where it goes (`noteEffectText`, by the item's
  * subject and kind): on the item's relation (the agents take it into
  * account with the pair's next judgement) or placement (on an agent's
  * question the process becomes due; a held placement stays held, so no
@@ -233,7 +233,7 @@ function NoteForm({
           maxLength={MAX_ANSWER_CHARS}
           required
           autoFocus
-          aria-describedby={`${id}-hint ${id}-permanent ${id}-count ${id}-personal`}
+          aria-describedby={`${id}-hint ${id}-count ${id}-personal`}
           placeholder={answer ? 'Was hat die Klärung ergeben?' : 'Was weißt du dazu?'}
           className="min-h-28"
           data-testid="note-text"
@@ -246,9 +246,6 @@ function NoteForm({
             {charCountText(text.length)}
           </FieldDescription>
         </div>
-        <FieldDescription id={`${id}-permanent`} data-testid="note-permanent">
-          {answer ? ANSWER_PERMANENT : NOTE_PERMANENT}
-        </FieldDescription>
         {/*
           The personal-data warning, a warning only: saving stays possible. The
           live region (always there, so it is announced) holds the sentence,
@@ -312,7 +309,7 @@ function NoteForm({
           ) : (
             <MessageSquarePlusIcon data-icon="inline-start" />
           )}
-          {answer ? 'Antwort speichern' : 'Notiz speichern'}
+          {answer ? ANSWER_SAVE_LABEL : NOTE_SAVE_LABEL}
         </Button>
       </DialogFooter>
     </form>

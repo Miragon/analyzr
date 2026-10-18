@@ -67,17 +67,51 @@ describe('where an answer lands', () => {
       const text = noteEffectText({ kind: 'call-target-unknown', subject: { type } });
       expect(text.includes(AGENTS_SENTENCE)).toBe(type === 'relation');
       expect(text).toContain(NOTE_KEEPS_OPEN);
-      if (['ref', 'process', 'model'].includes(type)) {
-        expect(text).toContain('ergänze es im Quellwerkzeug und importiere das Modell erneut');
+      // neither a relation nor a placement: the note stays at the question (UX4)
+      if (type !== 'relation' && type !== 'placement') {
+        expect(text).toBe(
+          `Die Notiz bleibt bei der Frage und geht mit in den Export. ${NOTE_KEEPS_OPEN}`,
+        );
       }
-      if (type === 'step' || type === 'value-chain') {
-        expect(text).toContain('Fehlt ein Modell, importiere es.');
-      }
+      // the stale path through the source tool went with S5c-2's amendments
+      expect(text).not.toContain('Quellwerkzeug');
     }
     // „mögliche Relation“, never „Paar“ (glossary): the relation the note is on.
     expect(AGENTS_SENTENCE).toBe(
       'Die Agenten berücksichtigen die Notiz, sobald sie diese Relation neu bewerten.',
     );
+  });
+
+  it('names the entry an amendment is set with (UX4)', () => {
+    const amend = (
+      op: 'call-target' | 'message-name' | 'process-documentation',
+      label: string,
+    ) => ({
+      type: 'amend' as const,
+      label,
+      amend: {
+        modelId: 'mdl_A',
+        modelKey: 'a',
+        targets: [{ elementId: 'E', op, label: 'E' }],
+      },
+    });
+    const link = (pick: 'process' | 'endpoint') => ({
+      type: 'link' as const,
+      label: 'Nur verknüpfen …',
+      pick,
+    });
+    const text = (actions: Parameters<typeof noteEffectText>[0]['actions']) =>
+      noteEffectText({ kind: 'call-target-unknown', subject: { type: 'ref' }, actions });
+    expect(text([amend('call-target', 'Ziel im Modell eintragen …'), link('process')])).toBe(
+      `Die Notiz bleibt bei der Frage und geht mit in den Export. ${NOTE_KEEPS_OPEN} Fehlt ein Wert im Modell? Trag ihn mit „Ziel wählen …“ ein.`,
+    );
+    expect(text([amend('message-name', 'Nachrichtennamen …'), link('endpoint')])).toContain(
+      'Trag ihn mit „Partner wählen …“ ein.',
+    );
+    expect(text([amend('process-documentation', 'Dokumentation ergänzen …')])).toContain(
+      'Trag ihn mit „Dokumentation ergänzen …“ ein.',
+    );
+    expect(text([link('process'), { type: 'note' }])).not.toContain('Fehlt ein Wert');
   });
 
   it('says how a note-only item ends: with the next import, not by an action (S5c-1)', () => {

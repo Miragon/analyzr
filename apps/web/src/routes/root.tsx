@@ -1,6 +1,7 @@
 import type { QueryClient } from '@tanstack/react-query';
 import { Link, Outlet, createRootRouteWithContext } from '@tanstack/react-router';
 
+import { AgentStartHost } from '@/components/agent-start-host';
 import { DemoBanner } from '@/components/demo-banner';
 import { PageShell } from '@/components/page-shell';
 import { Toaster } from '@/components/toaster';
@@ -23,6 +24,7 @@ function RootLayout() {
       <DemoBanner />
       <Outlet />
       <Toaster />
+      <AgentStartHost />
     </>
   );
 }

@@ -13,7 +13,6 @@ import {
 } from 'lucide-react';
 import { useCallback, useMemo, useRef, useState } from 'react';
 
-import CollectBar from '@/components/amendments/collect-bar';
 import { ErrorText } from '@/components/error-text';
 import { AnswerSheetDialog } from '@/components/open-questions/answer-sheet-dialog';
 import CustomerExportDialog from '@/components/open-questions/customer-export-dialog';
@@ -352,12 +351,6 @@ export function OpenQuestionsPage() {
           {canReview ? <AnswerSheetDialog project={project} items={all} /> : null}
         </div>
       </div>
-
-      {canReview ? (
-        <div className="sticky top-2 z-20 empty:hidden">
-          <CollectBar project={project} />
-        </div>
-      ) : null}
 
       {view.cards.length === 0 ? (
         <Empty className="border bg-card py-8" data-testid="open-questions-empty">

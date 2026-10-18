@@ -44,7 +44,10 @@ import { userPath } from './user-path';
  * „Offene Punkte“ the sum of its parts, each part its list; no item in two
  * badges), no ids in visible text and in the customer export, menus whose
  * entries fit; UX3's model view (the panel's budgets, the element filter,
- * „Gutschrift“ found, opened and shown on a phone, the bpmn.io watermark).
+ * „Gutschrift“ found, opened and shown on a phone, the bpmn.io watermark);
+ * UX4's question actions (a call target in 3 clicks with „Passt vermutlich“
+ * in a project of its own per run, „Agent starten“ after an amendment, the
+ * ghost button „Notiz“).
  */
 
 const ROOT = join(import.meta.dirname, '../../..');
@@ -991,7 +994,7 @@ test('UX2b: a hold answered in at most 3 clicks, in one dialog from each entry',
     const dialog = page.getByTestId('note-dialog');
     await expect(dialog.getByRole('heading', { name: 'Antwort geben' }), entry).toBeVisible();
     await dialog.getByLabel('Deine Antwort').fill(text);
-    await dialog.getByRole('button', { name: 'Antwort speichern' }).click();
+    await dialog.getByRole('button', { name: 'Antwort speichern (nicht änderbar)' }).click();
     clicks += 1;
     await expect(dialog, entry).toBeHidden();
     await expect(
@@ -1115,5 +1118,123 @@ test('UX7: the token form shows its name and its button only; step 3 starts the 
   await measure(page, EMPTY, 'Agent verbinden', null);
 });
 
-test.fixme('UX4: after an amendment save „Agent starten“ is visible without navigating', () => {});
+// ------------------------------------------------------------------ question actions (UX4)
+
+/**
+ * `nordwind-handel` has no process „Inkasso“ („Process_Inkasso“ names none):
+ * the UX4 task runs in a project of its own per run, the corpus plus one
+ * model „Inkasso“ under another id, so the call stays without a target.
+ */
+const INKASSO_XML = `<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" id="Defs_Inkasso" targetNamespace="http://bpmn.io/schema/bpmn">
+  <bpmn:process id="Process_Inkassobuero" name="Inkasso" isExecutable="false">
+    <bpmn:startEvent id="Start_Inkasso" name="Forderung übernommen" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="Diagram_Inkasso">
+    <bpmndi:BPMNPlane id="Plane_Inkasso" bpmnElement="Process_Inkassobuero">
+      <bpmndi:BPMNShape id="Start_Inkasso_di" bpmnElement="Start_Inkasso">
+        <dc:Bounds x="100" y="100" width="36" height="36" />
+      </bpmndi:BPMNShape>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>
+`;
+
+test('UX4 tasks: the call target of „Forderung an Inkasso übergeben“ in 3 clicks, „Inkasso“ under „Passt vermutlich“; „Agent starten“ after an amendment', async ({
+  page,
+}) => {
+  const key = `ui-load-ziel-${Date.now().toString(36)}`;
+  await create(key, 'Aufrufziel (UI-Last)');
+  const form = new FormData();
+  for (const file of bpmnFiles(CORPUS))
+    form.append(
+      'files',
+      new File([readFileSync(file)], relative(CORPUS, file), { type: 'application/xml' }),
+    );
+  form.append(
+    'files',
+    new File([INKASSO_XML], 'finanzen/inkasso.bpmn', { type: 'application/xml' }),
+  );
+  expect((await owner.post(`/api/v1/projects/${key}/imports`, { multipart: form })).ok()).toBe(
+    true,
+  );
+  // an agent to start once the model changed (§2.6)
+  await token(key, ['analyzr:read', 'analyzr:propose']);
+  const call = (
+    await allPages<AskItem & { subjectLabel: string }>(
+      `/api/v1/projects/${key}/open-questions?kind=call-target-unknown&state=open`,
+    )
+  ).find((q) => q.subjectLabel.includes('Forderung an Inkasso übergeben'));
+  expect(call, 'the open question of „Forderung an Inkasso übergeben“').toBeDefined();
+
+  await settle(
+    page,
+    `/projects/${key}/open-questions?kind=call-target-unknown`,
+    '[data-testid=open-question]',
+  );
+  const card = page.locator(`[data-testid=open-question][data-question-id="${call!.id}"]`);
+  const entry = card.locator('[data-testid=question-action][data-primary=true]');
+  await expect(entry).toHaveText('Ziel wählen …');
+  await entry.click(); // 1
+  const panel = card.getByTestId('question-action-panel');
+  await expect(panel.getByTestId('action-option').first()).toBeVisible();
+  // the options under their sections, in order
+  const listed = await panel
+    .locator('[role=radiogroup], ul')
+    .first()
+    .evaluate((list) => {
+      const out: { section: string; text: string; ref: string }[] = [];
+      let section = '';
+      for (const el of list.querySelectorAll(
+        '[data-testid=picker-section], [data-testid=action-option]',
+      )) {
+        if (el.getAttribute('data-testid') === 'picker-section') section = el.textContent ?? '';
+        else
+          out.push({ section, text: el.textContent ?? '', ref: el.getAttribute('data-ref') ?? '' });
+      }
+      return out;
+    });
+  const likely = listed.filter((o) => o.section === 'Passt vermutlich');
+  expect(likely.length, '„Passt vermutlich“ lists at most three').toBeLessThanOrEqual(3);
+  expect(likely[0]?.ref).toBe('finanzen/inkasso#Process_Inkassobuero');
+  expect(likely[0]?.text).toMatch(/^Inkasso – /);
+  await panel
+    .locator('[data-testid=action-option][data-ref="finanzen/inkasso#Process_Inkassobuero"]')
+    .click(); // 2
+  // a value that names no process: the link leads, the third click would link
+  const submit = panel.getByTestId('action-submit');
+  await expect(submit).toHaveText('Verknüpfen');
+  await expect(submit).toBeEnabled();
+  // in the model instead: checked, the dry run inline, one „Speichern“, then „Agent starten“
+  await panel.getByTestId('action-in-model').click();
+  await expect(panel.getByTestId('amend-effect')).toContainText('Danach:');
+  await expect(submit).toHaveText('Speichern');
+  await submit.click();
+  const saved = page.getByTestId('toast').filter({ hasText: 'Ergänzung gespeichert' });
+  await expect(saved).toBeVisible();
+  await saved.getByTestId('toast-action').click();
+  await expect(page.getByTestId('agent-start-host')).toContainText(`/analyzr:relations ${key}`);
+  await expect(card).toHaveCount(0);
+});
+
+test('UX4: a card whose only further action is the note shows the ghost button „Notiz“, no menu', async ({
+  page,
+}) => {
+  await settle(page, `/projects/${NORDWIND}/open-questions`, '[data-testid=open-question]');
+  const cards = await page.getByTestId('open-question').evaluateAll((els) =>
+    els.map((e) => ({
+      ghost:
+        e.querySelector('[data-testid=question-action][data-action=note][data-primary=false]') !==
+        null,
+      menu: e.querySelector('[data-testid=question-more-actions]') !== null,
+    })),
+  );
+  const ghosts = cards.filter((c) => c.ghost).length;
+  console.log(`„Offene Fragen“: ${ghosts} of ${cards.length} cards with the ghost button „Notiz“`);
+  expect(ghosts).toBeGreaterThan(0);
+  expect(cards.filter((c) => c.ghost && c.menu)).toHaveLength(0);
+  // no „Sammeln“ anywhere
+  expect(await visibleText(page)).not.toContain('Sammeln');
+});
+
 test.fixme('UX5: the review screen’s bpmn.io watermark answers elementFromPoint at 390, 800 and 1024 px', () => {});

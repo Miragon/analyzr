@@ -943,17 +943,16 @@ describe('notes (M6 S5a, S5c-1; a hold’s answer since UX2b)', () => {
     expect(within(box).getByTestId('note-hint').textContent).toBe(
       'Keine Namen oder anderen personenbezogenen Daten.',
     );
-    // A hold's note is its answer: „Antwort“ throughout the dialog (UX2b review).
-    expect(within(box).getByTestId('note-permanent').textContent).toBe(
-      'Eine gespeicherte Antwort lässt sich nicht mehr ändern oder löschen.',
-    );
+    // A hold's note is its answer: „Antwort“ throughout the dialog (UX2b review); that it
+    // cannot be changed, the save button says (UX4).
+    expect(within(box).queryByTestId('note-permanent')).toBeNull();
     const effect = within(box).getByTestId('note-effect').textContent;
     expect(effect).toBe(
       'Die Antwort wird an der Relation gespeichert. Die Agenten berücksichtigen die Antwort, ' +
         'sobald sie diese Relation neu bewerten. Die Vormerkung bleibt, bis du sie entscheidest.',
     );
     expect(box.textContent).not.toMatch(/Notiz|Paar/);
-    const save = within(box).getByRole('button', { name: 'Antwort speichern' });
+    const save = within(box).getByRole('button', { name: 'Antwort speichern (nicht änderbar)' });
     expect(save).toHaveProperty('disabled', true);
 
     const field = within(box).getByLabelText('Deine Antwort');
@@ -1001,7 +1000,7 @@ describe('notes (M6 S5a, S5c-1; a hold’s answer since UX2b)', () => {
     await waitFor(() => expect(document.activeElement?.textContent).toBe('Antwort ergänzen'));
   });
 
-  it('points at the model’s source for every other subject, and says the item stays open', async () => {
+  it('keeps every other note at the question and in the export, and says the item stays open', async () => {
     const placement = openQuestion({
       id: 'q-00000000000000c1',
       kind: 'held',
@@ -1021,10 +1020,12 @@ describe('notes (M6 S5a, S5c-1; a hold’s answer since UX2b)', () => {
       return text;
     };
     const finding = await effect(all[1]!);
-    expect(finding).toContain('ergänze es im Quellwerkzeug und importiere das Modell erneut');
+    expect(finding).toContain('Die Notiz bleibt bei der Frage und geht mit in den Export.');
     expect(finding).toContain('Die Frage bleibt offen; erledigt wird sie durch ihre Aktion.');
     expect(finding).not.toContain('Die Agenten berücksichtigen');
-    expect(await effect(all[2]!)).toContain('Fehlt ein Modell, importiere es.');
+    expect(await effect(all[2]!)).toContain(
+      'Die Notiz bleibt bei der Frage und geht mit in den Export.',
+    );
     // A held placement homes its process: the note makes nothing due, the hold stays.
     const plc = await effect(all[4]!);
     expect(plc).toContain('Die Antwort wird an der Platzierung gespeichert');
@@ -1065,7 +1066,7 @@ describe('notes (M6 S5a, S5c-1; a hold’s answer since UX2b)', () => {
     let box = await openNote(user, (await rows())[1]!);
     expect(within(box).getByRole('heading', { name: 'Notiz hinzufügen' })).toBeDefined();
     await user.type(within(box).getByLabelText('Deine Notiz'), 'Der Zahlungsdienst.');
-    await user.click(within(box).getByRole('button', { name: 'Notiz speichern' }));
+    await user.click(within(box).getByRole('button', { name: 'Notiz speichern (nicht änderbar)' }));
     expect((await within(box).findByTestId('note-error')).textContent).toContain(
       'Die Eingabe passt so nicht.',
     );
@@ -1073,7 +1074,7 @@ describe('notes (M6 S5a, S5c-1; a hold’s answer since UX2b)', () => {
       'Der Zahlungsdienst.',
     );
     refuse = false;
-    await user.click(within(box).getByRole('button', { name: 'Notiz speichern' }));
+    await user.click(within(box).getByRole('button', { name: 'Notiz speichern (nicht änderbar)' }));
     expect(await findToast('Notiz gespeichert')).toBeDefined();
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
 
@@ -1099,7 +1100,7 @@ describe('notes (M6 S5a, S5c-1; a hold’s answer since UX2b)', () => {
     });
     const box = await openNote(user, (await rows())[3]!);
     await user.type(within(box).getByLabelText('Deine Notiz'), 'Ein externer Spediteur.');
-    await user.click(within(box).getByRole('button', { name: 'Notiz speichern' }));
+    await user.click(within(box).getByRole('button', { name: 'Notiz speichern (nicht änderbar)' }));
     expect((await findToast('Frage gibt es so nicht mehr')).textContent).toContain(
       'Die Quelle der Frage hat sich inzwischen geändert (dann hat die Frage eine neue Kennung)',
     );
@@ -1205,9 +1206,9 @@ describe('notes (M6 S5a, S5c-1; a hold’s answer since UX2b)', () => {
       .getAllByTestId('open-question')
       .find((r) => r.dataset['questionId'] === 'q-00000000000000a3')!;
     const box = await openNote(user, call);
-    expect(within(box).getByTestId('note-effect').textContent).toContain('Quellwerkzeug');
+    expect(within(box).getByTestId('note-effect').textContent).toContain('geht mit in den Export');
     await user.type(within(box).getByLabelText('Deine Notiz'), 'Der Zahlungsdienst.');
-    await user.click(within(box).getByRole('button', { name: 'Notiz speichern' }));
+    await user.click(within(box).getByRole('button', { name: 'Notiz speichern (nicht änderbar)' }));
     expect(await findToast('Notiz gespeichert')).toBeDefined();
     expect(
       calls.some((c) => c.method === 'POST' && c.path === `${BASE}/q-00000000000000a3/answers`),

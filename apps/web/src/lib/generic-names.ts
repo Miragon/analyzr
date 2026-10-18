@@ -177,6 +177,86 @@ export function isGenericName(text: string): boolean {
   return words.length > 0 && words.every((w) => GENERIC_WORDS.has(w));
 }
 
+/**
+ * Words a name fit ignores besides the stop and generic words: the technical
+ * parts of ids („Process_Inkasso“, „Activity_1“) and the verbs a call's or a
+ * task's label carries („Gutschrift erstellen“, „Forderung an Inkasso
+ * übergeben“).
+ */
+const FIT_IGNORED: ReadonlySet<string> = new Set([
+  'process',
+  'prozess',
+  'subprocess',
+  'teilprozess',
+  'activity',
+  'task',
+  'call',
+  'sid',
+  'id',
+  'erstellen',
+  'anlegen',
+  'uebergeben',
+  'durchfuehren',
+  'ausfuehren',
+  'abwickeln',
+  'aufrufen',
+]);
+
+/** The words of hints a name fit looks for (UX4): no stop, generic or technical words, at least 3 letters. */
+export function fitWords(hints: readonly string[]): string[] {
+  return [
+    ...new Set(
+      nameWords(hints.join(' ')).filter(
+        (w) =>
+          w.length >= 3 &&
+          !/^\d+$/.test(w) &&
+          !STOP_WORDS.has(w) &&
+          !GENERIC_WORDS.has(w) &&
+          !FIT_IGNORED.has(w),
+      ),
+    ),
+  ];
+}
+
+/**
+ * How well a name fits the hint words: the letters of the hint words found
+ * in it, twice for a whole word (a word of the name holds the hint word, or
+ * a long hint word holds a word of the name: „Inkasso“ fits
+ * „Process_Inkasso“, „Rücklastschrift“ fits „RuecklastschriftEingegangen“;
+ * „Forderung an Inkasso übergeben“ fits „Inkasso“ better than
+ * „Forderungsmanagement“); 0 for none.
+ */
+export function nameFit(name: string, words: readonly string[]): number {
+  const own = nameWords(name);
+  return words.reduce((sum, w) => {
+    if (own.includes(w)) return sum + 2 * w.length;
+    return own.some((o) => o.includes(w) || (o.length >= 5 && w.includes(o)))
+      ? sum + w.length
+      : sum;
+  }, 0);
+}
+
+/**
+ * The items whose names fit the hints best (UX-SIMPLIFICATION.md §3.4 item
+ * 2, „Passt vermutlich“): at most `max`, each with a fit above 0, the best
+ * first, ties by name.
+ */
+export function bestFits<T>(
+  items: readonly T[],
+  nameOf: (item: T) => string,
+  hints: readonly string[],
+  max = 3,
+): T[] {
+  const words = fitWords(hints);
+  if (words.length === 0) return [];
+  return items
+    .map((item) => ({ item, fit: nameFit(nameOf(item), words) }))
+    .filter((x) => x.fit > 0)
+    .sort((a, b) => b.fit - a.fit || nameOf(a.item).localeCompare(nameOf(b.item), 'de'))
+    .slice(0, max)
+    .map((x) => x.item);
+}
+
 type Family = 'message' | 'signal';
 
 function familyOf(kind: Fact['kind']): Family | null {

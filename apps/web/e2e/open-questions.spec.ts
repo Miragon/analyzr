@@ -92,6 +92,7 @@ interface Action {
   label: string;
   pick?: string;
   multiple?: boolean;
+  amend?: { targets: { op: string }[] };
   suggested?: string[];
   proposals?: { target: string; relation: string; type: string; from: string; to: string }[];
   exclude?: string[];
@@ -669,6 +670,46 @@ async function placementsWith(status: string): Promise<{ id: string; elementId: 
 }
 
 /** The first open item of a kind whose primary action is `type` (a card: „Zu klären“, or an agent's). */
+/**
+ * The link and the amendment the web joins into one entry (UX4): a call's
+ * single target with `call-target`, an endpoint's partner with `message-name`.
+ */
+function joined(q: Question): { link: Action; amend: Action } | null {
+  const link = q.actions.find(
+    (a) =>
+      a.type === 'link' && a.multiple !== true && (a.pick === 'process' || a.pick === 'endpoint'),
+  );
+  if (!link) return null;
+  const op = link.pick === 'process' ? 'call-target' : 'message-name';
+  const amend = q.actions.find(
+    (a) => a.type === 'amend' && a.amend?.targets.length === 1 && a.amend.targets[0]?.op === op,
+  );
+  return amend ? { link, amend } : null;
+}
+
+/**
+ * The card as the web arranges it (`cardActions`): its primary label, and
+ * whether „Weitere Aktionen“ holds the rest (a menu of the note alone is the
+ * ghost button „Notiz“, UX4). This project has no amendment conflict, so no
+ * card shows a second button.
+ */
+function arranged(q: Question): { primary: string | null; more: boolean } {
+  if (q.kind === 'held') return { primary: 'Antwort geben', more: q.actions.length > 2 };
+  const pair = joined(q);
+  const rest = pair ? q.actions.filter((a) => a !== pair.link && a !== pair.amend) : q.actions;
+  const lead = rest.find((a) => a.primary);
+  let primary: string | null;
+  let menu: string[];
+  if (pair && (pair.link.primary || pair.amend.primary || !lead)) {
+    primary = pair.link.pick === 'process' ? 'Ziel wählen …' : 'Partner wählen …';
+    menu = rest.map((a) => a.type);
+  } else {
+    primary = lead?.label ?? null;
+    menu = [...(pair ? ['link'] : []), ...rest.filter((a) => a !== lead).map((a) => a.type)];
+  }
+  return { primary, more: menu.length > 0 && !(menu.length === 1 && menu[0] === 'note') };
+}
+
 async function openItem(kind: string, type: string, extra: (q: Question) => boolean = () => true) {
   const found = (await api({ kind, state: 'open' })).find(
     (q) =>
@@ -697,16 +738,10 @@ test('every card offers its primary action as the API names it; a hold’s answe
       ).length,
     })),
   );
-  // a hold answers first (UX2b) and offers „Jetzt entscheiden“ beside it, nothing in a menu
+  // a hold answers first (UX2b) and offers „Jetzt entscheiden“ beside it, nothing in a menu;
+  // a link and its amendment are one entry, a menu of the note alone a ghost button (UX4)
   expect(shown).toEqual(
-    ask.map((q) => ({
-      id: q.id,
-      primary:
-        q.kind === 'held' ? 'Antwort geben' : (q.actions.find((a) => a.primary)?.label ?? null),
-      more:
-        q.kind === 'held' ? q.actions.length > 2 : q.actions.filter((a) => !a.primary).length > 0,
-      actions: expect.any(Number),
-    })),
+    ask.map((q) => ({ id: q.id, ...arranged(q), actions: expect.any(Number) })),
   );
   for (const card of shown) expect(card.actions).toBeLessThanOrEqual(3);
 
@@ -736,7 +771,7 @@ test('every card offers its primary action as the API names it; a hold’s answe
   );
   const note = 'Die Buchhaltung verschickt die Rechnung, auch bei Teillieferungen.';
   await field.fill(note);
-  await dialog.getByRole('button', { name: 'Antwort speichern' }).click();
+  await dialog.getByRole('button', { name: 'Antwort speichern (nicht änderbar)' }).click();
   await expect(toast(page, 'Antwort gespeichert')).toBeVisible();
   await expect(dialog).toBeHidden();
   // answered, the decision is next: „Jetzt entscheiden“ leads, „Antwort ergänzen“ keeps the focus
@@ -870,6 +905,10 @@ test('link a message endpoint to a complementary endpoint of another process', a
   // endpoints first, grouped by process; whole processes last
   await expect(panel.getByTestId('picker-section').last()).toHaveText('Ganzer Prozess');
   await panel.getByTestId('action-option').first().click();
+  // only the link here: „Im Modell eintragen“ (UX4) unchecked where it is offered
+  const inModel = panel.getByTestId('action-in-model');
+  if ((await inModel.count()) > 0 && (await inModel.getAttribute('aria-checked')) === 'true')
+    await inModel.click();
   await expect(panel.getByTestId('action-preview')).toContainText('angenommene Relation');
   const response = actionResponse(page, endpoint.id);
   await panel.getByTestId('action-submit').click();
@@ -981,6 +1020,8 @@ test('choose the valid copy of a duplicated process id: the calls decided, the i
   const panel = panelOf(row);
   await expect(panel.getByTestId('action-option')).toHaveCount(action.choices!.length);
   await panel.getByTestId('action-option').first().click();
+  // „+ Notiz“ (UX4): the note opens prefilled with the valid copy
+  await panel.getByTestId('action-note-toggle').click();
   await expect(panel.getByTestId('action-note')).toHaveValue(/^Gültig ist „.+“ in .+; die anderen/);
   await expect(
     panel.getByRole('checkbox', {
@@ -1223,7 +1264,7 @@ test('the model view’s „Fragen“ acts in place: the outside mark and its un
   await primaryOf(row).click();
   const answering = page.getByRole('dialog');
   await answering.getByLabel('Deine Antwort').fill('Laut Workshop gehört das zusammen.');
-  await answering.getByRole('button', { name: 'Antwort speichern' }).click();
+  await answering.getByRole('button', { name: 'Antwort speichern (nicht änderbar)' }).click();
   await expect(toast(page, 'Antwort gespeichert')).toBeVisible();
   await expect(row.getByTestId('question-note')).toContainText('Laut Workshop');
   expect((await relationOf(proposal!.id)).status).toBe('held');
@@ -1278,7 +1319,7 @@ test('the model view’s „Fragen“ acts in place: the outside mark and its un
   await fromMenu(page, row, 'Notiz hinzufügen');
   const dialog = page.getByRole('dialog');
   await dialog.getByLabel('Deine Notiz').fill('Im Workshop klären.');
-  await dialog.getByRole('button', { name: 'Notiz speichern' }).click();
+  await dialog.getByRole('button', { name: 'Notiz speichern (nicht änderbar)' }).click();
   await expect(toast(page, 'Notiz gespeichert')).toBeVisible();
   await expect(row.getByTestId('question-note')).toContainText('Im Workshop klären.');
 });

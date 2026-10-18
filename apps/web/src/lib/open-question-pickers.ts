@@ -11,14 +11,16 @@ import { personalDataList } from '@analyzr/contracts/personal-data';
 
 import type { CollapsedSubprocess } from './collapsed-subprocess';
 import { endpointRole, processRefOf } from './endpoints';
+import { bestFits } from './generic-names';
 import { OUTSIDE_LABEL, RELATION_TYPES } from './labels';
 import { OUTSIDE_STEP } from './limits';
 import { splitRef, type RefResolver } from './refs';
 
 /**
  * Answering by action (M6 §4.8 a, S5c-1), the web's pure side: what the
- * pickers of an open question's actions offer (processes as „Name (Modell)“
- * with the targets a live proposal names first, under „Vorgeschlagen“; the
+ * pickers of an open question's actions offer (processes as „Name – Modell“
+ * with the targets a live proposal names first, under „Vorgeschlagen“, then
+ * the best fits by name, under „Passt vermutlich“ (UX4); the
  * complementary message or signal endpoints of other processes; the copies
  * of a process id), the sentence that names what an action will write
  * before it does, the toast after it, what „Rückgängig“ rejects, and the
@@ -35,6 +37,12 @@ export interface ModelFacts {
 
 /** The section of the targets a live proposal already names. */
 export const SUGGESTED = 'Vorgeschlagen';
+
+/** The section of the best fits by name (UX-SIMPLIFICATION.md §3.4 item 2). */
+export const LIKELY = 'Passt vermutlich';
+
+/** How many best fits „Passt vermutlich“ lists. */
+export const LIKELY_COUNT = 3;
 
 /** The reason „Rückgängig“ rejects with (from code, M6 §4.8 a). */
 export const UNDO_REASON = 'Rückgängig gemacht';
@@ -63,7 +71,7 @@ export function subjectProcess(
   return null;
 }
 
-/** A process to pick: „Name (Modell)“. */
+/** A process to pick: „Name – Modell“. */
 export interface ProcessChoice {
   ref: string;
   /** Process name, else the pool name, else the process id. */
@@ -71,22 +79,58 @@ export interface ProcessChoice {
   modelKey: string;
   /** A live proposal already names it (listed first, under „Vorgeschlagen“). */
   suggested: boolean;
+  /** One of the best fits by name (next, under „Passt vermutlich“). */
+  likely: boolean;
 }
 
 const byName = (a: { modelKey: string; name: string }, b: { modelKey: string; name: string }) =>
-  a.modelKey.localeCompare(b.modelKey) || a.name.localeCompare(b.name, 'de');
+  a.name.localeCompare(b.name, 'de') || a.modelKey.localeCompare(b.modelKey);
+
+/**
+ * Puts the suggested items first (in their order), then the best fits to
+ * the hints by name, then the rest as they come (UX-SIMPLIFICATION.md §3.4
+ * item 2).
+ */
+function ranked<T extends { ref: string; suggested: boolean; likely: boolean }>(
+  items: readonly T[],
+  suggested: readonly string[],
+  hints: readonly string[],
+  nameOf: (item: T) => string,
+): T[] {
+  const byRef = new Map(items.map((c) => [c.ref, c]));
+  const first = suggested.flatMap((ref) => {
+    const c = byRef.get(ref);
+    return c ? [{ ...c, suggested: true }] : [];
+  });
+  const taken = new Set(first.map((c) => c.ref));
+  const likely = bestFits(
+    items.filter((c) => !taken.has(c.ref)),
+    nameOf,
+    hints,
+    LIKELY_COUNT,
+  ).map((c) => ({ ...c, likely: true }));
+  for (const c of likely) taken.add(c.ref);
+  return [...first, ...likely, ...items.filter((c) => !taken.has(c.ref))];
+}
 
 /**
  * The head processes to pick from: the suggested ones first (in their
- * order), then every other by model key and name; the excluded processes
- * (the item's own) left out.
+ * order), then the best fits to `hints` by name („Passt vermutlich“), then
+ * every other by name and model key; the excluded processes (the item's
+ * own) left out.
  */
 export function processChoices(
   facts: Iterable<ModelFacts>,
   {
     suggested = [],
     exclude = [],
-  }: { suggested?: readonly string[]; exclude?: readonly (string | null)[] } = {},
+    hints = [],
+  }: {
+    suggested?: readonly string[];
+    exclude?: readonly (string | null)[];
+    /** What the item names: the call's label and its unresolved value, an endpoint's name. */
+    hints?: readonly string[];
+  } = {},
 ): ProcessChoice[] {
   const skip = new Set(exclude.filter((e): e is string => e !== null));
   const all = new Map<string, ProcessChoice>();
@@ -98,15 +142,34 @@ export function processChoices(
         name: p.name ?? p.participantName ?? p.processId,
         modelKey: m.modelKey,
         suggested: false,
+        likely: false,
       });
     }
   }
-  const first = suggested.flatMap((ref) => {
-    const choice = all.get(ref);
-    return choice ? [{ ...choice, suggested: true }] : [];
-  });
-  const firstRefs = new Set(first.map((c) => c.ref));
-  return [...first, ...[...all.values()].filter((c) => !firstRefs.has(c.ref)).sort(byName)];
+  return ranked([...all.values()].sort(byName), suggested, hints, (c) => c.name);
+}
+
+/** The section heading of a process choice: „Vorgeschlagen“, „Passt vermutlich“ or „Alle Prozesse“. */
+export function processSection(c: Pick<ProcessChoice, 'suggested' | 'likely'>): string {
+  return c.suggested ? SUGGESTED : c.likely ? LIKELY : 'Alle Prozesse';
+}
+
+/**
+ * What an item names, for „Passt vermutlich“: the subject's label, its
+ * unresolved value (a call's `calledElement`) and its message or signal
+ * name, else its label in the list.
+ */
+export function subjectHints(
+  facts: Iterable<ModelFacts>,
+  q: Pick<OpenQuestion, 'subject' | 'subjectLabel'>,
+): string[] {
+  const hints: string[] = [];
+  for (const m of facts)
+    for (const f of m.facts)
+      if (f.ref === q.subject.id)
+        hints.push(f.label, f.keyRaw, f.attrs.messageName ?? '', f.attrs.signalName ?? '');
+  const own = hints.filter((h) => h.trim() !== '');
+  return own.length > 0 ? own : [q.subjectLabel];
 }
 
 /** A link target for an endpoint: a complementary endpoint, or a whole process where none fits. */
@@ -118,6 +181,7 @@ export interface EndpointChoice {
   processName: string;
   modelKey: string;
   suggested: boolean;
+  likely: boolean;
 }
 
 const THROWS = new Set<Fact['kind']>(['msg_throw', 'sig_throw']);
@@ -135,12 +199,13 @@ export function catchesOnly(facts: Iterable<ModelFacts>, ref: string): boolean {
  * complementary endpoints of other processes (a thrown message's catches, a
  * caught signal's throws), grouped by model and process, then every other
  * process as a whole („the pickers offer the whole process when no endpoint
- * fits“); the suggested targets first.
+ * fits“); the suggested targets first, then the best fits to `hints` by name.
  */
 export function endpointChoices(
   facts: readonly ModelFacts[],
   subjectRef: string,
   suggested: readonly string[] = [],
+  hints: readonly string[] = [],
 ): EndpointChoice[] {
   const own = facts.flatMap((m) => m.facts.filter((f) => f.ref === subjectRef));
   const ownProcess = subjectProcess(facts, { type: 'ref', id: subjectRef });
@@ -167,6 +232,7 @@ export function endpointChoices(
         processName: processNames.get(process) ?? splitRef(process).elementId,
         modelKey: m.modelKey,
         suggested: false,
+        likely: false,
       });
     }
   }
@@ -177,6 +243,7 @@ export function endpointChoices(
     processName: p.name,
     modelKey: p.modelKey,
     suggested: false,
+    likely: false,
   }));
   const ordered = [
     ...[...endpoints.values()].sort(
@@ -187,18 +254,13 @@ export function endpointChoices(
     ),
     ...processes,
   ];
-  const byRef = new Map(ordered.map((c) => [c.ref, c]));
-  const first = suggested.flatMap((ref) => {
-    const c = byRef.get(ref);
-    return c ? [{ ...c, suggested: true }] : [];
-  });
-  const firstRefs = new Set(first.map((c) => c.ref));
-  return [...first, ...ordered.filter((c) => !firstRefs.has(c.ref))];
+  return ranked(ordered, suggested, hints, (c) => c.name);
 }
 
-/** The section heading of an endpoint choice: „Vorgeschlagen“, its process, or „Ganzer Prozess“. */
+/** The section heading of an endpoint choice: „Vorgeschlagen“, „Passt vermutlich“, its process, or „Ganzer Prozess“. */
 export function endpointSection(c: EndpointChoice): string {
   if (c.suggested) return SUGGESTED;
+  if (c.likely) return LIKELY;
   return c.kind === 'process' ? 'Ganzer Prozess' : `${c.processName} (${c.modelKey})`;
 }
 

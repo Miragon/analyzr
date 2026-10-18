@@ -57,8 +57,8 @@ const SubprocessLink = lazy(() =>
 );
 /**
  * Model amendments (M6 S5c-2): the section „Ergänzen“ for the selected
- * element, the header's badge and downloads, and the collection's bar, all
- * from one lazy module (one chunk), never with the entry.
+ * element and the header's badge and „Mehr“, all from one lazy module (one
+ * chunk), never with the entry.
  */
 const AmendSection = lazy(() => import('@/components/amendments/model-amendments'));
 const ModelAmendBadge = lazy(() =>
@@ -69,9 +69,6 @@ const ModelAmendBadge = lazy(() =>
 /** „Mehr“ (UX3): „Herkunft“, „Revisionen“, the downloads, from the amendments' lazy module. */
 const ModelMore = lazy(() =>
   import('@/components/amendments/model-amendments').then((m) => ({ default: m.ModelMore })),
-);
-const CollectBar = lazy(() =>
-  import('@/components/amendments/model-amendments').then((m) => ({ default: m.CollectBar })),
 );
 
 /** Fact kinds an amendment can write a field of (M6 §4.8 c); other elements never ask the server. */
@@ -608,13 +605,6 @@ function ModelView() {
         }
       >
         <PanelTabPanel id="questions" value={tab} idBase={tabsId}>
-          {model ? (
-            <Suspense fallback={null}>
-              <div className="empty:hidden mb-2">
-                <CollectBar project={project} modelId={model.id} />
-              </div>
-            </Suspense>
-          ) : null}
           {model ? (
             <Suspense fallback={<Skeleton className="mx-2 h-16" />}>
               <ModelQuestions

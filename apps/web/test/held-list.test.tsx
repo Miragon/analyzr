@@ -163,7 +163,9 @@ describe('HeldList', () => {
     expect(within(dialog).getByRole('heading', { name: 'Antwort geben' })).toBeDefined();
     expect(within(dialog).getByTestId('note-question').textContent).toContain(QUESTION.text);
     await user.type(within(dialog).getByLabelText('Deine Antwort'), 'Ja, laut Finanzen.');
-    await user.click(within(dialog).getByRole('button', { name: 'Antwort speichern' }));
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Antwort speichern (nicht änderbar)' }),
+    );
     expect((await findToast('Antwort gespeichert')).textContent).toContain(
       'Gespeichert an der Relation. Die Vormerkung bleibt, bis du sie entscheidest.',
     );
@@ -203,7 +205,9 @@ describe('HeldList', () => {
     expect(within(dialog).getByRole('heading', { name: 'Antwort geben' })).toBeTruthy();
     expect(dialog.textContent).toContain('Die Vormerkung bleibt, bis du sie entscheidest.');
     await user.type(within(dialog).getByLabelText('Deine Antwort'), 'Ja, laut Finanzen.');
-    await user.click(within(dialog).getByRole('button', { name: 'Antwort speichern' }));
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Antwort speichern (nicht änderbar)' }),
+    );
     expect((await findToast('Antwort gespeichert')).textContent).toContain(
       'Gespeichert an der Relation.',
     );

@@ -11,6 +11,7 @@ import { useManualRelation } from '@/lib/open-question-actions';
 import {
   collapsedSubprocess,
   processChoices,
+  processSection,
   refName,
   subprocessRationale,
   type ProcessChoice,
@@ -22,7 +23,7 @@ import { toast } from '@/lib/toast';
 import { useProjectFacts } from '@/lib/use-project-facts';
 
 import { undoWrites } from './action-feedback';
-import { NoteField } from './action-panels';
+import { OptionalNote, ProcessLabel } from './action-panels';
 
 /**
  * „Verknüpfen mit …“ on a collapsed subprocess selected in the model view
@@ -129,18 +130,21 @@ function SubprocessLinkForm({
   const [search, setSearch] = useState('');
   const [picked, setPicked] = useState<string | null>(null);
   const [note, setNote] = useState('');
+  const [noteOpen, setNoteOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const manual = useManualRelation(project);
+  // the subprocess's name ranks the processes it likely means („Passt vermutlich“, UX4)
   const choices = useMemo(
-    () => processChoices(byModel.values(), { exclude: [processRef] }),
-    [byModel, processRef],
+    () => processChoices(byModel.values(), { exclude: [processRef], hints: [subName] }),
+    [byModel, processRef, subName],
   );
+  const modelName = (key: string) => models.data?.find((m) => m.key === key)?.name ?? key;
 
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (picked === null || manual.isPending) return;
     setError(null);
-    const trimmed = note.trim();
+    const trimmed = noteOpen ? note.trim() : '';
     try {
       const result = await manual.mutateAsync({
         from: processRef,
@@ -195,14 +199,7 @@ function SubprocessLinkForm({
         items={choices}
         valueOf={(c) => c.ref}
         searchText={(c) => `${c.name} ${c.modelKey} ${c.ref}`}
-        render={(c) => (
-          <span className="flex min-w-0 flex-col">
-            <span className="truncate font-medium">
-              {c.name} <span className="font-normal text-muted-foreground">({c.modelKey})</span>
-            </span>
-            <span className="truncate font-mono text-xs text-muted-foreground">{c.ref}</span>
-          </span>
-        )}
+        render={(c) => <ProcessLabel c={c} modelName={modelName(c.modelKey)} />}
         value={picked}
         onChange={setPicked}
         search={search}
@@ -213,9 +210,12 @@ function SubprocessLinkForm({
         emptyText="Das Projekt hat keinen anderen Prozess."
         testId="action-option"
         valueAttribute="ref"
+        {...(choices.some((c) => c.likely) ? { sectionOf: processSection } : {})}
         autoFocus
       />
-      <NoteField
+      <OptionalNote
+        open={noteOpen}
+        onOpen={() => setNoteOpen(true)}
         value={note}
         onChange={setNote}
         description="Steht mit in der Begründung der Relation."

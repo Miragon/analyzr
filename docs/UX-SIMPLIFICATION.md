@@ -4,7 +4,7 @@ Status: **decided** (owner decision 26, 2026-10-18: every "Ask now" question of 
 the recommended option; HANDOFF §4); proposal of 2026-10-17, revised the same day after a UX and a
 feasibility critique · Branch: `feat/integration-and-gaps` (the first wave UX2a, UX1 and UX2b
 delivered on it on 2026-10-18, §7; the owner's walkthrough the same day, §7 "Owner
-walkthrough"; UX7, UX8, S2b's „Vorschau“ and UX3 delivered the same day; next UX4) · Source: four user-need audits of the web UI on the agent-created scratch stack
+walkthrough"; UX7, UX8, S2b's „Vorschau“, UX3 and UX4 delivered the same day; next UX5) · Source: four user-need audits of the web UI on the agent-created scratch stack
 `analyzr-uxaudit` (seeded `nordwind-handel` with its chain and a simulation agent run,
 `signavio-beispiel` from the CLI bundle import, two projects made from the raw synthetic Signavio
 export; 1440x900 and 390x844), torn down after the audit · Relates to: HANDOFF §4 decisions 8, 10,
@@ -1681,6 +1681,52 @@ under „Passt vermutlich“; the checkbox sends exactly one action (only `amend
 note-only cards show a ghost button instead of a menu; the note dialog's effect text matches the
 item's actions. The return path from the review screen and the chain is built in UX5 and UX6; until
 then a hold's „Jetzt entscheiden“ opens them without the return.
+
+**UX4 as delivered** (2026-10-18, on the branch, every gate green; DEVELOPMENT.md "UX4"). Web
+only, live-run neutral; the API keeps `link` and `amend` with their labels (the CLI prints them),
+the web joins them. Item 1: `cardActions` (`lib/open-questions.ts`, `linkWithAmend`) makes a
+call's single-target link and its `call-target` amendment, or an endpoint's link and its
+`message-name` amendment, one entry „Ziel wählen …“ or „Partner wählen …“, primary when either
+was; `LinkPanel` shows, after the pick and for editors and owners, „Im Modell eintragen (statt
+nur zu verknüpfen)“, checked where the amendment led; checked it sends only the amendment (a
+call target the landscape's processes offer; for an endpoint the partner's name with the
+partner, which pairs both; a whole process or a nameless partner can only be linked, the box
+disabled with the reason), unchecked only the link. Item 2: `processChoices` and
+`endpointChoices` rank „Vorgeschlagen“, then up to three best fits under „Passt vermutlich“
+(`bestFits`, `nameFit`, `fitWords` in `lib/generic-names.ts`: the hint words without stop,
+generic and technical words, a whole word counting twice), then the rest by name, not by model
+key; the hints are the subject's label, its unresolved value and its name (`subjectHints`); the
+amend form's call target and the collapsed subprocess's „Verknüpfen mit …“ rank the same way;
+rows „Name – Modell“, the ref in the tooltip. Item 3: „Sammeln“, its bar, the mark „gesammelt“,
+the toast, the hint and the leave-page guard are gone (`collect-bar.tsx` deleted). Item 4:
+`useAmendDraft` (`lib/amendments.ts`) runs the dry run by itself once the values have settled
+for 400 ms; „Danach: …“ (`effectSentence`, the cost its own sentence, `rejudgeText`: „Die
+Agenten beurteilen 15 mögliche Relationen neu, sobald du den Agenten startest.“, also after a
+withdrawal) stands above the one „Speichern“, which asks again („Trotzdem speichern“) only when
+an agent holds the model's task; a field names itself once (the legend keeps the element, a
+call target its field); the import hint behind „Und beim nächsten Import?“; the toast after the
+save offers the owner „Agent starten“, which the root's `AgentStartHost` shows (a toast cannot
+anchor a popover), or „Agent verbinden“. Item 5: the note of link, place, choose-copy and the
+subprocess link behind „+ Notiz“ (only an opened note is sent). Item 6: the copies by their
+model's path, the shared process id behind „Technische Angaben“, the CLI hint gone. Item 7: a menu
+of the note alone is the ghost button „Notiz“ (no „Kennung kopieren“ on those cards; `analyzr
+questions` lists the ids). Item 8: an item about neither a relation nor a placement says „Die
+Notiz bleibt bei der Frage und geht mit in den Export.“ with whether its action ends it, and with
+an amendment „Fehlt ein Wert im Modell? Trag ihn mit „Ziel wählen …“ ein.“ (the entry as the card
+names it); the save buttons read „Notiz speichern (nicht änderbar)“ and „Antwort speichern (nicht
+änderbar)“ (also the hold's answer on the relation), the sentence about it went. Measured with the
+UI load guard on the scratch stack `analyzr-ux4`:
+
+| Done when | Before | After (UX4) |
+|---|---|---|
+| Call target of „Forderung an Inkasso übergeben“ | 4–5 clicks, two pickers | 3 clicks (entry, pick, „Verknüpfen“ or, checked, „Speichern“); `nordwind-handel` has no process „Inkasso“, so the guard adds one in a project of its own, listed first under „Passt vermutlich“ |
+| Exactly one action sent | link and amendment side by side | only `amend` when checked, only `link` when unchecked; a 412 on the dry run sends nothing |
+| „Sammeln“ in `src` | bar, mark, hint, guard | none |
+| Note-only cards | a menu with one entry | the ghost button „Notiz“ (1 of the 21 „Zu klären“ cards on `nordwind-handel` today) |
+| Note dialog | „ergänze es im Quellwerkzeug …“ | per case, pinned in `open-question-answers-lib.test.ts` |
+
+The return path from the review screen and the chain stays with UX5 and UX6. Not verified: other
+browsers than Chromium, a real phone, a screen reader.
 
 **UX5 "Relationen and the review screen".** Files: `routes/project-review.tsx`,
 `routes/project-relations.tsx` (the views), `routes/review.tsx` (search validation of `from`, the
