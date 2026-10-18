@@ -77,6 +77,7 @@ vi.mock('@/components/value-chain/canvas/chain-canvas', async () => {
     saveSVG: () => '<svg/>',
     zoom: () => undefined,
     fit: () => undefined,
+    focusElement: (id) => void canvas.calls.push(['focusElement', id]),
   };
   function Stub(props: ChainCanvasProps, ref: React.ForwardedRef<ChainCanvasHandle>) {
     canvas.props = props;
@@ -641,6 +642,129 @@ function edit(text: string) {
   canvas.text = text;
   act(() => canvas.props?.onChange());
 }
+
+describe('value chain page: canvas, sheet and the way back (UX6 step 2)', () => {
+  const wide = Object.getOwnPropertyDescriptor(window, 'matchMedia')!;
+  afterEach(() => {
+    Object.defineProperty(window, 'matchMedia', wide);
+  });
+  // A data property over the setup's accessor, so restoring the descriptor restores the desktop.
+  const phone = () =>
+    Object.defineProperty(window, 'matchMedia', {
+      configurable: true,
+      value: (query: string) =>
+        ({
+          matches: false,
+          media: query,
+          onchange: null,
+          addEventListener: () => undefined,
+          removeEventListener: () => undefined,
+          addListener: () => undefined,
+          removeListener: () => undefined,
+          dispatchEvent: () => false,
+        }) as MediaQueryList,
+    });
+
+  it('zooms in place on a double-clicked step without a link; a linked step opens its model', async () => {
+    const linked = step({
+      elementId: 's-linked',
+      name: 'Verlinkt',
+      link: 'analyzr:process/v/order#P_Order',
+      linkKind: 'process',
+      linkProcess: 'v/order#P_Order',
+      linkResolved: true,
+    });
+    const { router } = setup('/projects/demo/value-chain', {
+      chain: chainDetail({ ...detail, steps: [...steps, linked], placements }),
+    });
+    await screen.findByTestId('chain-overview');
+    await waitFor(() => expect(canvas.props).not.toBeNull());
+    act(() => canvas.props?.onOpen('s-vertrieb'));
+    await waitFor(() => expect(router.state.location.search).toEqual({ step: 's-vertrieb' }));
+    expect(canvas.calls).toContainEqual(['focusElement', 's-vertrieb']);
+    expect(router.state.location.pathname).toBe('/projects/demo/value-chain');
+    act(() => canvas.props?.onOpen('s-linked'));
+    await waitFor(() =>
+      expect(router.state.location.pathname).toBe('/projects/demo/models/v/order'),
+    );
+    expect(router.state.location.search).toEqual({ element: 'P_Order' });
+  });
+
+  it('hides the panel by the zoom group’s toggle, the canvas taking its place', async () => {
+    const { user } = setup('/projects/demo/value-chain');
+    await screen.findByTestId('chain-overview');
+    const area = await screen.findByTestId('chain-canvas-area');
+    expect(area.className).toContain('right-[468px]');
+    await user.click(screen.getByRole('button', { name: 'Details ausblenden' }));
+    expect(screen.queryByTestId('chain-panel')).toBeNull();
+    expect(area.className).not.toContain('right-[468px]');
+    await user.click(screen.getByRole('button', { name: 'Details zeigen' }));
+    expect(await screen.findByTestId('chain-panel')).toBeTruthy();
+  });
+
+  it('on a phone: the sheet collapsed to „2 offen“ below the header, a decision’s form expands it', async () => {
+    phone();
+    const { user } = setup('/projects/demo/value-chain');
+    const panel = await screen.findByRole('complementary', {
+      name: 'Wertschöpfungskette: Details',
+    });
+    expect(panel.dataset['sheet']).toBe('collapsed');
+    await waitFor(() => expect(screen.getByTestId('panel-handle').textContent).toBe('2 offen'));
+    // no toggle on a phone: the sheet is the panel's way out of the view
+    expect(screen.queryByTestId('panel-toggle')).toBeNull();
+    expect(screen.getByTestId('chain-canvas-area').style.bottom).toBe('3.25rem');
+    // J works while collapsed; R opens the form and the sheet with it
+    await user.keyboard('j');
+    await waitFor(() => expect(screen.getByTestId('panel-handle').textContent).toBe('Auftrag'));
+    await user.keyboard('r');
+    await waitFor(() => expect(panel.dataset['sheet']).toBe('expanded'));
+    expect(screen.getByRole('form', { name: 'Ablehnen' })).toBeTruthy();
+  });
+
+  it('leads back to „Offene Fragen“ from there: the crumb, and after the decision', async () => {
+    const { router, user } = setup(
+      '/projects/demo/value-chain?placement=plc_open&from=open-questions',
+      {
+        routes: {
+          [`POST ${BASE}/placements/plc_open/decision`]: () =>
+            json({
+              placement: { ...placements[0]!, status: 'accepted', version: 2 },
+              corrected: null,
+            }),
+        },
+      },
+    );
+    const header = await screen.findByTestId('chain-header');
+    const back = within(header).getByTestId('canvas-back');
+    expect(back.textContent).toBe('Offene Fragen');
+    expect(back.getAttribute('href')).toBe('/projects/demo/open-questions');
+    await waitFor(() =>
+      expect(
+        screen.getAllByTestId('placement-card').find((c) => c.dataset['active'] === 'true')
+          ?.dataset['placementId'],
+      ).toBe('plc_open'),
+    );
+    // moving through the chain keeps the way back
+    await user.keyboard('j');
+    await waitFor(() =>
+      expect(router.state.location.search).toEqual({
+        placement: 'plc_out',
+        from: 'open-questions',
+      }),
+    );
+    await user.keyboard('k');
+    await waitFor(() =>
+      expect(router.state.location.search).toEqual({
+        placement: 'plc_open',
+        from: 'open-questions',
+      }),
+    );
+    await user.keyboard('a');
+    await waitFor(() =>
+      expect(router.state.location.pathname).toBe('/projects/demo/open-questions'),
+    );
+  });
+});
 
 describe('value chain page: drafts and unsaved changes', () => {
   it('keeps a restored draft of a new chain dirty and stored until the drawing is empty again', async () => {

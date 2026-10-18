@@ -1152,7 +1152,9 @@ describe('actions in the tab „Offene Fragen“ (M6 S5c-1)', () => {
     const open = primary(item);
     expect(open.textContent).toBe('Vorschlag öffnen');
     expect(open.tagName).toBe('A');
-    expect(open.getAttribute('href')).toBe('/projects/demo/value-chain?placement=plc_01PROP');
+    expect(open.getAttribute('href')).toBe(
+      '/projects/demo/value-chain?placement=plc_01PROP&from=open-questions',
+    );
   });
 
   it('requeue: queues the analysed model again', async () => {
@@ -1170,7 +1172,9 @@ describe('actions in the tab „Offene Fragen“ (M6 S5c-1)', () => {
     const item = await row('q-00000000000000c3');
     const link = primary(item);
     expect(link.tagName).toBe('A');
-    expect(link.getAttribute('href')).toBe('/projects/demo/value-chain?step=step-x');
+    expect(link.getAttribute('href')).toBe(
+      '/projects/demo/value-chain?step=step-x&from=open-questions',
+    );
     // the step's own chain link would lead to the same place: left out
     expect(within(item).queryAllByTestId('question-link')).toEqual([]);
   });

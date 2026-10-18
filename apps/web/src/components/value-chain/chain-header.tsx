@@ -25,7 +25,8 @@ function ExportMenu({
 }: {
   onFile: () => void;
   onSvg: () => void;
-  size: 'sm' | 'xs';
+  /** `icon-sm`: the phone's top bar, the label as the button's name. */
+  size: 'sm' | 'icon-sm';
 }) {
   const [open, setOpen] = useState(false);
   const item = (label: string, Icon: typeof FileDownIcon, run: () => void, testId: string) => (
@@ -50,13 +51,25 @@ function ExportMenu({
       role="menu"
       label="Exportieren"
       testId="chain-export-menu"
-      trigger={(props) => (
-        <Button variant="outline" size={size} data-testid="chain-export" {...props}>
-          <FileDownIcon data-icon="inline-start" />
-          Exportieren
-          <ChevronDownIcon data-icon="inline-end" />
-        </Button>
-      )}
+      trigger={(props) =>
+        size === 'icon-sm' ? (
+          <Button
+            variant="outline"
+            size="icon-sm"
+            aria-label="Exportieren"
+            data-testid="chain-export"
+            {...props}
+          >
+            <FileDownIcon />
+          </Button>
+        ) : (
+          <Button variant="outline" size="sm" data-testid="chain-export" {...props}>
+            <FileDownIcon data-icon="inline-start" />
+            Exportieren
+            <ChevronDownIcon data-icon="inline-end" />
+          </Button>
+        )
+      }
     >
       <div className="flex flex-col p-1">
         {item('Datei (.vc.json)', FileDownIcon, onFile, 'export-chain-json')}
@@ -104,6 +117,8 @@ export interface ChainHeaderProps {
   wide: boolean;
   project: string;
   projectName: string;
+  /** Opened from „Offene Fragen“: the crumb leads back there. */
+  fromQuestions?: boolean;
   mode: 'view' | 'edit';
   /** The chain's name (in edit mode the one on the canvas). */
   name: string;
@@ -134,15 +149,16 @@ export interface ChainHeaderProps {
 
 /**
  * The chain page's header (UX6, UX-SIMPLIFICATION.md §3.8 item 5) on the
- * shared canvas header: „‹ <Projekt>“ as the way back, the chain's name with
+ * shared canvas header: „‹ <Projekt>“ as the way back (from „Offene Fragen“
+ * the crumb „<Projekt> › Offene Fragen“), the chain's name with
  * its revision behind a disclosure, the chip „3 Prozesse ohne Schritt“,
- * „Bearbeiten“ and „Exportieren“ („Datei (.vc.json)“, „Bild (SVG)“). In edit
+ * „Bearbeiten“ and „Exportieren“ („Datei (.vc.json)“, „Bild (SVG)“); on a
+ * phone, view-first, only „Exportieren“ as an icon beside the name. In edit
  * mode the revision and „Ungespeichert“ sit beside the name and the toolbar
  * below: „Speichern“, undo, redo, „Exportieren“, „Importieren“, „Fertig“.
  */
 export function ChainHeader(props: ChainHeaderProps) {
   const { wide, mode, canReview, exists } = props;
-  const size = wide ? 'sm' : 'xs';
   const titleExtra =
     mode === 'edit' ? (
       <span className="flex shrink-0 items-center gap-1.5">
@@ -178,12 +194,13 @@ export function ChainHeader(props: ChainHeaderProps) {
           : `${props.unplacedCount} Prozesse ohne Schritt`}
       </button>
     ) : null;
+  // On a phone the chain is view-first (P8): no editing, „Exportieren“ as an icon.
   const more =
     mode === 'view' && exists ? (
       <span className="flex items-center gap-1">
-        {canReview ? (
+        {canReview && wide ? (
           <Button
-            size={size}
+            size="sm"
             onClick={props.onEdit}
             disabled={!props.canEdit}
             data-testid="edit-chain"
@@ -192,7 +209,7 @@ export function ChainHeader(props: ChainHeaderProps) {
             Bearbeiten
           </Button>
         ) : null}
-        <ExportMenu onFile={props.onFile} onSvg={props.onSvg} size={size} />
+        <ExportMenu onFile={props.onFile} onSvg={props.onSvg} size={wide ? 'sm' : 'icon-sm'} />
       </span>
     ) : null;
   const toolbar =
@@ -243,6 +260,9 @@ export function ChainHeader(props: ChainHeaderProps) {
       wide={wide}
       project={props.project}
       projectName={props.projectName}
+      {...(props.fromQuestions
+        ? { area: { label: 'Offene Fragen', to: '/projects/$project/open-questions' as const } }
+        : {})}
       title={<span data-testid="chain-name">{props.name}</span>}
       titleExtra={titleExtra}
       chips={chip ? [chip] : []}

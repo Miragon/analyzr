@@ -187,6 +187,8 @@ export interface StepPanelProps {
   autoIndex?: AutoAcceptIndex;
   /** Element names for the cards' evidence. */
   resolve?: RefResolver;
+  /** A card's decision form opened: the phone's sheet expands (UX6). */
+  onFormOpen?: () => void;
 }
 
 /**
@@ -224,6 +226,7 @@ export function StepPanel(props: StepPanelProps) {
     onOpen,
     autoIndex,
     resolve,
+    onFormOpen,
   } = props;
   const [adding, setAdding] = useState(false);
   /** Focus goes back to "Prozess hinzufügen" when the form closes. */
@@ -428,6 +431,7 @@ export function StepPanel(props: StepPanelProps) {
                     onReload={onReload}
                     autoIndex={autoIndex}
                     resolve={resolve}
+                    {...(onFormOpen ? { onFormOpen } : {})}
                   />
                 ))}
               </ul>

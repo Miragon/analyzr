@@ -1,11 +1,14 @@
 import type { SaveValueChainResult } from '@analyzr/client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useBlocker } from '@tanstack/react-router';
+import { cn } from 'cn';
 import {
   ChevronLeftIcon,
   ChevronRightIcon,
   DownloadIcon,
   MaximizeIcon,
+  PanelRightCloseIcon,
+  PanelRightOpenIcon,
   TriangleAlertIcon,
   XIcon,
   ZoomInIcon,
@@ -13,6 +16,7 @@ import {
 } from 'lucide-react';
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 
+import { CanvasPanel } from '@/components/canvas-panel';
 import { ErrorText } from '@/components/error-text';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -42,7 +46,7 @@ import { ApiError, errorMessage } from '@/lib/api';
 import { useAutoAcceptIndex } from '@/lib/auto-accept-actions';
 import { downloadText } from '@/lib/download';
 import { clearDraft, draftOffer, listDrafts, writeDraft, type DraftRef } from '@/lib/drafts';
-import { CANVAS_WIDE, useMediaQuery } from '@/lib/media';
+import { useCanvasSheet } from '@/lib/canvas-sheet';
 import { useProjectPermissions } from '@/lib/permissions';
 import { OUTSIDE_STEP } from '@/lib/limits';
 import {
@@ -97,6 +101,9 @@ export function ValueChainPage() {
   const navigate = valueChainRoute.useNavigate();
   const queryClient = useQueryClient();
   const canvas = useRef<ChainCanvasHandle>(null);
+  /** Opened from „Offene Fragen“ (`?from=open-questions`): the way back and the end lead there. */
+  const fromQuestions = search.from === 'open-questions';
+  const keep = fromQuestions ? { from: 'open-questions' as const } : {};
 
   const info = useQuery(projectQuery(project));
   // Editors and owners; viewers and the read-only demo get the viewer only.
@@ -112,7 +119,9 @@ export function ValueChainPage() {
   const models = useQuery(modelsQuery(project));
   const autoIndex = useAutoAcceptIndex(project);
   const { byModel, resolve } = useProjectFacts(project, models.data);
-  const wide = useMediaQuery(CANVAS_WIDE);
+  const sheet = useCanvasSheet();
+  /** From 1024 px the panel can be hidden for the whole chain (UX6, the zoom group's toggle). */
+  const [panelHidden, setPanelHidden] = useState(false);
   const processes = useMemo(() => processOptions(byModel.values()), [byModel]);
   const modelKeys = useMemo(() => new Set((models.data ?? []).map((m) => m.key)), [models.data]);
   const placements = useMemo(() => placementsQ.data ?? [], [placementsQ.data]);
@@ -328,15 +337,15 @@ export function ValueChainPage() {
     // The canvas echoes the page's own selection (also the active placement's step): no change.
     if (id === selectedId) return;
     if (id !== null) setReturnFocus(null);
-    void navigate({ search: id ? { step: id } : {}, replace: true });
+    void navigate({ search: id ? { ...keep, step: id } : keep, replace: true });
   };
   /** "Zur Übersicht" or Escape in the step panel: back to the overview, focus on that step. */
   const backToOverview = () => {
     setReturnFocus(selectedId);
-    void navigate({ search: {}, replace: true });
+    void navigate({ search: keep, replace: true });
   };
   const selectPlacement = (id: string) =>
-    void navigate({ search: { placement: id }, replace: true });
+    void navigate({ search: { ...keep, placement: id }, replace: true });
 
   useShortcuts(
     {
@@ -347,6 +356,11 @@ export function ValueChainPage() {
   );
 
   function onDecided(placementId: string, outcome: PlacementOutcome) {
+    // Opened from „Offene Fragen“ for this item: back to the tab after the decision (UX6, §3.3).
+    if (fromQuestions) {
+      void navigate({ to: '/projects/$project/open-questions', params: { project } });
+      return;
+    }
     const n = queueNeighbours(queue, placementId);
     if (n.index < 0) return;
     if (n.next) selectPlacement(n.next.id);
@@ -359,7 +373,7 @@ export function ValueChainPage() {
             ? 'Vorgemerkte Platzierungen bleiben auf ihren Schritten sichtbar.'
             : 'Keine Platzierung wartet mehr auf dich.',
       });
-      void navigate({ search: {}, replace: true });
+      void navigate({ search: keep, replace: true });
     }
   }
 
@@ -604,6 +618,15 @@ export function ValueChainPage() {
   const loadError =
     detailQ.error && !missing ? detailQ.error : (contentQ.error ?? placementsQ.error);
   const showCanvas = canvasDoc !== null && (exists || mode === 'edit');
+  /** The phone's collapsed sheet: what the panel holds (UX6, „29 offen“). */
+  const panelSummary =
+    mode === 'edit'
+      ? 'Bearbeiten'
+      : selectedStep
+        ? selectedStep.name || selectedStep.elementId
+        : queue.length > 0
+          ? `${queue.length} offen`
+          : 'Nichts offen';
   const empty = missing && mode === 'view';
 
   return (
@@ -613,8 +636,17 @@ export function ValueChainPage() {
       data-mode={mode}
     >
       {showCanvas ? (
-        // `isolate`: the modeler's context pad and popups (z-index 100) stay below dialogs.
-        <div className="absolute inset-y-0 right-0 left-0 isolate lg:right-[468px]">
+        // `isolate`: the modeler's context pad and popups (z-index 100) stay below dialogs. The
+        // container ends above the phone's sheet and beside the panel, so the bpmn.io watermark
+        // at its bottom right stays visible (UX-SIMPLIFICATION.md §3.13 item 1).
+        <div
+          className={cn(
+            'absolute inset-x-0 top-0 isolate',
+            sheet.wide && !panelHidden && 'right-[468px]',
+          )}
+          style={{ bottom: sheet.inset }}
+          data-testid="chain-canvas-area"
+        >
           <Suspense
             fallback={
               <div className="absolute inset-0 grid place-items-center">
@@ -635,8 +667,14 @@ export function ValueChainPage() {
                 selectStep(id);
               }}
               onOpen={(id) => {
+                // A linked step opens its model; any other is selected and zoomed in place (UX6).
                 const step = steps.find((s) => s.elementId === id);
-                openTarget(step ? drillDownTarget(step) : { kind: 'step', elementId: id });
+                const target = step ? drillDownTarget(step) : null;
+                if (target?.kind === 'model') openTarget(target);
+                else {
+                  selectStep(id);
+                  canvas.current?.focusElement(id);
+                }
               }}
               onChange={onCanvasChange}
               onImported={({ key, warnings: count }) => {
@@ -697,6 +735,19 @@ export function ValueChainPage() {
             >
               <MaximizeIcon />
             </Button>
+            {sheet.wide && !empty ? (
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label={panelHidden ? 'Details zeigen' : 'Details ausblenden'}
+                title={panelHidden ? 'Details zeigen' : 'Details ausblenden'}
+                aria-pressed={!panelHidden}
+                onClick={() => setPanelHidden((hidden) => !hidden)}
+                data-testid="panel-toggle"
+              >
+                {panelHidden ? <PanelRightOpenIcon /> : <PanelRightCloseIcon />}
+              </Button>
+            ) : null}
           </div>
           {/* bottom left: the legend in one line (UX6) */}
           <div
@@ -729,9 +780,10 @@ export function ValueChainPage() {
       ) : null}
 
       <ChainHeader
-        wide={wide}
+        wide={sheet.wide}
         project={project}
         projectName={info.data?.name ?? project}
+        fromQuestions={fromQuestions}
         mode={mode}
         name={
           mode === 'edit' && chainName
@@ -743,7 +795,7 @@ export function ValueChainPage() {
         dirty={dirty}
         unplacedCount={unplacedCount}
         onUnplaced={() => {
-          void navigate({ search: {}, replace: true });
+          void navigate({ search: keep, replace: true });
           setRevealUnplaced(true);
         }}
         canReview={canReview}
@@ -761,172 +813,185 @@ export function ValueChainPage() {
         onFinish={() => (dirtyNow() ? setLeaving(true) : finishEdit())}
       />
 
-      {/* right: the panel */}
-      {empty ? null : (
-        <aside
-          aria-label="Wertschöpfungskette: Details"
+      {/* right (on a phone: the sheet below): the panel; its focus takes the keys in edit mode */}
+      {empty || (sheet.wide && panelHidden) ? null : (
+        <div
+          className="contents"
           onFocus={() => setPanelFocus(true)}
           onBlur={(e) => {
             if (!e.currentTarget.contains(e.relatedTarget)) setPanelFocus(false);
           }}
-          className="absolute top-4 right-4 bottom-4 z-30 flex w-[440px] max-w-[calc(100vw-32px)] flex-col overflow-hidden rounded-xl border bg-card/95 shadow-md backdrop-blur-sm"
         >
-          <div className="flex flex-1 flex-col gap-4 overflow-y-auto p-4">
-            {warnings !== null && warnings > 0 ? (
-              <Alert data-testid="import-warnings">
-                <TriangleAlertIcon />
-                <AlertTitle className="flex items-center gap-2">
-                  {warnings === 1 ? '1 Element übersprungen' : `${warnings} Elemente übersprungen`}
+          <CanvasPanel
+            sheet={sheet}
+            label="Wertschöpfungskette: Details"
+            summary={panelSummary}
+            size="wide"
+            testId="chain-panel"
+            footer={
+              activeId && queue.length > 0 ? (
+                <div className="flex items-center gap-2 border-t bg-card px-4 py-2 text-xs text-muted-foreground">
+                  <span className="tabular-nums" data-testid="queue-position">
+                    {nav.index >= 0
+                      ? `${nav.index + 1} von ${queue.length} offen`
+                      : `${queue.length} offen`}
+                  </span>
                   <Button
-                    variant="ghost"
+                    variant="outline"
                     size="icon-xs"
                     className="ml-auto"
-                    aria-label="Hinweis schließen"
-                    onClick={() => setWarnings(null)}
+                    aria-label="Vorherige Platzierung (K)"
+                    disabled={!nav.previous}
+                    onClick={() => nav.previous && selectPlacement(nav.previous.id)}
                   >
-                    <XIcon />
+                    <ChevronLeftIcon />
                   </Button>
-                </AlertTitle>
-                <AlertDescription>Der Renderer konnte nicht alles anzeigen.</AlertDescription>
-              </Alert>
-            ) : null}
-            {headAhead !== null ? (
-              <Alert className="border-warning bg-warning-soft" data-testid="head-ahead">
-                <TriangleAlertIcon className="text-warning" />
-                <AlertTitle>Inzwischen gibt es r{headAhead}</AlertTitle>
-                <AlertDescription className="text-foreground">
-                  Du bearbeitest r{base?.rev}. Speichern führt zu einem Konflikt; analyzr führt
-                  nichts zusammen.
                   <Button
-                    size="sm"
                     variant="outline"
-                    className="mt-2"
-                    onClick={() => void loadNewer(dirtyNow() ? exportOrNull() : null)}
+                    size="icon-xs"
+                    aria-label="Nächste Platzierung (J)"
+                    disabled={!nav.next}
+                    onClick={() => nav.next && selectPlacement(nav.next.id)}
                   >
-                    Neuere Revision laden
+                    <ChevronRightIcon />
                   </Button>
-                </AlertDescription>
-              </Alert>
-            ) : null}
-            {saveState.phase === 'invalid' && invalidShown ? (
-              <ViolationsPanel
-                violations={saveState.violations}
-                truncated={saveState.truncated}
-                nameOf={(id) => {
-                  try {
-                    return canvas.current?.elementInfo(id)?.name ?? null;
-                  } catch {
-                    return null;
-                  }
-                }}
-                onSelect={(id) => {
-                  if (canvas.current?.elementInfo(id)) selectStep(id);
-                }}
-                onClose={() => setClosedInvalid(saveState)}
-              />
-            ) : null}
-            {canvasError ? (
-              <Alert variant="destructive">
-                <AlertTitle>Die Kette lässt sich nicht anzeigen</AlertTitle>
-                <AlertDescription>{canvasError}</AlertDescription>
-              </Alert>
-            ) : null}
+                </div>
+              ) : null
+            }
+          >
+            <div className="flex flex-col gap-4">
+              {warnings !== null && warnings > 0 ? (
+                <Alert data-testid="import-warnings">
+                  <TriangleAlertIcon />
+                  <AlertTitle className="flex items-center gap-2">
+                    {warnings === 1
+                      ? '1 Element übersprungen'
+                      : `${warnings} Elemente übersprungen`}
+                    <Button
+                      variant="ghost"
+                      size="icon-xs"
+                      className="ml-auto"
+                      aria-label="Hinweis schließen"
+                      onClick={() => setWarnings(null)}
+                    >
+                      <XIcon />
+                    </Button>
+                  </AlertTitle>
+                  <AlertDescription>Der Renderer konnte nicht alles anzeigen.</AlertDescription>
+                </Alert>
+              ) : null}
+              {headAhead !== null ? (
+                <Alert className="border-warning bg-warning-soft" data-testid="head-ahead">
+                  <TriangleAlertIcon className="text-warning" />
+                  <AlertTitle>Inzwischen gibt es r{headAhead}</AlertTitle>
+                  <AlertDescription className="text-foreground">
+                    Du bearbeitest r{base?.rev}. Speichern führt zu einem Konflikt; analyzr führt
+                    nichts zusammen.
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="mt-2"
+                      onClick={() => void loadNewer(dirtyNow() ? exportOrNull() : null)}
+                    >
+                      Neuere Revision laden
+                    </Button>
+                  </AlertDescription>
+                </Alert>
+              ) : null}
+              {saveState.phase === 'invalid' && invalidShown ? (
+                <ViolationsPanel
+                  violations={saveState.violations}
+                  truncated={saveState.truncated}
+                  nameOf={(id) => {
+                    try {
+                      return canvas.current?.elementInfo(id)?.name ?? null;
+                    } catch {
+                      return null;
+                    }
+                  }}
+                  onSelect={(id) => {
+                    if (canvas.current?.elementInfo(id)) selectStep(id);
+                  }}
+                  onClose={() => setClosedInvalid(saveState)}
+                />
+              ) : null}
+              {canvasError ? (
+                <Alert variant="destructive">
+                  <AlertTitle>Die Kette lässt sich nicht anzeigen</AlertTitle>
+                  <AlertDescription>{canvasError}</AlertDescription>
+                </Alert>
+              ) : null}
 
-            {loadError ? (
-              <Alert variant="destructive">
-                <AlertTitle>Die Kette konnte nicht geladen werden</AlertTitle>
-                <AlertDescription>
-                  <ErrorText error={loadError} />
-                </AlertDescription>
-              </Alert>
-            ) : panelForSelection && selectedId ? (
-              <StepPanel
-                key={selectedId}
-                project={project}
-                elementId={selectedId}
-                step={selectedStep}
-                orgUnit={selectedOrg}
-                detail={detail}
-                placements={placements}
-                mode={mode}
-                canReview={canReview}
-                canvasInfo={mode === 'edit' && canvasInfo?.id === selectedId ? canvasInfo : null}
-                processes={processes}
-                stepOptions={stepChoices}
-                modelKeys={modelKeys}
-                activePlacementId={activeId}
-                shortcuts={shortcuts}
-                onSelectStep={selectStep}
-                onBack={backToOverview}
-                onSelectPlacement={selectPlacement}
-                onDecided={onDecided}
-                onReload={reload}
-                onOpen={openTarget}
-                onSetName={(name) => canvas.current?.setName(selectedId, name)}
-                onSetColor={(color) => canvas.current?.setColor(selectedId, color)}
-                onSetLink={(link) => canvas.current?.setLink(selectedId, link)}
-                autoIndex={autoIndex}
-                resolve={resolve}
-              />
-            ) : detail || mode === 'edit' ? (
-              <ChainOverview
-                project={project}
-                detail={detail}
-                placements={placements}
-                unplaced={unplacedQ.data}
-                modelKeys={modelKeys}
-                stepOptions={stepChoices}
-                canReview={canReview}
-                mode={mode}
-                activePlacementId={activeId}
-                shortcuts={shortcuts}
-                onSelectStep={selectStep}
-                onSelectPlacement={selectPlacement}
-                onDecided={onDecided}
-                onReload={reload}
-                chainName={chainName}
-                onChainName={(name) => canvas.current?.setChainName(name)}
-                focusStepId={returnFocus}
-                revealUnplaced={revealUnplaced}
-                onRevealed={() => setRevealUnplaced(false)}
-                autoIndex={autoIndex}
-                resolve={resolve}
-              />
-            ) : (
-              <div className="grid h-full place-items-center">
-                <Spinner className="size-6" />
-              </div>
-            )}
-          </div>
-          {activeId && queue.length > 0 ? (
-            <div className="flex items-center gap-2 border-t bg-card px-4 py-2 text-xs text-muted-foreground">
-              <span className="tabular-nums" data-testid="queue-position">
-                {nav.index >= 0
-                  ? `${nav.index + 1} von ${queue.length} offen`
-                  : `${queue.length} offen`}
-              </span>
-              <Button
-                variant="outline"
-                size="icon-xs"
-                className="ml-auto"
-                aria-label="Vorherige Platzierung (K)"
-                disabled={!nav.previous}
-                onClick={() => nav.previous && selectPlacement(nav.previous.id)}
-              >
-                <ChevronLeftIcon />
-              </Button>
-              <Button
-                variant="outline"
-                size="icon-xs"
-                aria-label="Nächste Platzierung (J)"
-                disabled={!nav.next}
-                onClick={() => nav.next && selectPlacement(nav.next.id)}
-              >
-                <ChevronRightIcon />
-              </Button>
+              {loadError ? (
+                <Alert variant="destructive">
+                  <AlertTitle>Die Kette konnte nicht geladen werden</AlertTitle>
+                  <AlertDescription>
+                    <ErrorText error={loadError} />
+                  </AlertDescription>
+                </Alert>
+              ) : panelForSelection && selectedId ? (
+                <StepPanel
+                  key={selectedId}
+                  project={project}
+                  elementId={selectedId}
+                  step={selectedStep}
+                  orgUnit={selectedOrg}
+                  detail={detail}
+                  placements={placements}
+                  mode={mode}
+                  canReview={canReview}
+                  canvasInfo={mode === 'edit' && canvasInfo?.id === selectedId ? canvasInfo : null}
+                  processes={processes}
+                  stepOptions={stepChoices}
+                  modelKeys={modelKeys}
+                  activePlacementId={activeId}
+                  shortcuts={shortcuts}
+                  onSelectStep={selectStep}
+                  onBack={backToOverview}
+                  onSelectPlacement={selectPlacement}
+                  onDecided={onDecided}
+                  onReload={reload}
+                  onOpen={openTarget}
+                  onSetName={(name) => canvas.current?.setName(selectedId, name)}
+                  onSetColor={(color) => canvas.current?.setColor(selectedId, color)}
+                  onSetLink={(link) => canvas.current?.setLink(selectedId, link)}
+                  autoIndex={autoIndex}
+                  resolve={resolve}
+                  onFormOpen={() => sheet.setExpanded(true)}
+                />
+              ) : detail || mode === 'edit' ? (
+                <ChainOverview
+                  project={project}
+                  detail={detail}
+                  placements={placements}
+                  unplaced={unplacedQ.data}
+                  modelKeys={modelKeys}
+                  stepOptions={stepChoices}
+                  canReview={canReview}
+                  mode={mode}
+                  activePlacementId={activeId}
+                  shortcuts={shortcuts}
+                  onSelectStep={selectStep}
+                  onSelectPlacement={selectPlacement}
+                  onDecided={onDecided}
+                  onReload={reload}
+                  chainName={chainName}
+                  onChainName={(name) => canvas.current?.setChainName(name)}
+                  focusStepId={returnFocus}
+                  revealUnplaced={revealUnplaced}
+                  onRevealed={() => setRevealUnplaced(false)}
+                  autoIndex={autoIndex}
+                  resolve={resolve}
+                  onFormOpen={() => sheet.setExpanded(true)}
+                />
+              ) : (
+                <div className="grid h-full place-items-center">
+                  <Spinner className="size-6" />
+                </div>
+              )}
             </div>
-          ) : null}
-        </aside>
+          </CanvasPanel>
+        </div>
       )}
 
       {canReview ? (

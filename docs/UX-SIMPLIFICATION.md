@@ -4,8 +4,8 @@ Status: **decided** (owner decision 26, 2026-10-18: every "Ask now" question of 
 the recommended option; HANDOFF §4); proposal of 2026-10-17, revised the same day after a UX and a
 feasibility critique · Branch: `feat/integration-and-gaps` (the first wave UX2a, UX1 and UX2b
 delivered on it on 2026-10-18, §7; the owner's walkthrough the same day, §7 "Owner
-walkthrough"; UX7, UX8, S2b's „Vorschau“, UX3, UX4 and UX5 delivered the same day, UX6 step 1 on
-2026-10-19; next UX6 step 2) · Source: four user-need audits of the web UI on the agent-created scratch stack
+walkthrough"; UX7, UX8, S2b's „Vorschau“, UX3, UX4 and UX5 delivered the same day, UX6 on
+2026-10-19; next UX9) · Source: four user-need audits of the web UI on the agent-created scratch stack
 `analyzr-uxaudit` (seeded `nordwind-handel` with its chain and a simulation agent run,
 `signavio-beispiel` from the CLI bundle import, two projects made from the raw synthetic Signavio
 export; 1440x900 and 390x844), torn down after the audit · Relates to: HANDOFF §4 decisions 8, 10,
@@ -1885,6 +1885,34 @@ simulation agent; controls counted with the disclosures' `summary`):
 Next (step 2): the phone sheet, the selected step's outline and the overlays' scale, the panel
 toggle, `INSET.left` in edit mode, the double-click in place, the return to „Offene Fragen“, the
 phone's checks. Not verified: other browsers than Chromium, a real phone, a screen reader.
+
+**UX6 step 2 as delivered** (2026-10-19, on the branch, every gate green; DEVELOPMENT.md "UX6 step
+2"). §3.8 items 6–9 and the return of §3.3; web only, live-run neutral. The panel is the canvas
+pages' `CanvasPanel` (`wide`, 440 px) with `useCanvasSheet`: below 1024 px a sheet collapsed to „29
+offen“ (a selected step's name) under the shared header's top bar, a decision's form expanding it
+(`onFormOpen` through the cards), the queue's ‹ › its footer; from 1024 px an aside that „Details
+ausblenden“ in the zoom group hides, the canvas taking its room. The canvas container ends above
+the sheet and beside the aside; a `ResizeObserver` calls diagram-js' `resized()` on a real size
+change. The selected step's outline is 4 px (`!important` over the renderer's inline 2 px), the
+overlay labels scale with the zoom up to 100 % (`scale: { min: 0.4, max: 1 }`), and the fit leaves
+80 px for the palette in edit mode. A double-click on a step without a process link selects it and
+zooms in place (`focusElement`: at least 100 %, at most 150 %, centred); a linked step still opens
+its model; the link editor says „Ohne Link zoomt der Doppelklick auf den Schritt.“ The way back:
+the tab's chain links („Jetzt entscheiden“ on a held placement, „Auf der Kette prüfen“, „Link
+korrigieren“) carry `?from=open-questions` (validated); the header's crumb then reads
+„<Projekt> › Offene Fragen“ („‹ Offene Fragen“ on a phone), J/K keep it, and a decision leads back
+to the tab. Deviation: on a phone the header offers no „Bearbeiten“ and „Exportieren“ as an icon
+(view-first, P8; the modeler is not made for touch). Measured with the UI load guard on
+`analyzr-ux6b`:
+
+| Done when | Before | After (UX6 step 2) |
+|---|---|---|
+| The selected step's computed stroke width | 2 px (the class lost to the inline style) | 4 px |
+| 390x844: the project link | covered by the panel | on top, answers `elementFromPoint`; the sheet collapsed to „29 offen“ |
+| 390x844: the canvas | under the panel | above the sheet, more than 55 % of the screen |
+| A step without a link, double-clicked | the step view (a page change) | selected and zoomed in place |
+
+Not verified: other browsers than Chromium, a real phone, a screen reader.
 
 **UX7 "Hochladen and Agent verbinden".** Files: `components/upload-panel.tsx`, `lib/upload.ts`,
 `components/connect-agent.tsx`, `lib/agent-config.ts`; `packages/bpmn-facts/src/input.ts` and

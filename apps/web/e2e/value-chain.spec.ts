@@ -800,7 +800,7 @@ test('link: set via the process picker, undo, set again; the rule proposal; clea
   await finishEdit(page);
 });
 
-test('drill-down: double-click opens the step view with sub-steps, processes and calls', async ({
+test('drill-down: double-click selects in place, „Als Liste öffnen“ shows sub-steps, processes and calls', async ({
   page,
 }) => {
   test.setTimeout(90_000);
@@ -830,7 +830,11 @@ test('drill-down: double-click opens the step view with sub-steps, processes and
   const placed = ((await manual.json()) as { placement: { id: string } }).placement.id;
 
   await chainPage(page);
+  // UX6: a step without a link is selected and zoomed in place; „Als Liste öffnen“ is the step view
   await shape(page, 'step-vertrieb').dblclick();
+  await expect(page).toHaveURL(/\/value-chain\?step=step-vertrieb$/);
+  await expect(page.getByTestId('step-panel')).toHaveAttribute('data-element-id', 'step-vertrieb');
+  await page.getByTestId('open-step-list').click();
   await expect(page).toHaveURL(/\/value-chain\/steps\/step-vertrieb$/);
   await expect(page.getByTestId('step-breadcrumb')).toContainText('Wertschöpfungskette');
   await page.getByTestId('sub-step').filter({ hasText: 'Auftragsabwicklung' }).click();

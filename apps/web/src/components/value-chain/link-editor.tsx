@@ -189,7 +189,7 @@ export function LinkEditor({ link, processes, onChange }: LinkEditorProps) {
         </form>
       ) : (
         <p className="text-xs text-muted-foreground">
-          Ohne Link öffnet der Doppelklick die Schrittansicht von analyzr.
+          Ohne Link zoomt der Doppelklick auf den Schritt.
         </p>
       )}
     </div>

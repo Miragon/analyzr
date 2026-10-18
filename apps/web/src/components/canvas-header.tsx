@@ -37,7 +37,7 @@ export function CanvasHeader({
    * landing); without it the project is the way back (the chain, a project
    * area of its own).
    */
-  area?: { label: string; to: '/projects/$project' };
+  area?: { label: string; to: '/projects/$project' | '/projects/$project/open-questions' };
   title: ReactNode;
   /** Beside the title: a disclosure (the chain's revision), badges (unsaved). */
   titleExtra?: ReactNode;

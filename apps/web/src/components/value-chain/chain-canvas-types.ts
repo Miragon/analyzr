@@ -70,7 +70,10 @@ export interface ChainCanvasProps {
   /** Unsaved changes (shown as `data-dirty`). */
   dirty: boolean;
   onSelect: (elementId: string | null) => void;
-  /** Double-click on a step in view mode (drill-down). */
+  /**
+   * Double-click on a step in view mode: a linked step opens its model, any
+   * other is selected and zoomed in place (UX6, `focusElement`).
+   */
   onOpen: (elementId: string) => void;
   /**
    * The document changed (edit mode): debounced by 300 ms after an executed,
@@ -113,4 +116,6 @@ export interface ChainCanvasHandle {
   saveSVG(): string;
   zoom(factor: number): void;
   fit(): void;
+  /** Zooms in on an element in place (at least 100 %, at most 150 %), its centre in the middle. */
+  focusElement(elementId: string): void;
 }

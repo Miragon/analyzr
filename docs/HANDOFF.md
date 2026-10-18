@@ -208,9 +208,14 @@ and code are in English.
   („Agent gescheitert · Nochmal versuchen“, „3 Prozesse fällig · Agent starten“); the cards with
   one „Details“ and a held card answered through „Offene Fragen“; the header „‹ <Projekt>“, name,
   „Bearbeiten“, „Exportieren“; „nichts angenommen“ on 4 steps instead of 12; panel 75 words and 20
-  controls (319 and 84 before); web only, live-run neutral. **Next:** UX6 step 2 (phone sheet,
-  canvas selection and scale, panel toggle, edit-mode inset, double-click in place, the return to
-  „Offene Fragen“) → UX9 (the owner: „Sonst kannst du weitermachen“), alongside S2c (the
+  controls (319 and 84 before); web only, live-run neutral. **UX6 step 2** (done 2026-10-19 on the
+  branch, every gate green, the UI load guard and the whole Playwright suite against a scratch
+  stack; UX-SIMPLIFICATION.md §7 "UX6 step 2 as delivered"): the chain on the canvas pages' panel
+  (a sheet on a phone collapsed to „29 offen“, view-first; from 1024 px an aside the zoom group
+  hides), the selected step outlined 4 px, labels scaled with the zoom, the palette's column free
+  in edit mode, a double-click on an unlinked step zooming in place, the way back to „Offene
+  Fragen“ after a decision; web only, live-run neutral. **Next:** UX9 (the owner: „Sonst kannst du
+  weitermachen“), alongside S2c (the
   trust rule),
   S2b's follow-up and S3c; S6 after them; after the owner's
   live runs S5b, S7 and facts v2 as recommended (§7 "M6"; M6 §8 "After S2a").

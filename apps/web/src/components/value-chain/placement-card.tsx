@@ -76,6 +76,8 @@ export interface PlacementCardProps {
   autoIndex?: AutoAcceptIndex;
   /** Element names for the evidence; the bare element id until the facts are loaded. */
   resolve?: RefResolver;
+  /** A decision's form opened: the phone's sheet expands (UX6). */
+  onFormOpen?: () => void;
 }
 
 /** The current proposal of a placement: the one its status rests on, else the latest. */
@@ -162,6 +164,7 @@ export function PlacementCard({
   onReload,
   autoIndex,
   resolve = bareResolver,
+  onFormOpen,
 }: PlacementCardProps) {
   const [detailsOpen, setDetailsOpen] = useState(false);
   // Revoking an auto-acceptance is the owners' (the marks are every reviewer's).
@@ -417,6 +420,7 @@ export function PlacementCard({
           showKeys={active && shortcuts}
           onDecided={(outcome) => onDecided(outcome)}
           onReload={onReload}
+          {...(onFormOpen ? { onFormOpen } : {})}
           holdAnswer={
             <Suspense fallback={null}>
               <HoldAnswer

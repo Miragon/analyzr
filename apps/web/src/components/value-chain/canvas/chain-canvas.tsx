@@ -66,14 +66,19 @@ function inView(box: Viewbox, e: VcElement): boolean {
   );
 }
 
-/** Room the floating header, legend and zoom controls take over the canvas (px). */
+/**
+ * Room the floating header, legend and zoom controls take over the canvas
+ * (px); in edit mode the palette's column too (UX6: it covered the first
+ * step).
+ */
 const INSET = { top: 150, right: 72, bottom: 64, left: 24 };
+const EDIT_LEFT = 80;
 
 /**
  * Fits the drawing into the part of the canvas the floating chrome leaves
  * free (never above 100 %), so the top of the chain is not under the header.
  */
-function fitFree(diagram: Diagram): void {
+function fitFree(diagram: Diagram, mode: 'view' | 'edit'): void {
   const canvas = diagram.get('canvas');
   const shapes = diagram
     .get('elementRegistry')
@@ -85,11 +90,12 @@ function fitFree(diagram: Diagram): void {
   const maxX = Math.max(...shapes.map((e) => (e.x ?? 0) + (e.width ?? 0)));
   const maxY = Math.max(...shapes.map((e) => (e.y ?? 0) + (e.height ?? 0)));
   const { outer } = canvas.viewbox();
-  const freeW = Math.max(outer.width - INSET.left - INSET.right, 100);
+  const left = mode === 'edit' ? EDIT_LEFT : INSET.left;
+  const freeW = Math.max(outer.width - left - INSET.right, 100);
   const freeH = Math.max(outer.height - INSET.top - INSET.bottom, 100);
   const scale = Math.min(freeW / (maxX - minX || 1), freeH / (maxY - minY || 1), 1);
   canvas.viewbox({
-    x: minX - (INSET.left + (freeW - (maxX - minX) * scale) / 2) / scale,
+    x: minX - (left + (freeW - (maxX - minX) * scale) / 2) / scale,
     y: minY - (INSET.top + (freeH - (maxY - minY) * scale) / 2) / scale,
     width: outer.width / scale,
     height: outer.height / scale,
@@ -186,9 +192,9 @@ const ChainCanvas = forwardRef<ChainCanvasHandle, ChainCanvasProps>(
             // The re-layout's commands are part of the import: no change to report.
             clearTimeout(timer);
             pending = false;
-            fitFree(services(created));
+            fitFree(services(created), mode);
           } else if (viewbox.current) services(created).get('canvas').viewbox(viewbox.current);
-          else fitFree(services(created));
+          else fitFree(services(created), mode);
           settled = true;
           setWarnings(found.length);
           setImported((prev) => ({ session: `${mode}:${key}`, n: (prev?.n ?? 0) + 1 }));
@@ -235,6 +241,22 @@ const ChainCanvas = forwardRef<ChainCanvasHandle, ChainCanvasProps>(
       if (!current || !ready) return;
       return applyOverlays(services(current), overlays, invalidIds, selectedId);
     }, [overlays, invalidIds, selectedId, imported, ready]);
+
+    // The container changes size with the panel's sheet and its toggle (UX6): diagram-js must know.
+    useEffect(() => {
+      const el = host.current;
+      if (!el || typeof ResizeObserver === 'undefined') return;
+      // Only a real change: the observer's first call (the size at mount) changes nothing.
+      let size: string | null = null;
+      const observer = new ResizeObserver(([entry]) => {
+        const next = entry ? `${entry.contentRect.width}x${entry.contentRect.height}` : null;
+        const changed = size !== null && next !== size;
+        size = next;
+        if (changed && instance.current) services(instance.current).get('canvas').resized();
+      });
+      observer.observe(el);
+      return () => observer.disconnect();
+    }, []);
 
     useImperativeHandle(ref, (): ChainCanvasHandle => {
       const get = () => {
@@ -302,7 +324,23 @@ const ChainCanvas = forwardRef<ChainCanvasHandle, ChainCanvasProps>(
           const canvas = services(get()).get('canvas');
           canvas.zoom(canvas.zoom() * factor);
         },
-        fit: () => fitFree(services(get())),
+        fit: () => fitFree(services(get()), latest.current.mode),
+        focusElement: (id) => {
+          const e = shape(id);
+          if (!e) return;
+          const canvas = services(get()).get('canvas');
+          const { x = 0, y = 0, width = 0, height = 0 } = e;
+          const scale = Math.min(Math.max(canvas.zoom() * 1.5, 1), 1.5);
+          const { outer } = canvas.viewbox();
+          const w = outer.width / scale;
+          const h = outer.height / scale;
+          canvas.viewbox({
+            x: x + width / 2 - w / 2,
+            y: y + height / 2 - h / 2,
+            width: w,
+            height: h,
+          });
+        },
       };
     }, []);
 

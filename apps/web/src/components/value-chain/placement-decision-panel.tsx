@@ -53,6 +53,8 @@ export interface PlacementDecisionPanelProps {
    * the review screen): the note dialog of „Offene Fragen“.
    */
   holdAnswer?: ReactNode;
+  /** A form opened (reject, hold, correct): the phone's sheet expands to show it (UX6). */
+  onFormOpen?: () => void;
 }
 
 /**
@@ -79,8 +81,13 @@ function Panel({
   onDecided,
   onReload,
   holdAnswer,
+  onFormOpen,
 }: PlacementDecisionPanelProps) {
-  const [form, setForm] = useState<Form>(null);
+  const [form, setFormState] = useState<Form>(null);
+  const setForm = (next: Form) => {
+    setFormState(next);
+    if (next !== null) onFormOpen?.();
+  };
   const [conflict, setConflict] = useState<Conflict | null>(null);
   const decide = useDecidePlacement(project);
   const can = placementActions(placement);

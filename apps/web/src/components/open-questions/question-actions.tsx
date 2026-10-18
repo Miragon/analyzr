@@ -141,7 +141,8 @@ function ActionLink({
   children: ReactNode;
 }) {
   const link = actionLink(q, card.action);
-  // From the tab, the review screen leads back to it (UX5, Q4); the model view keeps the list's way.
+  // From the tab, the review screen (UX5, Q4) and the chain (UX6) lead back to it; the model view
+  // keeps the list's way.
   const inTab = useRouterState({
     select: (state) => state.location.pathname.endsWith('/open-questions'),
   });
@@ -173,6 +174,7 @@ function ActionLink({
       search={{
         ...(link?.to === 'chain' && link.step ? { step: link.step } : {}),
         ...(link?.to === 'chain' && link.placement ? { placement: link.placement } : {}),
+        ...(inTab ? { from: 'open-questions' as const } : {}),
       }}
       {...common}
     >

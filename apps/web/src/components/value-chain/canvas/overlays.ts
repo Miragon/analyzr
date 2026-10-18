@@ -54,7 +54,8 @@ export function applyOverlays(
       position: { top: -26, left: 24 },
       html: row,
       show: { minZoom: 0.4 },
-      scale: { min: 0.75 },
+      // With the zoom, never above 100 %: the steps' names stay the largest text (UX6).
+      scale: { min: 0.4, max: 1 },
     });
   };
   const invalid = new Set(invalidIds);

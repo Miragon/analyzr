@@ -41,6 +41,8 @@ export interface CanvasService {
   removeMarker(element: VcElement, marker: string): void;
   scrollToElement(element: VcElement, padding?: number): void;
   getRootElement(): VcElement;
+  /** The container changed size. */
+  resized(): void;
 }
 
 export interface ElementRegistryService {

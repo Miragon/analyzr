@@ -51,7 +51,8 @@ import { userPath } from './user-path';
  * controls, the words per row, the cards on a phone) and review screen (the
  * panel's words, the way back on a phone, the watermark); UX6's chain (the
  * primary in view, the panel's and the header's controls and words, the
- * card's controls, „nichts angenommen“ on 4 steps).
+ * card's controls, „nichts angenommen“ on 4 steps, the selected step's 4 px
+ * outline, the panel's toggle, the phone's sheet and project link).
  */
 
 const ROOT = join(import.meta.dirname, '../../..');
@@ -742,6 +743,58 @@ test('UX6 desktop: „Platzierungen prüfen (n)“ in view, the panel within 40 
   expect(await card.innerText()).not.toMatch(ID_PATTERN);
   // the model path, not the ref (the simulation agent's rationale may cite one: its text)
   expect(await card.getByTestId('placement-model').innerText()).not.toContain('#');
+});
+
+test('UX6 canvas: the selected step outlined 4 px wide, the panel hidden by its toggle', async ({
+  page,
+}) => {
+  await settle(page, `/projects/${NORDWIND}/value-chain`, '[data-testid=chain-summary]');
+  await page.getByTestId('step-tree').locator('summary').click();
+  await page.getByTestId('step-tree-item').first().click();
+  const outline = page.locator(
+    '[data-testid=vc-canvas] .djs-element.analyzr-vc-selected .djs-visual > path:first-child',
+  );
+  await expect(outline).toHaveCount(1);
+  expect(await outline.evaluate((el) => getComputedStyle(el).strokeWidth)).toBe('4px');
+  // the toggle in the zoom group gives the canvas the panel's room, and back
+  const area = page.getByTestId('chain-canvas-area');
+  const before = (await area.boundingBox())!.width;
+  await page.getByRole('button', { name: 'Details ausblenden' }).click();
+  await expect(page.getByTestId('chain-panel')).toHaveCount(0);
+  expect((await area.boundingBox())!.width).toBeGreaterThan(before + 400);
+  await page.getByRole('button', { name: 'Details zeigen' }).click();
+  await expect(page.getByTestId('chain-panel')).toBeVisible();
+});
+
+test('UX6 mobile: the chain view-first, the project link on top, the sheet collapsed to „n offen“', async ({
+  browser,
+}) => {
+  const { context, page } = await mobile(browser);
+  try {
+    await settle(page, `/projects/${NORDWIND}/value-chain`, '[data-testid=chain-panel]');
+    await expect(page.getByTestId('chain-panel')).toHaveAttribute('data-sheet', 'collapsed');
+    await expect(page.getByTestId('panel-handle')).toHaveText(/^\d+ offen$/);
+    const box = await page.getByTestId('canvas-back').boundingBox();
+    expect(box, 'the project link is on screen').not.toBeNull();
+    const hit = await page.evaluate(
+      ([x, y]) => document.elementFromPoint(x, y)?.closest('[data-testid="canvas-back"]') !== null,
+      [box!.x + box!.width / 2, box!.y + box!.height / 2] as const,
+    );
+    expect(hit, 'the project link answers elementFromPoint').toBe(true);
+    // the canvas ends above the sheet and covers most of the screen
+    const area = (await page.getByTestId('chain-canvas-area').boundingBox())!;
+    const handle = (await page.getByTestId('panel-handle').boundingBox())!;
+    expect(area.y + area.height).toBeLessThanOrEqual(handle.y + 1);
+    expect(area.height / MOBILE.viewport.height).toBeGreaterThan(0.55);
+    await page.getByTestId('panel-handle').click();
+    await expect(page.getByTestId('chain-panel')).toHaveAttribute('data-sheet', 'expanded');
+    await expect(page.getByTestId('review-placements')).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+      MOBILE.viewport.width,
+    );
+  } finally {
+    await context.close();
+  }
 });
 
 // ------------------------------------------------------------------ „Relationen › Zu prüfen“ (UX5)

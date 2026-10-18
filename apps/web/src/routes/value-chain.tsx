@@ -9,6 +9,8 @@ export interface ValueChainSearch {
   placement?: string;
   /** `svg`: download the drawing once it is shown (the export hub on „Übersicht“, UX1). */
   export?: 'svg';
+  /** Opened from „Offene Fragen“: the way back and the end of a decision lead there (UX6). */
+  from?: 'open-questions';
 }
 
 /**
@@ -16,7 +18,8 @@ export interface ValueChainSearch {
  * or the modeler in edit mode), badges and finding labels on the steps, and
  * the side panel where placements are reviewed, steps edited and the chain
  * saved. `?placement=plc_…` (the `reviewUrl` of refused agent writes) selects
- * a placement and its step, `?step=` a step. The page
+ * a placement and its step, `?step=` a step, `?from=open-questions` (UX6)
+ * leads the way back and the end of a decision to „Offene Fragen“. The page
  * (`value-chain-page.tsx`) is loaded with the route, and the canvas with the
  * page, so no other page carries their code.
  */
@@ -31,6 +34,7 @@ export const valueChainRoute = createRoute({
       ? { placement: search['placement'] }
       : {}),
     ...(search['export'] === 'svg' ? { export: 'svg' as const } : {}),
+    ...(search['from'] === 'open-questions' ? { from: 'open-questions' as const } : {}),
   }),
   component: lazyRouteComponent(() => import('./value-chain-page'), 'ValueChainPage'),
 });

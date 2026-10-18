@@ -317,6 +317,8 @@ export interface ChainOverviewProps {
   autoIndex?: AutoAcceptIndex;
   /** Element names for the cards' evidence. */
   resolve?: RefResolver;
+  /** A card's decision form opened: the phone's sheet expands (UX6). */
+  onFormOpen?: () => void;
 }
 
 /**
@@ -414,6 +416,7 @@ export function ChainOverview(props: ChainOverviewProps) {
     onReload,
     autoIndex,
     resolve,
+    onFormOpen,
   } = props;
   const [bulkOpen, setBulkOpen] = useState(false);
   const [onlyAuto, setOnlyAuto] = useState(false);
@@ -484,6 +487,7 @@ export function ChainOverview(props: ChainOverviewProps) {
       onReload={onReload}
       autoIndex={autoIndex}
       resolve={resolve}
+      {...(onFormOpen ? { onFormOpen } : {})}
     />
   );
 

@@ -450,8 +450,14 @@ test('filters combine as on the server, in the list and in the export', async ({
   );
   await expect(placement).toHaveCount(1);
   await placement.getByRole('link', { name: 'Jetzt entscheiden' }).click();
-  await expect(page).toHaveURL(new RegExp(`/value-chain\\?placement=${heldPlacementId}`));
+  await expect(page).toHaveURL(
+    new RegExp(`/value-chain\\?placement=${heldPlacementId}&from=open-questions`),
+  );
   await expect(page.getByTestId('value-chain-page')).toBeVisible();
+  // UX6: the way back leads to the tab; the held card answers through its note dialog
+  await expect(page.getByTestId('canvas-back')).toHaveText('Offene Fragen');
+  const card = page.locator(`[data-testid=placement-card][data-placement-id="${heldPlacementId}"]`);
+  await expect(card.getByTestId('hold-answer')).toBeVisible();
 });
 
 test('human and agent texts stay plain text; each card opens its subject where it is', async ({
@@ -1351,7 +1357,11 @@ test('„Link korrigieren“ opens the chain page at the step whose link names n
   const row = item(page, fix.id);
   await expect(primaryOf(row)).toHaveText('Link korrigieren');
   await primaryOf(row).click();
-  await expect(page).toHaveURL(new RegExp(`/projects/${PROJECT}/value-chain\\?step=${step}$`));
+  await expect(page).toHaveURL(
+    new RegExp(`/projects/${PROJECT}/value-chain\\?step=${step}&from=open-questions$`),
+  );
+  // the way back leads to the tab (UX6)
+  await expect(page.getByTestId('canvas-back')).toHaveText('Offene Fragen');
   const panel = page.getByTestId('step-panel');
   await expect(panel).toHaveAttribute('data-element-id', step);
   await expect(panel.getByTestId('step-link')).toContainText('nicht auflösbar');

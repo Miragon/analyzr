@@ -1038,7 +1038,7 @@ describe('notes (M6 S5a, S5c-1; a hold’s answer since UX2b)', () => {
     // its „Jetzt entscheiden“ opens the chain at the placement
     expect(
       within(all[4]!).getByRole('link', { name: 'Jetzt entscheiden' }).getAttribute('href'),
-    ).toBe('/projects/demo/value-chain?placement=plc_01HELD');
+    ).toBe('/projects/demo/value-chain?placement=plc_01HELD&from=open-questions');
   });
 
   it('starts every dialog afresh, says when a note was there already, and keeps the text on a refusal', async () => {

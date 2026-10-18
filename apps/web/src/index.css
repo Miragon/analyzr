@@ -252,12 +252,13 @@
 .analyzr-vc .djs-element.analyzr-vc-finding .djs-visual > path:first-child {
   stroke-dasharray: 7 4;
 }
+/* The renderer paints the stroke width inline (2px): the markers win only with !important (UX6). */
 .analyzr-vc .djs-element.analyzr-vc-selected .djs-visual > path:first-child {
-  stroke-width: 4px;
+  stroke-width: 4px !important;
 }
 .analyzr-vc .djs-element.analyzr-vc-invalid .djs-visual > path:first-child {
   stroke: var(--cd-danger) !important;
-  stroke-width: 4px;
+  stroke-width: 4px !important;
 }
 .analyzr-vc .djs-palette {
   top: 176px;
