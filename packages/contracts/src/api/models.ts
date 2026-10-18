@@ -1,9 +1,11 @@
 import { z } from 'zod';
 
 import { MessageFlowInfo, Fact, ProcessInfo } from '../facts.ts';
+import { Finding } from '../findings.ts';
 import { ModelId, ProjectId, RevisionId } from '../ids.ts';
 import { ApiProblem } from '../problem.ts';
-import { ModelKey } from '../refs.ts';
+import { ModelKey, Ref } from '../refs.ts';
+import { RelationType } from '../relations.ts';
 import { orNull } from '../zod-utils.ts';
 import { AmendmentCounts, AmendmentPlanEntry, RevisionUpstream } from './amendment-core.ts';
 import { Sha256Hex, Timestamp, pageOf } from './common.ts';
@@ -304,7 +306,97 @@ export const ImportFileOutcome = z
   .meta({ id: 'ImportFileOutcome', description: 'Outcome of one file of an import.' });
 export type ImportFileOutcome = z.infer<typeof ImportFileOutcome>;
 
+/** Most items an impact list carries (M6 §3.5); `count` says how many there are. */
+export const MAX_IMPACT_ITEMS = 100;
+
+const impactList = <T extends z.ZodType>(item: T) =>
+  z.object({
+    count: z.number().int().min(0),
+    /** The first {@link MAX_IMPACT_ITEMS}. */
+    items: z.array(item).max(MAX_IMPACT_ITEMS),
+  });
+
+/** A relation an impact names, by its type and both ends. */
+export const ImpactRelation = z
+  .object({ type: RelationType, from: Ref, to: Ref })
+  .meta({ id: 'ImpactRelation', description: 'A relation by its type and both ends.' });
+export type ImpactRelation = z.infer<typeof ImpactRelation>;
+
+/** An accepted relation whose end would change or go missing. */
+export const ImpactEndpoint = ImpactRelation.extend({
+  endpointState: z.enum(['changed', 'missing']),
+}).meta({ id: 'ImpactEndpoint', description: 'An accepted relation whose end changes.' });
+export type ImpactEndpoint = z.infer<typeof ImpactEndpoint>;
+
+/** A file whose head would change: whether its facts change, and its processes added or removed. */
+export const ImpactFile = z
+  .object({
+    modelKey: ModelKey,
+    factsChanged: z.boolean(),
+    /** Process refs (`key#Process_…`) the new head adds, sorted. */
+    processesAdded: z.array(Ref),
+    /** Process refs the new head no longer has, sorted. */
+    processesRemoved: z.array(Ref),
+  })
+  .meta({ id: 'ImpactFile', description: 'How a file would change its model.' });
+export type ImpactFile = z.infer<typeof ImpactFile>;
+
+/**
+ * What an import or a model's deletion would change (M6 §3.5, slice S2b),
+ * computed by the pure `importImpact` over the stored head and the would-be
+ * head facts; nothing is written. `files`: the created and revised files.
+ * `acceptedCalls`: rule-tier calls that would become accepted (decision 9).
+ * `proposalsAdded`, `proposalsWithdrawn`: rule proposals of relations that
+ * would appear, and rule stances that would be withdrawn. `endpointsChanged`:
+ * accepted relations whose end would turn `changed` or `missing`.
+ * `findingsAdded`, `findingsResolved`: the rule tier's findings. `absentKeys`:
+ * live keys of the manifest's source system the import does not name, only
+ * those whose tool folder lies in the manifest's `source.scope` (the whole
+ * system without one); information only, nothing is deleted (decision 7).
+ */
+export const ImportImpact = z
+  .object({
+    files: z.array(ImpactFile),
+    acceptedCalls: impactList(ImpactRelation),
+    proposalsAdded: impactList(ImpactRelation),
+    proposalsWithdrawn: impactList(ImpactRelation),
+    endpointsChanged: impactList(ImpactEndpoint),
+    findingsAdded: impactList(Finding),
+    findingsResolved: impactList(Finding),
+    absentKeys: impactList(ModelKey),
+  })
+  .meta({ id: 'ImportImpact', description: 'What an import or a deletion would change.' });
+export type ImportImpact = z.infer<typeof ImportImpact>;
+
 export const ImportResult = z
-  .object({ files: z.array(ImportFileOutcome) })
+  .object({
+    files: z.array(ImportFileOutcome),
+    /** Only on a dry run (`?dryRun=true`): what the import would change; nothing was written. */
+    impact: ImportImpact.optional(),
+  })
   .meta({ id: 'ImportResult', description: 'Outcome per file of an import.' });
 export type ImportResult = z.infer<typeof ImportResult>;
+
+/** `?dryRun=true` of an import or a PUT (M6 S2b): the outcome and the impact, nothing written. */
+export const ImportDryRunQuery = z.object({
+  dryRun: z.enum(['true', 'false']).optional(),
+});
+export type ImportDryRunQuery = z.infer<typeof ImportDryRunQuery>;
+
+/**
+ * The dry run of `PUT …/models/by-key/{key}` (M6 S2b): the would-be outcome
+ * with the warnings the upload would answer, and the impact; no model or
+ * revision exists yet.
+ */
+export const PutModelDryRunResult = z
+  .object({
+    outcome: z.enum(['created', 'revised', 'unchanged']),
+    modelKey: ModelKey,
+    dryRun: z.literal(true),
+    ...resultWarnings,
+    ...resultAmendments,
+    ...resultImportWarnings,
+    impact: ImportImpact,
+  })
+  .meta({ id: 'PutModelDryRunResult', description: 'What uploading one BPMN file would change.' });
+export type PutModelDryRunResult = z.infer<typeof PutModelDryRunResult>;

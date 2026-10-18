@@ -9,6 +9,7 @@ import {
   type ExternalIdList,
   type ExtractWarning,
   type ImportFileOutcome,
+  type ImportImpact,
   type ImportResult,
   type Model,
   type ModelId,
@@ -16,6 +17,7 @@ import {
   type ModelStage,
   type ManifestFile,
   type PageQuery,
+  type PutModelDryRunResult,
   type PutModelResult,
   type RevisionFacts,
   type RevisionId,
@@ -26,7 +28,15 @@ import {
 import type { Actor } from '../actor.ts';
 import { decodeCursor, toPage } from '../cursor.ts';
 import { DomainError } from '../errors.ts';
-import { contentHash, deleteModel, ingest, type IngestDeps, type IngestFile } from '../ingest.ts';
+import {
+  contentHash,
+  deleteModel,
+  deletionImpact,
+  ingest,
+  previewIngest,
+  type IngestDeps,
+  type IngestFile,
+} from '../ingest.ts';
 import { policy } from '../policy.ts';
 import {
   externalIdEntries,
@@ -117,17 +127,34 @@ function onlyEntry(received: ReceivedManifest, key: string): ManifestFile {
 /**
  * The live models' provenance sources before an import (M6 §3.4,
  * `uploadedSources`), for the identity warnings and `provenance-kept`;
- * checks `write` as the import will.
+ * checks `write` as the import will (`read` for a dry run).
  */
 async function uploadedHeads(
   deps: UseCaseDeps,
   actor: Actor,
   projectRef: string,
+  permission: 'read' | 'write' = 'write',
 ): Promise<Map<string, RevisionSource>> {
   return deps.store.read(async (tx) => {
-    const { project } = await policy.require(tx, actor, 'write', projectRef);
+    const { project } = await policy.require(tx, actor, permission, projectRef);
     return tx.revisions.uploadedSources(project.id);
   });
+}
+
+/** What a dry run needs of a manifest for the absent keys (M6 §3.5): its system, scope and keys. */
+function bundleOf(received: ReceivedManifest | undefined) {
+  if (!received) return null;
+  const { source, files } = received.manifest;
+  return {
+    system: source.system,
+    scope: source.scope,
+    keys: new Set(
+      files.flatMap((f) => {
+        const key = f.key ?? modelKeyFromPath(f.path);
+        return key === null ? [] : [key];
+      }),
+    ),
+  };
 }
 
 export function modelUseCases(deps: UseCaseDeps, ingestDeps: IngestDeps) {
@@ -150,8 +177,8 @@ export function modelUseCases(deps: UseCaseDeps, ingestDeps: IngestDeps) {
       projectRef: string,
       key: string,
       bytes: Uint8Array,
-      options: { manifest?: Uint8Array } = {},
-    ): Promise<PutModelResult> {
+      options: { manifest?: Uint8Array; dryRun?: boolean } = {},
+    ): Promise<PutModelResult | PutModelDryRunResult> {
       if (!isModelKey(key)) {
         throw new DomainError('validation-failed', `invalid model key: ${JSON.stringify(key)}`);
       }
@@ -170,7 +197,37 @@ export function modelUseCases(deps: UseCaseDeps, ingestDeps: IngestDeps) {
         entry,
       );
       // The live models' provenance before the PUT, only when the manifest lists the file.
-      const heads = entry ? await uploadedHeads(deps, actor, projectRef) : null;
+      const heads = entry
+        ? await uploadedHeads(deps, actor, projectRef, options.dryRun ? 'read' : 'write')
+        : null;
+      if (options.dryRun) {
+        const preview = await previewIngest(
+          ingestDeps,
+          actor,
+          projectRef,
+          [{ key, bytes, source }],
+          bundleOf(received),
+        );
+        const r = preview.results[0];
+        if (!r) throw new Error('previewIngest returned no result');
+        if (r.outcome === 'failed') throw r.error;
+        const warned = [
+          shaMismatch(entry, contentHash(bytes)),
+          ...(heads
+            ? (identityWarnings([{ key, source, stored: r.outcome !== 'unchanged' }], heads)[0] ??
+              [])
+            : []),
+        ].filter((w) => w !== null);
+        return {
+          outcome: r.outcome,
+          modelKey: key,
+          dryRun: true,
+          ...resultWarnings(r.warnings),
+          ...(r.amendments ? { amendments: r.amendments } : {}),
+          ...(warned.length > 0 ? { importWarnings: warned } : {}),
+          impact: preview.impact,
+        };
+      }
       const { project, results } = await ingest(ingestDeps, actor, projectRef, [
         { key, bytes, source },
       ]);
@@ -211,7 +268,7 @@ export function modelUseCases(deps: UseCaseDeps, ingestDeps: IngestDeps) {
       actor: Actor,
       projectRef: string,
       files: readonly UploadFile[],
-      options: { manifest?: Uint8Array } = {},
+      options: { manifest?: Uint8Array; dryRun?: boolean } = {},
     ): Promise<ImportResult> {
       if (files.length === 0) throw new DomainError('validation-failed', 'no files');
       if (files.length > MAX_IMPORT_FILES) {
@@ -261,14 +318,26 @@ export function modelUseCases(deps: UseCaseDeps, ingestDeps: IngestDeps) {
 
       // The live models' provenance before the import, only when the manifest lists a file.
       const heads = accepted.some((a) => a.entry !== undefined)
-        ? await uploadedHeads(deps, actor, projectRef)
+        ? await uploadedHeads(deps, actor, projectRef, options.dryRun ? 'read' : 'write')
         : null;
-      const { results } = await ingest(
-        ingestDeps,
-        actor,
-        projectRef,
-        accepted.map((a) => a.file),
-      );
+      // A dry run (M6 §3.5) answers the same outcomes and the impact, and writes nothing.
+      const preview = options.dryRun
+        ? await previewIngest(
+            ingestDeps,
+            actor,
+            projectRef,
+            accepted.map((a) => a.file),
+            bundleOf(received),
+          )
+        : null;
+      const { results } =
+        preview ??
+        (await ingest(
+          ingestDeps,
+          actor,
+          projectRef,
+          accepted.map((a) => a.file),
+        ));
       const candidates: { at: number; candidate: IdentityCandidate }[] = [];
       for (const [i, a] of accepted.entries()) {
         const r = results[i];
@@ -307,7 +376,21 @@ export function modelUseCases(deps: UseCaseDeps, ingestDeps: IngestDeps) {
           }
         }
       }
-      return { files: outcomes };
+      return { files: outcomes, ...(preview ? { impact: preview.impact } : {}) };
+    },
+
+    /**
+     * `GET …/models/{m}/deletion-impact` (M6 §3.5): what deleting the model
+     * would change, nothing deleted; permission `read`.
+     *
+     * @throws {DomainError} `not-found`, policy errors
+     */
+    async getModelDeletionImpact(
+      actor: Actor,
+      projectRef: string,
+      modelId: ModelId,
+    ): Promise<ImportImpact> {
+      return deletionImpact(ingestDeps, actor, projectRef, modelId);
     },
 
     /**

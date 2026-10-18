@@ -68,10 +68,13 @@ import {
 } from './import-manifest.ts';
 import { Landscape } from './landscape.ts';
 import {
+  ImportDryRunQuery,
+  ImportImpact,
   ImportResult,
   Model,
   ModelPage,
   ModelStage,
+  PutModelDryRunResult,
   PutModelResult,
   RevisionFacts,
   RevisionPage,
@@ -443,6 +446,22 @@ export const apiRoutes = withDemoReadOnly({
     request: { params: modelParams },
     responses: { 204: { description: 'Deleted' }, ...problems(...READ_PROBLEMS, 'forbidden') },
   },
+  getModelDeletionImpact: {
+    method: 'get',
+    path: `${API_PREFIX}/projects/{project}/models/{model}/deletion-impact`,
+    operationId: 'getModelDeletionImpact',
+    tags: ['models'],
+    summary: 'What deleting a model would change (nothing is deleted)',
+    description:
+      'M6 §3.5: the impact of an import, computed with the model removed from the head facts: ' +
+      'accepted relations whose end would go missing, rule stances withdrawn, findings added and ' +
+      'resolved; `files` and `absentKeys` are empty. Permission `read`.',
+    request: { params: modelParams },
+    responses: {
+      200: json(ImportImpact, 'The impact of the deletion'),
+      ...problems(...READ_PROBLEMS),
+    },
+  },
   putModelByKey: {
     method: 'put',
     path: `${API_PREFIX}/projects/{project}/models/by-key/{key}`,
@@ -456,9 +475,11 @@ export const apiRoutes = withDemoReadOnly({
       'on the uploaded revision; a checksum mismatch or a known tool id are `importWarnings`, ' +
       'the file is stored all the same. Identical bytes stay `unchanged` and keep the first ' +
       "revision's provenance (`provenance-kept` when the manifest declares another place in " +
-      'the source tool).',
+      'the source tool). `dryRun=true` (M6 §3.5) answers the would-be outcome with its ' +
+      'warnings and the `impact` and writes nothing (permission `read`).',
     request: {
       params: projectParams.extend({ key: ModelKey }),
+      query: ImportDryRunQuery,
       headers: z.object({
         'analyzr-manifest': z
           .string()
@@ -474,7 +495,10 @@ export const apiRoutes = withDemoReadOnly({
       },
     },
     responses: {
-      200: json(PutModelResult, 'New revision, or `unchanged` for identical content'),
+      200: json(
+        z.union([PutModelResult, PutModelDryRunResult]),
+        'New revision, `unchanged` for identical content, or a dry run',
+      ),
       201: json(PutModelResult, 'New model'),
       ...problems(
         ...READ_PROBLEMS,
@@ -531,9 +555,12 @@ export const apiRoutes = withDemoReadOnly({
       '`importWarnings`, and so is an unchanged file whose manifest entry declares another ' +
       'place in the source tool than analyzr keeps (`provenance-kept`); the file is imported ' +
       'all the same. An invalid manifest refuses the request (422 `validation-failed`, reason ' +
-      '`invalid-manifest`).',
+      '`invalid-manifest`). `dryRun=true` (M6 §3.5) answers the same outcomes and the `impact` ' +
+      'and writes nothing: permission `read`, no project lock, so a read-only token can preview ' +
+      'a bundle. One dry run covers one request; a call into a later batch shows as unresolved.',
     request: {
       params: projectParams,
+      query: ImportDryRunQuery,
       body: {
         required: true,
         content: {
@@ -560,7 +587,7 @@ export const apiRoutes = withDemoReadOnly({
       },
     },
     responses: {
-      200: json(ImportResult, 'Outcome per file'),
+      200: json(ImportResult, 'Outcome per file (with `impact` on a dry run)'),
       ...problems(
         ...READ_PROBLEMS,
         'forbidden',

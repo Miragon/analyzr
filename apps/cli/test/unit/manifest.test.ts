@@ -251,6 +251,89 @@ describe('analyzr import with a hand-written manifest', () => {
     for (const r of sent) expect(r.manifest?.files.map((f) => f.path)).toEqual(r.files);
   });
 
+  it('--dry-run previews each batch with the whole manifest and merges what the import would change (M6 S2b)', async () => {
+    const root = path.join(dir, 'preview');
+    const paths = Array.from(
+      { length: MAX_IMPORT_FILES + 2 },
+      (_, i) => `m/f${String(i).padStart(2, '0')}.bpmn`,
+    );
+    for (const p of paths) await write(root, p, '<bpmn/>');
+    await write(
+      root,
+      'analyzr-import.json',
+      JSON.stringify({
+        format: 'analyzr-import/1',
+        source: { system: 'aris' },
+        files: paths.map((p) => ({ path: p, externalId: p })),
+      }),
+    );
+    const list = <T>(count: number, items: T[] = []) => ({ count, items });
+    const call = (n: number) => ({ type: 'call', from: `m/f0${n}#Call`, to: `x#P${n}` });
+    let batch = 0;
+    const api = fakeApi({
+      'POST /api/v1/projects/demo/imports': async (req, url) => {
+        expect(url.searchParams.get('dryRun')).toBe('true');
+        const { files } = await request(req.clone());
+        batch++;
+        return json({
+          files: files.map((p) => ({
+            path: p,
+            modelKey: modelKeyFromPath(p),
+            outcome: 'created',
+            problem: null,
+          })),
+          impact: {
+            files: files.map((p) => ({
+              modelKey: modelKeyFromPath(p),
+              factsChanged: true,
+              processesAdded: [`${modelKeyFromPath(p)}#P`],
+              processesRemoved: [],
+            })),
+            acceptedCalls: list(1, [call(batch)]),
+            proposalsAdded: list(2),
+            proposalsWithdrawn: list(0),
+            endpointsChanged: list(0),
+            findingsAdded: list(1, [
+              { kind: 'unresolved-call', refs: ['m/f00#Call'], detail: 'x' },
+            ]),
+            findingsResolved: list(0),
+            absentKeys: list(1, ['alt/modell']),
+          },
+        });
+      },
+    });
+    const t = testIo({ ANALYZR_OWNER_KEY_FILE: keyFile }, api.fetch, { cwd: dir });
+    expect(await runCli(['import', 'preview', '-p', 'demo', '--dry-run'], t.io)).toBe(0);
+    const sent = await Promise.all(
+      api.seen.filter((s) => s.method === 'POST').map((s) => request(s.body)),
+    );
+    expect(sent.map((r) => r.files.length)).toEqual([MAX_IMPORT_FILES, 2]);
+    // every batch carries the whole manifest: the absent keys are the bundle's, not the batch's
+    for (const r of sent) expect(r.manifest?.files).toHaveLength(paths.length);
+    // a dry run lists no waiting tasks: nothing was imported
+    expect(api.seen.some((s) => s.path.endsWith('/analyses'))).toBe(false);
+    expect(t.out()).toContain(
+      [
+        'demo: dry run, nothing imported; the import would',
+        `  change the facts of ${paths.length} models (${paths.length} processes added, 0 removed)`,
+        '  accept rule-tier calls: 2: m/f01#Call → x#P1, m/f02#Call → x#P2',
+        '  add rule proposals: 4',
+        '  withdraw rule stances: 0',
+        '  change or lose an end of accepted relations: 0',
+        '  findings: 2 added, 0 resolved: unresolved-call m/f00#Call, unresolved-call m/f00#Call',
+        '  not in the bundle, kept in analyzr (nothing is deleted): 1 key: alt/modell',
+        "  previewed in 2 batches, each against the project's head: a call into a later batch shows as unresolved",
+        '',
+      ].join('\n'),
+    );
+    // a dry run never creates the project
+    const create = testIo({ ANALYZR_OWNER_KEY_FILE: keyFile }, api.fetch, { cwd: dir });
+    expect(
+      await runCli(['import', 'preview', '-p', 'neu', '--create', '--dry-run'], create.io),
+    ).toBe(1);
+    expect(create.err()).toContain('--dry-run previews into an existing project: drop --create');
+  });
+
   it('stops before sending anything when the manifest is invalid', async () => {
     const root = path.join(dir, 'invalid');
     await write(root, 'a.bpmn', '<bpmn/>');

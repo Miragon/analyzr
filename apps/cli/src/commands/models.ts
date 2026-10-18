@@ -37,6 +37,7 @@ import path from 'node:path';
 
 import {
   deleteModel,
+  getModelDeletionImpact,
   getRevisionContent,
   listExternalIds,
   listModels,
@@ -52,6 +53,7 @@ import {
   SourceSystem,
   isModelKey,
   type ExternalIdList,
+  type ImportImpact,
 } from '@analyzr/contracts';
 
 import { call, createApi, type Api } from '../api.ts';
@@ -264,6 +266,24 @@ export async function modelsRequeueCommand(
   }
 }
 
+/**
+ * What deleting one model would change (`GET …/deletion-impact`, M6 S2b):
+ * `2 accepted relations lose an end (missing), 5 rule stances withdrawn, findings 2 added, 0 resolved`.
+ */
+export function deletionImpactText(impact: ImportImpact): string {
+  const missing = impact.endpointsChanged.count;
+  return [
+    `${plural(missing, 'accepted relation')} ${missing === 1 ? 'loses' : 'lose'} an end (missing)`,
+    `${plural(impact.proposalsWithdrawn.count, 'rule stance')} withdrawn`,
+    impact.acceptedCalls.count > 0
+      ? `${plural(impact.acceptedCalls.count, 'call')} accepted by the rule tier`
+      : null,
+    `findings ${impact.findingsAdded.count} added, ${impact.findingsResolved.count} resolved`,
+  ]
+    .filter((p) => p !== null)
+    .join(', ');
+}
+
 /** `analyzr models delete <key>… -p <project> [--yes] [--json]`. */
 export async function modelsDeleteCommand(
   io: CliIo,
@@ -284,13 +304,29 @@ export async function modelsDeleteCommand(
   const models = wanted.map((k) => byKey.get(k)).filter((m): m is Model => m !== undefined);
 
   if (opts.yes !== true) {
-    if (opts.json) io.stdout(`${JSON.stringify({ deleted: false, models }, null, 2)}\n`);
+    // M6 S2b: what each deletion would change, each against the project's head.
+    const impacts: { key: string; impact: ImportImpact }[] = [];
+    for (const m of models) {
+      impacts.push({
+        key: m.key,
+        impact: (await call(
+          api,
+          `preview deleting ${m.key}`,
+          getModelDeletionImpact({
+            client: api.client,
+            path: { project: opts.project, model: m.id },
+          }),
+        )) as ImportImpact,
+      });
+    }
+    if (opts.json) io.stdout(`${JSON.stringify({ deleted: false, models, impacts }, null, 2)}\n`);
     else {
       io.stdout(
         [
           `would delete ${plural(models.length, 'model')} from ${opts.project}:`,
           ...formatModels(models),
-          'Their partner relations turn missing; uploading a key again revives its model with a new revision.',
+          ...impacts.map(({ key, impact }) => `  ${key}: ${deletionImpactText(impact)}`),
+          'Uploading a key again revives its model with a new revision.',
           '',
         ].join('\n'),
       );

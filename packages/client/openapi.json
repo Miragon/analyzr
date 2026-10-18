@@ -1056,6 +1056,292 @@
         "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(?::\\d{2}(?:\\.\\d{1,9})?)?(?:Z|[+-]\\d{2}:\\d{2})$",
         "description": "ISO 8601 date-time of the export (declared)."
       },
+      "ImportImpact": {
+        "type": "object",
+        "properties": {
+          "files": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ImpactFile"
+            }
+          },
+          "acceptedCalls": {
+            "type": "object",
+            "properties": {
+              "count": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "items": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ImpactRelation"
+                },
+                "maxItems": 100
+              }
+            },
+            "required": [
+              "count",
+              "items"
+            ]
+          },
+          "proposalsAdded": {
+            "type": "object",
+            "properties": {
+              "count": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "items": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ImpactRelation"
+                },
+                "maxItems": 100
+              }
+            },
+            "required": [
+              "count",
+              "items"
+            ]
+          },
+          "proposalsWithdrawn": {
+            "type": "object",
+            "properties": {
+              "count": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "items": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ImpactRelation"
+                },
+                "maxItems": 100
+              }
+            },
+            "required": [
+              "count",
+              "items"
+            ]
+          },
+          "endpointsChanged": {
+            "type": "object",
+            "properties": {
+              "count": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "items": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ImpactEndpoint"
+                },
+                "maxItems": 100
+              }
+            },
+            "required": [
+              "count",
+              "items"
+            ]
+          },
+          "findingsAdded": {
+            "type": "object",
+            "properties": {
+              "count": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "items": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Finding"
+                },
+                "maxItems": 100
+              }
+            },
+            "required": [
+              "count",
+              "items"
+            ]
+          },
+          "findingsResolved": {
+            "type": "object",
+            "properties": {
+              "count": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "items": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Finding"
+                },
+                "maxItems": 100
+              }
+            },
+            "required": [
+              "count",
+              "items"
+            ]
+          },
+          "absentKeys": {
+            "type": "object",
+            "properties": {
+              "count": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "items": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ModelKey"
+                },
+                "maxItems": 100
+              }
+            },
+            "required": [
+              "count",
+              "items"
+            ]
+          }
+        },
+        "required": [
+          "files",
+          "acceptedCalls",
+          "proposalsAdded",
+          "proposalsWithdrawn",
+          "endpointsChanged",
+          "findingsAdded",
+          "findingsResolved",
+          "absentKeys"
+        ],
+        "description": "What an import or a deletion would change."
+      },
+      "ImpactFile": {
+        "type": "object",
+        "properties": {
+          "modelKey": {
+            "$ref": "#/components/schemas/ModelKey"
+          },
+          "factsChanged": {
+            "type": "boolean"
+          },
+          "processesAdded": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Ref"
+            }
+          },
+          "processesRemoved": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Ref"
+            }
+          }
+        },
+        "required": [
+          "modelKey",
+          "factsChanged",
+          "processesAdded",
+          "processesRemoved"
+        ],
+        "description": "How a file would change its model."
+      },
+      "ImpactRelation": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/RelationType"
+          },
+          "from": {
+            "$ref": "#/components/schemas/Ref"
+          },
+          "to": {
+            "$ref": "#/components/schemas/Ref"
+          }
+        },
+        "required": [
+          "type",
+          "from",
+          "to"
+        ],
+        "description": "A relation by its type and both ends."
+      },
+      "RelationType": {
+        "type": "string",
+        "enum": [
+          "call",
+          "message",
+          "signal",
+          "trigger",
+          "manual"
+        ],
+        "description": "Type of a relation between two processes."
+      },
+      "ImpactEndpoint": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/RelationType"
+          },
+          "from": {
+            "$ref": "#/components/schemas/Ref"
+          },
+          "to": {
+            "$ref": "#/components/schemas/Ref"
+          },
+          "endpointState": {
+            "type": "string",
+            "enum": [
+              "changed",
+              "missing"
+            ]
+          }
+        },
+        "required": [
+          "type",
+          "from",
+          "to",
+          "endpointState"
+        ],
+        "description": "An accepted relation whose end changes."
+      },
+      "Finding": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/FindingKind"
+          },
+          "refs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Ref"
+            },
+            "minItems": 1
+          },
+          "detail": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "refs",
+          "detail"
+        ],
+        "description": "A deterministic finding about the landscape."
+      },
+      "FindingKind": {
+        "type": "string",
+        "enum": [
+          "unresolved-call",
+          "dynamic-call",
+          "duplicate-process-id",
+          "dangling-throw",
+          "unmatched-catch"
+        ],
+        "description": "Kind of a deterministic finding."
+      },
       "PutModelResult": {
         "type": "object",
         "properties": {
@@ -1591,6 +1877,60 @@
         ],
         "description": "A model's identity in its source system."
       },
+      "PutModelDryRunResult": {
+        "type": "object",
+        "properties": {
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "created",
+              "revised",
+              "unchanged"
+            ]
+          },
+          "modelKey": {
+            "$ref": "#/components/schemas/ModelKey"
+          },
+          "dryRun": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExtractWarning"
+            },
+            "maxItems": 20
+          },
+          "warningCount": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 101
+          },
+          "amendments": {
+            "$ref": "#/components/schemas/AmendmentCounts"
+          },
+          "importWarnings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ImportWarning"
+            },
+            "maxItems": 3
+          },
+          "impact": {
+            "$ref": "#/components/schemas/ImportImpact"
+          }
+        },
+        "required": [
+          "outcome",
+          "modelKey",
+          "dryRun",
+          "impact"
+        ],
+        "description": "What uploading one BPMN file would change."
+      },
       "BpmnXml": {
         "type": "string",
         "description": "BPMN 2.0 XML document (UTF-8)."
@@ -1670,6 +2010,9 @@
             "items": {
               "$ref": "#/components/schemas/ImportFileOutcome"
             }
+          },
+          "impact": {
+            "$ref": "#/components/schemas/ImportImpact"
           }
         },
         "required": [
@@ -2444,41 +2787,6 @@
         ],
         "description": "The would-be effect of amendments."
       },
-      "Finding": {
-        "type": "object",
-        "properties": {
-          "kind": {
-            "$ref": "#/components/schemas/FindingKind"
-          },
-          "refs": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/Ref"
-            },
-            "minItems": 1
-          },
-          "detail": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "kind",
-          "refs",
-          "detail"
-        ],
-        "description": "A deterministic finding about the landscape."
-      },
-      "FindingKind": {
-        "type": "string",
-        "enum": [
-          "unresolved-call",
-          "dynamic-call",
-          "duplicate-process-id",
-          "dangling-throw",
-          "unmatched-catch"
-        ],
-        "description": "Kind of a deterministic finding."
-      },
       "AmendmentEffectRelation": {
         "type": "object",
         "properties": {
@@ -2515,17 +2823,6 @@
         "pattern": "^rel_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
         "description": "Relation id (`rel_` + ULID).",
         "example": "rel_01J9Z3N4X5Q6R7S8T9V0W1X2Y3"
-      },
-      "RelationType": {
-        "type": "string",
-        "enum": [
-          "call",
-          "message",
-          "signal",
-          "trigger",
-          "manual"
-        ],
-        "description": "Type of a relation between two processes."
       },
       "AmendmentCost": {
         "type": "object",
@@ -11867,6 +12164,93 @@
         }
       }
     },
+    "/api/v1/projects/{project}/models/{model}/deletion-impact": {
+      "get": {
+        "operationId": "getModelDeletionImpact",
+        "tags": [
+          "models"
+        ],
+        "summary": "What deleting a model would change (nothing is deleted)",
+        "description": "M6 §3.5: the impact of an import, computed with the model removed from the head facts: accepted relations whose end would go missing, rule stances withdrawn, findings added and resolved; `files` and `absentKeys` are empty. Permission `read`.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": "^(?:prj_[0-7][0-9A-HJKMNP-TV-Z]{25}|[a-z0-9]+(?:-[a-z0-9]+)*)$",
+              "description": "Project id (`prj_…`) or project key.",
+              "example": "nordwind-handel"
+            },
+            "required": true,
+            "description": "Project id (`prj_…`) or project key.",
+            "name": "project",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/ModelId"
+            },
+            "required": true,
+            "description": "Model id (`mdl_` + ULID).",
+            "name": "model",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The impact of the deletion",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportImpact"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem: `unauthorized`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem: `insufficient-scope`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem: `not-found`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Problem: `validation-failed`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/projects/{project}/models/by-key/{key}": {
       "put": {
         "operationId": "putModelByKey",
@@ -11874,7 +12258,7 @@
           "models"
         ],
         "summary": "Upload raw BPMN: 201 new model, 200 new revision or unchanged",
-        "description": "The optional header `Analyzr-Manifest` declares the file's provenance (M6 §3.2, §3.3): the base64url of the UTF-8 JSON of an `analyzr-import/1` manifest that lists exactly this file (its `key`, if given, equal to `{key}`). The declared fields are stored on the uploaded revision; a checksum mismatch or a known tool id are `importWarnings`, the file is stored all the same. Identical bytes stay `unchanged` and keep the first revision's provenance (`provenance-kept` when the manifest declares another place in the source tool).",
+        "description": "The optional header `Analyzr-Manifest` declares the file's provenance (M6 §3.2, §3.3): the base64url of the UTF-8 JSON of an `analyzr-import/1` manifest that lists exactly this file (its `key`, if given, equal to `{key}`). The declared fields are stored on the uploaded revision; a checksum mismatch or a known tool id are `importWarnings`, the file is stored all the same. Identical bytes stay `unchanged` and keep the first revision's provenance (`provenance-kept` when the manifest declares another place in the source tool). `dryRun=true` (M6 §3.5) answers the would-be outcome with its warnings and the `impact` and writes nothing (permission `read`).",
         "parameters": [
           {
             "schema": {
@@ -11898,6 +12282,18 @@
             "description": "Immutable model key: lowercase slug segments separated by `/`.",
             "name": "key",
             "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ]
+            },
+            "required": false,
+            "name": "dryRun",
+            "in": "query"
           },
           {
             "schema": {
@@ -11928,11 +12324,18 @@
         },
         "responses": {
           "200": {
-            "description": "New revision, or `unchanged` for identical content",
+            "description": "New revision, `unchanged` for identical content, or a dry run",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PutModelResult"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/PutModelResult"
+                    },
+                    {
+                      "$ref": "#/components/schemas/PutModelDryRunResult"
+                    }
+                  ]
                 }
               }
             }
@@ -12313,7 +12716,7 @@
           "models"
         ],
         "summary": "Import up to 50 BPMN files; the model key is the pinned or the slugified path",
-        "description": "An optional part `manifest` holds the JSON of an `analyzr-import/1` manifest (M6 §3.2; the CLI sends each batch's subset): a listed file gets the key it pins (else its path decides) and the declared provenance on its uploaded revision. A checksum mismatch, a tool id another live key already has (`external-id-moved`) and a tool id that differs from the one on the key's head (`external-id-changed`) are `importWarnings`, and so is an unchanged file whose manifest entry declares another place in the source tool than analyzr keeps (`provenance-kept`); the file is imported all the same. An invalid manifest refuses the request (422 `validation-failed`, reason `invalid-manifest`).",
+        "description": "An optional part `manifest` holds the JSON of an `analyzr-import/1` manifest (M6 §3.2; the CLI sends each batch's subset): a listed file gets the key it pins (else its path decides) and the declared provenance on its uploaded revision. A checksum mismatch, a tool id another live key already has (`external-id-moved`) and a tool id that differs from the one on the key's head (`external-id-changed`) are `importWarnings`, and so is an unchanged file whose manifest entry declares another place in the source tool than analyzr keeps (`provenance-kept`); the file is imported all the same. An invalid manifest refuses the request (422 `validation-failed`, reason `invalid-manifest`). `dryRun=true` (M6 §3.5) answers the same outcomes and the `impact` and writes nothing: permission `read`, no project lock, so a read-only token can preview a bundle. One dry run covers one request; a call into a later batch shows as unresolved.",
         "parameters": [
           {
             "schema": {
@@ -12328,6 +12731,18 @@
             "description": "Project id (`prj_…`) or project key.",
             "name": "project",
             "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ]
+            },
+            "required": false,
+            "name": "dryRun",
+            "in": "query"
           }
         ],
         "requestBody": {
@@ -12342,7 +12757,7 @@
         },
         "responses": {
           "200": {
-            "description": "Outcome per file",
+            "description": "Outcome per file (with `impact` on a dry run)",
             "content": {
               "application/json": {
                 "schema": {

@@ -36,12 +36,16 @@ const putModelRoute = createRoute({
   ...apiRoutes.putModelByKey,
   request: {
     params: apiRoutes.putModelByKey.request.params,
+    query: apiRoutes.putModelByKey.request.query,
     headers: apiRoutes.putModelByKey.request.headers,
   },
 });
 const importModelsRoute = createRoute({
   ...apiRoutes.importModels,
-  request: { params: apiRoutes.importModels.request.params },
+  request: {
+    params: apiRoutes.importModels.request.params,
+    query: apiRoutes.importModels.request.query,
+  },
 });
 
 const BASE64URL = /^[A-Za-z0-9_-]*={0,2}$/;
@@ -146,13 +150,13 @@ export function registerModelRoutes(app: App, useCases: UseCases): void {
     const header = c.req.valid('header')['analyzr-manifest'];
     const manifest = header === undefined ? undefined : manifestHeaderBytes(header);
     const bytes = new Uint8Array(await c.req.arrayBuffer());
-    const result = await useCases.putModel(
-      actor,
-      project,
-      key,
-      bytes,
-      manifest === undefined ? {} : { manifest },
-    );
+    const dryRun = c.req.valid('query').dryRun === 'true';
+    const result = await useCases.putModel(actor, project, key, bytes, {
+      ...(manifest === undefined ? {} : { manifest }),
+      dryRun,
+    });
+    // A dry run creates nothing: 200 also for a would-be new model.
+    if ('dryRun' in result) return c.json(result, 200);
     return c.json(result, result.outcome === 'created' ? 201 : 200);
   });
 
@@ -202,9 +206,17 @@ export function registerModelRoutes(app: App, useCases: UseCases): void {
     }
     const manifest = await manifestPartBytes(form['manifest']);
     return c.json(
-      await useCases.importFiles(actor, project, files, manifest === undefined ? {} : { manifest }),
+      await useCases.importFiles(actor, project, files, {
+        ...(manifest === undefined ? {} : { manifest }),
+        dryRun: c.req.valid('query').dryRun === 'true',
+      }),
       200,
     );
+  });
+
+  app.openapi(createRoute(apiRoutes.getModelDeletionImpact), async (c) => {
+    const { project, model } = c.req.valid('param');
+    return c.json(await useCases.getModelDeletionImpact(requireActor(c), project, model), 200);
   });
 
   app.openapi(createRoute(apiRoutes.listExternalIds), async (c) => {

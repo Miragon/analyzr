@@ -118,6 +118,10 @@ export function buildProgram(io: CliIo = processIo): Command {
     .option('--name <name>', 'project name for --create (default: the key)')
     .option('--verbose', 'list every extractor warning the server reports (up to 20 per file)')
     .option('--json', 'print JSON')
+    .option(
+      '--dry-run',
+      'preview into an existing project: the outcomes and what the import would change; import nothing (any credential)',
+    )
     .action(
       (
         dir: string,
@@ -127,6 +131,7 @@ export function buildProgram(io: CliIo = processIo): Command {
           name?: string;
           verbose?: boolean;
           json?: boolean;
+          dryRun?: boolean;
         },
       ) => importCommand(io, dir, { ...globals(), ...opts }),
     );

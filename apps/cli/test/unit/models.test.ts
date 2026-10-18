@@ -192,9 +192,22 @@ describe('analyzr models delete', () => {
     model('b'),
   ];
 
+  const impact = (missing: number) => ({
+    files: [],
+    acceptedCalls: { count: 0, items: [] },
+    proposalsAdded: { count: 0, items: [] },
+    proposalsWithdrawn: { count: 3, items: [] },
+    endpointsChanged: { count: missing, items: [] },
+    findingsAdded: { count: missing, items: [] },
+    findingsResolved: { count: 0, items: [] },
+    absentKeys: { count: 0, items: [] },
+  });
+
   function deletingApi() {
     return fakeApi({
       [MODELS]: pagedModels(all),
+      'GET /api/v1/projects/p/models/mdl_b/deletion-impact': () => Response.json(impact(0)),
+      'GET /api/v1/projects/p/models/mdl_a_eins/deletion-impact': () => Response.json(impact(1)),
       'DELETE /api/v1/projects/p/models/mdl_a_eins': () => new Response(null, { status: 204 }),
       'DELETE /api/v1/projects/p/models/mdl_b': () => new Response(null, { status: 204 }),
     });
@@ -220,7 +233,10 @@ describe('analyzr models delete', () => {
         'would delete 2 models from p:',
         '  b       waiting_for_agent   r1    c7  0 open items',
         '  a/eins  waiting_for_review  r1    c7  2 open items',
-        'Their partner relations turn missing; uploading a key again revives its model with a new revision.',
+        // M6 S2b: each deletion's impact, against the project's head
+        '  b: 0 accepted relations lose an end (missing), 3 rule stances withdrawn, findings 0 added, 0 resolved',
+        '  a/eins: 1 accepted relation loses an end (missing), 3 rule stances withdrawn, findings 1 added, 0 resolved',
+        'Uploading a key again revives its model with a new revision.',
         '',
       ].join('\n'),
     );

@@ -24,6 +24,7 @@ import {
   type AmendmentCounts,
   type DeclaredProcedure,
   type ExtractWarning,
+  type ImportImpact,
   type ModelId,
   type PrincipalId,
   type ProjectId,
@@ -40,6 +41,7 @@ import {
   type LiveAmendment,
 } from './amendments/plan.ts';
 import { DomainError } from './errors.ts';
+import { absentKeys, importImpact, type FileHeads } from './import-impact.ts';
 import { touchNoLinkRelations } from './no-links.ts';
 import { policy } from './policy.ts';
 import type {
@@ -651,4 +653,189 @@ export async function deleteModel(
     await touchNoLinkRelations(tx, project.id, [model.key], deps.expectedProcedure());
     await syncValueChainAfterModels(tx, project.id, rulesPrincipalId);
   });
+}
+
+// ------------------------------------------------------------- dry runs (M6 S2b)
+
+/** Code-point order, as `headProjectFacts` sorts the models. */
+const byCodePoint = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
+
+/** A file of a dry run, as {@link ingest} would answer it, without the records it would store. */
+export type PreviewResult =
+  | {
+      outcome: 'created' | 'revised' | 'unchanged';
+      warnings: ExtractWarning[];
+      amendments?: AmendmentCounts;
+    }
+  | { outcome: 'failed'; error: DomainError };
+
+/**
+ * The rules principal as the histories name it: a dry run never creates it
+ * (`IngestDeps.rulesPrincipal` may). Without a rule assertion yet no stance
+ * of it exists, and any id plans the same.
+ */
+function rulesPrincipalOf(
+  history: readonly { sourceKind: string; principalId: PrincipalId }[],
+): PrincipalId {
+  return history.find((a) => a.sourceKind === 'rule')?.principalId ?? 'prn_rules';
+}
+
+/** What a dry run reads in one transaction: the head, its relations, histories and findings. */
+async function readHead(tx: Tx, projectId: ProjectId) {
+  const history = await tx.assertions.listForProject(projectId);
+  return {
+    projectFacts: await tx.facts.headProjectFacts(projectId),
+    relations: await tx.relations.all(projectId),
+    history,
+    findings: await tx.findings.list(projectId),
+    rulesPrincipalId: rulesPrincipalOf(history),
+  };
+}
+
+/**
+ * The dry run of {@link ingest} (M6 §3.5, slice S2b): every file's outcome
+ * as the ingest would answer it (unchanged, failed with the same problem,
+ * created or revised with the extractor's warnings and the plan of the
+ * model's live amendments) and the impact of the would-be heads (an
+ * amended head where amendments apply), computed by the pure
+ * `importImpact`; nothing is written and no lock is taken. Permission
+ * `read`, so a read-only token can preview a bundle. `manifest` names the
+ * bundle's system, scope and listed keys for the absent keys.
+ *
+ * @throws {DomainError} from the policy (`read` on the project)
+ */
+export async function previewIngest(
+  deps: Pick<IngestDeps, 'store' | 'analysis'>,
+  actor: Actor,
+  projectRef: string,
+  files: readonly IngestFile[],
+  manifest: {
+    system: string;
+    scope?: readonly string[] | undefined;
+    keys: ReadonlySet<string>;
+  } | null,
+): Promise<{ project: ProjectRecord; results: PreviewResult[]; impact: ImportImpact }> {
+  const read = await deps.store.read(async (tx) => {
+    const { project } = await policy.require(tx, actor, 'read', projectRef);
+    const seen: (Seen & { model: ModelRecord | null; previous: RevisionRecord | null })[] = [];
+    for (const f of files) {
+      const model = await tx.models.findByKey(project.id, f.key);
+      const live = model !== null && model.deletedSeq === null;
+      const previous =
+        live && model.headRevisionId
+          ? await tx.revisions.findInProject(project.id, model.id, model.headRevisionId)
+          : null;
+      seen.push({ ...(await seenOf(tx, project.id, f.key)), model: live ? model : null, previous });
+    }
+    return {
+      project,
+      seen,
+      head: await readHead(tx, project.id),
+      sources: await tx.revisions.uploadedSources(project.id),
+    };
+  });
+
+  const results: PreviewResult[] = [];
+  const heads: FileHeads[] = [];
+  const wouldBe = new Map(read.head.projectFacts.models.map((m) => [m.modelKey, m]));
+  for (const [i, f] of files.entries()) {
+    const s = read.seen[i];
+    if (!s) throw new Error('previewIngest: a file without its read');
+    if (s.previous && s.known?.has(contentHash(f.bytes))) {
+      results.push({
+        outcome: 'unchanged',
+        warnings: [],
+        ...(s.live.length > 0 ? { amendments: planCounts(planOf(s.previous)) } : {}),
+      });
+      continue;
+    }
+    const extracted = await deps.analysis.extract(f.bytes, f.key);
+    if (!extracted.ok) {
+      results.push({ outcome: 'failed', error: extractError(extracted.error) });
+      continue;
+    }
+    const derivation =
+      s.live.length > 0
+        ? await deriveHead(deps.analysis, f.bytes, f.key, s.live, extracted.value)
+        : null;
+    const head = derivation && derivation.applied > 0 ? derivation.extracted : extracted.value;
+    results.push({
+      outcome: s.model ? 'revised' : 'created',
+      warnings: extracted.value.warnings,
+      ...(derivation ? { amendments: planCounts(derivation.plan) } : {}),
+    });
+    wouldBe.set(f.key, {
+      modelKey: f.key,
+      factsVersion: head.factsVersion,
+      processes: head.processes,
+      facts: head.facts,
+      messageFlows: head.messageFlows,
+    });
+    heads.push({
+      modelKey: f.key,
+      previousFactsHash: s.previous?.factsHash ?? null,
+      factsHash: deps.analysis.factsHash(head.facts),
+      previousProcesses:
+        (s.previous &&
+          read.head.projectFacts.models.find((m) => m.modelKey === f.key)?.processes) ??
+        [],
+      processes: head.processes,
+    });
+  }
+
+  const projectFacts = {
+    models: [...wouldBe.values()].sort((a, b) => byCodePoint(a.modelKey, b.modelKey)),
+  };
+  const imported = new Set([...files.map((f) => f.key), ...(manifest?.keys ?? [])]);
+  const impact = importImpact(
+    {
+      projectId: read.project.id,
+      rulesPrincipalId: read.head.rulesPrincipalId,
+      projectFacts,
+      rules: deps.analysis.runRules(projectFacts),
+      relations: read.head.relations,
+      history: read.head.history,
+    },
+    read.head.findings,
+    heads,
+    absentKeys(read.sources, manifest, imported),
+  );
+  return { project: read.project, results, impact };
+}
+
+/**
+ * What deleting a model would change (M6 §3.5, `GET …/deletion-impact`):
+ * the impact with the model's facts removed from the head; `files` and
+ * `absentKeys` are empty. Permission `read`, nothing written.
+ *
+ * @throws {DomainError} `not-found` for unknown, deleted or foreign models
+ */
+export async function deletionImpact(
+  deps: Pick<IngestDeps, 'store' | 'analysis'>,
+  actor: Actor,
+  projectRef: string,
+  modelId: ModelId,
+): Promise<ImportImpact> {
+  const read = await deps.store.read(async (tx) => {
+    const { project } = await policy.require(tx, actor, 'read', projectRef);
+    const model = await tx.models.findInProject(project.id, modelId);
+    if (!model) throw new DomainError('not-found', 'model not found');
+    return { project, model, head: await readHead(tx, project.id) };
+  });
+  const projectFacts = {
+    models: read.head.projectFacts.models.filter((m) => m.modelKey !== read.model.key),
+  };
+  return importImpact(
+    {
+      projectId: read.project.id,
+      rulesPrincipalId: read.head.rulesPrincipalId,
+      projectFacts,
+      rules: deps.analysis.runRules(projectFacts),
+      relations: read.head.relations,
+      history: read.head.history,
+    },
+    read.head.findings,
+    [],
+    [],
+  );
 }

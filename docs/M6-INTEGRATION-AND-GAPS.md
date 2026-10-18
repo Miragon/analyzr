@@ -2102,6 +2102,26 @@ revived, an unchanged re-import; relations, assertions, events and findings with
 timestamps normalized). No behaviour changes; the claim inputs, the MCP snapshots and the reports
 are unchanged.
 
+**S2b step 2 as delivered** (2026-10-18, on the branch, every gate green): `importImpact` and the
+dry runs in REST and the CLI. Contracts first: `ImportImpact` (`files`, `acceptedCalls`,
+`proposalsAdded`, `proposalsWithdrawn`, `endpointsChanged`, `findingsAdded`, `findingsResolved`,
+`absentKeys`; lists of at most 100 with counts), `ImportResult.impact` (only on a dry run),
+`PutModelDryRunResult`, the query `dryRun` of `POST …/imports` and `PUT …/models/by-key/{key}`,
+and `GET …/models/{m}/deletion-impact`; the client regenerated. Server: the pure
+`src/domain/import-impact.ts` over `planRecompute` (step 1) and `previewIngest` in `ingest.ts`
+(the same reads and extraction as the ingest, an amended head where live amendments apply, no
+write, no lock, permission `read`; the rules principal taken from the histories, so a dry run
+creates nothing). The absent keys are the live keys of the manifest's system that neither the
+manifest nor the request names, within `source.scope`, so the CLI sends the whole manifest with
+each batch of a dry run. CLI: `analyzr import --dry-run` (merged impact, the batch note) and the
+deletion impact in `analyzr models delete`'s listing. Tests: real-PostgreSQL
+`import-dry-run.test.ts` (the corpus's dry run equal to its import, outcomes byte for byte, the
+accepted calls, proposals and findings it then makes, nothing written, an unchanged re-import
+empty, a changed call target withdrawn, a read-only token previews but cannot import, PUT's dry
+run, the deletion impact equal to the deletion, absent keys within a scope), unit tests of the
+pure parts and the CLI. Left: the web's „Vorschau“ before „Importieren“ (UX-SIMPLIFICATION.md §6)
+and the follow-up (judgements, tasks, placements).
+
 Left for S2b: `importImpact`, the dry runs (`POST …/imports?dryRun=true`, `PUT …?dryRun=true`,
 `analyzr import --dry-run`), the deletion impact in `models delete`, and the absent keys of
 §3.5, which respect `source.scope` (stored on each revision since S2a). Left for the plugin's

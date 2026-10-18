@@ -10,10 +10,12 @@ import {
 import {
   IMPORT_MANIFEST_FILE,
   MAX_PAGE_LIMIT,
+  MAX_IMPACT_ITEMS,
   bpmnSuffixOf,
   modelKeyFromPath,
   type ExtractWarning,
   type ImportFileOutcome,
+  type ImportImpact,
   type ImportWarning,
 } from '@analyzr/contracts';
 
@@ -39,6 +41,13 @@ export interface ImportSummary {
   skipped?: SkippedFile[];
   /** Present only when the import root holds `analyzr-import.json` (M6 S2a). */
   manifest?: ManifestSummary;
+  /**
+   * Only for `--dry-run` (M6 S2b): what the import would change, the batches'
+   * impacts merged; nothing was imported.
+   */
+  impact?: ImportImpact;
+  /** With `impact`: the requests it took (each previewed against the head). */
+  batches?: number;
 }
 
 /** What the import read from the bundle's manifest (M6 S2a). */
@@ -135,24 +144,32 @@ export async function sendImport(
   api: Api,
   project: string,
   prepared: PreparedImport,
+  options: { dryRun?: boolean } = {},
 ): Promise<ImportSummary> {
   const { found, manifest, plan } = prepared;
+  const dryRun = options.dryRun === true;
   const files: ImportFileOutcome[] = [...plan.failed];
   const skipped: SkippedFile[] = [...plan.skipped];
+  const impacts: ImportImpact[] = [];
   for (const group of plan.batches) {
+    // A dry run sends the whole manifest, so every batch knows which keys the bundle names
+    // (its absent keys); the server reads only the entries of the batch's files.
     const subset =
       manifest === null
         ? null
-        : manifestSubset(
-            manifest,
-            group.map((f) => f.path),
-          );
+        : dryRun
+          ? manifest.manifest
+          : manifestSubset(
+              manifest,
+              group.map((f) => f.path),
+            );
     const result = await call(
       api,
-      `import into ${project}`,
+      `${dryRun ? 'preview the import' : 'import'} into ${project}`,
       importModels({
         client: api.client,
         path: { project },
+        ...(dryRun ? { query: { dryRun: 'true' as const } } : {}),
         body: {
           files: group.map((f) => new File([f.bytes], f.path)),
           ...(subset !== null && subset.files.length > 0
@@ -166,6 +183,7 @@ export async function sendImport(
       if (isSkippedXml(f)) skipped.push({ path: f.path, reason: 'not-bpmn' });
       else files.push(f);
     }
+    if (result.impact) impacts.push(result.impact as ImportImpact);
   }
   const counts = { created: 0, revised: 0, unchanged: 0, failed: 0 };
   for (const f of files) counts[f.outcome]++;
@@ -183,13 +201,109 @@ export async function sendImport(
       ...(manifest.manifest.valueChain ? { valueChain: manifest.manifest.valueChain.path } : {}),
     };
   }
+  const impact = dryRun ? mergeImpacts(impacts) : null;
   return {
     project,
     files,
     counts,
     ...(skipped.length > 0 ? { skipped } : {}),
     ...(manifestSummary ? { manifest: manifestSummary } : {}),
+    ...(impact ? { impact, batches: plan.batches.length } : {}),
   };
+}
+
+const IMPACT_LISTS = [
+  'acceptedCalls',
+  'proposalsAdded',
+  'proposalsWithdrawn',
+  'endpointsChanged',
+  'findingsAdded',
+  'findingsResolved',
+] as const;
+
+/**
+ * The impacts of a dry run's batches as one (M6 §3.5): the files and the
+ * counts added up, the items concatenated up to the cap; the absent keys are
+ * the first batch's (every batch sends the whole manifest, so all name the
+ * same).
+ */
+export function mergeImpacts(impacts: readonly ImportImpact[]): ImportImpact {
+  const empty = { count: 0, items: [] };
+  const merged: ImportImpact = {
+    files: impacts.flatMap((i) => i.files),
+    acceptedCalls: empty,
+    proposalsAdded: empty,
+    proposalsWithdrawn: empty,
+    endpointsChanged: empty,
+    findingsAdded: empty,
+    findingsResolved: empty,
+    absentKeys: impacts[0]?.absentKeys ?? empty,
+  };
+  for (const key of IMPACT_LISTS) {
+    const lists = impacts.map((i) => i[key]);
+    (merged[key] as { count: number; items: unknown[] }) = {
+      count: lists.reduce((n, l) => n + l.count, 0),
+      items: lists.flatMap((l) => l.items as unknown[]).slice(0, MAX_IMPACT_ITEMS),
+    };
+  }
+  return merged;
+}
+
+function plural(n: number, one: string, many = `${one}s`): string {
+  return `${n} ${n === 1 ? one : many}`;
+}
+
+/** `a#Call_X → b#Process_Y` for a relation's line. */
+const arrow = (r: { from: string; to: string }) => `${r.from} → ${r.to}`;
+
+/**
+ * A dry run's impact as text (M6 §3.5): the files whose model changes, the
+ * rule-tier calls accepted, the rule proposals added and the stances
+ * withdrawn, accepted relations whose end changes or goes missing, the
+ * findings, and the keys the bundle does not name (nothing is deleted); up
+ * to five examples each. A preview of several batches says that a call into
+ * a later batch shows as unresolved.
+ */
+export function formatImpact(impact: ImportImpact, project: string, batches = 1): string {
+  const sample = (items: readonly string[], count: number) =>
+    items.length === 0
+      ? ''
+      : `: ${items.slice(0, 5).join(', ')}${count > 5 ? `, … ${count - 5} more` : ''}`;
+  const added = impact.files.reduce((n, f) => n + f.processesAdded.length, 0);
+  const removed = impact.files.reduce((n, f) => n + f.processesRemoved.length, 0);
+  const lines = [`${project}: dry run, nothing imported; the import would`];
+  const changed = impact.files.filter((f) => f.factsChanged).length;
+  lines.push(
+    `  change the facts of ${plural(changed, 'model')} (${added} processes added, ${removed} removed)`,
+  );
+  const list = (label: string, l: { count: number; items: { from: string; to: string }[] }) =>
+    lines.push(`  ${label} ${l.count}${sample(l.items.map(arrow), l.count)}`);
+  list('accept rule-tier calls:', impact.acceptedCalls);
+  list('add rule proposals:', impact.proposalsAdded);
+  list('withdraw rule stances:', impact.proposalsWithdrawn);
+  lines.push(
+    `  change or lose an end of accepted relations: ${impact.endpointsChanged.count}${sample(
+      impact.endpointsChanged.items.map((r) => `${arrow(r)} (${r.endpointState})`),
+      impact.endpointsChanged.count,
+    )}`,
+  );
+  lines.push(
+    `  findings: ${impact.findingsAdded.count} added, ${impact.findingsResolved.count} resolved${sample(
+      impact.findingsAdded.items.map((f) => `${f.kind} ${f.refs[0] ?? ''}`),
+      impact.findingsAdded.count,
+    )}`,
+  );
+  if (impact.absentKeys.count > 0) {
+    lines.push(
+      `  not in the bundle, kept in analyzr (nothing is deleted): ${plural(impact.absentKeys.count, 'key')}${sample(impact.absentKeys.items, impact.absentKeys.count)}`,
+    );
+  }
+  if (batches > 1) {
+    lines.push(
+      `  previewed in ${batches} batches, each against the project's head: a call into a later batch shows as unresolved`,
+    );
+  }
+  return `${lines.join('\n')}\n`;
 }
 
 /**
@@ -536,18 +650,27 @@ export interface ImportOptions extends CredentialOptions {
   name?: string;
   verbose?: boolean;
   json?: boolean;
+  /** M6 S2b: preview with `?dryRun=true` (permission `read`): the outcomes and the impact, nothing imported. */
+  dryRun?: boolean;
 }
 
 /**
- * `analyzr import <dir> --project <key> [--create [--name <name>]] [--verbose] [--json]`.
+ * `analyzr import <dir> --project <key> [--create [--name <name>]] [--dry-run] [--verbose] [--json]`.
  * Reads `analyzr-import.json` at `<dir>` when there is one (M6 S2a: pinned
  * keys, declared provenance, import warnings). Text mode ends with the
  * bundle's value chain to push, the tasks waiting in the project and the
  * next agent step; `--json` prints the summary only. Warnings (also import
  * warnings) and skipped files never change the exit code. Exit 1 if a file failed, or if every file was a plain
  * `.xml` that is no BPMN (nothing imported; as a folder without BPMN files).
+ * `--dry-run` (M6 S2b) previews into an existing project with any credential
+ * (a read-only token too): the same lines, then what the import would change
+ * ({@link formatImpact}); nothing is imported, and a file that would fail
+ * exits 1 as well.
  */
 export async function importCommand(io: CliIo, dir: string, opts: ImportOptions): Promise<void> {
+  if (opts.dryRun && opts.create) {
+    throw new CliError('--dry-run previews into an existing project: drop --create');
+  }
   // Read and check everything locally first: a refused manifest creates no project.
   const prepared = await prepareImport(path.resolve(io.cwd, dir));
   const credential = opts.create ? await ownerCredential(io, opts) : await anyCredential(io, opts);
@@ -556,12 +679,23 @@ export async function importCommand(io: CliIo, dir: string, opts: ImportOptions)
     const { created } = await ensureProject(api, opts.project, opts.name ?? opts.project);
     if (created && !opts.json) io.stdout(`created project ${opts.project}\n`);
   }
-  const summary = await sendImport(api, opts.project, prepared);
+  const summary = await sendImport(api, opts.project, prepared, { dryRun: opts.dryRun === true });
   // Every file picked up was a plain `.xml` that is no BPMN: nothing was imported. A file
   // skipped for its key never gets here alone: the `.bpmn…` file that has the key was sent.
   const nothing = summary.files.length === 0;
   if (opts.json) io.stdout(`${JSON.stringify(summary, null, 2)}\n`);
   else io.stdout(formatImport(summary, { verbose: opts.verbose === true }));
+  if (summary.impact) {
+    if (!opts.json) io.stdout(formatImpact(summary.impact, opts.project, summary.batches));
+    if (nothing)
+      throw new CliError(
+        `no BPMN files below ${dir}: ${skippedText(summary.skipped) ?? '0 skipped'}`,
+      );
+    if (summary.counts.failed > 0) {
+      throw new CliError(`${summary.counts.failed} of ${summary.files.length} files would fail`);
+    }
+    return;
+  }
   if (!opts.json && summary.manifest?.valueChain !== undefined) {
     // Never sent with the models (M6 §3.2): the human pushes the chain, after a dry run.
     const chain = path.resolve(io.cwd, dir, summary.manifest.valueChain);

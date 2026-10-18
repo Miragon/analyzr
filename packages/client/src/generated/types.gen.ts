@@ -464,6 +464,94 @@ export type DerivedKind = 'export' | 'converted' | 'reconstructed' | 'as-told';
 export type ExportedAt = string;
 
 /**
+ * What an import or a deletion would change.
+ */
+export type ImportImpact = {
+  files: Array<ImpactFile>;
+  acceptedCalls: {
+    count: number;
+    items: Array<ImpactRelation>;
+  };
+  proposalsAdded: {
+    count: number;
+    items: Array<ImpactRelation>;
+  };
+  proposalsWithdrawn: {
+    count: number;
+    items: Array<ImpactRelation>;
+  };
+  endpointsChanged: {
+    count: number;
+    items: Array<ImpactEndpoint>;
+  };
+  findingsAdded: {
+    count: number;
+    items: Array<Finding>;
+  };
+  findingsResolved: {
+    count: number;
+    items: Array<Finding>;
+  };
+  absentKeys: {
+    count: number;
+    items: Array<ModelKey>;
+  };
+};
+
+/**
+ * How a file would change its model.
+ */
+export type ImpactFile = {
+  modelKey: ModelKey;
+  factsChanged: boolean;
+  processesAdded: Array<Ref>;
+  processesRemoved: Array<Ref>;
+};
+
+/**
+ * A relation by its type and both ends.
+ */
+export type ImpactRelation = {
+  type: RelationType;
+  from: Ref;
+  to: Ref;
+};
+
+/**
+ * Type of a relation between two processes.
+ */
+export type RelationType = 'call' | 'message' | 'signal' | 'trigger' | 'manual';
+
+/**
+ * An accepted relation whose end changes.
+ */
+export type ImpactEndpoint = {
+  type: RelationType;
+  from: Ref;
+  to: Ref;
+  endpointState: 'changed' | 'missing';
+};
+
+/**
+ * A deterministic finding about the landscape.
+ */
+export type Finding = {
+  kind: FindingKind;
+  refs: Array<Ref>;
+  detail: string;
+};
+
+/**
+ * Kind of a deterministic finding.
+ */
+export type FindingKind =
+  | 'unresolved-call'
+  | 'dynamic-call'
+  | 'duplicate-process-id'
+  | 'dangling-throw'
+  | 'unmatched-catch';
+
+/**
  * Result of uploading one BPMN file.
  */
 export type PutModelResult = {
@@ -648,6 +736,20 @@ export type ExternalIdentity = {
 };
 
 /**
+ * What uploading one BPMN file would change.
+ */
+export type PutModelDryRunResult = {
+  outcome: 'created' | 'revised' | 'unchanged';
+  modelKey: ModelKey;
+  dryRun: true;
+  warnings?: Array<ExtractWarning>;
+  warningCount?: number;
+  amendments?: AmendmentCounts;
+  importWarnings?: Array<ImportWarning>;
+  impact: ImportImpact;
+};
+
+/**
  * BPMN 2.0 XML document (UTF-8).
  */
 export type BpmnXml = string;
@@ -677,6 +779,7 @@ export type RevisionFacts = {
  */
 export type ImportResult = {
   files: Array<ImportFileOutcome>;
+  impact?: ImportImpact;
 };
 
 /**
@@ -923,25 +1026,6 @@ export type AmendmentEffect = {
 };
 
 /**
- * A deterministic finding about the landscape.
- */
-export type Finding = {
-  kind: FindingKind;
-  refs: Array<Ref>;
-  detail: string;
-};
-
-/**
- * Kind of a deterministic finding.
- */
-export type FindingKind =
-  | 'unresolved-call'
-  | 'dynamic-call'
-  | 'duplicate-process-id'
-  | 'dangling-throw'
-  | 'unmatched-catch';
-
-/**
  * A relation an amendment affects.
  */
 export type AmendmentEffectRelation = {
@@ -955,11 +1039,6 @@ export type AmendmentEffectRelation = {
  * Relation id (`rel_` + ULID).
  */
 export type RelationId = string;
-
-/**
- * Type of a relation between two processes.
- */
-export type RelationType = 'call' | 'message' | 'signal' | 'trigger' | 'manual';
 
 /**
  * The cost of a new head.
@@ -3928,6 +4007,54 @@ export type GetModelResponses = {
 
 export type GetModelResponse = GetModelResponses[keyof GetModelResponses];
 
+export type GetModelDeletionImpactData = {
+  body?: never;
+  path: {
+    /**
+     * Project id (`prj_…`) or project key.
+     */
+    project: string;
+    /**
+     * Model id (`mdl_` + ULID).
+     */
+    model: ModelId;
+  };
+  query?: never;
+  url: '/api/v1/projects/{project}/models/{model}/deletion-impact';
+};
+
+export type GetModelDeletionImpactErrors = {
+  /**
+   * Problem: `unauthorized`
+   */
+  401: ApiProblem;
+  /**
+   * Problem: `insufficient-scope`
+   */
+  403: ApiProblem;
+  /**
+   * Problem: `not-found`
+   */
+  404: ApiProblem;
+  /**
+   * Problem: `validation-failed`
+   */
+  422: ApiProblem;
+};
+
+export type GetModelDeletionImpactError =
+  GetModelDeletionImpactErrors[keyof GetModelDeletionImpactErrors];
+
+export type GetModelDeletionImpactResponses = {
+  /**
+   * The impact of the deletion
+   */
+  200: ImportImpact;
+};
+
+export type GetModelDeletionImpactResponse =
+  GetModelDeletionImpactResponses[keyof GetModelDeletionImpactResponses];
+
 export type PutModelByKeyData = {
   body: BpmnXml;
   headers?: {
@@ -3946,7 +4073,9 @@ export type PutModelByKeyData = {
      */
     key: ModelKey;
   };
-  query?: never;
+  query?: {
+    dryRun?: 'true' | 'false';
+  };
   url: '/api/v1/projects/{project}/models/by-key/{key}';
 };
 
@@ -3981,9 +4110,9 @@ export type PutModelByKeyError = PutModelByKeyErrors[keyof PutModelByKeyErrors];
 
 export type PutModelByKeyResponses = {
   /**
-   * New revision, or `unchanged` for identical content
+   * New revision, `unchanged` for identical content, or a dry run
    */
-  200: PutModelResult;
+  200: PutModelResult | PutModelDryRunResult;
   /**
    * New model
    */
@@ -4153,7 +4282,9 @@ export type ImportModelsData = {
      */
     project: string;
   };
-  query?: never;
+  query?: {
+    dryRun?: 'true' | 'false';
+  };
   url: '/api/v1/projects/{project}/imports';
 };
 
@@ -4188,7 +4319,7 @@ export type ImportModelsError = ImportModelsErrors[keyof ImportModelsErrors];
 
 export type ImportModelsResponses = {
   /**
-   * Outcome per file
+   * Outcome per file (with `impact` on a dry run)
    */
   200: ImportResult;
 };
