@@ -522,6 +522,58 @@ export function decideLink(
     : { to: 'chain', placement: first.id };
 }
 
+/** Where a link action leads: a `decide` by what it decides, `fix-link` the chain at the step. */
+export function actionLink(
+  q: Pick<OpenQuestion, 'kind' | 'subject'>,
+  action: OpenQuestionAction,
+): QuestionLink | null {
+  if (action.type === 'fix-link') return { to: 'chain', step: q.subject.id };
+  return action.type === 'decide' ? decideLink(q, action) : null;
+}
+
+/** Two links open the same thing (a hold's view of the review screen counts as the screen). */
+function samePlace(a: QuestionLink, b: QuestionLink): boolean {
+  if (a.to === 'review' && b.to === 'review') return a.relation === b.relation;
+  if (a.to === 'chain' && b.to === 'chain') return a.step === b.step && a.placement === b.placement;
+  if (a.to === 'model' && b.to === 'model')
+    return a.modelKey === b.modelKey && a.element === b.element;
+  return false;
+}
+
+/**
+ * The card's own way into the diagram (the owner's walkthrough, 2026-10-18:
+ * „bei den Fragen würde ich leichter ins Modell einsteigen wollen … nicht
+ * ganz klar, dass man da auf den Namen klicken muss“): a labelled button to
+ * the subject, „Im Modell zeigen“ and its kin. None where it leads nowhere
+ * new: the model in view without an element, or the place a visible link
+ * action of a reviewer's card („Jetzt entscheiden“, „Auf der Kette prüfen“)
+ * opens already.
+ */
+export function viewLink(
+  q: Pick<OpenQuestion, 'kind' | 'subject' | 'actions' | 'answers'>,
+  { currentModel, withActions }: { currentModel?: string | undefined; withActions: boolean },
+): { link: QuestionLink; label: string } | null {
+  const link = subjectLink(q);
+  if (link.to === 'model' && link.modelKey === currentModel && link.element === undefined)
+    return null;
+  if (withActions) {
+    const { primary, secondary } = cardActions(q);
+    const shown = [primary, secondary].map((c) => (c ? actionLink(q, c.action) : null));
+    if (shown.some((l) => l !== null && samePlace(l, link))) return null;
+  }
+  const label =
+    link.to === 'review'
+      ? 'Relation ansehen'
+      : link.to === 'chain'
+        ? 'In der Kette zeigen'
+        : link.element === undefined
+          ? 'Modell öffnen'
+          : link.modelKey === currentModel
+            ? 'Im Diagramm zeigen'
+            : 'Im Modell zeigen';
+  return { link, label };
+}
+
 /** Fact kinds that start a relation (the sending, throwing or calling end). */
 const FROM_KINDS: ReadonlySet<string> = new Set(['msg_throw', 'sig_throw', 'call', 'evt_end']);
 

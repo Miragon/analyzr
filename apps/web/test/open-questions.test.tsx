@@ -3,7 +3,7 @@
  * and the sheet since S5c-1, §4.8 b; the actions in
  * `open-question-actions.test.tsx`; reworked in UX2b,
  * UX-SIMPLIFICATION.md §3.3): the last of the four tabs with its count, „Zu
- * klären“ as lean cards in the server's order (the subject a link, the
+ * klären“ as lean cards in the server's order (a button into the diagram, the
  * question with „Warum?“ closed, human and agent texts as plain text, whom
  * to ask, no ids, no event numbers, no source label), the agents' questions
  * only under „Art“, „Zur Information“ and „Erledigte zeigen“ closed, three
@@ -415,15 +415,30 @@ describe('tab „Offene Fragen“', () => {
     );
   });
 
-  it('links each subject to where it is: the review screen, the chain, the model view', async () => {
+  it('opens each subject where it is with a labelled button: the review screen, the chain, the model view', async () => {
     setup('/projects/demo/open-questions');
     const [held, call, step, pool] = await rows();
-    const href = (row: HTMLElement) =>
-      within(row).getByTestId('question-subject').getAttribute('href');
-    expect(href(held!)).toBe('/projects/demo/review/rel_01HELD');
-    expect(href(call!)).toBe('/projects/demo/models/a/order?element=Call_1');
-    expect(href(step!)).toBe('/projects/demo/value-chain?step=step-einkauf');
-    expect(href(pool!)).toBe('/projects/demo/models/c/shipping?element=Participant_Carrier');
+    const open = (row: HTMLElement) => within(row).queryByTestId('question-open');
+    // the name is no hidden link any more (the owner's walkthrough, 2026-10-18)
+    expect(within(call!).getByTestId('question-subject').tagName).toBe('SPAN');
+    expect(open(call!)?.textContent).toBe('Im Modell zeigen');
+    expect(open(call!)?.getAttribute('href')).toBe('/projects/demo/models/a/order?element=Call_1');
+    expect(open(step!)?.textContent).toBe('In der Kette zeigen');
+    expect(open(step!)?.getAttribute('href')).toBe('/projects/demo/value-chain?step=step-einkauf');
+    expect(open(pool!)?.getAttribute('href')).toBe(
+      '/projects/demo/models/c/shipping?element=Participant_Carrier',
+    );
+    // a screen reader hears which subject the button opens
+    expect(open(call!)?.getAttribute('aria-describedby')).toBe(
+      within(call!).getByTestId('question-subject').id,
+    );
+    // a hold's „Jetzt entscheiden“ opens the review screen already: no second way there
+    expect(open(held!)).toBeNull();
+    expect(
+      within(held!)
+        .getByRole('link', { name: /Jetzt entscheiden/ })
+        .getAttribute('href'),
+    ).toBe('/projects/demo/review/rel_01HELD?view=held');
     // no refs list any more
     expect(within(held!).queryByRole('list', { name: 'Bezug' })).toBeNull();
   });
@@ -691,9 +706,9 @@ describe('model view section „Fragen“', () => {
     expect(info.hasAttribute('open')).toBe(false);
     expect(info.querySelector('summary')?.textContent).toBe('Zur Information (1)');
     const rows = within(section).getAllByTestId('open-question');
-    expect(within(rows[1]!).getByTestId('question-subject').getAttribute('href')).toBe(
-      '/projects/demo/models/a/order?element=Call_1',
-    );
+    const show = within(rows[1]!).getByTestId('question-open');
+    expect(show.textContent).toBe('Im Diagramm zeigen');
+    expect(show.getAttribute('href')).toBe('/projects/demo/models/a/order?element=Call_1');
   });
 
   it('says when nothing about the model is to clarify', async () => {
@@ -893,8 +908,13 @@ describe('notes (M6 S5a, S5c-1; a hold’s answer since UX2b)', () => {
     expect(screen.queryAllByTestId('question-actions')).toEqual([]);
     expect(screen.queryByRole('button', { name: /Antworten aus CSV übernehmen/ })).toBeNull();
     expect(screen.getByRole('button', { name: 'Für den Kunden exportieren …' })).toBeDefined();
-    // the subjects stay links: reading is every role's
-    expect(screen.getAllByTestId('question-subject').length).toBe(4);
+    // the way into the diagram stays: reading is every role's (a hold's included, no decision here)
+    expect(screen.getAllByTestId('question-open').map((a) => a.getAttribute('href'))).toEqual([
+      '/projects/demo/review/rel_01HELD',
+      '/projects/demo/models/a/order?element=Call_1',
+      '/projects/demo/value-chain?step=step-einkauf',
+      '/projects/demo/models/c/shipping?element=Participant_Carrier',
+    ]);
     cleanup();
     setup('/projects/demo/open-questions', { role: 'owner', health: DEMO });
     expect(await rows()).toHaveLength(4);

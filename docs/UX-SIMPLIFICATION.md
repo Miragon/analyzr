@@ -3,7 +3,8 @@
 Status: **decided** (owner decision 26, 2026-10-18: every "Ask now" question of §5.4 answered with
 the recommended option; HANDOFF §4); proposal of 2026-10-17, revised the same day after a UX and a
 feasibility critique · Branch: `feat/integration-and-gaps` (the first wave UX2a, UX1 and UX2b
-delivered on it on 2026-10-18, §7; next the owner's walkthrough) · Source: four user-need audits of the web UI on the agent-created scratch stack
+delivered on it on 2026-10-18, §7; the owner's walkthrough the same day, §7 "Owner
+walkthrough"; next UX7) · Source: four user-need audits of the web UI on the agent-created scratch stack
 `analyzr-uxaudit` (seeded `nordwind-handel` with its chain and a simulation agent run,
 `signavio-beispiel` from the CLI bundle import, two projects made from the raw synthetic Signavio
 export; 1440x900 and 390x844), torn down after the audit · Relates to: HANDOFF §4 decisions 8, 10,
@@ -1165,7 +1166,7 @@ the owner uses next), and an empty project. It checks:
 | UX2a | open-questions server and CLI: `group` (a `Record` over the kinds), the repeatable `group` filter, `totals` and `askByModel`, the extended one-question-per-process rule, `text`/`detail`, the pool label, the `proposal` items' chain action, the export (date, „Betrifft“, contact hint, HTML-comment id, CSV header alias, default `ask`), the API action labels, `analyzr questions --group` | 2 d |
 | UX1 | shell and „Übersicht“: four tabs (Q1), „Hochladen“, „Einstellungen“, badges, header, error banner, German error texts, „Als Nächstes“, the „Agent starten“ popover, search and phase chips, the models table with „Offene Punkte“ and the agent lines, the „Exportieren“ hub, `useProjectCounts`, the projects list's removals and the „Rolle“ rule, „Neues Projekt“, the UI load guard | 3 d |
 | UX2b | „Offene Fragen“ in the web: the default view, count line, intro, filters, the export dialog, cards, holds' one answer place, pools, informational and answered items | 3 d |
-| – | **owner walkthrough** on a scratch stack (the agent-created `analyzr-local`, rebuilt to the branch): what's next on `nordwind-handel`, decide the first relation, answer a hold, find „Gutschrift“ on a phone, export the questions for the customer; decides UX3–UX9 and their order | – |
+| – | **owner walkthrough** on a scratch stack (the agent-created `analyzr-local`, rebuilt to the branch): what's next on `nordwind-handel`, decide the first relation, answer a hold, find „Gutschrift“ on a phone, export the questions for the customer; decides UX3–UX9 and their order (done 2026-10-18: one finding, the order kept) | – |
 | UX3 | model view: canvas panel (API for all three pages) and canvas header, „Fragen“/„Relationen“ tabs, element filter, relation cards, „Mehr“, legend, view-first phone, watermark | 3 d |
 | UX4 | question actions: one entry that chooses, ranked pickers, „Sammeln“ removed, inline dry run, „+ Notiz“, choose-copy, ghost button, note dialog; the tab side of Q4 | 2.5 d |
 | UX5 | „Relationen“ (views) and the review screen: start button, queue rows by model names, „Hinweise“, the bulk dialog and its rule offer, labels (`TIERS`), „Vorgemerkt“ rows, panel „Verlauf“, held answer through the dialog, return to „Offene Fragen“, stacked panes, keyboard hints, hold form, auto-accept badge, view-first phone; Q6, Q7 | 4 d |
@@ -1586,11 +1587,22 @@ The first wave in numbers, before = the web before UX1:
 | Entry chunk (gzip) | 211.0 KB in 7 chunks | 209.8 KB in 1 |
 
 Not verified: other browsers than Chromium and a real phone, a screen reader, the export in a
-spreadsheet program, CI (no e2e job), and the owner's walkthrough, which comes next: five tasks
-on `analyzr-local` (rebuilt to the branch first): what is next on `nordwind-handel`, decide the
-first relation, answer a hold, find „Gutschrift“ on a phone, export the questions for the
-customer; then, per its outcome, UX7 → UX8 → S2b → UX3 → UX4 → UX5 → UX6 → UX9 alongside S2c and
-S3c.
+spreadsheet program, CI (no e2e job).
+
+**Owner walkthrough** (2026-10-18, on `analyzr-local` rebuilt to the branch). The owner: „finde,
+das geht in eine gute Richtung. bei den Fragen würde ich leichter ins Modell einsteigen wollen...
+nicht ganz klar, dass man da auf den Namen klicken muss. Sonst kannst du weitermachen“. One
+finding, fixed on the branch the same day: a „Zu klären“ card names its subject as text and opens
+it with a labelled button at the header's end (`viewLink` in `lib/open-questions.ts`, `ViewButton`
+in `question-item.tsx`): „Im Modell zeigen“ (an element of another model), „Im Diagramm zeigen“
+(one of the model in view, in the model view's „Fragen“), „Modell öffnen“, „In der Kette zeigen“,
+„Relation ansehen“. It is left out where it would lead nowhere new: the model in view without an
+element, and the place a reviewer's visible link action opens already (a hold's „Jetzt
+entscheiden“, an agent proposal's „Vorschlag öffnen“, „Auf der Kette prüfen“ on a step); viewers
+keep it on every card. The one-line items (done, „Zur Information“) keep the name as a link, now
+in link colour. One control per card as before, so „Offene Fragen“ stays within UX2b's budget.
+The rest goes on in the proposed order (Q10): UX7 → UX8 → S2b → UX3 → UX4 → UX5 → UX6 → UX9,
+alongside S2c and S3c.
 
 **UX3 "Model view".** Files: new `components/canvas-panel.tsx`, `canvas-header.tsx`;
 `routes/model-view.tsx`, `components/open-questions/model-questions.tsx`, `subprocess-link.tsx`,

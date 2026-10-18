@@ -147,11 +147,12 @@ and code are in English.
   simplification is done** (2026-10-18, on the branch: UX2a, UX1, UX2b and the review round;
   every gate green, the UI load guard and the whole Playwright suite against a scratch stack, the
   demo walk against a scratch demo image, the screenshots retaken; DEVELOPMENT.md "UI
-  simplification first wave (2026-10-18)"). **Next:** the owner's walkthrough of five tasks on
-  `analyzr-local` (`docs/UX-SIMPLIFICATION.md` §7; the stack rebuilt to the branch first): what
-  is next on `nordwind-handel`, decide the first relation, answer a hold, find „Gutschrift“ on a
-  phone, export the questions for the customer. Then, per its outcome, UX7 → UX8 → S2b → UX3 →
-  UX4 → UX5 → UX6 → UX9, alongside S2c (the trust rule) and S3c; S6 after them; after the owner's
+  simplification first wave (2026-10-18)"). **The owner's walkthrough** (2026-10-18, on
+  `analyzr-local`; UX-SIMPLIFICATION.md §7 "Owner walkthrough"): „finde, das geht in eine gute
+  Richtung“; one finding, fixed the same day: a question card opens its subject with a labelled
+  button („Im Modell zeigen“, „In der Kette zeigen“, …) instead of a name one had to guess was a
+  link. **Next:** UX7 → UX8 → S2b → UX3 → UX4 → UX5 → UX6 → UX9 (the owner: „Sonst kannst du
+  weitermachen“), alongside S2c (the trust rule) and S3c; S6 after them; after the owner's
   live runs S5b, S7 and facts v2 as recommended (§7 "M6"; M6 §8 "After S2a").
 
 ## 2. Read in this order
@@ -948,10 +949,10 @@ Fragen“ in the web) and the first wave's review round, done 2026-10-18 on the 
 gate green, the UI load guard and the whole Playwright suite against a scratch stack, the demo
 walk against a scratch demo image and the screenshots retaken (UX-SIMPLIFICATION.md §7 "… as
 delivered", "First wave review round"; DEVELOPMENT.md "UI simplification first wave
-(2026-10-18)"). **Next**: the owner's walkthrough of five tasks on `analyzr-local` (rebuilt to
-the branch first; UX-SIMPLIFICATION.md §7): what is next on `nordwind-handel`, decide the first
-relation, answer a hold, find „Gutschrift“ on a phone, export the questions for the customer. Its
-outcome decides the rest; proposed (Q10): UX7 („Hochladen“, „Agent verbinden“) → UX8 (S2a's web
+(2026-10-18)"). The owner walked five tasks on `analyzr-local` the same day („finde, das geht in
+eine gute Richtung“; UX-SIMPLIFICATION.md §7 "Owner walkthrough"); its one finding, entering the
+model from a question card, is fixed with a labelled button on the card. **Next**, in the
+proposed order (Q10), which the owner kept („Sonst kannst du weitermachen“): UX7 („Hochladen“, „Agent verbinden“) → UX8 (S2a's web
 parts: „Herkunft“, the badges, the manifest of a dropped folder) → S2b (`importImpact`, the dry
 runs, the deletion impact, absent keys within `source.scope`) → UX3 (model view) → UX4 (question
 actions) → UX5 („Relationen“ and the review screen) → UX6 (value chain) → UX9 (result views,

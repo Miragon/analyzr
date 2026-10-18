@@ -7,6 +7,7 @@ import {
   ChevronRightIcon,
   CircleHelpIcon,
   EarthIcon,
+  EyeIcon,
   InfoIcon,
   TagIcon,
   Undo2Icon,
@@ -31,80 +32,126 @@ import {
   relationProcessesText,
   subjectLink,
   unlocksText,
+  viewLink,
+  type QuestionLink,
 } from '@/lib/open-questions';
 import type { RefResolver } from '@/lib/refs';
 
 import { withdrawMark } from './action-feedback';
 import { QuestionActions, type QuestionActor } from './question-actions';
 
-/**
- * The subject's name as the card's link (UX-SIMPLIFICATION.md §3.3 item 5):
- * to the model view at the element, the review screen, or the chain page
- * at the step or placement. In the model view a link to the model itself
- * leads nowhere new, so it stays text there.
- */
-function SubjectLink({
-  q,
+/** A link to where a {@link QuestionLink} leads: the review screen, the chain or the model view. */
+function PlaceLink({
+  link,
   project,
-  id,
-  currentModel,
-  className,
+  children,
+  ...props
 }: {
-  q: OpenQuestion;
+  link: QuestionLink;
   project: string;
-  id: string;
-  currentModel: string | undefined;
+  children: ReactNode;
+  id?: string;
   className?: string;
+  'aria-describedby'?: string;
+  'data-testid': string;
 }) {
-  const link = subjectLink(q);
-  const classes = cn(
-    'min-w-0 font-medium break-words text-foreground underline-offset-4 hover:underline focus-visible:rounded-sm focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none',
-    className,
-  );
-  if (link.to === 'model' && link.modelKey === currentModel && link.element === undefined)
-    return (
-      <span id={id} className={cn('min-w-0 font-medium break-words', className)}>
-        {q.subjectLabel}
-      </span>
-    );
+  const data = { ...props, 'data-link': link.to };
   return link.to === 'review' ? (
     <Link
-      id={id}
       to="/projects/$project/review/$relation"
       params={{ project, relation: link.relation }}
-      className={classes}
-      data-testid="question-subject"
-      data-link="review"
+      {...data}
     >
-      {q.subjectLabel}
+      {children}
     </Link>
   ) : link.to === 'chain' ? (
     <Link
-      id={id}
       to="/projects/$project/value-chain"
       params={{ project }}
       search={{
         ...(link.step ? { step: link.step } : {}),
         ...(link.placement ? { placement: link.placement } : {}),
       }}
-      className={classes}
-      data-testid="question-subject"
-      data-link="chain"
+      {...data}
     >
-      {q.subjectLabel}
+      {children}
     </Link>
   ) : (
     <Link
-      id={id}
       to="/projects/$project/models/$"
       params={{ project, _splat: link.modelKey }}
       search={link.element ? { element: link.element } : {}}
-      className={classes}
+      {...data}
+    >
+      {children}
+    </Link>
+  );
+}
+
+/**
+ * The subject's name as a link on a one-line item (done, informational;
+ * UX-SIMPLIFICATION.md §3.3 items 8 and 9): to the model view at the
+ * element, the review screen, or the chain page at the step or placement.
+ * In the model view a link to the model itself leads nowhere new, so it
+ * stays text there.
+ */
+function SubjectLink({
+  q,
+  project,
+  id,
+  currentModel,
+}: {
+  q: OpenQuestion;
+  project: string;
+  id: string;
+  currentModel: string | undefined;
+}) {
+  const link = subjectLink(q);
+  if (link.to === 'model' && link.modelKey === currentModel && link.element === undefined)
+    return (
+      <span id={id} className="min-w-0 font-medium break-words">
+        {q.subjectLabel}
+      </span>
+    );
+  return (
+    <PlaceLink
+      link={link}
+      project={project}
+      id={id}
+      className="min-w-0 font-medium break-words text-link underline-offset-4 hover:underline focus-visible:rounded-sm focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
       data-testid="question-subject"
-      data-link="model"
     >
       {q.subjectLabel}
-    </Link>
+    </PlaceLink>
+  );
+}
+
+/**
+ * The card's way into the diagram ({@link viewLink}): a labelled button at
+ * the header's end, „Im Modell zeigen“, „In der Kette zeigen“ or „Relation
+ * ansehen“, so nobody has to guess that the name leads there.
+ */
+function ViewButton({
+  view,
+  project,
+  describedBy,
+}: {
+  view: { link: QuestionLink; label: string };
+  project: string;
+  describedBy: string;
+}) {
+  return (
+    <Button variant="outline" size="sm" asChild>
+      <PlaceLink
+        link={view.link}
+        project={project}
+        aria-describedby={describedBy}
+        data-testid="question-open"
+      >
+        <EyeIcon data-icon="inline-start" />
+        {view.label}
+      </PlaceLink>
+    </Button>
   );
 }
 
@@ -216,8 +263,9 @@ function History({ q, compact }: { q: OpenQuestion; compact: boolean }) {
 
 /**
  * One open question as a card (UX-SIMPLIFICATION.md §3.3 items 5, 6 and 10;
- * UX2b): the kind, the subject as a link (with the process it lies in), and
- * from two on „Betrifft N offene Entscheidungen“; the question, „Warum?“
+ * UX2b): the kind, the subject's name (with the process it lies in), from
+ * two on „Betrifft N offene Entscheidungen“, and a button into the diagram
+ * ({@link ViewButton}); the question, „Warum?“
  * closed; a hold's label; whom to ask (step owners, lanes); the latest note,
  * and everything recorded under „Verlauf“; for reviewers (`actor`) at most
  * three actions (the primary, one beside it or „Weitere Aktionen“). No ids,
@@ -237,7 +285,7 @@ export function QuestionItem({
   project: string;
   resolve: RefResolver;
   compact?: boolean;
-  /** The model in view: a link to it without an element leads nowhere new and is text. */
+  /** The model in view: a way to it without an element leads nowhere new and is left out. */
   currentModel?: string;
   /** The actions' handlers; without it (viewers, the read-only demo) no action is shown. */
   actor?: QuestionActor;
@@ -258,6 +306,10 @@ export function QuestionItem({
   const relationIn = compact ? null : relationProcessesText(q, resolve);
   const history = q.answers.length > (note ? 1 : 0);
   const agentQuestion = q.kind === 'agent-question' && showRaiser;
+  const view = viewLink(q, {
+    currentModel,
+    withActions: actor !== undefined && q.actions.length > 0,
+  });
 
   return (
     <li
@@ -265,6 +317,7 @@ export function QuestionItem({
       data-question-id={q.id}
       data-kind={q.kind}
       data-source={q.source}
+      data-subject={q.subject.type}
       data-group={q.group}
       data-unlocks={q.unlocks}
       data-state={q.state}
@@ -278,13 +331,13 @@ export function QuestionItem({
         <ToneBadge tone={kind.tone} icon={CircleHelpIcon} title={kind.hint}>
           {kind.label}
         </ToneBadge>
-        <SubjectLink
-          q={q}
-          project={project}
+        <span
           id={subjectId}
-          currentModel={currentModel}
-          className={compact ? 'text-sm' : undefined}
-        />
+          className={cn('min-w-0 font-medium break-words', compact && 'text-sm')}
+          data-testid="question-subject"
+        >
+          {q.subjectLabel}
+        </span>
         {inProcess && `„${inProcess}“` !== q.subjectLabel ? (
           <span className="text-sm text-muted-foreground" data-testid="question-process">
             in „{inProcess}“
@@ -294,9 +347,14 @@ export function QuestionItem({
             {relationIn}
           </span>
         ) : null}
-        {meta ? (
-          <span className="text-xs text-muted-foreground sm:ml-auto" data-testid="question-unlocks">
-            {meta}
+        {meta || view ? (
+          <span className="flex flex-wrap items-center gap-x-3 gap-y-1 sm:ml-auto">
+            {meta ? (
+              <span className="text-xs text-muted-foreground" data-testid="question-unlocks">
+                {meta}
+              </span>
+            ) : null}
+            {view ? <ViewButton view={view} project={project} describedBy={subjectId} /> : null}
           </span>
         ) : null}
       </div>

@@ -32,13 +32,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { useCollected } from '@/lib/amendments';
 import { ApiError, errorMessage } from '@/lib/api';
 import { useQuestionAction } from '@/lib/open-question-actions';
-import {
-  CARD_ACTION_LABELS,
-  cardActions,
-  decideLink,
-  type CardAction,
-  type QuestionLink,
-} from '@/lib/open-questions';
+import { CARD_ACTION_LABELS, actionLink, cardActions, type CardAction } from '@/lib/open-questions';
 import type { RefResolver } from '@/lib/refs';
 import { useRequeue } from '@/lib/review-actions';
 import { toast } from '@/lib/toast';
@@ -128,11 +122,6 @@ function ActionPanel(props: PanelProps) {
   }
 }
 
-/** Where a link action leads: a `decide` by what it decides, `fix-link` the chain at the step. */
-function linkOf(q: OpenQuestion, action: OpenQuestionAction): QuestionLink | null {
-  return action.type === 'fix-link' ? { to: 'chain', step: q.subject.id } : decideLink(q, action);
-}
-
 /** A link action as a button or a menu entry: the review screen or the chain page. */
 function ActionLink({
   q,
@@ -151,7 +140,7 @@ function ActionLink({
   primary: boolean;
   children: ReactNode;
 }) {
-  const link = linkOf(q, card.action);
+  const link = actionLink(q, card.action);
   const common = {
     className,
     'aria-describedby': describedBy,

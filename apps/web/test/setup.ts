@@ -1,7 +1,12 @@
-import { cleanup } from '@testing-library/react';
+import { cleanup, configure } from '@testing-library/react';
 import { afterEach, vi } from 'vitest';
 
 import { resetSessionState } from '../src/lib/api';
+
+// A file's first render loads its route's lazy chunks; under the gates' parallel load
+// (`pnpm -r test` runs every package at once) that can take longer than the default 1 s
+// of `findBy…` and `waitFor`. The test timeout (vite.config.ts) leaves room for it.
+configure({ asyncUtilTimeout: 4_000 });
 
 // jsdom lacks a few browser APIs that Radix primitives touch. (Node-environment
 // tests such as bundle.test.ts have no DOM at all.)

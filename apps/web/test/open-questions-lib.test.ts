@@ -25,6 +25,7 @@ import {
   relationProcessesText,
   subjectLink,
   unlocksText,
+  viewLink,
 } from '../src/lib/open-questions';
 import { resolverOf, type RefLabel } from '../src/lib/refs';
 import { openQuestion, openQuestionAnswer } from './support/fixtures';
@@ -351,6 +352,38 @@ describe('open questions: cards (UX2b)', () => {
     });
     expect(subjectLink({ subject: { type: 'value-chain', id: 'main' } })).toEqual({ to: 'chain' });
     expect(subjectLink(summary)).toEqual({ to: 'model', modelKey: 'finanzen/zahlung' });
+  });
+
+  it('names the card’s way into the diagram, and leaves it out where it leads nowhere new', () => {
+    // the owner's walkthrough, 2026-10-18: a labelled button, not a name to guess at
+    expect(viewLink(finding, { withActions: true })).toEqual({
+      link: { to: 'model', modelKey: 'a/order', element: 'Call_1' },
+      label: 'Im Modell zeigen',
+    });
+    expect(viewLink(finding, { currentModel: 'a/order', withActions: true })?.label).toBe(
+      'Im Diagramm zeigen',
+    );
+    expect(viewLink(step, { withActions: true })?.label).toBe('In der Kette zeigen');
+    expect(viewLink(summary, { withActions: false })?.label).toBe('Modell öffnen');
+    expect(viewLink(summary, { currentModel: 'finanzen/zahlung', withActions: false })).toBeNull();
+    // „Jetzt entscheiden“ and „Vorschlag öffnen“ open the review screen already; a viewer has neither
+    expect(viewLink(held, { withActions: true })).toBeNull();
+    expect(
+      viewLink(
+        {
+          ...held,
+          answers: [openQuestionAnswer({ questionId: held.id, target: 'relation-note' })],
+        },
+        { withActions: true },
+      ),
+    ).toBeNull();
+    expect(viewLink(held, { withActions: false })?.label).toBe('Relation ansehen');
+    expect(viewLink(asked, { withActions: true })).toBeNull();
+    // „Auf der Kette prüfen“ opens the step, the button the process
+    expect(viewLink(proposed, { withActions: true })).toEqual({
+      link: { to: 'model', modelKey: 'finanzen/zahlung', element: 'Process_Zahlung' },
+      label: 'Im Modell zeigen',
+    });
   });
 
   it('answers a hold first and decides it where the diagrams are (Q4)', () => {

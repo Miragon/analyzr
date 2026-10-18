@@ -444,20 +444,20 @@ test('filters combine as on the server, in the list and in the export', async ({
 
   // a held placement: „Jetzt entscheiden“ leads to that placement on the chain page
   await page.goto(`/projects/${PROJECT}/open-questions?kind=held`);
-  const placement = page.locator('[data-testid=open-question][data-kind=held]', {
-    has: page.locator('[data-testid=question-subject][data-link=chain]'),
-  });
+  const placement = page.locator(
+    '[data-testid=open-question][data-kind=held][data-subject=placement]',
+  );
   await expect(placement).toHaveCount(1);
   await placement.getByRole('link', { name: 'Jetzt entscheiden' }).click();
   await expect(page).toHaveURL(new RegExp(`/value-chain\\?placement=${heldPlacementId}`));
   await expect(page.getByTestId('value-chain-page')).toBeVisible();
 });
 
-test('human and agent texts stay plain text; subjects lead to where they are', async ({ page }) => {
+test('human and agent texts stay plain text; each card opens its subject where it is', async ({
+  page,
+}) => {
   await page.goto(`/projects/${PROJECT}/open-questions?kind=held`);
-  const held = page.locator('[data-testid=open-question][data-kind=held]', {
-    has: page.locator('[data-testid=question-subject][data-link=review]'),
-  });
+  const held = page.locator('[data-testid=open-question][data-kind=held][data-subject=relation]');
   await expect(held.getByTestId('question-text')).toHaveText(HOLD.question);
   await expect(held.getByTestId('question-why')).not.toHaveAttribute('open');
   await held.getByTestId('question-why').locator('summary').click();
@@ -465,7 +465,9 @@ test('human and agent texts stay plain text; subjects lead to where they are', a
     `Notiz zur Vormerkung: ${HOLD.note}`,
   );
   await expect(held.getByTestId('question-label')).toHaveText(HOLD.label);
-  await held.getByTestId('question-subject').click();
+  // a hold's „Jetzt entscheiden“ is its way to the diagrams (no second button there)
+  await expect(held.getByTestId('question-open')).toHaveCount(0);
+  await held.getByRole('link', { name: 'Jetzt entscheiden' }).click();
   await expect(page).toHaveURL(new RegExp(`/review/${heldId}`));
   await expect(page.getByTestId('review-details')).toBeVisible();
 
@@ -487,13 +489,13 @@ test('human and agent texts stay plain text; subjects lead to where they are', a
   const stepId = await step.getAttribute('data-question-id');
   const subject = (await api({ kind: 'step-without-process' })).find((q) => q.id === stepId)!
     .subject.id;
-  await step.getByTestId('question-subject').click();
+  await step.getByRole('link', { name: 'In der Kette zeigen' }).click();
   await expect(page).toHaveURL(new RegExp(`/value-chain\\?step=${subject}`));
   await expect(page.getByTestId('value-chain-page')).toBeVisible();
 
   await page.goto(`/projects/${PROJECT}/open-questions?kind=black-box-partner`);
   const pool = rows(page).first();
-  await pool.getByTestId('question-subject').click();
+  await pool.getByRole('link', { name: 'Im Modell zeigen' }).click();
   await expect(page).toHaveURL(/\/models\/.+\?element=/);
   await expect(page.getByTestId('model-view')).toBeVisible();
 });
@@ -556,7 +558,7 @@ test('the model view’s „Fragen“ lists the open questions „Zu klären“ 
   // a question at an element of this model highlights it in place
   await section
     .locator(`[data-question-id="${finding.id}"]`)
-    .getByTestId('question-subject')
+    .getByRole('link', { name: 'Im Diagramm zeigen' })
     .click();
   await expect(page).toHaveURL(new RegExp(`\\?element=${finding.subject.id.split('#')[1]}`));
   await expect(
