@@ -54,40 +54,11 @@ const TYPED_ID = /\b([a-z]{3})_[0-7][0-9A-HJKMNP-TV-Z]{25}\b/g;
 const TIMESTAMP = /\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z\b/g;
 
 /**
- * A claim input with the two parts that follow the database's physical row
- * order sorted: the relations (`relations.all` reads them unordered, and the
- * order moves with updates and vacuum, so two projects seeded alike can
- * differ, as CI showed) and the partners, added while walking them. The
- * claim itself is unchanged; the digest no longer depends on that order,
- * and since ids are numbered across all inputs, one swapped row early on no
- * longer renumbers every claim after it. Whether the claim should sort them
- * itself is an owner question (HANDOFF §8 "Claim order").
- */
-function canonical(input: unknown): unknown {
-  if (input === null || typeof input !== 'object') return input;
-  const claim = input as Record<string, unknown>;
-  const out: Record<string, unknown> = { ...claim };
-  if (Array.isArray(claim['relations'])) {
-    const key = (r: { type: string; from: string; to: string }) => `${r.type}\0${r.from}\0${r.to}`;
-    out['relations'] = [
-      ...(claim['relations'] as { type: string; from: string; to: string }[]),
-    ].sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0));
-  }
-  if (claim['partners'] !== null && typeof claim['partners'] === 'object') {
-    const partners = claim['partners'] as Record<string, unknown>;
-    out['partners'] = Object.fromEntries(
-      Object.keys(partners)
-        .sort()
-        .map((k) => [k, partners[k]]),
-    );
-  }
-  return out;
-}
-
-/**
  * Every claim input of the project as `label → sha256` of its normalized
- * JSON ({@link canonical}): relations tasks by model key, then the placement
- * task(s).
+ * JSON: relations tasks by model key, then the placement task(s). Since
+ * owner decision 27 a claim sorts its relations by type and ends, so the
+ * digest no longer follows the database's physical row order (two projects
+ * seeded alike got different orders on CI).
  */
 async function claimDigests(project: string, keys: readonly string[]) {
   const inputs: [string, unknown][] = [];
@@ -104,7 +75,7 @@ async function claimDigests(project: string, keys: readonly string[]) {
   const ids = new Map<string, string>();
   const out: Record<string, string> = {};
   for (const [label, input] of inputs) {
-    const normalized = JSON.stringify(canonical(input))
+    const normalized = JSON.stringify(input)
       .replace(TYPED_ID, (id, prefix: string) => {
         let n = ids.get(id);
         if (n === undefined) {

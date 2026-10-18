@@ -371,6 +371,13 @@ and code are in English.
     summaries (still shown read-only, in a closed group), decision 25's inline „decide“ panel, and
     CONCEPT §3's inbox as a tab of its own; agents, facts, procedures, claim inputs and MCP are
     untouched (live-run neutral).
+27. **Claim order** (2026-10-18; §8 "Claim order" answered „ja, mach weiter“, the recommended
+    option): a relations claim sorts its relations by type, `from` and `to`
+    (`apps/server/src/domain/claim-input.ts`). Before, they came in the database's physical row
+    order (`relations.all` has no `ORDER BY`), which updates and vacuum move: on CI two projects
+    seeded alike got different claims. Every claim input changes once, before the owner's live
+    runs, so two runs of one landscape see one order; the recordings (they keep the claim's size
+    and counts) and the replays are unchanged, `claim-golden.test.ts`'s snapshot is re-pinned.
 
 **Taken during decision 20 by the implementing agent (the owner may overrule; details in
 DEVELOPMENT.md "Demo deployment (Fly.io)"):** the seed is made **while the image is built** and
@@ -1029,7 +1036,6 @@ Git/bpmiq.yml import, MCP App widget.
 
 | Topic | Question | Source |
 |---|---|---|
-| Claim order | A relations claim lists its relations in the database's physical row order (`relations.all` has no `ORDER BY`), which moves with updates and vacuum: on CI two projects seeded alike got different orders (since 2026-10-18, `claim-golden.test.ts`), the claims themselves unchanged. The test now compares the claims with relations and partners sorted (the snapshot re-pinned, nothing the agents see changed). Should the claim sort its relations itself (by type and ends)? Recommended, before the live runs: every claim input changes once (no recording or replay depends on its bytes), and two runs of one landscape then see one order. | M6 S2b, CI |
 | Rules on `main` | Which rules apply on `main` (pull requests only, squash merges, signed commits, the three CI jobs as required checks, §7 "Migration owner actions", step 2)? Until you decide: agents commit on feature branches, and nothing lands on `main` without your explicit OK (decision 12). | Decision 23 |
 | Going public | When does the repository go public? While it is private, the demo banner's link „analyzr auf GitHub“ answers 404 for visitors, a marketplace install from `Miragon/analyzr` needs repository access, and GitHub Actions minutes are billed. | Decision 23 |
 | Logo and trademark | The web UI shows the Miragon mark next to the analyzr wordmark; the README says the Miragon name and logo are not licensed under MIT. Should analyzr get a logo of its own? A trademark check of the name (and of the npm scope `@analyzr`) before a first release? | Decision 23 |

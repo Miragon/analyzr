@@ -987,7 +987,8 @@ to 300 characters (`CLAIM_DOC_CHARS`), the candidates of `generateCandidates` ar
 `skip`, so they are the pairs left to judge, the `compatible` search space and the pairs a
 decision settles), the partner endpoints they name (keyed by ref), and the non-obsolete relations
 touching the model with the human decision (reason, hold note, question, label), an agent's open
-question and the notes. M3 added four optional parts and judge each pair once two more, so older
+question and the notes, sorted by type, `from` and `to` since owner decision 27 (before, they came
+in the database's physical row order, which updates and vacuum move). M3 added four optional parts and judge each pair once two more, so older
 inputs still parse and the format stays `analyzr-claim/1`:
 
 - `message_flow` facts carry `from` and `to`: the refs of the element or pool (participant) at

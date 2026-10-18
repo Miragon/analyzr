@@ -49,7 +49,7 @@ export interface ClaimInputSource {
   projectFacts: ProjectFacts;
   /** `generateCandidates(projectFacts, model.key)`. */
   candidates: readonly Candidate[];
-  /** Non-obsolete relations touching the model. */
+  /** Non-obsolete relations touching the model, any order (the input sorts them by type and ends). */
   relations: readonly RelationRecord[];
   /** Assertions per relation id, any order. */
   histories: ReadonlyMap<string, readonly StoredAssertion[]>;
@@ -166,7 +166,15 @@ export function renderClaimInput(src: ClaimInputSource): ClaimInput {
     return [c.type, c.from, c.to, c.basis, round4(c.score)];
   });
 
-  const relations: ClaimRelation[] = src.relations.map((r) => {
+  // Sorted by type and both ends (owner decision 27): the store reads relations in physical row
+  // order, which moves with updates and vacuum; two runs of one landscape see one order.
+  const sorted = [...src.relations].sort(
+    (a, b) =>
+      compareStrings(a.type, b.type) ||
+      compareStrings(a.fromRef, b.fromRef) ||
+      compareStrings(a.toRef, b.toRef),
+  );
+  const relations: ClaimRelation[] = sorted.map((r) => {
     addPartner(r.fromRef, RELATION_ENDPOINT_KINDS[r.type].from);
     addPartner(r.toRef, RELATION_ENDPOINT_KINDS[r.type].to);
     const history = [...(src.histories.get(r.id) ?? [])].sort((a, b) => a.seq - b.seq);

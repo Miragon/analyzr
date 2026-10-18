@@ -57,7 +57,8 @@ Never reuse a project across runs:
 
 1. Each pair is judged once: the claims list the first agent's current judgements in `judged` and
    leave those pairs out of the candidates, so a second agent would judge almost nothing.
-2. The claim input contains the relations touching the model with their proposals and decisions:
+2. The claim input contains the relations touching the model with their proposals and decisions
+   (sorted by type and ends since owner decision 27, so two runs of one landscape see one order):
    earlier proposals bias the next agent.
 3. A worked project has nothing left to claim, and `eval:live` reads every done analysis of the
    project.
