@@ -45,12 +45,7 @@ import {
   type Provenance,
 } from '@/lib/labels';
 import type { AutoAcceptIndex, AutoFilter } from '@/lib/auto-accept';
-import {
-  RELATION_PRESETS,
-  filterRelations,
-  matchesFilters,
-  type RelationFilters,
-} from '@/lib/relation-filters';
+import { filterRelations, type RelationFilters } from '@/lib/relation-filters';
 import type { RefLabel, RefResolver } from '@/lib/refs';
 
 const SOURCE_ICONS: Record<Provenance['source'], LucideIcon> = {
@@ -174,7 +169,7 @@ export function RelationTable({
             <span className="sr-only">nach</span>
           </TableHead>
           <TableHead>Nach</TableHead>
-          <TableHead>Stufe</TableHead>
+          <TableHead>Grundlage</TableHead>
           <TableHead>Status</TableHead>
           <TableHead className="text-right">Konfidenz</TableHead>
           <TableHead>Herkunft</TableHead>
@@ -289,7 +284,6 @@ export function RelationsView({
     filters.type !== undefined ||
     filters.model !== undefined ||
     filters.auto !== undefined;
-  const presets = RELATION_PRESETS.filter((p) => !p.needsLedger || autoRules !== undefined);
 
   const set = (patch: Partial<RelationFilters>) => {
     const next: RelationFilters = { ...filters, ...patch };
@@ -301,36 +295,6 @@ export function RelationsView({
 
   return (
     <div className="flex flex-col gap-4">
-      <div role="group" aria-label="Schnellfilter" className="flex flex-wrap gap-2">
-        {presets.map((preset) => {
-          const target: RelationFilters = { ...preset.filters, model: filters.model };
-          const active =
-            filters.status === preset.filters.status &&
-            filters.tier === preset.filters.tier &&
-            filters.auto === preset.filters.auto &&
-            filters.type === undefined;
-          const count = relations.filter((r) => matchesFilters(r, target, autoIndex)).length;
-          return (
-            <Button
-              key={preset.id}
-              variant={active ? 'default' : 'outline'}
-              size="sm"
-              aria-pressed={active}
-              onClick={() =>
-                set({
-                  status: preset.filters.status,
-                  tier: preset.filters.tier,
-                  auto: preset.filters.auto,
-                  type: undefined,
-                })
-              }
-            >
-              {preset.label} <span className="tabular-nums opacity-80">{count}</span>
-            </Button>
-          );
-        })}
-      </div>
-
       <div className="flex flex-wrap items-end gap-3" role="search" aria-label="Relationen filtern">
         <Field className="w-auto">
           <FieldLabel htmlFor="filter-status">Status</FieldLabel>
@@ -352,7 +316,7 @@ export function RelationsView({
           </NativeSelect>
         </Field>
         <Field className="w-auto">
-          <FieldLabel htmlFor="filter-tier">Stufe</FieldLabel>
+          <FieldLabel htmlFor="filter-tier">Grundlage</FieldLabel>
           <NativeSelect
             id="filter-tier"
             value={filters.tier ?? ALL}
@@ -362,7 +326,7 @@ export function RelationsView({
               })
             }
           >
-            <NativeSelectOption value={ALL}>Alle Stufen</NativeSelectOption>
+            <NativeSelectOption value={ALL}>Alle Grundlagen</NativeSelectOption>
             {TIER_ORDER.map((t) => (
               <NativeSelectOption key={t} value={t}>
                 {TIERS[t].label}

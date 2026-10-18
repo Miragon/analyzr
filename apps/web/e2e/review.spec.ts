@@ -325,7 +325,7 @@ test('review screen: both models, highlights, rationale, evidence, provenance', 
 }) => {
   await page.goto(`/projects/${PROJECT}/review?tier=${agentTier}`);
   const first = page.getByTestId('queue-row').first();
-  await first.getByRole('link', { name: /Prüfen/ }).click();
+  await first.getByTestId('queue-link').click();
   await onReviewScreen(page);
   await expect(page.getByTestId('review-pane')).toHaveCount(2);
   await expect(page.locator('.analyzr-overlay', { hasText: 'Von' })).toBeVisible();
@@ -359,11 +359,7 @@ test('review screen: both models, highlights, rationale, evidence, provenance', 
 
 test('decide with the keyboard: A accepts, R rejects with a reason, H holds', async ({ page }) => {
   await page.goto(`/projects/${PROJECT}/review?tier=${agentTier}`);
-  await page
-    .getByTestId('queue-row')
-    .first()
-    .getByRole('link', { name: /Prüfen/ })
-    .click();
+  await page.getByTestId('queue-row').first().getByTestId('queue-link').click();
   const accepted = await onReviewScreen(page);
 
   await page.keyboard.press('a');
@@ -415,11 +411,7 @@ test('correct: another endpoint becomes a manual relation; the timeline links bo
   page,
 }) => {
   await page.goto(`/projects/${PROJECT}/review?tier=${agentTier}`);
-  await page
-    .getByTestId('queue-row')
-    .first()
-    .getByRole('link', { name: /Prüfen/ })
-    .click();
+  await page.getByTestId('queue-row').first().getByTestId('queue-link').click();
   const original = await onReviewScreen(page);
   await page.keyboard.press('c');
   const dialog = page.getByRole('dialog', { name: 'Relation korrigieren' });
@@ -477,15 +469,15 @@ test("an agent's no-link: an objection in the queue, flagged in the bulk dialog,
   await expect(queued.getByTestId('queue-no-link')).toHaveText('Einwand');
 
   await page.goto(`/projects/${PROJECT}/review`);
-  await page.locator('[data-testid=bulk-open][data-tier=key]').click();
+  await page.getByTestId('bulk-open').click();
   const dialog = page.getByTestId('bulk-dialog');
   await expect(dialog).toBeVisible();
+  // flagged: behind „Genauer ansehen“, no checkbox, decided one by one (UX5)
+  await dialog.getByTestId('bulk-flagged').locator('summary').click();
   const row = dialog.locator(`[data-testid=bulk-row][data-relation-id=${noLinkRelationId}]`);
   await expect(row).toHaveAttribute('data-flagged', 'true');
-  await expect(row.locator('[data-flag=agent-no-link]')).toHaveText(
-    `agent:${AGENT_NAME} sieht keinen Zusammenhang: „${NO_LINK_REASON}“`,
-  );
-  await expect(row.getByRole('checkbox')).toHaveAttribute('aria-checked', 'false');
+  await expect(row.getByTestId('generic-flag')).toContainText('Einwand');
+  await expect(row.getByRole('checkbox')).toHaveCount(0);
   await dialog.getByRole('button', { name: 'Abbrechen' }).click();
   await expect(dialog).toHaveCount(0);
 
@@ -500,18 +492,27 @@ test("an agent's no-link: an objection in the queue, flagged in the bulk dialog,
   expect((await relationOf(noLinkRelationId)).status).toBe('proposed');
 });
 
-test('bulk accept of the key tier with generic names flagged', async ({ page }) => {
+test('bulk accept of „Gleicher Name“: the unremarkable ones, the flagged ones left (UX5)', async ({
+  page,
+}) => {
   await page.goto(`/projects/${PROJECT}/review`);
-  await page.locator('[data-testid=bulk-open][data-tier=key]').click();
+  const open = page.getByTestId('bulk-open');
+  const offered = Number(/^(\d+) unauffällige annehmen …$/.exec(await open.innerText())?.[1]);
+  await open.click();
   const dialog = page.getByTestId('bulk-dialog');
   await expect(dialog).toBeVisible();
   const rows = dialog.getByTestId('bulk-row');
   const total = await rows.count();
   expect(total).toBeGreaterThan(10);
   const flagged = dialog.locator('[data-testid=bulk-row][data-flagged=true]');
-  await expect(flagged.first()).toBeVisible();
-  await expect(dialog.getByTestId('generic-flag').first()).toBeVisible();
   const nFlagged = await flagged.count();
+  // the button's count is the default selection: every unflagged pair
+  expect(offered).toBe(total - nFlagged);
+  await expect(dialog.getByTestId('bulk-summary')).toHaveText(
+    `${offered} von ${offered} ausgewählt`,
+  );
+  await dialog.getByTestId('bulk-flagged').locator('summary').click();
+  await expect(dialog.getByTestId('generic-flag').first()).toBeVisible();
   await shot(page, 'm2-03-bulk');
   await dialog.getByRole('button', { name: new RegExp(`^${total - nFlagged} annehmen$`) }).click();
   await expect(

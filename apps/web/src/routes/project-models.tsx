@@ -1,4 +1,4 @@
-import type { AnalysisTask, ModelStage } from '@analyzr/client';
+import type { ModelStage } from '@analyzr/client';
 import { useQuery } from '@tanstack/react-query';
 import { Link, createRoute } from '@tanstack/react-router';
 import { PlugIcon, SearchIcon, SearchXIcon, UploadIcon } from 'lucide-react';
@@ -29,7 +29,8 @@ import { STAGE_ORDER, formatTimeOrDay } from '@/lib/labels';
 import { nextStep } from '@/lib/next-step';
 import { useProjectPermissions } from '@/lib/permissions';
 import { openPointsText, useProjectCounts, type OpenPoints } from '@/lib/project-counts';
-import { amendmentsQuery, analysesQuery, landscapeQuery, modelsQuery } from '@/lib/queries';
+import { usePipelineState } from '@/lib/pipeline-state';
+import { amendmentsQuery, landscapeQuery, modelsQuery } from '@/lib/queries';
 import { reviewQueue, stageCounts } from '@/lib/review';
 import { placementQueue } from '@/lib/value-chain';
 
@@ -78,10 +79,8 @@ function OverviewTab() {
   const amendments = useQuery(amendmentsQuery(project));
   const list = useMemo(() => counts.models ?? [], [counts.models]);
   const chain = counts.chain;
-  const working = list.some((m) => m.stage === 'agent_working');
-  const failing = list.some((m) => m.stage === 'agent_failed');
-  const claimed = useQuery({ ...analysesQuery(project, 'claimed'), enabled: working });
-  const failed = useQuery({ ...analysesQuery(project, 'failed'), enabled: failing });
+  const pipeline = usePipelineState(project, list);
+  const { taskOf } = pipeline;
 
   // Models whose head carries amendments from analyzr (applied ones; a deleted model has none in view).
   const amended = useMemo(() => {
@@ -92,38 +91,16 @@ function OverviewTab() {
     return out;
   }, [amendments.data]);
 
-  const taskOf = useMemo(() => {
-    const out = new Map<string, AnalysisTask>();
-    for (const t of [...(claimed.data ?? []), ...(failed.data ?? [])])
-      if (t.modelKey !== null && !out.has(t.modelKey)) out.set(t.modelKey, t);
-    return out;
-  }, [claimed.data, failed.data]);
-  // Nothing runs on a timer: until an agent asks for work again, an expired reservation still
-  // says „Agent arbeitet“. Offered for a requeue like a failed analysis.
-  const expired = useMemo(() => {
-    const out = new Set<string>();
-    for (const t of claimed.data ?? [])
-      if (
-        t.modelKey !== null &&
-        t.leaseUntil !== null &&
-        Date.parse(t.leaseUntil) < claimed.dataUpdatedAt
-      )
-        out.add(t.modelKey);
-    return out;
-  }, [claimed.data, claimed.dataUpdatedAt]);
-
   const relations = useMemo(() => landscape.data?.relations ?? [], [landscape.data]);
 
   const step = useMemo(() => {
-    const keysIn = (s: ModelStage) => list.filter((m) => m.stage === s).map((m) => m.key);
     const queue = reviewQueue(relations, list);
     const placements = chain ? placementQueue(chain.placements, chain.steps) : [];
-    const agentWorking = keysIn('agent_working');
     return nextStep({
-      waiting: keysIn('waiting_for_agent'),
-      failed: keysIn('agent_failed'),
-      expired: agentWorking.filter((k) => expired.has(k)),
-      working: agentWorking.filter((k) => !expired.has(k)).length,
+      waiting: pipeline.waiting,
+      failed: pipeline.failed,
+      expired: pipeline.expired,
+      working: pipeline.working,
       reviewItems: counts.reviewItems ?? 0,
       firstRelation: queue[0]?.relation.id ?? null,
       openPlacements: counts.openPlacements ?? 0,
@@ -135,7 +112,7 @@ function OverviewTab() {
       canReview: can.canReview,
       activeToken: agentState === 'start',
     });
-  }, [list, relations, chain, expired, counts, can, agentState]);
+  }, [list, relations, chain, pipeline, counts, can, agentState]);
 
   if (models.isPending) return <Skeleton className="h-40 w-full" />;
   if (models.isError)
@@ -263,7 +240,7 @@ function OverviewTab() {
               renderStageNote={(m) => {
                 const task = taskOf.get(m.key);
                 if (m.stage === 'agent_working' && task) {
-                  if (expired.has(m.key))
+                  if (pipeline.expired.includes(m.key))
                     return (
                       <span className="flex flex-wrap items-center gap-x-1 text-xs text-muted-foreground">
                         <span data-testid="lease-expired">

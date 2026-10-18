@@ -60,12 +60,12 @@ describe('RuleDialog', () => {
     const dialog = screen.getByTestId('rule-dialog');
     expect(within(dialog).getByRole('heading', { name: 'Neue Annahmeregel' })).toBeTruthy();
     // Relations: three tiers and a type.
-    const tier = within(dialog).getByLabelText('Stufe');
+    const tier = within(dialog).getByLabelText('Grundlage');
     expect(
       within(tier)
         .getAllByRole('option')
         .map((o) => o.textContent),
-    ).toEqual(['Schlüssel', 'Ähnlich', 'Bedeutung']);
+    ).toEqual(['Gleicher Name', 'Ähnlicher Name', 'Gleiche Bedeutung']);
     expect(within(dialog).getByLabelText('Typ')).toBeTruthy();
     // Revoked tokens are marked.
     const agents = within(within(dialog).getByLabelText('Agent')).getAllByRole('option');
@@ -99,10 +99,10 @@ describe('RuleDialog', () => {
     // Placements: two tiers, no type, the @outside hint.
     await user.selectOptions(within(dialog).getByLabelText('Art'), 'placement');
     expect(
-      within(within(dialog).getByLabelText('Stufe'))
+      within(within(dialog).getByLabelText('Grundlage'))
         .getAllByRole('option')
         .map((o) => o.textContent),
-    ).toEqual(['Ähnlich', 'Bedeutung']);
+    ).toEqual(['Ähnlicher Name', 'Gleiche Bedeutung']);
     expect(within(dialog).queryByLabelText('Typ')).toBeNull();
     expect(within(dialog).getByText(/@outside wird nie automatisch angenommen/)).toBeTruthy();
     await waitFor(() =>
@@ -322,7 +322,7 @@ describe('RuleTable and the system rule', () => {
       'Urheber ist kein Inhaber mehr',
     );
     expect(within(rows[1]!).getByTestId('rule-criteria').textContent).toBe(
-      'Platzierungen · Bedeutung · ab 90 %',
+      'Platzierungen · Gleiche Bedeutung · ab 90 %',
     );
 
     await user.click(within(rows[0]!).getByTestId('rule-toggle'));

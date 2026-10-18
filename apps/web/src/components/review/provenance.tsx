@@ -55,7 +55,7 @@ export function ProvenanceList({ provenance }: { provenance: RelationProvenance 
       <dd className="truncate font-mono text-xs" title="vom Agenten angegeben">
         {provenance.llmModel ?? '–'}
       </dd>
-      <dt className="text-muted-foreground">Stufe</dt>
+      <dt className="text-muted-foreground">Grundlage</dt>
       <dd>{provenance.tier ? <TierBadge tier={provenance.tier} /> : '–'}</dd>
       <dt className="text-muted-foreground">Konfidenz</dt>
       <dd className="tabular-nums">{formatConfidence(provenance.confidence)}</dd>

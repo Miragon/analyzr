@@ -54,11 +54,11 @@ describe('RelationsView', () => {
     expect(accepted!.dataset['status']).toBe('accepted');
     expect(accepted!.dataset['tier']).toBe('rule');
     expect(within(accepted!).getByText('Angenommen')).toBeTruthy();
-    expect(within(accepted!).getByText('Regel')).toBeTruthy();
+    expect(within(accepted!).getByText('Eindeutiger Aufruf')).toBeTruthy();
     expect(within(accepted!).getByText('analyzr-rules/1.0.0')).toBeTruthy();
     expect(within(accepted!).getByText('eindeutiger Aufruf')).toBeTruthy();
     expect(within(stem!).getByText('Vorgeschlagen')).toBeTruthy();
-    expect(within(stem!).getByText('Schlüssel')).toBeTruthy();
+    expect(within(stem!).getByText('Gleicher Name')).toBeTruthy();
     expect(within(stem!).getByText('Treffer über Dateinamen')).toBeTruthy();
     expect(within(stem!).getByText('80 %')).toBeTruthy();
     expect(within(stem!).getByText('Endpunkt geändert')).toBeTruthy();
@@ -82,25 +82,6 @@ describe('RelationsView', () => {
     expect(within(signal).getByText('End_RechnungsstellungAbgeschlossen')).toBeTruthy();
   });
 
-  it('quick filters separate rule acceptances from key-tier proposals', async () => {
-    const user = userEvent.setup();
-    render(<Harness />);
-    const presets = screen.getByRole('group', { name: 'Schnellfilter' });
-    expect(
-      within(presets)
-        .getByRole('button', { name: /Alle 4/ })
-        .getAttribute('aria-pressed'),
-    ).toBe('true');
-    await user.click(within(presets).getByRole('button', { name: /Durch Systemregel angenommen/ }));
-    expect(rowIds()).toEqual(['rel_01CALL000000000000000000001']);
-    await user.click(within(presets).getByRole('button', { name: /Schlüssel-Vorschläge 3/ }));
-    expect(
-      rows().every((r) => r.dataset['tier'] === 'key' && r.dataset['status'] === 'proposed'),
-    ).toBe(true);
-    expect(rows()).toHaveLength(3);
-    expect(screen.getByText('3 von 4 Relationen')).toBeTruthy();
-  });
-
   it('filters by status, tier, type and model and resets', async () => {
     const user = userEvent.setup();
     const changes: RelationFilters[] = [];
@@ -115,7 +96,7 @@ describe('RelationsView', () => {
     await user.selectOptions(screen.getByLabelText('Status'), 'proposed');
     expect(rowIds()).toEqual(['rel_01STEM000000000000000000001']);
 
-    await user.selectOptions(screen.getByLabelText('Stufe'), 'rule');
+    await user.selectOptions(screen.getByLabelText('Grundlage'), 'rule');
     expect(rows()).toHaveLength(0);
     expect(screen.getByText('Keine Relation passt zu den Filtern')).toBeTruthy();
 

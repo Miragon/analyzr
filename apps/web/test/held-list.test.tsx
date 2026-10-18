@@ -148,7 +148,7 @@ describe('HeldList', () => {
     expect(answers).toHaveLength(1);
     expect(answers[0]!.textContent).toContain('Finanzen: ja, auch bei Teillieferungen.');
     expect(within(item).queryByText('alte Notiz')).toBeNull();
-    const link = within(item).getByRole('link', { name: /Prüfen/ });
+    const link = within(item).getByRole('link', { name: 'Jetzt entscheiden' });
     expect(link.getAttribute('href')).toBe(`/projects/demo/review/${ID}?view=held`);
   });
 

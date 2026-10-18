@@ -405,13 +405,10 @@ describe('value chain page', () => {
     expect(screen.queryByTestId('add-process')).toBeNull();
   });
 
-  it('counts the open placements on the tab and points the inbox to the chain page', async () => {
+  it('counts the open placements on the chain’s tab, not in the inbox (UX5)', async () => {
     setup('/projects/demo/review');
-    const callout = await screen.findByTestId('placements-callout');
-    expect(callout.textContent).toContain('2 Platzierungen warten auf deine Prüfung');
-    expect(within(callout).getByRole('link').getAttribute('href')).toBe(
-      '/projects/demo/value-chain',
-    );
+    await screen.findByRole('navigation', { name: 'Ansichten' });
+    expect(screen.queryByTestId('placements-callout')).toBeNull();
     const tabs = within(screen.getByRole('navigation', { name: 'Projektbereiche' }));
     await waitFor(() =>
       expect(tabs.getByRole('link', { name: /^Wertschöpfungskette/ }).textContent).toBe(

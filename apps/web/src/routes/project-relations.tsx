@@ -4,6 +4,7 @@ import { LocateIcon, SearchCheckIcon } from 'lucide-react';
 
 import { ErrorText } from '@/components/error-text';
 import { RelationsView } from '@/components/relation-table';
+import { RelationViews, type RelationView } from '@/components/review/relation-views';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -12,10 +13,20 @@ import { ledgerRules } from '@/lib/auto-accept';
 import { useAutoAcceptIndex, useCanReview, useIsOwner } from '@/lib/auto-accept-actions';
 import { autoAcceptRulesQuery, landscapeQuery, modelsQuery } from '@/lib/queries';
 import { splitRef } from '@/lib/refs';
-import { parseRelationFilters } from '@/lib/relation-filters';
+import { matchesFilters, parseRelationFilters, type RelationFilters } from '@/lib/relation-filters';
+import { reviewQueue } from '@/lib/review';
 import { useProjectFacts } from '@/lib/use-project-facts';
 
 import { projectRoute } from './project';
+
+/** Which view of „Relationen“ a filter set is (UX5): „Gilt“, „Abgelehnt“, „Automatisch angenommen“, else „Alle“. */
+function viewOf(filters: RelationFilters): RelationView {
+  if (filters.auto === 'any' && filters.status === undefined) return 'auto';
+  if (filters.auto !== undefined) return 'all';
+  if (filters.status === 'accepted') return 'accepted';
+  if (filters.status === 'rejected') return 'rejected';
+  return 'all';
+}
 
 export const projectRelationsRoute = createRoute({
   getParentRoute: () => projectRoute,
@@ -55,16 +66,20 @@ function RelationsTab() {
 
   const modelKeys = landscape.data.models.map((m) => m.key).sort();
 
+  const relations = landscape.data.relations;
+  const autoCount =
+    autoRules !== undefined
+      ? relations.filter((r) => matchesFilters(r, { auto: 'any' }, autoIndex)).length
+      : null;
   return (
-    <div className="flex flex-col gap-3">
-      <Link
-        to="/projects/$project/review"
-        params={{ project }}
-        className="self-start text-sm text-link underline-offset-4 hover:underline"
-        data-testid="to-review"
-      >
-        ← Zu prüfen
-      </Link>
+    <div className="flex flex-col gap-4">
+      <RelationViews
+        project={project}
+        current={viewOf(filters)}
+        reviewCount={reviewQueue(relations, models.data ?? []).length}
+        autoCount={autoCount}
+        model={filters.model}
+      />
       <RelationsView
         relations={landscape.data.relations}
         resolve={resolve}

@@ -589,7 +589,10 @@ test('UX1 consistency: every badge, „Als Nächstes“ and „Offene Punkte“ 
     '[data-testid=queue-row]',
   );
   const queued = await page.getByTestId('queue-row').count();
-  await page.getByRole('tab', { name: /Vorgemerkt/ }).click();
+  await page
+    .getByRole('navigation', { name: 'Ansichten' })
+    .getByRole('link', { name: 'Vorgemerkt' })
+    .click();
   const held = await page.getByTestId('held-item').count();
   expect(queued + held).toBe(7);
 });
@@ -646,25 +649,85 @@ test('UX1: the other two projects and the projects list, desktop and mobile', as
 
 // ------------------------------------------------------------------ measured for the next slices
 
-test('the other screens, measured (budgets come with UX5 and UX6)', async ({ page, browser }) => {
-  const screens: [string, string, string][] = [
-    ['Relationen', `/projects/${NORDWIND}/review`, '[data-testid=queue-row]'],
-    ['Kette', `/projects/${NORDWIND}/value-chain`, '[data-testid=chain-overview]'],
-  ];
-  const first: Record<string, string> = {
-    Relationen: '[data-testid=queue-row]',
-    Kette: '[data-testid=open-placement]',
-  };
-  for (const [screen, path, ready] of screens) {
-    await settle(page, path, ready);
-    await measure(page, path.split('/')[2] ?? '', screen, first[screen] ?? null);
-  }
-  const { context, page: phone } = await mobile(browser);
+test('the other screens, measured (budgets come with UX6)', async ({ page }) => {
+  await settle(page, `/projects/${NORDWIND}/value-chain`, '[data-testid=chain-overview]');
+  await measure(page, NORDWIND, 'Kette', '[data-testid=open-placement]');
+});
+
+// ------------------------------------------------------------------ „Relationen › Zu prüfen“ (UX5)
+
+/** UX5's budgets (§7 "UX5", done when): „Zu prüfen“ on `nordwind-handel`. */
+const REVIEW_BUDGET = {
+  firstTop: 360,
+  perRow: 1,
+  /** Controls of the view itself, besides the rows (the shell's header and tabs apart). */
+  outside: 12,
+  /**
+   * Words of the page at the audit's 42 rows (768 then); the guard's stack, worked by the
+   * simulation agent, has more rows, so the budget scales with them (the same words per row).
+   */
+  words: 450,
+  auditRows: 42,
+} as const;
+
+const CONTROLS =
+  'button, a[href], input, select, textarea, [role=tab], [role=menuitem], [role=radio], [role=checkbox], [role=switch]';
+
+test('UX5 desktop: „Zu prüfen“ with the first proposal ≤ 360 px, one link per row, ≤ 12 controls besides, 450 words at 42 rows, no name cut', async ({
+  page,
+}) => {
+  await settle(page, `/projects/${NORDWIND}/review`, '[data-testid=queue-row]');
+  const entry = await measure(page, NORDWIND, 'Zu prüfen', '[data-testid=queue-row]');
+  const load = await page.evaluate((selector) => {
+    const visible = (el: Element) => {
+      const r = el.getBoundingClientRect();
+      return r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== 'hidden';
+    };
+    const all = [...document.querySelectorAll(selector)].filter(visible);
+    const rows = [...document.querySelectorAll('[data-testid=queue-row]')];
+    const shell = (el: Element) =>
+      el.closest('header') !== null || el.closest('[data-testid=project-tabs]') !== null;
+    return {
+      perRow: Math.max(...rows.map((r) => all.filter((el) => r.contains(el)).length)),
+      links: rows.map((r) => r.querySelectorAll('a[href]').length),
+      outside: all.filter((el) => !el.closest('[data-testid=queue-row]') && !shell(el)).length,
+      cut: [...document.querySelectorAll('[data-testid=queue-link]')].filter(
+        (el) => el.scrollWidth > el.clientWidth,
+      ).length,
+    };
+  }, CONTROLS);
+  console.log(
+    `Zu prüfen: ${load.outside} controls besides the rows, at most ${load.perRow} per row, ${entry.words} words, first at ${entry.firstTop} px`,
+  );
+  expect(entry.firstTop, 'the first proposal from the top').toBeLessThanOrEqual(
+    REVIEW_BUDGET.firstTop,
+  );
+  const rows = await page.getByTestId('queue-row').count();
+  expect(entry.words, `words of the page with ${rows} rows`).toBeLessThanOrEqual(
+    Math.round(
+      (REVIEW_BUDGET.words * Math.max(rows, REVIEW_BUDGET.auditRows)) / REVIEW_BUDGET.auditRows,
+    ),
+  );
+  expect(load.perRow, 'controls per queue row').toBeLessThanOrEqual(REVIEW_BUDGET.perRow);
+  expect(new Set(load.links), 'one link per row').toEqual(new Set([1]));
+  expect(load.outside, 'controls besides the rows').toBeLessThanOrEqual(REVIEW_BUDGET.outside);
+  expect(load.cut, 'names cut in the queue').toBe(0);
+  // the bulk action's count is its default selection
+  const offered = Number(
+    /^(\d+) unauffällige annehmen …$/.exec(await page.getByTestId('bulk-open').innerText())?.[1],
+  );
+  await page.getByTestId('bulk-open').click();
+  await expect(page.getByTestId('bulk-summary')).toHaveText(`${offered} von ${offered} ausgewählt`);
+  await page.keyboard.press('Escape');
+  expect(await visibleText(page)).not.toMatch(ID_PATTERN);
+});
+
+test('UX5 mobile: „Zu prüfen“ as cards, no sideways scroll', async ({ browser }) => {
+  const { context, page } = await mobile(browser);
   try {
-    for (const [screen, path, ready] of screens.slice(0, 1)) {
-      await settle(phone, path, ready);
-      await measure(phone, path.split('/')[2] ?? '', screen, first[screen] ?? null);
-    }
+    await settle(page, `/projects/${NORDWIND}/review`, '[data-testid=queue-row]');
+    const entry = await measure(page, NORDWIND, 'Zu prüfen', '[data-testid=queue-row]');
+    expect(entry.scrollWidth).toBeLessThanOrEqual(MOBILE.viewport.width);
   } finally {
     await context.close();
   }

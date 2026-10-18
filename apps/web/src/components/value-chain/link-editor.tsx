@@ -139,8 +139,8 @@ export function LinkEditor({ link, processes, onChange }: LinkEditorProps) {
             <p className="flex flex-1 gap-2 text-xs text-muted-foreground">
               <KeyRoundIcon className="mt-0.5 size-3.5 shrink-0" aria-hidden />
               {currentProcess
-                ? `Beim Speichern schlägt analyzr „${currentProcess.name}“ für diesen Schritt vor (Stufe Schlüssel); die Entscheidung bleibt bei dir. Doppelklick auf den Schritt öffnet dann das Modell.`
-                : 'Der übernommene Prozess wird beim Speichern für diesen Schritt vorgeschlagen (Stufe Schlüssel); die Entscheidung bleibt bei dir.'}
+                ? `Beim Speichern schlägt analyzr „${currentProcess.name}“ für diesen Schritt vor (Grundlage „Gleicher Name“); die Entscheidung bleibt bei dir. Doppelklick auf den Schritt öffnet dann das Modell.`
+                : 'Der übernommene Prozess wird beim Speichern für diesen Schritt vorgeschlagen (Grundlage „Gleicher Name“); die Entscheidung bleibt bei dir.'}
             </p>
             <Button
               type="button"

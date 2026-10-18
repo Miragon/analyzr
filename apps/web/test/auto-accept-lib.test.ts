@@ -20,12 +20,7 @@ import {
   percentInput,
   tiersOf,
 } from '../src/lib/auto-accept-rules';
-import {
-  RELATION_PRESETS,
-  filterRelations,
-  parseRelationFilters,
-  sameFilters,
-} from '../src/lib/relation-filters';
+import { filterRelations, parseRelationFilters, sameFilters } from '../src/lib/relation-filters';
 import { autoAcceptPreview, autoAcceptRule, ledgerEntry, relation } from './support/fixtures';
 
 const RULE_A = 'aar_01J9Z3N4X5Q6R7S8T9V0W1X2Y3';
@@ -97,11 +92,6 @@ describe('ledger join (owner decision 19)', () => {
     expect(filterRelations(relations, { auto: 'any' })).toEqual([]);
     expect(sameFilters({ auto: 'any' }, { auto: 'any' })).toBe(true);
     expect(sameFilters({ auto: 'any' }, {})).toBe(false);
-    expect(RELATION_PRESETS.find((p) => p.id === 'auto')).toMatchObject({
-      label: 'Automatisch angenommen',
-      filters: { auto: 'any' },
-      needsLedger: true,
-    });
   });
 });
 

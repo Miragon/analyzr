@@ -228,7 +228,10 @@ for (const project of PROJECTS) {
     await noWriteActions(page);
     await nav.getByRole('link', { name: /^Relationen/ }).click();
     await expect(page.getByTestId('queue-row').first()).toBeVisible();
-    await page.getByTestId('all-relations').click();
+    await page
+      .getByRole('navigation', { name: 'Ansichten' })
+      .getByRole('link', { name: 'Alle' })
+      .click();
     await expect(page.getByTestId('relation-row').first()).toBeVisible();
     // Q2: the list „Befunde“ behind its link at the foot of „Offene Fragen“ (the dev landscape;
     // the holdout's questions stay unread, its findings page opens by its URL as before).
@@ -251,11 +254,7 @@ for (const project of PROJECTS) {
     expect(await queue.count()).toBeGreaterThan(0);
     await noWriteActions(page);
     if (project === 'nordwind-handel') await shot(page, '03-inbox');
-    await queue
-      .first()
-      .getByRole('link', { name: /Prüfen/ })
-      .first()
-      .click();
+    await queue.first().getByTestId('queue-link').click();
     await expect(page.getByTestId('review-screen')).toBeVisible();
     await expect(page.getByTestId('read-only-review')).toHaveText(
       'Nur lesen – in der Demo entscheidest du nicht.',
@@ -276,8 +275,10 @@ for (const project of PROJECTS) {
 
   test(`${project}: the agent's no-links, read-only`, async ({ page }) => {
     await page.goto(`/projects/${project}/review`);
-    await page.getByRole('tab', { name: /^Kein Zusammenhang/ }).click();
+    // Q12: behind the foot link of „Zu prüfen“, grouped by model (UX5)
+    await page.getByTestId('no-links-link').click();
     await expect(page).toHaveURL(/view=no-links/);
+    await page.getByTestId('no-link-group').first().locator('summary').click();
     const items = page.getByTestId('no-link-item');
     await expect(items.first()).toBeVisible();
     expect(await items.count()).toBeGreaterThan(0);

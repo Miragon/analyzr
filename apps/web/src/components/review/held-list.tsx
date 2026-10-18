@@ -1,7 +1,7 @@
 import type { Relation } from '@analyzr/client';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
-import { ArrowRightIcon, BookmarkIcon, SearchCheckIcon } from 'lucide-react';
+import { ArrowRightIcon, ArrowUpRightIcon, BookmarkIcon } from 'lucide-react';
 import { lazy, Suspense } from 'react';
 
 import { TypeLabel } from '@/components/badges';
@@ -65,9 +65,10 @@ function HeldItem({
             to="/projects/$project/review/$relation"
             params={{ project, relation: relation.id }}
             search={{ ...filters, view: 'held' }}
+            data-testid="held-decide"
           >
-            <SearchCheckIcon data-icon="inline-start" />
-            Prüfen
+            <ArrowUpRightIcon data-icon="inline-start" />
+            Jetzt entscheiden
           </Link>
         </Button>
       </div>
@@ -130,12 +131,12 @@ function HeldItem({
 }
 
 /**
- * Held relations ("vorgemerkt", CONCEPT §3): their own list, with the hold
- * note, the question and label, the answers so far and, for reviewers,
- * „Antwort geben“ (since UX2b the note dialog of „Offene Fragen“, the one
- * place to answer a hold). An answer is a note on the relation; it reaches
- * the next agent run. Viewers (and the read-only demo) read the list
- * without it.
+ * Held relations ("vorgemerkt", CONCEPT §3), the view „Vorgemerkt“: read-only
+ * rows with the hold note, the question and label and the answers so far;
+ * for reviewers „Antwort geben“ (since UX2b the note dialog of „Offene
+ * Fragen“, the one place to answer a hold) and „Jetzt entscheiden“ (the
+ * review screen, UX5). One sentence above the list says what an answer is.
+ * Viewers (and the read-only demo) read the list without the answer.
  */
 export function HeldList({
   project,
@@ -169,17 +170,22 @@ export function HeldList({
     );
   }
   return (
-    <ul aria-label="Vorgemerkte Relationen" className="flex flex-col gap-3">
-      {relations.map((r) => (
-        <HeldItem
-          key={r.id}
-          project={project}
-          relation={r}
-          resolve={resolve}
-          filters={filters}
-          canAnswer={canAnswer}
-        />
-      ))}
-    </ul>
+    <div className="flex flex-col gap-3">
+      <p className="text-sm text-muted-foreground" data-testid="held-intro">
+        Die Antwort ist eine Notiz an der Relation; entschieden wird, sobald sie feststeht.
+      </p>
+      <ul aria-label="Vorgemerkte Relationen" className="flex flex-col gap-3">
+        {relations.map((r) => (
+          <HeldItem
+            key={r.id}
+            project={project}
+            relation={r}
+            resolve={resolve}
+            filters={filters}
+            canAnswer={canAnswer}
+          />
+        ))}
+      </ul>
+    </div>
   );
 }

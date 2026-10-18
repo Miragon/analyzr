@@ -26,7 +26,7 @@ export const AUTO_ACCEPT_KINDS: Record<AutoAcceptKind, { label: string; one: str
   placement: { label: 'Platzierungen', one: 'Platzierung' },
 };
 
-/** The proposal tiers as the review shows them (Schlüssel, Ähnlich, Bedeutung). */
+/** The proposal tiers as the review shows them („Gleicher Name“, „Ähnlicher Name“, „Gleiche Bedeutung“). */
 export function tierLabel(tier: AutoAcceptTier): string {
   return TIERS[tier].label;
 }
@@ -179,7 +179,7 @@ export function revisionChanges(from: AutoAcceptRule, to: AutoAcceptRule): strin
   };
   diff('Status', from.enabled ? 'aktiv' : 'aus', to.enabled ? 'aktiv' : 'aus');
   diff('Name', `„${from.name}“`, `„${to.name}“`);
-  diff('Stufe', tierLabel(from.tier), tierLabel(to.tier));
+  diff('Grundlage', tierLabel(from.tier), tierLabel(to.tier));
   diff('ab Konfidenz', formatThreshold(from.minConfidence), formatThreshold(to.minConfidence));
   diff(
     'Typ',

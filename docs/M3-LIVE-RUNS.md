@@ -573,13 +573,15 @@ pnpm eval:replay                        # commit the recording with the reports
 
 ## 7. Review the proposals (optional)
 
-Once the run is recorded, its proposals wait in the run project's inbox:
+Once the run is recorded, its proposals wait in the run project's „Relationen › Zu prüfen“:
 http://127.0.0.1:7400/projects/nordwind-handel-cc-1/review, each with the agent's rationale,
-evidence, question and provenance (`agent:claude-code-1`, the declared procedure and model). Where
-the agent judged a pair unrelated, typically a key-tier proposal of the rule tier with a generic
-name, the queue shows "Einwand", the review screen the callout "Kein Zusammenhang laut Agent" with
-its reason, and the bulk dialog flags the pair and leaves it unchecked. Accept,
-reject, hold, correct and bulk accept per tier as in
+evidence, question and provenance (`agent:claude-code-1`, the declared procedure and model).
+„Vorschläge prüfen (n)“ opens the first. Where the agent judged a pair unrelated, typically a
+proposal of „Gleicher Name“ (the key tier) with a generic name, the queue shows „Einwand“, the
+review screen the callout „Kein Zusammenhang laut Agent“ with its reason, and the bulk accept
+(„n unauffällige annehmen …“, „Gleicher Name“ only since UX5) leaves the pair under „Genauer
+ansehen“ to decide one by one; every no-link of the run is behind the foot link „Kein
+Zusammenhang laut Agent (n)“. Accept, reject, hold and correct as in
 [Review in the web UI](DEVELOPMENT.md#review-in-the-web-ui-m2). Reviewing does not affect the eval:
 `eval:live` reads the stored submissions, and the scores compare them with `expected.yaml`, not with
 your decisions. Before the run is complete, do not review ([step 4](#4-watch-progress)).

@@ -309,6 +309,8 @@ export interface GenericFlag {
   text: string;
   /** One German sentence for the preview. */
   detail: string;
+  /** The few words a bulk dialog's flag line shows („Allgemeiner Name“, „in 4 Prozessen“; UX5). */
+  short: string;
 }
 
 /**
@@ -340,6 +342,7 @@ export function genericFlags(
         kind: 'generic-word',
         text,
         detail: `„${text}“ ist allgemein formuliert und passt auf viele Vorgänge.`,
+        short: 'Allgemeiner Name',
       });
     }
   }
@@ -353,6 +356,7 @@ export function genericFlags(
         kind: 'shared-name',
         text: name,
         detail: `„${name}“ kommt in ${use.processes.size} Prozessen vor (${senders}, ${receivers}); prüfe, ob genau dieses Paar zusammengehört.`,
+        short: `in ${use.processes.size} Prozessen`,
       });
     }
   }
@@ -393,6 +397,7 @@ export function bulkFlags(
       kind: 'agent-question',
       text: question,
       detail: `Der Agent fragt nach: „${cut(question)}“`,
+      short: 'Frage des Agenten',
     });
   }
   for (const noLink of relation.noLinks) {
@@ -403,6 +408,7 @@ export function bulkFlags(
       detail: reason
         ? `${noLink.handle} sieht keinen Zusammenhang: „${cut(reason)}“`
         : `${noLink.handle} sieht keinen Zusammenhang.`,
+      short: 'Einwand',
     });
   }
   if (relation.type === 'call' && relation.attrs['match'] === 'duplicate-process-id') {
@@ -412,7 +418,13 @@ export function bulkFlags(
       kind: 'ambiguous-target',
       text: id,
       detail: `Die Prozess-ID „${id}“ ist mehrfach definiert; meist ist nur eines der Ziele gemeint.`,
+      short: 'Ziel mehrdeutig',
     });
   }
   return flags;
+}
+
+/** A pair's flags in one line, each kind once: „Allgemeiner Name · in 4 Prozessen“ (UX5). */
+export function flagLine(flags: readonly Pick<GenericFlag, 'short'>[]): string {
+  return [...new Set(flags.map((f) => f.short))].join(' · ');
 }

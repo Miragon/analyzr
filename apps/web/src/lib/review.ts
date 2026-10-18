@@ -1,8 +1,9 @@
 import type { Model, ModelStage, Relation, RelationAssertion, Tier } from '@analyzr/client';
 
 import { ApiError } from './api';
+import { bulkFlags, nameKey, type GenericFlag, type NameUsage } from './generic-names';
 import { STAGE_ORDER, TIER_ORDER } from './labels';
-import { splitRef } from './refs';
+import { splitRef, type RefLabel, type RefResolver } from './refs';
 import { touchesModel } from './relation-filters';
 
 /**
@@ -305,4 +306,52 @@ export function pairText(
   labelOf: (ref: string) => string,
 ): string {
   return `${labelOf(relation.from)} → ${labelOf(relation.to)}`;
+}
+
+// ------------------------------------------------------------- queue rows (UX5)
+
+/** The process a ref lies in (or is), else its model's key. */
+export function sideName(label: RefLabel): string {
+  if (label.kind === 'process') return label.label ?? label.elementId;
+  return label.processName ?? label.modelKey;
+}
+
+/** The element's own name, for an element inside a process; `null` for a process. */
+function elementName(label: RefLabel): string | null {
+  if (label.kind === 'process') return null;
+  return label.label ?? label.elementId;
+}
+
+/** „Rechnung“, or „Rechnung senden → Rechnung empfangen“ where both ends name themselves differently. */
+export function elementsText(from: RefLabel, to: RefLabel): string | null {
+  const a = elementName(from);
+  const b = elementName(to);
+  // „benötigt“ and „benoetigt“ are one name (the key tier compares them so)
+  if (a !== null && b !== null) return nameKey(a) === nameKey(b) ? a : `${a} → ${b}`;
+  return a ?? b;
+}
+
+/** A key-tier proposal with what makes it need more than a glance before a bulk accept. */
+export interface BulkRow {
+  relation: Relation;
+  flags: GenericFlag[];
+}
+
+/**
+ * The bulk accept's rows (UX5, owner decision 26 (6): „Gleicher Name“ only):
+ * the key tier's open proposals with their flags; the unflagged ones are the
+ * default selection, and their number is the button's („8 unauffällige
+ * annehmen …“).
+ */
+export function bulkRows(
+  relations: readonly Relation[],
+  resolve: RefResolver,
+  usage: NameUsage,
+): BulkRow[] {
+  return relations
+    .filter((r) => r.tier === 'key' && r.status === 'proposed')
+    .map((relation) => ({
+      relation,
+      flags: bulkFlags(relation, (ref) => resolve(ref).label, usage),
+    }));
 }

@@ -4,7 +4,7 @@ Status: **decided** (owner decision 26, 2026-10-18: every "Ask now" question of 
 the recommended option; HANDOFF §4); proposal of 2026-10-17, revised the same day after a UX and a
 feasibility critique · Branch: `feat/integration-and-gaps` (the first wave UX2a, UX1 and UX2b
 delivered on it on 2026-10-18, §7; the owner's walkthrough the same day, §7 "Owner
-walkthrough"; UX7, UX8, S2b's „Vorschau“, UX3 and UX4 delivered the same day; next UX5) · Source: four user-need audits of the web UI on the agent-created scratch stack
+walkthrough"; UX7, UX8, S2b's „Vorschau“, UX3, UX4 and UX5 step 1 delivered the same day; next UX5 step 2) · Source: four user-need audits of the web UI on the agent-created scratch stack
 `analyzr-uxaudit` (seeded `nordwind-handel` with its chain and a simulation agent run,
 `signavio-beispiel` from the CLI bundle import, two projects made from the raw synthetic Signavio
 export; 1440x900 and 390x844), torn down after the audit · Relates to: HANDOFF §4 decisions 8, 10,
@@ -989,7 +989,9 @@ Agent“ in „Relationen“); Q3 and Q11 „Ja, nur „Zu klären““ (the ba
 customer export defaults to `ask`); Q4 and Q5 „Dort, wo die Diagramme sind“ (decide on the review
 screen or the chain; one entry that chooses link or amendment); Q10 „Erste Welle, dann
 Walkthrough“ (UX2a → UX1 → UX2b, then the owner's walkthrough of five tasks decides UX3–UX9;
-UX7/UX8 before S2b and S2c). Q6–Q9 stay "ask at the slice".
+UX7/UX8 before S2b and S2c). Q6–Q9 stay "ask at the slice". **At UX5 (2026-10-18)** the owner
+answered Q6 and Q7 „Q6 und Q7 ja, mach weiter“, each the recommended option (HANDOFF decision 26
+(5) and (6)); Q8 and Q9 stay open for UX9 and after the live runs.
 
 Each touches a recorded owner decision or answer, or removes a visible area; each has a
 recommendation.
@@ -1745,6 +1747,43 @@ each row with one focusable link; no truncated model name in the queue at 1440 p
 equals its default selection; the review panel of `rel_01M55S1R592D1325Y852QD0EMD` has at most 110
 words with „Verlauf“ closed; at 390 px the back link and ‹ › answer `elementFromPoint`; the
 watermark check passes.
+
+**UX5 step 1 as delivered** (2026-10-18, on the branch, every gate green; DEVELOPMENT.md "UX5 step
+1"). „Relationen“ and its views, §3.6 and §3.10 item 1, with Q7 (owner decision 26 (6)); the review
+screen, the auto-accept mark (Q6) and the screenshots are step 2. Web only, live-run neutral. The
+views (`components/review/relation-views.tsx`): „Zu prüfen (n)“ and „Vorgemerkt“ on `/review`,
+„Gilt“, „Abgelehnt“, „Automatisch angenommen“ (only above 0, with the ledger) and „Alle“ on
+`/relations` (`RELATION_PRESETS` gone); the model filter stays across them. „Zu prüfen“
+(`routes/project-review.tsx`): the placements callout went; a status line only when something
+needs an action (`lib/pipeline-state.ts`, „Übersicht“ reads the same); one row with „Vorschläge
+prüfen (n)“ at the first item, „n unauffällige annehmen …“ beside it and the filters „Grundlage“
+and „Modell“ at the right (their labels for screen readers; shown while there is something to
+filter or one to lift); the queue (`QueueList`, `sideName` and `elementsText` in `lib/review.ts`)
+leads with the processes, names the element once (twice where the names differ beyond umlaut
+spelling, `nameKey`), the type as the icon's label, the confidence, the hints at the right, the
+agent only when several propose; one link per row and a row click, a card on a phone; the foot
+link „Kein Zusammenhang laut Agent (n)“ to the no-links, grouped by model and closed, with „‹ Zu
+prüfen“ back. Bulk accept (Q7): the key tier only (`bulkRows`), its button counts the unflagged
+pairs once every model's facts are there (before, the count could shrink while the flags loaded),
+the dialog selects exactly them and lists the flagged ones under the closed „Genauer ansehen (n)“
+with one flag line (`GenericFlag.short`, `flagLine`) and „Vorschlag öffnen“; the lexical bulk is
+gone; afterwards an owner's toast offers „Annahmeregel anlegen“ (`/rules?new=key`, the dialog
+prefilled „Gleicher Name ab 100 %“, `RuleDraft`). „Vorgemerkt“: the sentence above the list and
+„Jetzt entscheiden“. The glossary's tier names (`TIERS`: „Eindeutiger Aufruf“, „Gleicher Name“,
+„Ähnlicher Name“, „Gleiche Bedeutung“, „Von Hand“; „Grundlage“ for „Stufe“ in the filters, the
+rule dialog, the review panel and the rule history). Measured with the UI load guard on the scratch
+stack `analyzr-ux5` (`nordwind-handel` after the simulation agent, 48 rows; the audit counted 42):
+
+| Done when | Before | After (UX5 step 1) |
+|---|---|---|
+| First proposal from the top, 1440x900 | ~620 px (440 px after UX1) | 297 px |
+| Controls per row, besides the rows | 2 per row („Prüfen“), the filters and three bulk buttons | 1 (its link); 10 besides (≤ 12) |
+| Words | 768 at 42 rows | 496 at 48 rows, about 446 at 42 (≤ 450 at 42) |
+| Truncated names at 1440 px | „finanzen/gutschrift · Gutschrift e…“ | none |
+| 390x844 | 429 px wide (sideways scroll) | 390 px, the rows as cards |
+| Bulk count | „Schlüssel: 29 annehmen…“ selecting 8 | „11 unauffällige annehmen …“ selecting 11 |
+
+Not verified: other browsers than Chromium, a real phone, a screen reader.
 
 **UX6 "Wertschöpfungskette".** Files: `routes/value-chain-page.tsx`, `routes/value-chain.tsx`
 (search validation, the return path), `value-chain-step-page.tsx`; `components/value-chain/`

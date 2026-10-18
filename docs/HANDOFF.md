@@ -186,8 +186,16 @@ and code are in English.
   ranked pickers („Vorgeschlagen“, „Passt vermutlich“, then by name), „Sammeln“ removed, the dry
   run inline above one „Speichern“ and „Agent starten“ in the toast after it, „+ Notiz“, the
   copies by path, the ghost button „Notiz“, the note dialog's texts per case; web only,
-  live-run neutral. **Next:** UX5 → UX6 → UX9 (the owner: „Sonst kannst du weitermachen“),
-  alongside S2c (the trust rule),
+  live-run neutral. **UX5 step 1 „Relationen“** (done 2026-10-18 on the branch, every gate green,
+  the UI load guard and the whole Playwright suite against a scratch stack; UX-SIMPLIFICATION.md
+  §7 "UX5 step 1 as delivered"; Q6 and Q7 answered „ja“, decision 26 (5) and (6)): the views „Zu
+  prüfen“, „Vorgemerkt“, „Gilt“, „Abgelehnt“, „Automatisch angenommen“, „Alle“, a status line
+  only when something needs an action, „Vorschläge prüfen (n)“ with „n unauffällige annehmen …“
+  (the key tier only, the count its selection, the flagged pairs under „Genauer ansehen“, then the
+  rule offered), rows that lead with the processes and one link each, the no-links behind a foot
+  link, the glossary's tier names; the first proposal at 297 px (620 before); web only, live-run
+  neutral. **Next:** UX5 step 2 (the review screen, the auto-accept mark, the screenshots) → UX6 →
+  UX9 (the owner: „Sonst kannst du weitermachen“), alongside S2c (the trust rule),
   S2b's follow-up and S3c; S6 after them; after the owner's
   live runs S5b, S7 and facts v2 as recommended (§7 "M6"; M6 §8 "After S2a").
 
@@ -386,7 +394,15 @@ and code are in English.
     tab name „Regeln“ (now „Annahmeregeln“ in the owner menu), decision 24.8's place of the
     summaries (still shown read-only, in a closed group), decision 25's inline „decide“ panel, and
     CONCEPT §3's inbox as a tab of its own; agents, facts, procedures, claim inputs and MCP are
-    untouched (live-run neutral).
+    untouched (live-run neutral). At UX5 (2026-10-18) the owner answered Q6 and Q7 „Q6 und Q7 ja,
+    mach weiter“, each the recommended option: (5) **the auto-accept mark** is one status badge
+    „Automatisch angenommen“ instead of „Angenommen“ plus a box, the rule's name and revision in
+    „Verlauf“ (and the badge's tooltip), a revoked item one line „Automatische Annahme
+    widerrufen“; filters unchanged (amends CONCEPT §3 step 5's text „Automatisch angenommen –
+    Regel „…““ in the table, review screen, queue, chain and step view); (6) **bulk accept only
+    for „Gleicher Name“** (the key tier, CONCEPT §3 step 2): the lexical bulk, which preselected
+    pairs at 65 %, goes; the key tier's bulk preselects the unflagged pairs and its count is that
+    selection.
 27. **Claim order** (2026-10-18; §8 "Claim order" answered „ja, mach weiter“, the recommended
     option): a relations claim sorts its relations by type, `from` and `to`
     (`apps/server/src/domain/claim-input.ts`). Before, they came in the database's physical row
@@ -1058,7 +1074,7 @@ Git/bpmiq.yml import, MCP App widget.
 | Dependabot | Set up Dependabot for the pnpm workspace (exact versions, grouped updates)? Until then dependency bumps are manual. | Decision 23 |
 | Holdout per-item lists | `eval/reports/candidates.md` and `replay.md` list the holdout's misses and wrong pairs per item (`placements.md` shows aggregates only). Fine while the repository is private; switch them to aggregates before it goes public? | Decision 23 |
 | First users | UI upload or Git/bpmiq.yml repos? Decides whether folder/bpmiq.yml import moves earlier. | CONCEPT §12 |
-| Shared-name flag | The bulk dialog flags 20–22 of 33 key-tier pairs (names used by >2 processes), incl. legitimate broadcasts. Keep, or flag only names with several senders? | M2 web stage |
+| Shared-name flag | The bulk dialog flags 20–22 of 33 key-tier pairs (names used by >2 processes), incl. legitimate broadcasts. Keep, or flag only names with several senders? Since UX5 the flagged pairs sit under „Genauer ansehen“ (no checkbox, decided one by one) and the button names the unflagged ones („11 unauffällige annehmen …“), so the flag decides what the bulk leaves out; whether it should also block an auto-accept rule is Q8 (UX9). | M2 web stage |
 | `correct` on a typed pair | Correcting towards a pair that already has a key-tier proposal creates a second, manual relation. Offer "accept the existing proposal instead"? | M2 e2e |
 | Revoking a token | Revoking now withdraws that token's open proposals and no-links (CONCEPT §6) and, since `0.2.0`, queues the models whose pairs it judged again, and, since M4 S2, withdraws its live placement proposals; since M4 S5 the chain's placement task is queued again for the processes it judged. Confirm. | M2 fix, 0.2.0, M4 S2, M4 S5 |
 | Ad-hoc verdicts | Since M4 S5 an agent's ad-hoc placement proposals count as its verdict (the pipeline does not judge those processes again); ad-hoc relation proposals do not. Keep the asymmetry? | M4 S5 |

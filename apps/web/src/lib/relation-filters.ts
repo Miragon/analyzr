@@ -92,32 +92,6 @@ export function filterRelations(
   return relations.filter((r) => matchesFilters(r, filters, auto)).sort(compareRelations);
 }
 
-/** Presets shown as quick filters above the table. */
-export interface RelationPreset {
-  id: string;
-  label: string;
-  filters: RelationFilters;
-  /** Shown only with the auto-accept ledger (reviewers). */
-  needsLedger?: true;
-}
-
-export const RELATION_PRESETS: readonly RelationPreset[] = [
-  { id: 'all', label: 'Alle', filters: {} },
-  {
-    id: 'rule',
-    label: 'Durch Systemregel angenommen',
-    filters: { status: 'accepted', tier: 'rule' },
-  },
-  { id: 'key', label: 'Schlüssel-Vorschläge', filters: { status: 'proposed', tier: 'key' } },
-  { id: 'proposed', label: 'Alle Vorschläge', filters: { status: 'proposed' } },
-  {
-    id: 'auto',
-    label: 'Automatisch angenommen',
-    filters: { auto: 'any' },
-    needsLedger: true,
-  },
-];
-
 export function sameFilters(a: RelationFilters, b: RelationFilters): boolean {
   return (
     a.status === b.status &&

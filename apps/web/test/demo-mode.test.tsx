@@ -405,15 +405,14 @@ describe('the review inbox for a viewer', () => {
       modelList: [model({ key: 'w/wait', stage: 'waiting_for_agent', openItems: 0 })],
       relationList: [],
     });
-    const empty = (await screen.findByText('Keine offenen Vorschläge')).closest(
-      '[data-slot="empty"]',
-    );
-    expect(empty?.textContent).toContain('1 Modell wartet auf einen Agenten.');
-    expect(empty?.textContent).not.toContain('Verbinde');
+    await screen.findByText('Keine offenen Vorschläge');
+    // the status line says it (UX5); starting the agent is the owner's
+    expect(screen.getByTestId('review-status').textContent).toBe('1 Modell wartet auf den Agenten');
     expect(screen.queryByRole('link', { name: /Agent verbinden/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Agent starten/ })).toBeNull();
   });
 
-  it('points a viewer to the placements without asking for a decision', async () => {
+  it('leaves the placements to the chain: no callout in the inbox (UX5)', async () => {
     setup('/projects/demo/review', {
       health: DEMO_HEALTH,
       role: 'viewer',
@@ -421,10 +420,9 @@ describe('the review inbox for a viewer', () => {
         placements: [placement({ id: 'plc_01OPEN', elementId: 's-1', process: 'c/review#P' })],
       }),
     });
-    const callout = await screen.findByTestId('placements-callout');
-    expect(callout.textContent).toContain('1 Platzierung wartet auf Prüfung');
-    expect(callout.textContent).toContain('stehen auf der Wertschöpfungskette');
-    expect(callout.textContent).not.toMatch(/deine|prüfst du/);
+    await screen.findByRole('navigation', { name: 'Ansichten' });
+    expect(screen.queryByTestId('placements-callout')).toBeNull();
+    expect(screen.queryByTestId('review-start')).toBeNull();
   });
 });
 
@@ -439,7 +437,9 @@ describe('the agents’ no-links in the inbox', () => {
     expect(items[0]?.textContent).toContain('no-evidence: Die Namen ähneln sich nur zufällig.');
     expect(items[0]?.textContent).toContain('agent:analyzr-agent-sim');
     expect(items[0]?.textContent).toContain('Analyse von a/held');
-    expect(screen.getByRole('tab', { name: /Kein Zusammenhang/ }).textContent).toContain('2');
+    // behind the foot link of „Zu prüfen“ (Q12), grouped by model; the way back on top
+    expect(screen.getAllByTestId('no-link-group').length).toBeGreaterThan(0);
+    expect(screen.getByTestId('no-links-back').textContent).toBe('Zu prüfen');
     for (const item of items) expect(within(item).queryByRole('button')).toBeNull();
     expect(screen.queryByTestId('bulk-open')).toBeNull();
     expect(writes(calls)).toEqual([]);
@@ -453,7 +453,7 @@ describe('the agents’ no-links in the inbox', () => {
     const items = await screen.findAllByTestId('no-link-item');
     expect(items.map((i) => i.dataset['noLinkId'])).toEqual(['nlk_01SECOND']);
     // A no-link has no tier: the tab offers no tier filter.
-    expect(screen.queryByLabelText('Stufe')).toBeNull();
+    expect(screen.queryByLabelText('Grundlage')).toBeNull();
     expect(screen.getByLabelText('Modell')).toBeDefined();
     // A no-link needs no decision: no bulk accept on this tab, also for an owner.
     expect(screen.queryByTestId('bulk-open')).toBeNull();

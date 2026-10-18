@@ -94,13 +94,14 @@ test('projects → relations → model view', async ({ page }) => {
   ).toBeVisible();
   await expect(page.getByTestId('next-step')).toContainText('Als Nächstes');
 
-  // „Relationen“: the inbox, the results one link away (UX5 makes them views of the tab)
+  // „Relationen“: the inbox and the results, views of one tab (UX5)
   await page
     .getByRole('navigation', { name: 'Projektbereiche' })
     .getByRole('link', { name: /^Relationen/ })
     .click();
   await expect(page).toHaveURL(new RegExp(`/projects/${PROJECT}/review$`));
-  await page.getByTestId('all-relations').click();
+  const views = page.getByRole('navigation', { name: 'Ansichten' });
+  await views.getByRole('link', { name: 'Alle' }).click();
   await expect(page).toHaveURL(new RegExp(`/projects/${PROJECT}/relations$`));
   const accepted = page.locator('[data-testid=relation-row][data-status=accepted][data-tier=rule]');
   await expect(accepted).toHaveCount(1);
@@ -110,10 +111,11 @@ test('projects → relations → model view', async ({ page }) => {
     page.locator('[data-testid=relation-row][data-status=proposed][data-tier=key]').first(),
   ).toBeVisible();
 
-  await page.getByRole('button', { name: /Schlüssel-Vorschläge/ }).click();
-  await expect(page).toHaveURL(/status=proposed/);
+  await views.getByRole('link', { name: 'Abgelehnt' }).click();
+  await expect(page).toHaveURL(/status=rejected/);
   await expect(accepted).toHaveCount(0);
-  await page.getByRole('button', { name: /^Alle \d/ }).click();
+  await views.getByRole('link', { name: 'Gilt' }).click();
+  await expect(page).toHaveURL(/status=accepted/);
 
   // model view: the call's endpoint is highlighted in the caller …
   await accepted.getByRole('link', { name: /Relation im Modell/ }).click();

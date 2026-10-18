@@ -1,4 +1,4 @@
-import type { AnalysisTask, Landscape, Model, RequeueBody } from '@analyzr/client';
+import type { AnalysisTask, Landscape, Model, Relation, RequeueBody } from '@analyzr/client';
 import { QueryClient } from '@tanstack/react-query';
 import { createMemoryHistory } from '@tanstack/react-router';
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
@@ -6,7 +6,7 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 
 import { App } from '../src/app';
-import { QueueTable } from '../src/components/review/queue-table';
+import { QueueList } from '../src/components/review/queue-table';
 import {
   analysesQuery,
   assertionsQuery,
@@ -70,7 +70,7 @@ const stuckTask: AnalysisTask = {
   updatedAt: '2026-10-07T09:00:00.000Z',
 };
 
-function setup(path: string) {
+function setup(path: string, extra: Relation[] = []) {
   const calls = stubApi({
     'POST /api/v1/projects/demo/analyses/requeue': (call) =>
       json({
@@ -88,7 +88,7 @@ function setup(path: string) {
     projectId: 'prj_01DEMO',
     seq: 1,
     models: [],
-    relations: [held, changed, accepted],
+    relations: [held, changed, accepted, ...extra],
     findings: [],
   };
   queryClient.setQueryData(projectQuery('demo').queryKey, {
@@ -143,11 +143,13 @@ describe('review inbox', () => {
     setup('/projects/demo/review?model=a%2Fheld&view=held');
     const item = await screen.findByTestId('held-item');
     expect(item.dataset['relationId']).toBe('rel_01HELD');
+    // UX5: „Jetzt entscheiden“ opens the review screen; one sentence above the list
     expect(
-      within(item)
-        .getByRole('link', { name: /Prüfen/ })
-        .getAttribute('href'),
+      within(item).getByRole('link', { name: 'Jetzt entscheiden' }).getAttribute('href'),
     ).toContain('view=held');
+    expect(screen.getByTestId('held-intro').textContent).toBe(
+      'Die Antwort ist eine Notiz an der Relation; entschieden wird, sobald sie feststeht.',
+    );
   });
 
   it('keeps the phase filter of „Übersicht“ visible in the queue, and removable', async () => {
@@ -183,7 +185,63 @@ describe('review inbox', () => {
   });
 });
 
-describe('QueueTable', () => {
+describe('„Relationen › Zu prüfen“ (UX5)', () => {
+  const key = (id: string, from: string, to: string) =>
+    relation({ id, from, to, tier: 'key', status: 'proposed', confidence: 1 });
+
+  it('shows the views, a status line, „Vorschläge prüfen (n)“ and the unremarkable bulk', async () => {
+    const { router, user } = setup('/projects/demo/review', [
+      key('rel_01K1', 'c/changed#A', 'd/partner#A'),
+      key('rel_01K2', 'c/changed#B', 'd/partner#B'),
+    ]);
+    const views = await screen.findByRole('navigation', { name: 'Ansichten' });
+    expect(
+      within(views)
+        .getAllByRole('link')
+        .map((l) => [l.textContent, l.getAttribute('aria-current')]),
+    ).toEqual([
+      ['Zu prüfen3', 'page'],
+      ['Vorgemerkt', null],
+      ['Gilt', null],
+      ['Abgelehnt', null],
+      ['Alle', null],
+    ]);
+    // the expired reservation, with its action; no placements callout, no stage table
+    expect(screen.getByTestId('review-status').textContent).toContain(
+      'Bei 1 Modell ist die Reservierung abgelaufen',
+    );
+    expect(screen.queryByTestId('placements-callout')).toBeNull();
+    const start = screen.getByTestId('review-start');
+    expect(start.textContent).toBe('Vorschläge prüfen (3)');
+    expect(start.getAttribute('href')).toBe('/projects/demo/review/rel_01K1');
+    // the key tier's unflagged proposals: the count equals the dialog's default selection
+    // shown once every model's facts are there (its flags need them)
+    const bulk = await screen.findByTestId('bulk-open');
+    expect(bulk.textContent).toBe('2 unauffällige annehmen …');
+    await user.click(bulk);
+    expect((await screen.findByTestId('bulk-summary')).textContent).toBe('2 von 2 ausgewählt');
+    await user.keyboard('{Escape}');
+    // one link per row; a click on the row opens it too
+    const rows = screen.getAllByTestId('queue-row');
+    for (const r of rows) expect(within(r).getAllByRole('link')).toHaveLength(1);
+    expect(within(rows[0]!).queryByRole('button')).toBeNull();
+    await user.click(within(rows[1]!).getByText('100 %'));
+    await waitFor(() =>
+      expect(router.state.location.pathname).toBe('/projects/demo/review/rel_01K2'),
+    );
+  });
+
+  it('keeps the filters while a filter is set, and offers „Grundlage“ instead of „Stufe“', async () => {
+    setup('/projects/demo/review?view=held&model=c%2Fchanged');
+    await screen.findByRole('navigation', { name: 'Ansichten' });
+    // nothing held in c/changed, but the model filter is set: the filters stay to lift it
+    expect(screen.getByRole('search', { name: 'Liste filtern' })).toBeTruthy();
+    expect(screen.getByLabelText('Grundlage')).toBeTruthy();
+    expect(screen.queryByLabelText('Stufe')).toBeNull();
+  });
+});
+
+describe('QueueList', () => {
   it('marks an open agent question and an agent no-link on the pair', async () => {
     const proposals = [
       relation({
@@ -201,7 +259,7 @@ describe('QueueTable', () => {
       }),
     ];
     await renderWithRouter(
-      <QueueTable
+      <QueueList
         project="demo"
         items={proposals.map((relation) => ({ relation, finishes: 0 }))}
         resolve={sampleResolver}
@@ -216,5 +274,50 @@ describe('QueueTable', () => {
     const marker = within(objected!).getByTestId('queue-no-link');
     expect(marker.textContent).toBe('Einwand');
     expect(marker.getAttribute('title')).toBe('Kein Zusammenhang laut Agent (2 Einwände)');
+  });
+
+  it('leads with the processes, names the element once, adds the key only where names repeat', async () => {
+    const proposals = [
+      relation({ id: 'rel_01A', from: 'a/one#S', to: 'b/two#C', confidence: 0.92 }),
+      relation({ id: 'rel_01B', from: 'a/one#S', to: 'c/three#P', confidence: 0.6 }),
+    ];
+    await renderWithRouter(
+      <QueueList
+        project="demo"
+        items={proposals.map((relation) => ({ relation, finishes: 0 }))}
+        resolve={(ref) => {
+          const [modelKey = '', elementId = ''] = ref.split('#');
+          if (elementId === 'P')
+            return {
+              ref,
+              modelKey,
+              elementId,
+              label: 'Versand',
+              kind: 'process',
+              processName: null,
+            };
+          return {
+            ref,
+            modelKey,
+            elementId,
+            label: 'Rechnung',
+            kind: 'msg_throw',
+            processName: modelKey === 'c/three' ? 'Versand' : 'Versand',
+          };
+        }}
+        filters={{}}
+      />,
+    );
+    const [a, b] = screen.getAllByTestId('queue-row');
+    // every end lies in a process „Versand“ of another model: the key tells them apart
+    expect(within(a!).getByTestId('queue-link').textContent).toBe(
+      'Versand (a/one) → Versand (b/two)',
+    );
+    expect(a!.textContent).toContain('Rechnung');
+    expect(a!.textContent).toContain('92 %');
+    // a whole process has no element name of its own
+    expect(within(b!).getByTestId('queue-link').textContent).toBe(
+      'Versand (a/one) → Versand (c/three)',
+    );
   });
 });

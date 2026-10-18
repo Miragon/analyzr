@@ -470,11 +470,13 @@ test('correct: the dynamic call goes to the letter channel instead', async ({ pa
   expect(manual?.provenance).toMatchObject({ sourceKind: 'human', verdict: 'accept' });
 });
 
-test('bulk accept of the key tier: flagged pairs stay open', async ({ page }) => {
+test('bulk accept of „Gleicher Name“: flagged pairs stay open', async ({ page }) => {
   await page.goto(`/projects/${PROJECT}/review`);
-  await page.locator('[data-testid=bulk-open][data-tier=key]').click();
+  await page.getByTestId('bulk-open').click();
   const dialog = page.getByTestId('bulk-dialog');
   await expect(dialog).toBeVisible();
+  // the flagged ones behind „Genauer ansehen“, decided one by one (UX5)
+  await dialog.getByTestId('bulk-flagged').locator('summary').click();
   const rows = dialog.getByTestId('bulk-row');
   const total = await rows.count();
   const flagged = dialog.locator('[data-testid=bulk-row][data-flagged=true]');
@@ -493,9 +495,9 @@ test('bulk accept of the key tier: flagged pairs stay open', async ({ page }) =>
   const antwortRow = rowOf(antwort?.id);
   await expect(antwortRow).toHaveAttribute('data-flagged', 'true');
   await expect(
-    antwortRow.locator('[data-testid=generic-flag][data-flag=generic-word]').first(),
-  ).toContainText('„Antwort“');
-  await expect(antwortRow.getByRole('checkbox')).not.toBeChecked();
+    antwortRow.locator('[data-testid=generic-flag][data-flag~=generic-word]'),
+  ).toContainText('Allgemeiner Name');
+  await expect(antwortRow.getByRole('checkbox')).toHaveCount(0);
   // the process id defined twice: the agent asked which target is meant
   const ambiguous = before.filter(
     (r) => r.from === 'einkauf/bestellanforderung#Call_Bestellfreigabe' && r.tier === 'key',
@@ -504,11 +506,12 @@ test('bulk accept of the key tier: flagged pairs stay open', async ({ page }) =>
   for (const r of ambiguous) {
     const row = rowOf(r.id);
     await expect(row).toHaveAttribute('data-flagged', 'true');
-    await expect(row.locator('[data-flag=agent-question]')).toContainText('Der Agent fragt nach');
-    await expect(row.locator('[data-flag=ambiguous-target]')).toContainText(
-      '„Process_Bestellfreigabe“ ist mehrfach definiert',
-    );
-    await expect(row.getByRole('checkbox')).not.toBeChecked();
+    const flags = row.getByTestId('generic-flag');
+    await expect(flags).toHaveAttribute('data-flag', /agent-question/);
+    await expect(flags).toHaveAttribute('data-flag', /ambiguous-target/);
+    await expect(flags).toContainText('Frage des Agenten');
+    await expect(flags).toContainText('Ziel mehrdeutig');
+    await expect(row.getByRole('checkbox')).toHaveCount(0);
   }
   await rowOf(ambiguous[0]?.id).scrollIntoViewIfNeeded();
   await shot(page, 'm2-10-bulk-flags');

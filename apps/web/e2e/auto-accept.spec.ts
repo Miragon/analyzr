@@ -191,7 +191,7 @@ test('„Einstellungen › Annahmeregeln“: system rule, empty state, a rule wi
   await page.getByTestId('new-rule').click();
   const dialog = page.getByTestId('rule-dialog');
   await dialog.getByLabel('Name').fill(RULE_NAME);
-  await expect(dialog.getByLabel('Stufe')).toHaveValue('key');
+  await expect(dialog.getByLabel('Grundlage')).toHaveValue('key');
   await expect(dialog.getByLabel('ab Konfidenz (%)')).toHaveValue('95');
   // Ad-hoc proposals count only when the rule says so.
   await expect(dialog.getByTestId('preview-open')).toHaveText('Jetzt offen: 0 würden angenommen');
@@ -224,7 +224,11 @@ test('marks and the filter in the Relations tab, provenance on the review screen
   page,
 }) => {
   await page.goto(`/projects/${PROJECT}/relations`);
-  await page.getByRole('button', { name: /^Automatisch angenommen/ }).click();
+  // a view of „Relationen“ since UX5
+  await page
+    .getByRole('navigation', { name: 'Ansichten' })
+    .getByRole('link', { name: 'Automatisch angenommen' })
+    .click();
   await expect(page).toHaveURL(/auto=any/);
   const rows = page.getByTestId('relation-row');
   await expect(rows).toHaveCount(2);

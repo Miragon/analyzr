@@ -133,25 +133,33 @@ export const STATUS_ORDER: readonly RelationStatus[] = [
   'obsolete',
 ];
 
+/**
+ * What a relation rests on (the API's tier), in the glossary's words
+ * (UX-SIMPLIFICATION.md §4, UX5): „Grundlage“ in filters, the rule dialog and
+ * the review.
+ */
 export const TIERS: Record<Tier, Presentation> = {
   rule: {
-    label: 'Regel',
+    label: 'Eindeutiger Aufruf',
     tone: 'primary',
     hint: 'Eindeutiger Aufruf: calledElement trifft genau eine Prozess-ID, automatisch angenommen.',
   },
   key: {
-    label: 'Schlüssel',
+    label: 'Gleicher Name',
     tone: 'info',
     hint: 'Gleicher Nachrichten-, Signal- oder Aufrufname; Vorschlag zum schnellen Bestätigen.',
   },
-  lexical: { label: 'Ähnlich', tone: 'neutral', hint: 'Ähnliche Bezeichnungen.' },
+  lexical: { label: 'Ähnlicher Name', tone: 'neutral', hint: 'Ähnliche Bezeichnungen.' },
   semantic: {
-    label: 'Bedeutung',
+    label: 'Gleiche Bedeutung',
     tone: 'neutral',
     hint: 'Gleiche Bedeutung mit anderen Worten, von einem Agenten erkannt.',
   },
-  manual: { label: 'Manuell', tone: 'neutral', hint: 'Von einem Menschen angelegt.' },
+  manual: { label: 'Von Hand', tone: 'neutral', hint: 'Von einem Menschen angelegt.' },
 };
+
+/** The filter and field label of the tier (UX5: „Stufe“ → „Grundlage“). */
+export const TIER_FIELD_LABEL = 'Grundlage';
 
 export const TIER_ORDER: readonly Tier[] = ['rule', 'key', 'lexical', 'semantic', 'manual'];
 

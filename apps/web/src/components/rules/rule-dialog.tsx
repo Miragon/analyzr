@@ -95,13 +95,21 @@ interface FormState {
   note: string;
 }
 
-function initialState(rule: AutoAcceptRule | null): FormState {
+/** A new rule's prefill (UX5: after a bulk accept, „Gleicher Name ab 100 %“). */
+export interface RuleDraft {
+  name: string;
+  tier: AutoAcceptTier;
+  /** The minimum confidence as the field shows it, e.g. „100“. */
+  percent: string;
+}
+
+function initialState(rule: AutoAcceptRule | null, draft?: RuleDraft): FormState {
   if (!rule) {
     return {
-      name: '',
+      name: draft?.name ?? '',
       kind: 'relation',
-      tier: 'key',
-      percent: '95',
+      tier: draft?.tier ?? 'key',
+      percent: draft?.percent ?? '95',
       relationType: ANY,
       agentPrincipalId: ANY,
       llmModel: '',
@@ -152,6 +160,8 @@ export interface RuleDialogProps {
   project: string;
   /** The rule to edit (its head revision); `null` creates a new rule. */
   rule: AutoAcceptRule | null;
+  /** A new rule's prefill. */
+  draft?: RuleDraft | undefined;
   /** The project's agent tokens (revoked ones marked). */
   tokens: readonly AgentToken[];
   open: boolean;
@@ -160,12 +170,19 @@ export interface RuleDialogProps {
   onSaved?: (rule: AutoAcceptRule) => void;
 }
 
-function RuleForm({ project, rule, tokens, onOpenChange, onSaved }: Omit<RuleDialogProps, 'open'>) {
+function RuleForm({
+  project,
+  rule,
+  draft,
+  tokens,
+  onOpenChange,
+  onSaved,
+}: Omit<RuleDialogProps, 'open'>) {
   const id = useId();
   const queryClient = useQueryClient();
   /** The revision the form edits: the rule as opened, or the newer one loaded after a 412. */
   const [base, setBase] = useState<AutoAcceptRule | null>(rule);
-  const [form, setForm] = useState<FormState>(() => initialState(rule));
+  const [form, setForm] = useState<FormState>(() => initialState(rule, draft));
   const [conflict, setConflict] = useState<number | null>(null);
   /** After loading a newer revision: what the other owner changed. */
   const [reloaded, setReloaded] = useState<{ revision: number; changes: string[] } | null>(null);
@@ -305,7 +322,7 @@ function RuleForm({ project, rule, tokens, onOpenChange, onSaved }: Omit<RuleDia
               value={form.name}
               maxLength={MAX_AUTO_ACCEPT_NAME_CHARS}
               onChange={(e) => set({ name: e.target.value })}
-              placeholder="z. B. Schlüssel-Nachrichten ab 95 %"
+              placeholder="z. B. Gleicher Name ab 95 %"
               aria-invalid={touched && nameError ? true : undefined}
             />
             {touched && nameError ? <FieldError>{nameError}</FieldError> : null}
@@ -336,7 +353,7 @@ function RuleForm({ project, rule, tokens, onOpenChange, onSaved }: Omit<RuleDia
               </NativeSelect>
             </Field>
             <Field>
-              <FieldLabel htmlFor={`${id}-tier`}>Stufe</FieldLabel>
+              <FieldLabel htmlFor={`${id}-tier`}>Grundlage</FieldLabel>
               <NativeSelect
                 id={`${id}-tier`}
                 className="w-full"

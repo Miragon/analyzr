@@ -1,14 +1,15 @@
 import type { BulkDecisionBody, Relation } from '@analyzr/client';
-import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { describe, expect, it } from 'vitest';
 
 import { BulkAcceptDialog } from '../src/components/review/bulk-accept-dialog';
 import { nameUsage } from '../src/lib/generic-names';
+import { bulkRows } from '../src/lib/review';
 import { buildRefIndex, resolverOf } from '../src/lib/refs';
 import { fact, noLink, provenance, relation } from './support/fixtures';
-import { findToast, json, renderWithQuery, stubApi, type Call } from './support/render';
+import { findToast, json, renderWithRouter, stubApi, type Call } from './support/render';
 
 const PATH = '/api/v1/projects/demo/decisions';
 
@@ -107,9 +108,11 @@ const pairs: Relation[] = [
 function Harness({
   initialOpen = true,
   relations = pairs,
+  canOwn = false,
 }: {
   initialOpen?: boolean;
   relations?: Relation[];
+  canOwn?: boolean;
 }) {
   const [open, setOpen] = useState(initialOpen);
   return (
@@ -119,10 +122,9 @@ function Harness({
       </button>
       <BulkAcceptDialog
         project="demo"
-        tier="key"
-        relations={relations}
+        rows={bulkRows(relations, resolve, usage)}
         resolve={resolve}
-        usage={usage}
+        canOwn={canOwn}
         open={open}
         onOpenChange={setOpen}
       />
@@ -130,7 +132,11 @@ function Harness({
   );
 }
 
-function setup(answer?: (call: Call) => Response, relations: Relation[] = pairs) {
+async function setup(
+  answer?: (call: Call) => Response,
+  relations: Relation[] = pairs,
+  canOwn = false,
+) {
   const calls = stubApi({
     [`POST ${PATH}`]:
       answer ??
@@ -146,52 +152,51 @@ function setup(answer?: (call: Call) => Response, relations: Relation[] = pairs)
       }),
   });
   const user = userEvent.setup();
-  renderWithQuery(<Harness relations={relations} />);
-  return { calls, user };
+  const { router } = await renderWithRouter(<Harness relations={relations} canOwn={canOwn} />);
+  return { calls, user, router };
 }
 
 const rows = () => screen.getAllByTestId('bulk-row');
 const row = (id: string) => rows().find((r) => r.dataset['relationId'] === id)!;
 const bodies = (calls: Call[]) => calls.filter((c) => c.path === PATH).map((c) => c.body);
 
-describe('BulkAcceptDialog', () => {
-  it('lists every pair and flags generic or widely shared names', async () => {
-    setup();
+describe('BulkAcceptDialog („Gleicher Name“, UX5)', () => {
+  it('selects the unremarkable pairs and keeps the flagged ones under „Genauer ansehen“', async () => {
+    await setup();
     const dialog = await screen.findByRole('dialog');
-    expect(within(dialog).getByText('3 Vorschläge der Stufe Schlüssel annehmen?')).toBeTruthy();
-    expect(rows().map((r) => r.dataset['relationId'])).toEqual([
-      'rel_01RECHNUNG',
-      'rel_01ANTWORT',
-      'rel_01WARE',
-    ]);
-    // both ends with labels and model keys
-    expect(within(row('rel_01RECHNUNG')).getByText('Rechnung versenden')).toBeTruthy();
-    expect(within(row('rel_01RECHNUNG')).getByText('finanzen/debitoren')).toBeTruthy();
-
+    expect(within(dialog).getByText('2 unauffällige Vorschläge annehmen?')).toBeTruthy();
+    expect(dialog.textContent).toContain(
+      'Markierte mögliche Relationen wählst du bewusst selbst aus.',
+    );
+    // the processes first, then the message once
+    expect(row('rel_01RECHNUNG').textContent).toContain('P_auftrag → P_deb');
+    expect(row('rel_01RECHNUNG').textContent).toContain('Rechnung versenden → Rechnung erhalten');
+    expect(
+      rows()
+        .filter((r) => r.dataset['flagged'] === 'false')
+        .map((r) => r.dataset['relationId']),
+    ).toEqual(['rel_01RECHNUNG', 'rel_01WARE']);
+    expect(screen.getByTestId('bulk-summary').textContent).toBe('2 von 2 ausgewählt');
+    // flagged: closed, one flag line and „Vorschlag öffnen“, no checkbox
+    const more = screen.getByTestId('bulk-flagged');
+    expect(more.hasAttribute('open')).toBe(false);
+    expect(more.querySelector('summary')?.textContent).toBe('Genauer ansehen (1)');
     const antwort = row('rel_01ANTWORT');
-    expect(antwort.dataset['flagged']).toBe('true');
-    const flags = within(antwort).getAllByTestId('generic-flag');
-    expect(flags.map((f) => f.dataset['flag'])).toEqual([
-      'generic-word',
-      'generic-word',
-      'generic-word',
-      'shared-name',
-    ]);
-    expect(flags[0]!.textContent).toContain('„Antwort“ ist allgemein formuliert');
-    expect(flags[3]!.textContent).toContain('in 3 Prozessen vor (1 sendet, 2 empfangen)');
-    expect(row('rel_01RECHNUNG').dataset['flagged']).toBe('false');
-    expect(row('rel_01WARE').dataset['flagged']).toBe('false');
+    expect(within(antwort).queryByRole('checkbox')).toBeNull();
+    expect(within(antwort).getByTestId('generic-flag').textContent).toBe(
+      'Allgemeiner Name · in 3 Prozessen',
+    );
+    expect(
+      within(antwort).getByRole('link', { name: 'Vorschlag öffnen' }).getAttribute('href'),
+    ).toBe('/projects/demo/review/rel_01ANTWORT');
   });
 
-  it('leaves flagged pairs unchecked and accepts the rest with ids, versions, tier and count', async () => {
-    const { calls, user } = setup();
+  it('accepts the selection with ids, versions, the tier and the count', async () => {
+    const { calls, user } = await setup();
     await screen.findByRole('dialog');
-    expect(screen.getByTestId('bulk-summary').textContent).toBe('2 von 3 ausgewählt · 1 markiert');
-    expect(within(row('rel_01ANTWORT')).getByRole('checkbox').getAttribute('aria-checked')).toBe(
-      'false',
-    );
-    await user.click(screen.getByRole('button', { name: '2 annehmen' }));
-    await findToast('2 Relationen angenommen');
+    await user.click(screen.getByTestId('bulk-confirm'));
+    const toast = await findToast('2 Relationen angenommen');
+    expect(toast.textContent).toContain('Grundlage „Gleicher Name“.');
     expect(bodies(calls)).toEqual([
       {
         verdict: 'accept',
@@ -206,40 +211,38 @@ describe('BulkAcceptDialog', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   });
 
-  it('includes a flagged pair only when checked on purpose', async () => {
-    const { calls, user } = setup();
+  it('leaves out a pair unchecked on purpose', async () => {
+    const { calls, user } = await setup();
     await screen.findByRole('dialog');
-    await user.click(within(row('rel_01ANTWORT')).getByRole('checkbox'));
     await user.click(within(row('rel_01WARE')).getByRole('checkbox'));
-    expect(screen.getByTestId('bulk-summary').textContent).toBe('2 von 3 ausgewählt · 1 markiert');
-    await user.click(screen.getByRole('button', { name: '2 annehmen' }));
-    await findToast('2 Relationen angenommen');
+    expect(screen.getByTestId('bulk-summary').textContent).toBe('1 von 2 ausgewählt');
+    await user.click(screen.getByRole('button', { name: '1 annehmen' }));
+    await findToast('1 Relation angenommen');
     expect((bodies(calls)[0] as BulkDecisionBody).items).toEqual([
       { id: 'rel_01RECHNUNG', version: 2 },
-      { id: 'rel_01ANTWORT', version: 1 },
     ]);
   });
 
-  it('selects all or nothing with the header checkbox', async () => {
-    const { user } = setup();
+  it('offers an owner the rule afterwards: „Gleicher Name ab 100 %“ prefilled', async () => {
+    const { user, router } = await setup(undefined, pairs, true);
     await screen.findByRole('dialog');
-    const all = screen.getByRole('checkbox', { name: 'Alle auswählen' });
-    expect(all.getAttribute('aria-checked')).toBe('mixed');
-    // some selected shows a dash, never the tick of "all selected"
-    expect(all.querySelector('svg.lucide-minus')).not.toBeNull();
-    expect(all.querySelector('svg.lucide-check')).toBeNull();
-    await user.click(all);
-    expect(screen.getByTestId('bulk-summary').textContent).toContain('3 von 3');
-    expect(all.querySelector('svg.lucide-check')).not.toBeNull();
-    await user.click(all);
-    expect(screen.getByTestId('bulk-summary').textContent).toContain('0 von 3');
-    expect(screen.getByRole<HTMLButtonElement>('button', { name: '0 annehmen' }).disabled).toBe(
-      true,
-    );
+    await user.click(screen.getByTestId('bulk-confirm'));
+    // (earlier tests' toasts may still be on screen: the one with the offer)
+    let toast: HTMLElement | undefined;
+    await waitFor(() => {
+      toast = screen
+        .getAllByTestId('toast')
+        .find((t) =>
+          t.textContent.includes('Gleicher Name ab 100 % künftig automatisch annehmen?'),
+        );
+      expect(toast).toBeDefined();
+    });
+    await user.click(within(toast!).getByTestId('toast-action'));
+    await waitFor(() => expect(router.state.location.href).toBe('/projects/demo/rules?new=key'));
   });
 
   it('keeps the dialog open with a clear message when the list changed (409)', async () => {
-    const { user } = setup(() =>
+    const { user } = await setup(() =>
       json(
         {
           type: 'urn:analyzr:problem:conflict',
@@ -253,97 +256,14 @@ describe('BulkAcceptDialog', () => {
       ),
     );
     await screen.findByRole('dialog');
-    await user.click(screen.getByRole('button', { name: '2 annehmen' }));
+    await user.click(screen.getByTestId('bulk-confirm'));
     const conflict = await screen.findByTestId('bulk-conflict');
     expect(conflict.textContent).toContain('Eine Relation hat sich seit dem Laden geändert');
     expect(conflict.textContent).toContain('Es wurde nichts entschieden');
     expect(screen.getByRole('dialog')).toBeTruthy();
   });
 
-  it('after a 409 reload, unchecks pairs that are flagged now or changed since a deliberate check', async () => {
-    let answered = 0;
-    const calls = stubApi({
-      [`POST ${PATH}`]: (call) => {
-        answered++;
-        if (answered === 1) {
-          return json(
-            {
-              type: 'urn:analyzr:problem:conflict',
-              title: 'Conflict',
-              status: 409,
-              code: 'conflict',
-              detail: 'the relations changed; reload and decide again',
-              mismatches: [{ id: 'rel_01WARE', reason: 'version', version: 6 }],
-            },
-            409,
-          );
-        }
-        const body = call.body as BulkDecisionBody;
-        return json({ items: body.items.map((i) => ({ ...pairs[1]!, version: i.version + 1 })) });
-      },
-    });
-    // The list after the reload: the agent asked a question on WARE, ANTWORT moved on.
-    const reloaded = [
-      pairs[0]!,
-      relation({ ...pairs[1]!, version: 2 }),
-      relation({
-        ...pairs[2]!,
-        version: 6,
-        provenance: provenance({ tier: 'key', confidence: 1, question: 'Wirklich versandbereit?' }),
-      }),
-    ];
-    function Reloading() {
-      const [relations, setRelations] = useState(pairs);
-      return (
-        <>
-          <button type="button" onClick={() => setRelations(reloaded)}>
-            neu laden
-          </button>
-          <BulkAcceptDialog
-            project="demo"
-            tier="key"
-            relations={relations}
-            resolve={resolve}
-            usage={usage}
-            open
-            onOpenChange={() => undefined}
-          />
-        </>
-      );
-    }
-    const user = userEvent.setup();
-    renderWithQuery(<Reloading />);
-    await screen.findByRole('dialog');
-    // A deliberate check of the flagged ANTWORT (version 1), RECHNUNG unchecked on purpose.
-    await user.click(within(row('rel_01ANTWORT')).getByRole('checkbox'));
-    await user.click(within(row('rel_01RECHNUNG')).getByRole('checkbox'));
-    expect(screen.getByTestId('bulk-summary').textContent).toBe('2 von 3 ausgewählt · 1 markiert');
-    await user.click(screen.getByRole('button', { name: '2 annehmen' }));
-    await screen.findByTestId('bulk-conflict');
-
-    fireEvent.click(screen.getByRole('button', { name: 'neu laden', hidden: true }));
-    const checked = (id: string) =>
-      within(row(id)).getByRole('checkbox').getAttribute('aria-checked');
-    await waitFor(() => expect(row('rel_01WARE').dataset['flagged']).toBe('true'));
-    expect(checked('rel_01WARE')).toBe('false');
-    expect(checked('rel_01ANTWORT')).toBe('false');
-    expect(checked('rel_01RECHNUNG')).toBe('false');
-    expect(screen.getByTestId('bulk-summary').textContent).toBe('0 von 3 ausgewählt · 2 markiert');
-
-    // A new deliberate check holds for the version now shown.
-    await user.click(within(row('rel_01ANTWORT')).getByRole('checkbox'));
-    await user.click(screen.getByRole('button', { name: '1 annehmen' }));
-    await findToast('1 Relation angenommen');
-    expect(bodies(calls).map((b) => (b as BulkDecisionBody).items)).toEqual([
-      [
-        { id: 'rel_01ANTWORT', version: 1 },
-        { id: 'rel_01WARE', version: 5 },
-      ],
-      [{ id: 'rel_01ANTWORT', version: 2 }],
-    ]);
-  });
-
-  it('flags an open agent question and an ambiguous call target and leaves them unchecked', async () => {
+  it('flags an open agent question, an ambiguous call target and an agent’s no-link', async () => {
     const agentPairs = [
       pairs[0]!,
       relation({
@@ -353,35 +273,27 @@ describe('BulkAcceptDialog', () => {
           confidence: 1,
           question: 'Ist die Ware hier wirklich versandbereit oder nur kommissioniert?',
         }),
+        noLinks: [noLink({ id: 'nlk_01A', handle: 'agent:claude code', reason: 'nein' })],
       }),
       relation({
         id: 'rel_01CALLDUP',
         type: 'call',
+        tier: 'key',
         from: 'einkauf/anforderung#Call_Freigabe',
         to: 'einkauf/archiv/freigabe-2019#Process_Freigabe',
         confidence: 0.5,
         attrs: { match: 'duplicate-process-id', calledElement: 'Process_Freigabe' },
       }),
     ];
-    const { calls, user } = setup(undefined, agentPairs);
+    const { calls, user } = await setup(undefined, agentPairs);
     await screen.findByRole('dialog');
-    expect(screen.getByTestId('bulk-summary').textContent).toBe('1 von 3 ausgewählt · 2 markiert');
-
-    const question = row('rel_01WARE');
-    expect(question.dataset['flagged']).toBe('true');
-    const [asked] = within(question).getAllByTestId('generic-flag');
-    expect(asked!.dataset['flag']).toBe('agent-question');
-    expect(asked!.textContent).toContain(
-      'Der Agent fragt nach: „Ist die Ware hier wirklich versandbereit oder nur kommissioniert?“',
+    expect(screen.getByTestId('bulk-summary').textContent).toBe('1 von 1 ausgewählt');
+    expect(within(row('rel_01WARE')).getByTestId('generic-flag').textContent).toBe(
+      'Frage des Agenten · Einwand',
     );
-    expect(within(question).getByRole('checkbox').getAttribute('aria-checked')).toBe('false');
-
-    const call = row('rel_01CALLDUP');
-    expect(call.dataset['flagged']).toBe('true');
-    const [ambiguous] = within(call).getAllByTestId('generic-flag');
-    expect(ambiguous!.dataset['flag']).toBe('ambiguous-target');
-    expect(ambiguous!.textContent).toContain('„Process_Freigabe“ ist mehrfach definiert');
-
+    expect(within(row('rel_01CALLDUP')).getByTestId('generic-flag').textContent).toBe(
+      'Ziel mehrdeutig',
+    );
     await user.click(screen.getByRole('button', { name: '1 annehmen' }));
     await findToast('1 Relation angenommen');
     expect((bodies(calls)[0] as BulkDecisionBody).items).toEqual([
@@ -389,41 +301,12 @@ describe('BulkAcceptDialog', () => {
     ]);
   });
 
-  it('flags every agent no-link on a pair and leaves it unchecked', async () => {
-    const long = `near-miss: ${'Die Ware ist kommissioniert, aber nicht versandbereit; '.repeat(5)}Ende.`;
-    const objected = [
+  it('lists only the key tier’s open proposals (owner decision 26 (6))', () => {
+    const mixed = [
       pairs[0]!,
-      relation({
-        ...pairs[2]!,
-        noLinks: [
-          noLink({ id: 'nlk_01A', handle: 'agent:claude code', reason: long }),
-          noLink({ id: 'nlk_02B', handle: 'agent:codex', reason: '<b>kein</b> HTML' }),
-        ],
-      }),
+      relation({ ...pairs[2]!, id: 'rel_01LEX', tier: 'lexical', confidence: 0.65 }),
+      relation({ ...pairs[1]!, id: 'rel_01DONE', status: 'accepted' }),
     ];
-    const { calls, user } = setup(undefined, objected);
-    await screen.findByRole('dialog');
-    expect(screen.getByRole('dialog').textContent).toContain(
-      'Paare ohne Zusammenhang laut einem Agenten',
-    );
-    expect(screen.getByTestId('bulk-summary').textContent).toBe('1 von 2 ausgewählt · 1 markiert');
-
-    const ware = row('rel_01WARE');
-    expect(ware.dataset['flagged']).toBe('true');
-    expect(within(ware).getByRole('checkbox').getAttribute('aria-checked')).toBe('false');
-    const flags = within(ware).getAllByTestId('generic-flag');
-    expect(flags.map((f) => f.dataset['flag'])).toEqual(['agent-no-link', 'agent-no-link']);
-    expect(flags[0]!.textContent).toMatch(
-      /^agent:claude code sieht keinen Zusammenhang: „near-miss: Die Ware .*…“$/,
-    );
-    expect(flags[0]!.textContent.length).toBeLessThan(220);
-    expect(flags[1]!.textContent).toBe('agent:codex sieht keinen Zusammenhang: „<b>kein</b> HTML“');
-    expect(ware.querySelector('b')).toBeNull();
-
-    await user.click(screen.getByRole('button', { name: '1 annehmen' }));
-    await findToast('1 Relation angenommen');
-    expect((bodies(calls)[0] as BulkDecisionBody).items).toEqual([
-      { id: 'rel_01RECHNUNG', version: 2 },
-    ]);
+    expect(bulkRows(mixed, resolve, usage).map((r) => r.relation.id)).toEqual(['rel_01RECHNUNG']);
   });
 });

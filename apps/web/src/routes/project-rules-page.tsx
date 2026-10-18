@@ -1,14 +1,14 @@
 import type { AutoAcceptRule } from '@analyzr/client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { PlusIcon, WandSparklesIcon } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { ErrorText } from '@/components/error-text';
 import { AgentRevoke } from '@/components/rules/agent-revoke';
 import { ApplyDialog } from '@/components/rules/apply-dialog';
 import { PreviewDialog } from '@/components/rules/preview-dialog';
 import { RevokeDialog } from '@/components/rules/revoke-dialog';
-import { RuleDialog } from '@/components/rules/rule-dialog';
+import { RuleDialog, type RuleDraft } from '@/components/rules/rule-dialog';
 import { RuleHistoryDialog } from '@/components/rules/rule-history';
 import { ReadOnlyNotice } from '@/components/read-only-notice';
 import { RuleTable } from '@/components/rules/rule-table';
@@ -43,10 +43,13 @@ import { autoAcceptApplyDryRunQuery } from '@/lib/auto-accept-queries';
 import { projectRulesRoute } from './project-rules';
 
 type Open =
-  | { kind: 'create' }
+  | { kind: 'create'; draft?: RuleDraft }
   | { kind: 'edit' | 'preview' | 'apply' | 'revoke' | 'history'; rule: AutoAcceptRule }
   | { kind: 'offer-apply'; rule: AutoAcceptRule; count: number }
   | null;
+
+/** „Gleicher Name ab 100 %“: the rule a bulk accept of the key tier offers (UX5). */
+const KEY_RULE_DRAFT: RuleDraft = { name: 'Gleicher Name ab 100 %', tier: 'key', percent: '100' };
 
 /**
  * The tab „Regeln“ (owner decision 19): the built-in system rule of decision
@@ -64,7 +67,15 @@ export function RulesPage() {
   const rules = useQuery({ ...autoAcceptRulesQuery(project), enabled: owner });
   const tokens = useQuery({ ...agentTokensQuery(project), enabled: owner });
   const autoIndex = useAutoAcceptIndex(project);
-  const [open, setOpen] = useState<Open>(null);
+  const search = projectRulesRoute.useSearch();
+  const navigate = projectRulesRoute.useNavigate();
+  // `?new=key` (after a bulk accept of „Gleicher Name“): the new rule prefilled, the URL cleaned.
+  const [open, setOpen] = useState<Open>(() =>
+    search.new === 'key' ? { kind: 'create', draft: KEY_RULE_DRAFT } : null,
+  );
+  useEffect(() => {
+    if (search.new) void navigate({ search: {}, replace: true });
+  }, [search.new, navigate]);
   /** Closes the dialog of `kinds` only: a dialog that closes as another opens leaves that one. */
   const closer =
     (...kinds: NonNullable<Open>['kind'][]) =>
@@ -163,6 +174,7 @@ export function RulesPage() {
       <RuleDialog
         project={project}
         rule={open?.kind === 'edit' ? open.rule : null}
+        draft={open?.kind === 'create' ? open.draft : undefined}
         tokens={tokens.data ?? []}
         open={open?.kind === 'create' || open?.kind === 'edit'}
         onOpenChange={closer('create', 'edit')}

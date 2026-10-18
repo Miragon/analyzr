@@ -101,6 +101,8 @@ const BUDGET = 40 * 1024;
  * 220.7 KB after UX4: the root's host for „Agent starten“ from a toast and
  * the rule that joins a link and its amendment into one card entry; the
  * pickers, the inline dry run and the removal of „Sammeln“ are lazy.
+ * 221.3 KB after UX5 step 1: the views of „Relationen“, the queue's rows and
+ * status line, the key tier's bulk dialog and the shared pipeline state.
  */
 const ENTRY_CEILING = 240 * 1024;
 

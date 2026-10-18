@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { ConnectAgent } from '../src/components/connect-agent';
 import { AgentRevoke } from '../src/components/rules/agent-revoke';
 import { RelationsView } from '../src/components/relation-table';
-import { QueueTable } from '../src/components/review/queue-table';
+import { QueueList } from '../src/components/review/queue-table';
 import { AssertionTimeline } from '../src/components/review/timeline';
 import { AutoAcceptProvenance } from '../src/components/rules/auto-accept-provenance';
 import { PlacementCard } from '../src/components/value-chain/placement-card';
@@ -49,18 +49,18 @@ const index = indexLedger([
 ]);
 
 describe('marks in the relation views', () => {
-  it('Relations tab: the mark, the preset and the rule filter (reviewers)', async () => {
+  it('Relations tab: the mark and the rule filter (reviewers; the view „Automatisch angenommen“ since UX5)', async () => {
     const relations = sampleRelations.map((r) =>
       r.id === MESSAGE.id ? { ...r, status: 'accepted' as const } : r,
     );
-    let filters: RelationFilters = {};
+    const filters: RelationFilters = {};
     const { rerender } = await renderWithRouter(
       <RelationsView
         relations={relations}
         resolve={sampleResolver}
         modelKeys={[]}
         filters={filters}
-        onFiltersChange={(next) => (filters = next)}
+        onFiltersChange={() => undefined}
         autoIndex={index}
         autoRules={[{ id: RULE_ID, name: 'Schlüssel ab 95 %' }]}
       />,
@@ -71,9 +71,6 @@ describe('marks in the relation views', () => {
     expect(within(row!).getByTestId('auto-accept-mark').textContent).toBe(
       'Automatisch angenommen – Regel „Schlüssel ab 95 %“',
     );
-    const preset = screen.getByRole('button', { name: /Automatisch angenommen 1/ });
-    await userEvent.setup().click(preset);
-    expect(filters).toEqual({ auto: 'any' });
     const select = screen.getByLabelText('Annahmeregel');
     expect(
       within(select)
@@ -121,7 +118,7 @@ describe('marks in the relation views', () => {
 
   it('queue rows of revoked acceptances say „widerrufen“', async () => {
     await renderWithRouter(
-      <QueueTable
+      <QueueList
         project="demo"
         items={[
           { relation: SIGNAL, finishes: 0 },
@@ -229,7 +226,7 @@ describe('provenance and single-item revoke', () => {
     const box = screen.getByTestId('auto-accept-provenance');
     expect(box.textContent).toContain('Automatisch angenommen – Regel „Schlüssel ab 95 %“');
     expect(box.textContent).toContain(
-      'Entschieden durch Regel „Schlüssel ab 95 %“ (Revision 2), aktiviert von owner; ausgelöst von agent:claude code mit 0,97 (Schlüssel)',
+      'Entschieden durch Regel „Schlüssel ab 95 %“ (Revision 2), aktiviert von owner; ausgelöst von agent:claude code mit 0,97 (Gleicher Name)',
     );
     const user = userEvent.setup();
     await user.click(screen.getByTestId('revoke-one'));
