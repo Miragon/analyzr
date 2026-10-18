@@ -6,6 +6,7 @@
  * Pure.
  */
 import {
+  OUTSIDE_STEP,
   parseRef,
   type FindingKind,
   type OpenQuestionKind,
@@ -24,6 +25,7 @@ import type {
 } from '../ports.ts';
 import { currentStances, decisionsInForce } from '../status.ts';
 import { placementBasisOf } from '../value-chain/placement-state.ts';
+import { descendantsOf, linkTarget } from '../value-chain/structure.ts';
 import { basisOf } from '../views.ts';
 import type { Draft, OpenQuestionIndex } from './model.ts';
 
@@ -44,7 +46,10 @@ const FINDING_KINDS: Readonly<Record<FindingKind, OpenQuestionKind>> = {
  * The rule tier's findings (`visibleFindings`): one question each, versioned
  * by what it asks about (M6 §4.2, S5c-1): the facts at its refs (the call,
  * the endpoint, the copies of a duplicated process id with their process
- * facts), so a change elsewhere in the model keeps the id.
+ * facts), so a change elsewhere in the model keeps the id. The question is
+ * short and names the element; the reason is the read model's own plain
+ * German (UX2a), never the finding's `detail`, which is part of the claim
+ * input and speaks of `calledElement` and refs.
  */
 export function findingQuestions(ix: OpenQuestionIndex): Draft[] {
   return ix.input.findings.map((f): Draft => {
@@ -63,46 +68,95 @@ export function findingQuestions(ix: OpenQuestionIndex): Draft[] {
     switch (f.kind) {
       case 'duplicate-process-id': {
         const id = parseRef(first).elementId;
+        const name = quoteDe(ix.processName(first));
+        const keys = sorted(f.refs.map((r) => ix.modelOf(r)));
         return {
           ...base,
           subject: { type: 'process', id: first },
-          subjectLabel: `Prozess-ID ${quoteDe(id)}`,
-          text: `Welcher Prozess mit der ID ${quoteDe(id)} gilt, und sind die anderen Kopien, Varianten oder veraltet? ${f.detail}`,
+          subjectLabel: name,
+          text: `Welche Kopie von ${name} gilt?`,
+          detail:
+            `Die Prozess-ID ${quoteDe(id)} steht in ${keys.length} Modellen (${keys.join(', ')}); ` +
+            'Aufrufe darauf sind mehrdeutig.',
           anchors: { processes: f.refs },
         };
       }
       case 'unresolved-call':
       case 'dynamic-call': {
-        const runtime = f.kind === 'dynamic-call' ? ' zur Laufzeit' : '';
+        const name = quoteDe(ix.elementName(first));
+        const target = ix.factsAt(first).find((x) => x.kind === 'call')?.keyRaw ?? '';
         return {
           ...base,
           subject: { type: 'ref', id: first },
-          subjectLabel: quoteDe(ix.elementName(first)),
-          text: `Welchen Prozess ruft ${ix.elementInProcess(first)}${runtime} auf? ${f.detail}`,
+          subjectLabel: name,
+          text:
+            f.kind === 'dynamic-call'
+              ? `Welche Prozesse kann ${name} aufrufen?`
+              : `Welchen Prozess ruft ${name} auf?`,
+          detail:
+            f.kind === 'dynamic-call'
+              ? `Das Ziel ist der Ausdruck ${quoteDe(target)}; welcher Prozess gemeint ist, ` +
+                'wird erst beim Ausführen bestimmt.'
+              : target.trim() === ''
+                ? 'Im Modell ist kein Ziel eingetragen.'
+                : `Das eingetragene Ziel ${quoteDe(target)} gibt es in keinem Modell.`,
           anchors: { refs: [first] },
         };
       }
       case 'dangling-throw':
       case 'unmatched-catch': {
-        const at = ix.elementInProcess(first);
+        const name = quoteDe(ix.elementName(first));
         const throws = f.kind === 'dangling-throw';
-        const question = isSignalFinding(ix, first, f.detail)
+        const signal = isSignalFinding(ix, first, f.detail);
+        const question = signal
           ? throws
-            ? `Wer fängt das Signal, das ${at} wirft?`
-            : `Wer wirft das Signal, das ${at} fängt?`
+            ? `Wer fängt das Signal, das ${name} wirft?`
+            : `Wer wirft das Signal, das ${name} fängt?`
           : throws
-            ? `Wer empfängt, was ${at} sendet?`
-            : `Wer sendet, was ${at} empfängt?`;
+            ? `Wer empfängt, was ${name} sendet?`
+            : `Wer sendet, was ${name} empfängt?`;
         return {
           ...base,
           subject: { type: 'ref', id: first },
-          subjectLabel: quoteDe(ix.elementName(first)),
-          text: `${question} ${f.detail}`,
+          subjectLabel: name,
+          text: question,
+          detail: partnerDetail(ix, first, signal, throws),
           anchors: { refs: [first] },
         };
       }
     }
   });
+}
+
+/**
+ * Why a message or signal endpoint asks for its partner, in plain German:
+ * the name nothing else in the landscape sends or catches, or the missing
+ * name; and that no message flow in its file reaches a partner.
+ */
+function partnerDetail(
+  ix: OpenQuestionIndex,
+  ref: string,
+  signal: boolean,
+  throws: boolean,
+): string {
+  const ep = ix
+    .factsAt(ref)
+    .find((x) =>
+      signal ? x.kind === 'sig_throw' || x.kind === 'sig_catch' : /^msg_/.test(x.kind),
+    );
+  const name = signal ? ep?.attrs.signalName : ep?.attrs.messageName;
+  if (signal) {
+    return name === undefined
+      ? 'Das Signal hat keinen Namen, über den ein anderer Prozess es finden könnte.'
+      : `Kein anderer Prozess der Landschaft ${throws ? 'fängt' : 'wirft'} das Signal ${quoteDe(name)}.`;
+  }
+  const flow = throws
+    ? 'kein Nachrichtenfluss führt zu einem Partner'
+    : 'kein Nachrichtenfluss kommt von einem Partner';
+  return name === undefined
+    ? `Die Nachricht hat keinen Namen, und ${flow}.`
+    : `Kein anderer Prozess der Landschaft ${throws ? 'empfängt' : 'sendet'} die Nachricht ` +
+        `${quoteDe(name)}, und ${flow}.`;
 }
 
 /**
@@ -124,7 +178,12 @@ function isSignalFinding(ix: OpenQuestionIndex, ref: string, detail: string): bo
  * it asks about (`process-without-step`: the process fact, since S5c-1; a
  * step finding: the step's fingerprint, with the link). A process whose
  * placement is held asks nothing here (M6 §4.8 a): the hold's own item asks
- * it, one question per process.
+ * it, one question per process (since UX2a also for an agent's question on
+ * one of its placements and an unsure verdict: `oneQuestionPerProcess` in
+ * the read model). `proposed` marks the items the chain decides (UX2a:
+ * group `proposal`): a process with a proposed placement, a step with one on
+ * it or below it. The reasons are plain German with step names (the chain
+ * finding's `detail` names step ids and refs).
  */
 export function chainFindingQuestions(ix: OpenQuestionIndex): Draft[] {
   const chain = ix.input.chain;
@@ -133,15 +192,31 @@ export function chainFindingQuestions(ix: OpenQuestionIndex): Draft[] {
     if (f.kind === 'process-without-step') {
       if (f.process === null || f.state === 'held') return [];
       const model = ix.modelOf(f.process);
+      const name = quoteDe(ix.processName(f.process));
+      const proposed = proposedPlacementsOf(ix, { process: f.process });
+      const callers = [
+        ...new Set(f.calledFrom.map((c) => c.elementId).filter((id) => id !== OUTSIDE_STEP)),
+      ]
+        .sort(byCodePoint)
+        .map((id) => ix.stepName(id));
       return [
         {
           kind: 'process-without-step',
           source: 'value-chain-finding',
           subject: { type: 'process', id: f.process },
-          subjectLabel: quoteDe(ix.processName(f.process)),
+          subjectLabel: name,
           version: ix.factVersion([f.process]),
           modelKeys: [model],
-          text: `Zu welchem Schritt der Wertschöpfungskette gehört ${quoteDe(ix.processName(f.process))}? ${f.detail}`,
+          text: `Auf welchen Schritt der Wertschöpfungskette gehört ${name}?`,
+          detail:
+            (proposed.length > 0
+              ? proposed.length === 1
+                ? 'Ein Vorschlag wartet auf der Wertschöpfungskette auf Prüfung.'
+                : `${proposed.length} Vorschläge warten auf der Wertschöpfungskette auf Prüfung.`
+              : 'Der Prozess ist noch auf keinem Schritt platziert.') +
+            (callers.length > 0
+              ? ` Prozesse, die ihn aufrufen, stehen auf ${callers.join(', ')}.`
+              : ''),
           refs: [f.process],
           raisedBy: {
             sourceKind: 'rule',
@@ -149,6 +224,7 @@ export function chainFindingQuestions(ix: OpenQuestionIndex): Draft[] {
             seq: Math.max(chain.headSeq, ix.headSeq([model])),
           },
           anchors: { processes: [f.process] },
+          proposed: proposed.length > 0,
         },
       ];
     }
@@ -165,24 +241,80 @@ export function chainFindingQuestions(ix: OpenQuestionIndex): Draft[] {
       raisedBy: { sourceKind: 'rule' as const, handle: null, seq: chain.headSeq },
       anchors: { steps: [f.elementId] },
     };
-    return f.kind === 'step-without-process'
-      ? [
-          {
-            ...common,
-            kind: 'step-without-process',
-            version: fingerprint,
-            text: `Welche Prozesse gehören zu ${stepName}? ${f.detail}`,
-          },
-        ]
-      : [
-          {
-            ...common,
-            kind: 'unresolved-link',
-            version: `${fingerprint}|${f.link ?? ''}`,
-            text: `Auf welchen Prozess soll der Link von ${stepName} zeigen? ${f.detail}`,
-          },
-        ];
+    if (f.kind === 'step-without-process') {
+      const below = (step?.childIds.length ?? 0) > 0;
+      const proposed = proposedPlacementsOf(ix, { step: f.elementId, below: true });
+      return [
+        {
+          ...common,
+          kind: 'step-without-process',
+          version: fingerprint,
+          text: `Welche Prozesse gehören zu ${stepName}?`,
+          detail:
+            (below
+              ? 'Auf dem Schritt und seinen Unterschritten ist noch kein Prozess platziert.'
+              : 'Auf dem Schritt ist noch kein Prozess platziert.') +
+            (proposed.length === 0
+              ? ''
+              : proposed.length === 1
+                ? ' Ein Vorschlag wartet auf Prüfung.'
+                : ` ${proposed.length} Vorschläge warten auf Prüfung.`),
+          proposed: proposed.length > 0,
+        },
+      ];
+    }
+    return [
+      {
+        ...common,
+        kind: 'unresolved-link',
+        version: `${fingerprint}|${f.link ?? ''}`,
+        text: `Auf welchen Prozess soll der Link von ${stepName} zeigen?`,
+        detail: unresolvedLinkDetail(ix, f.link),
+      },
+    ];
   });
+}
+
+/** Why a step's link resolves to nothing, in plain German (no refs). */
+function unresolvedLinkDetail(ix: OpenQuestionIndex, link: string | null): string {
+  const target = linkTarget(link, new Set(ix.processes.keys()));
+  if (target.kind === 'process' && target.process !== null) {
+    return 'Der verlinkte Prozess ist in keinem aktuellen Modell enthalten.';
+  }
+  if (target.kind === 'process') return 'Der Link nennt keinen Prozess.';
+  return 'Der Link ist weder ein Prozess in analyzr noch eine Webadresse.';
+}
+
+/**
+ * The proposed placements of the live chain that can still progress (on the
+ * live generation of their step, with a live process): of a process, or on
+ * a step (with `below`, also on its sub-steps at every level), sorted by
+ * step and process. The `proposal` items and their „Auf der Kette prüfen“
+ * read them (UX2a).
+ */
+export function proposedPlacementsOf(
+  ix: OpenQuestionIndex,
+  match: { process?: string; step?: string; below?: boolean },
+): PlacementRecord[] {
+  const chain = ix.input.chain;
+  if (!chain) return [];
+  const steps =
+    match.step === undefined
+      ? undefined
+      : new Set([
+          match.step,
+          ...(match.below === true ? descendantsOf(chain.structure, match.step) : []),
+        ]);
+  return livePlacements(ix)
+    .filter(
+      (p) =>
+        p.status === 'proposed' &&
+        (match.process === undefined || p.processRef === match.process) &&
+        (steps === undefined || steps.has(p.elementId)),
+    )
+    .sort(
+      (a, b) => byCodePoint(a.elementId, b.elementId) || byCodePoint(a.processRef, b.processRef),
+    );
 }
 
 /** The raiser of a human or agent assertion. */
@@ -326,7 +458,10 @@ export function agentQuestions(ix: OpenQuestionIndex): Draft[] {
   return out;
 }
 
-/** The agent's current unsure verdicts on open processes (M4 §3.2). */
+/**
+ * The agent's current unsure verdicts on open processes (M4 §3.2): the
+ * question from code, the agent's reason verbatim as the detail (UX2a).
+ */
 export function unsureQuestions(ix: OpenQuestionIndex): Draft[] {
   return (ix.input.chain?.unsure ?? []).map((u) => ({
     kind: 'placement-unsure',
@@ -335,7 +470,8 @@ export function unsureQuestions(ix: OpenQuestionIndex): Draft[] {
     subjectLabel: quoteDe(ix.processName(u.process)),
     version: u.inputHash,
     modelKeys: [ix.modelOf(u.process)],
-    text: u.reason,
+    text: `Auf welchen Schritt der Wertschöpfungskette gehört ${quoteDe(ix.processName(u.process))}?`,
+    detail: u.reason,
     refs: [u.process],
     raisedBy: { sourceKind: 'agent', handle: u.handle, seq: u.seq },
     anchors: { processes: [u.process] },
@@ -363,11 +499,13 @@ export function noLinkCode(reason: string): string | null {
  * "nothing connects" and "information missing", so it stays out), one
  * question per kind and subject: the call of a `call-target` no-link, and
  * for `collaboration` the end with a message flow in its own file (else the
- * `from` end). The text lists the distinct reasons verbatim. Versioned by
+ * `from` end). The question is from code, the distinct reasons verbatim are
+ * the detail (UX2a). Versioned by
  * the subject's facts, not the no-link ids (M6 §4.2, S5c-1), so a
  * re-judgement that stores new no-links with the same code keeps the item
  * (and its outside mark); the prefix keeps a no-link `call-target-unknown`
- * apart from the finding on the same call.
+ * apart from the finding on the same call, which it joins in the read model
+ * (`mergeCodedNoLinks`, as an `external-partner` joins its pool's item).
  */
 export function noLinkQuestions(ix: OpenQuestionIndex): Draft[] {
   const flowEnds = new Set<string>();
@@ -396,14 +534,19 @@ export function noLinkQuestions(ix: OpenQuestionIndex): Draft[] {
   }
   return [...groups.values()].map(({ kind, subject, items }): Draft => {
     const refs = sorted(items.flatMap((n) => [n.fromRef, n.toRef]));
+    const name = quoteDe(ix.elementName(subject));
     return {
       kind,
       source: 'no-link',
       subject: { type: 'ref', id: subject },
-      subjectLabel: quoteDe(ix.elementName(subject)),
+      subjectLabel: name,
       version: `no-link|${ix.factVersion([subject])}`,
       modelKeys: refs.map((r) => ix.modelOf(r)),
-      text: sorted(items.map((n) => n.reason.trim())).join('\n'),
+      text:
+        kind === 'call-target-unknown'
+          ? `Welchen Prozess ruft ${name} auf?`
+          : `Ist der Partner von ${name} extern, oder fehlt sein Modell?`,
+      detail: sorted(items.map((n) => n.reason.trim())).join('\n'),
       refs,
       raisedBy: {
         sourceKind: 'agent',
@@ -457,7 +600,7 @@ export function openUncoveredPairs(ix: OpenQuestionIndex, modelKey: string): Typ
 }
 
 /**
- * The summaries of current submissions (decision 24.9: shown read-only) and
+ * The summaries of current submissions (decision 24.8: shown read-only) and
  * the assigned pairs a current relations submission left unjudged that still
  * have no current judgement or settling decision.
  */
@@ -481,7 +624,7 @@ export function submissionQuestions(ix: OpenQuestionIndex): Draft[] {
         text: s.summary.trim(),
         refs: [],
         raisedBy,
-        // Informational: read-only (decision 24.9), it asks nothing itself and ranks last;
+        // Informational: read-only (decision 24.8), it asks nothing itself and ranks last;
         // it counts the open decisions of the model or the chain it sums up.
         anchors: relations ? { models: [s.subject] } : { chain: true },
       });
@@ -503,8 +646,9 @@ export function submissionQuestions(ix: OpenQuestionIndex): Draft[] {
       subjectLabel: ix.modelName(s.subject),
       version: s.submissionId,
       modelKeys: refs.map((r) => ix.modelOf(r)).concat(s.subject),
-      text:
-        `Gehören diese Paare zusammen? Die Analyse von ${ix.modelName(s.subject)} hat ` +
+      text: open.length === 1 ? 'Gehört dieses Paar zusammen?' : 'Gehören diese Paare zusammen?',
+      detail:
+        `Die Analyse von ${ix.modelName(s.subject)} hat ` +
         `${open.length === 1 ? 'ein zugewiesenes Paar' : `${open.length} zugewiesene Paare`} ` +
         `ohne Urteil gelassen, und noch kein Agent hat ${open.length === 1 ? 'es' : 'sie'} bewertet: ` +
         `${listed.join('; ')}${more}.` +

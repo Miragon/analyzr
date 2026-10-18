@@ -16,12 +16,20 @@
  *   the answers in both exports, and the check of a filled-in sheet.
  * Synthetic models only besides the dev landscape.
  */
+import { readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import {
+  CONTACT_COLUMNS,
   OPEN_QUESTION_CSV_COLUMNS,
+  OPEN_QUESTION_GROUP_LABELS,
   OPEN_QUESTION_KIND_LABELS,
   OpenQuestion,
+  OpenQuestionGroup,
+  OpenQuestionKind,
+  OpenQuestionPage,
+  OpenQuestionSource,
   isInformationalKind,
   readAnswerSheet,
   type OpenQuestionAnswerId,
@@ -33,8 +41,10 @@ import { describe, expect, it } from 'vitest';
 import { decodeCursor } from '../../src/domain/cursor.ts';
 import {
   CSV_BOM,
+  detailText,
   escapeMarkdown,
   exportFilename,
+  formatDateDe,
   parseOpenQuestionsCsv,
   protectCell,
   renderOpenQuestionsCsv,
@@ -45,13 +55,19 @@ import type { Actor } from '../../src/domain/actor.ts';
 import { DomainError } from '../../src/domain/errors.ts';
 import { checkSheet, sameAnswer } from '../../src/domain/open-questions/answers.ts';
 import {
+  OPEN_QUESTION_GROUP_RULES,
   POSITION_SHAPE,
+  groupOf,
   rankGroup,
   type OpenQuestionInput,
 } from '../../src/domain/open-questions/model.ts';
 import {
+  askByModel,
+  buildOpenQuestions,
   filterOpenQuestions,
+  groupTotals,
   kindCounts,
+  openQuestionPage,
   openQuestions,
   pageOpenQuestions,
   signalCounts,
@@ -108,6 +124,8 @@ import {
 } from '../support/open-questions-synthetic.ts';
 
 const ID = /^q-[0-9a-f]{16}$/;
+/** The UI load guard's id regex (UX-SIMPLIFICATION §7): no id, seq or ref in visible text. */
+const ID_IN_TEXT = /rel_|plc_|agt_|mam_|oqa_|q-[0-9a-f]{16}|sid-|Stand s\d|Ereignis \d/;
 
 // ------------------------------------------------------------ nordwind-handel
 
@@ -145,24 +163,43 @@ describe('nordwind-handel as imported', () => {
       askWho: { lanes: [], stepOwners: [], folder: 'vertrieb' },
       raisedBy: { sourceKind: 'rule', handle: null },
     });
-    expect(call?.text).toBe(
-      'Welchen Prozess ruft „Run fraud check“ in „Order handling“ auf? calledElement ' +
-        '„Process_FraudCheck“ passt zu keiner Prozess-ID im Projekt.',
-    );
+    // UX2a: the question first, the reason apart and in plain German (no calledElement).
+    expect(call).toMatchObject({
+      group: 'ask',
+      text: 'Welchen Prozess ruft „Run fraud check“ auf?',
+      detail: 'Das eingetragene Ziel „Process_FraudCheck“ gibt es in keinem Modell.',
+    });
     const duplicate = items.find((q) => q.kind === 'duplicate-process-id');
     expect(duplicate?.modelKeys).toEqual([
       'einkauf/archiv/bestellfreigabe-2019',
       'einkauf/bestellfreigabe',
     ]);
+    expect(duplicate).toMatchObject({
+      subjectLabel: '„Bestellfreigabe“',
+      text: 'Welche Kopie von „Bestellfreigabe“ gilt?',
+      detail:
+        'Die Prozess-ID „Process_Bestellfreigabe“ steht in 2 Modellen ' +
+        '(einkauf/archiv/bestellfreigabe-2019, einkauf/bestellfreigabe); Aufrufe darauf sind ' +
+        'mehrdeutig.',
+    });
+    // A pool without a process: named by the pool it talks to, never by its id.
     const pool = items.find((q) => q.subject.id === 'logistik/shipping#Participant_Carrier');
-    expect(pool?.subjectLabel).toBe('„Participant_Carrier“');
+    expect(pool?.subjectLabel).toBe('Pool in „Nordwind Logistics – Parcel shipping“');
     expect(pool?.text).toBe(
-      'Ist „Participant_Carrier“ in logistik/shipping ein externer Partner, oder fehlt das ' +
-        'Modell seines Prozesses? „Participant_Carrier“ gehört zu keinem Prozess des Modells, ' +
-        'ist also vermutlich ein Pool ohne Prozess. Nachrichtenflüsse: „Pickup scan“ an „Await ' +
-        'pickup scan“; „Proof of delivery“ an „Await proof of delivery“; „Shipping order“ von ' +
-        '„Transmit shipping order to carrier“.',
+      'Externer Partner oder fehlendes Modell? Nachrichten: „Pickup scan“, „Proof of delivery“, ' +
+        '„Shipping order“.',
     );
+    expect(pool?.detail).toBe(
+      'Der Pool hat im Modell keinen Prozess: ein externer Partner, oder ein Prozess, dessen ' +
+        'Modell fehlt. Nachrichtenflüsse: „Pickup scan“ an „Await pickup scan“; „Proof of ' +
+        'delivery“ an „Await proof of delivery“; „Shipping order“ von „Transmit shipping order ' +
+        'to carrier“.',
+    );
+    // Every item of a project as imported asks something (no agent, no chain yet).
+    expect(new Set(items.map((q) => q.group))).toEqual(new Set(['ask']));
+    for (const q of items.filter((x) => x.kind === 'black-box-partner')) {
+      expect(q.subjectLabel).toMatch(/^Pool in „[^_]+“$/);
+    }
   });
 
   it('versions items by what they ask about, not by the whole model (S5c-1)', async () => {
@@ -267,19 +304,20 @@ describe('the gap signals', () => {
 
 describe('every source of §4.1 on a synthetic landscape', () => {
   it('maps each source with its kind, subject, text and raiser', async () => {
-    const items = openQuestions(await synthetic());
+    const input = await synthetic();
+    const items = openQuestions(input);
     for (const q of items) expect(OpenQuestion.parse(q)).toEqual(q);
     expect(kindCounts(items)).toEqual({
-      'call-target-unknown': 2,
+      // The coded no-links join the finding on their call and the bank's pool (UX2b review).
+      'call-target-unknown': 1,
       'message-partner-missing': 1,
       held: 2,
       'agent-question': 2,
       'placement-unsure': 1,
-      // Rechnungsstellung's placement is held: its hold asks it, one question per process.
-      'process-without-step': 1,
+      // One question per process: Rechnungsstellung's placement is held (its hold asks it),
+      // and an agent asks about Notizen's proposed placement (UX2a).
       'step-without-process': 2,
       'unresolved-link': 1,
-      'external-partner': 1,
       'summary-note': 2,
       unjudged: 1,
       'black-box-partner': 1,
@@ -302,24 +340,33 @@ describe('every source of §4.1 on a synthetic landscape', () => {
     const finding = one('call-target-unknown', 'finding');
     expect(finding).toMatchObject({
       subject: { type: 'ref', id: CALL },
-      text: 'Welchen Prozess ruft „Bonität prüfen“ in „Auftragsabwicklung“ auf? calledElement „P_Bonitaet“ passt zu keiner Prozess-ID im Projekt.',
+      group: 'ask',
+      text: 'Welchen Prozess ruft „Bonität prüfen“ auf?',
+      // The agent's coded no-links about the call, attributed, after the reason from code.
+      detail:
+        'Das eingetragene Ziel „P_Bonitaet“ gibt es in keinem Modell.\n' +
+        'Laut Agent: call-target: „Notizen“ prüft keine Bonität.\n' +
+        'Laut Agent: call-target: „Rechnungsstellung“ ist kein Prüfprozess.',
       askWho: {
         lanes: ['Vertriebsinnendienst'],
         stepOwners: ['Vertrieb & Service'],
         folder: 'vertrieb',
       },
     });
-    expect(one('message-partner-missing', 'finding').text).toBe(
-      'Wer empfängt, was „Auftrag storniert“ in „Auftragsabwicklung“ sendet? Nachricht ' +
-        '„AuftragStorniert“ wird geworfen, aber von keinem anderen Prozess gefangen und ' +
-        'erreicht per Nachrichtenfluss keinen Teilnehmer.',
-    );
+    expect(one('message-partner-missing', 'finding')).toMatchObject({
+      text: 'Wer empfängt, was „Auftrag storniert“ sendet?',
+      detail:
+        'Kein anderer Prozess der Landschaft empfängt die Nachricht „AuftragStorniert“, und ' +
+        'kein Nachrichtenfluss führt zu einem Partner.',
+    });
 
     const heldRelation = items.find((q) => q.kind === 'held' && q.subject.type === 'relation');
     expect(heldRelation).toMatchObject({
       source: 'hold',
+      group: 'ask',
       subjectLabel: '„Rechnung anfordern“ → „Rechnung angefordert“',
       text: '=Kommt die Anforderung immer als Nachricht?',
+      detail: null,
       context: 'Mit Finanzen klären, ob die Anforderung als Nachricht kommt.',
       label: 'mit Fachbereich Finanzen klären',
       modelKeys: ['finanzen/rechnung', 'vertrieb/auftrag'],
@@ -341,6 +388,8 @@ describe('every source of §4.1 on a synthetic landscape', () => {
     );
     expect(relationQuestion).toMatchObject({
       subject: { type: 'relation', id: relationId(90) },
+      group: 'agent',
+      detail: null,
       text: 'Prüft „Rechnungsstellung“ (finanzen/rechnung) die Bonität für „Bonität prüfen“?',
       raisedBy: { sourceKind: 'agent', handle: 'agent:claude', seq: 60 },
     });
@@ -351,42 +400,62 @@ describe('every source of §4.1 on a synthetic landscape', () => {
       subjectLabel: '„Notizen“ auf „Ablage“',
     });
 
+    // The question from code, the agent's reason verbatim as the detail (UX2a).
     expect(one('placement-unsure', 'unsure')).toMatchObject({
       subject: { type: 'process', id: R },
-      text: 'Kein Schritt passt eindeutig.',
+      group: 'ask',
+      text: 'Auf welchen Schritt der Wertschöpfungskette gehört „Rechnungsstellung“?',
+      detail: 'Kein Schritt passt eindeutig.',
       raisedBy: { sourceKind: 'agent', handle: 'agent:sim', seq: 70 },
     });
 
-    expect(one('process-without-step', 'value-chain-finding', N).text).toMatch(
-      /^Zu welchem Schritt der Wertschöpfungskette gehört „Notizen“\? Keine angenommene Platzierung/,
-    );
+    // „Notizen“ has an agent's question on its proposed placement: one question per
+    // process, so no process-without-step item (UX2a, `oneQuestionPerProcess`).
+    expect(items.some((q) => q.kind === 'process-without-step')).toBe(false);
     expect(one('step-without-process', 'value-chain-finding', 'step-finanzen')).toMatchObject({
       subjectLabel: '„Finanzen“',
+      group: 'ask',
+      text: 'Welche Prozesse gehören zu „Finanzen“?',
       modelKeys: [],
       askWho: { lanes: [], stepOwners: ['Finanzbuchhaltung'], folder: null },
       // The held placement on it.
       unlocks: 1,
     });
-    expect(one('unresolved-link', 'value-chain-finding').text).toBe(
-      'Auf welchen Prozess soll der Link von „Ablage“ zeigen? Der verlinkte Prozess x/fehlt#P ist in keiner aktuellen Revision enthalten.',
-    );
+    expect(one('unresolved-link', 'value-chain-finding')).toMatchObject({
+      text: 'Auf welchen Prozess soll der Link von „Ablage“ zeigen?',
+      detail: 'Der verlinkte Prozess ist in keinem aktuellen Modell enthalten.',
+    });
 
-    // Coded no-links: call-target grouped per call, collaboration at the end with a
-    // message flow in its own file, no-evidence left out.
-    const target = one('call-target-unknown', 'no-link');
+    // Coded no-links, on their own (without the call's finding and the pool's signal they
+    // join): call-target grouped per call, collaboration at the end with a message flow in its
+    // own file, no-evidence left out.
+    const alone = openQuestions(
+      { ...input, findings: input.findings.filter((f) => !f.refs.includes(CALL)) },
+      { signals: SHIPPED_SIGNALS.filter((sig) => sig !== 'black-box-partner') },
+    );
+    const noLink = (kind: string) => {
+      const found = alone.filter((q) => q.kind === kind && q.source === 'no-link');
+      expect(found, kind).toHaveLength(1);
+      return found[0] as OpenQuestion;
+    };
+    const target = noLink('call-target-unknown');
     expect(target).toMatchObject({
       subject: { type: 'ref', id: CALL },
-      text: 'call-target: „Notizen“ prüft keine Bonität.\ncall-target: „Rechnungsstellung“ ist kein Prüfprozess.',
+      text: 'Welchen Prozess ruft „Bonität prüfen“ auf?',
+      detail:
+        'call-target: „Notizen“ prüft keine Bonität.\ncall-target: „Rechnungsstellung“ ist kein Prüfprozess.',
       refs: [N, R, CALL],
       raisedBy: { sourceKind: 'agent', handle: 'agent:claude', seq: 202 },
     });
-    expect(one('external-partner', 'no-link')).toMatchObject({
+    expect(noLink('external-partner')).toMatchObject({
       subject: { type: 'ref', id: TASK_NOTIZ },
-      text: 'collaboration: Die Stornierung geht an die Bank.',
+      text: 'Ist der Partner von „Notiz schreiben“ extern, oder fehlt sein Modell?',
+      detail: 'collaboration: Die Stornierung geht an die Bank.',
     });
 
     expect(one('summary-note', 'summary', 'vertrieb/auftrag')).toMatchObject({
       subject: { type: 'model', id: 'vertrieb/auftrag' },
+      group: 'info',
       subjectLabel: '„Auftragsabwicklung“ (vertrieb/auftrag)',
       text: 'Die Bonitätsprüfung fehlt als Modell.',
       // The model's open decisions: the held message pair and the proposed call.
@@ -402,8 +471,9 @@ describe('every source of §4.1 on a synthetic landscape', () => {
     // The judged call pair is left out, the message pair stays.
     expect(one('unjudged', 'unjudged')).toMatchObject({
       subject: { type: 'model', id: 'vertrieb/auftrag' },
-      text:
-        'Gehören diese Paare zusammen? Die Analyse von „Auftragsabwicklung“ (vertrieb/auftrag) ' +
+      text: 'Gehört dieses Paar zusammen?',
+      detail:
+        'Die Analyse von „Auftragsabwicklung“ (vertrieb/auftrag) ' +
         'hat ein zugewiesenes Paar ohne Urteil gelassen, und noch kein Agent hat es bewertet: ' +
         '„Auftrag storniert“ in „Auftragsabwicklung“ → „Rechnung angefordert“ in ' +
         '„Rechnungsstellung“. 2 weitere hat die Analyse nicht aufgeführt.',
@@ -411,22 +481,44 @@ describe('every source of §4.1 on a synthetic landscape', () => {
     });
 
     // The signals.
-    expect(one('black-box-partner', 'signal').text).toBe(
-      'Ist „Participant_Bank“ in archiv/notiz ein externer Partner, oder fehlt das Modell ' +
-        'seines Prozesses? „Participant_Bank“ gehört zu keinem Prozess des Modells, ist also ' +
-        'vermutlich ein Pool ohne Prozess. Nachrichtenflüsse: „Überweisung“ von „Notiz schreiben“.',
-    );
+    expect(one('black-box-partner', 'signal')).toMatchObject({
+      // The pool it talks to is „Ablage“ (Notizen's participant).
+      subjectLabel: 'Pool in „Ablage“',
+      text: 'Externer Partner oder fehlendes Modell? Nachrichten: „Überweisung“.',
+      // The agent's coded no-link about the end that talks to it joins it (UX2b review).
+      detail:
+        'Der Pool hat im Modell keinen Prozess: ein externer Partner, oder ein Prozess, dessen ' +
+        'Modell fehlt. Nachrichtenflüsse: „Überweisung“ von „Notiz schreiben“.\n' +
+        'Laut Agent: collaboration: Die Stornierung geht an die Bank.',
+    });
     expect(one('unlabelled-boundary', 'signal')).toMatchObject({
       subject: { type: 'process', id: R },
-      text: 'Womit endet „Rechnungsstellung“? Ein Start- oder Endereignis hat keinen Namen; Auslöser-Beziehungen zu anderen Prozessen brauchen benannte Ereignisse.',
+      text: 'Womit endet „Rechnungsstellung“?',
+      detail:
+        'Ein Start- oder Endereignis hat keinen Namen; ohne Namen findet analyzr keine ' +
+        'Prozesse, die diesen auslösen oder die er auslöst.',
       refs: ['finanzen/rechnung#End_Rechnung', R],
     });
     expect(one('undocumented-process', 'signal').subject).toEqual({ type: 'process', id: N });
     expect(one('isolated-process', 'signal').subject).toEqual({ type: 'process', id: N });
     expect(one('descriptive-model', 'signal')).toMatchObject({
       subject: { type: 'model', id: 'archiv/notiz' },
+      group: 'info',
       unlocks: 1,
     });
+    // Every item has a group by its kind (UX2a); the step whose proposed placement waits
+    // on the chain (Notizen on „Ablage“) is decided there.
+    const byGroup = (g: string) => items.filter((q) => q.group === g);
+    expect(byGroup('agent').map((q) => q.kind)).toEqual(['agent-question', 'agent-question']);
+    expect(
+      byGroup('info')
+        .map((q) => q.kind)
+        .sort(),
+    ).toEqual(['descriptive-model', 'summary-note', 'summary-note']);
+    expect(byGroup('proposal').map((q) => [q.kind, q.subjectLabel])).toEqual([
+      ['step-without-process', '„Ablage“'],
+    ]);
+    expect(byGroup('ask')).toHaveLength(items.length - 6);
   });
 
   it('computes unlocks from the open decisions at the subject', async () => {
@@ -562,28 +654,55 @@ describe('filters, order and pages', () => {
 
 describe('the export', () => {
   it('renders Markdown grouped by the contact hint, texts escaped', async () => {
-    const items = openQuestions(await synthetic());
+    const input = await synthetic();
+    const { index, items } = buildOpenQuestions(input);
+    const concerns = new Map(items.map((q) => [q.id, index.concerns(q)]));
     const md = renderOpenQuestionsMarkdown(items, {
       projectName: 'Test *Projekt*',
-      projectKey: 'test',
-      seq: 99,
+      asOf: new Date('2026-10-17T22:30:00.000Z'),
       filter: { kind: 'held' },
+      concerns,
     });
     expect(md.startsWith('# Offene Fragen: Test \\*Projekt\\*\n')).toBe(true);
-    expect(md).toContain('Projekt `test`, Stand Ereignis 99:');
+    // UX2a: a date (German time: past midnight already), no event number, no project key.
+    expect(md).toContain('\nStand 18.10.2026: ');
+    expect(md).not.toMatch(/Ereignis \d|Projekt `/);
     expect(md).toContain('Filter: Art „Vorgemerkt“.');
-    for (const q of items) expect(md).toContain(`- Kennung: \`${q.id}\``);
+    // The id only as an HTML comment right after each heading, no „Kennung“, „Quelle“,
+    // „Offene Entscheidungen“ or „Bezug“ lines.
+    for (const q of items)
+      expect(md).toMatch(new RegExp(`^### \\d+\\. .*\\n<!-- ${q.id} -->$`, 'm'));
+    expect(md).not.toMatch(/Kennung|- Quelle|Offene Entscheidungen|Bezug|Ordner:/);
+    // The id regex of the UI load guard finds nothing once the comments are gone.
+    expect(md.replace(/<!-- q-[0-9a-f]{16} -->/g, '')).not.toMatch(ID_IN_TEXT);
     const groups = [...md.matchAll(/^## (.+)$/gm)].map((m) => m[1]);
     expect(groups).toEqual([
-      ...new Set([...groups].filter((g) => g !== 'Ohne Ansprechpartner-Hinweis')),
-      ...(groups.includes('Ohne Ansprechpartner-Hinweis') ? ['Ohne Ansprechpartner-Hinweis'] : []),
+      ...new Set([...groups].filter((g) => g !== 'Ohne Ansprechpartner')),
+      ...(groups.includes('Ohne Ansprechpartner') ? ['Ohne Ansprechpartner'] : []),
     ]);
     expect(groups).toContain('Organisationseinheit Finanzbuchhaltung');
-    expect(groups).toContain('Ordner archiv');
+    // The folder is no person to ask: no group heading names it (UX2b review).
+    expect(groups.filter((g) => g?.startsWith('Ordner'))).toEqual([]);
     // The hold's verbatim question starts with "=": escaped at the start of the line.
     expect(md).toContain('\n\\=Kommt die Anforderung immer als Nachricht?\n');
     expect(md).toContain('- Vormerkung: mit Fachbereich Finanzen klären');
-    expect(md).toContain('- Notiz: Mit Finanzen klären, ob die Anforderung als Nachricht kommt.');
+    expect(md).toContain(
+      '- Notiz zur Vormerkung: Mit Finanzen klären, ob die Anforderung als Nachricht kommt.',
+    );
+    // The question, then its reason, then what it is about by name, the contact hint
+    // without the folder.
+    expect(md).toContain(
+      '\nWelchen Prozess ruft „Bonität prüfen“ auf?\n\n' +
+        'Das eingetragene Ziel „P_Bonitaet“ gibt es in keinem Modell.  \n' +
+        'Laut Agent: call-target: „Notizen“ prüft keine Bonität.  \n' +
+        'Laut Agent: call-target: „Rechnungsstellung“ ist kein Prüfprozess.\n\n' +
+        '- Betrifft: „Bonität prüfen“ in „Auftragsabwicklung“\n' +
+        '- Ansprechpartner: Vertrieb & Service, Vertriebsinnendienst\n',
+    );
+    expect(md).toContain(
+      '- Betrifft: „Rechnung anfordern“ in „Auftragsabwicklung“ → „Rechnung angefordert“ in ' +
+        '„Rechnungsstellung“\n',
+    );
     expect(escapeMarkdown('<img src=x> *a* [l](u) # b\n- c\n1. d\n> e')).toBe(
       '\\<img src=x> \\*a\\* \\[l\\](u) # b  \n\\- c  \n1\\. d  \n\\> e',
     );
@@ -592,16 +711,18 @@ describe('the export', () => {
       'Participant_Bank \\_x\\_ a\\\\\\_b R&D \\&amp; \\&#35;',
     );
     expect(
-      renderOpenQuestionsMarkdown([], { projectName: 'P', projectKey: 'p', seq: 1, filter: {} }),
+      renderOpenQuestionsMarkdown([], { projectName: 'P', asOf: new Date(0), filter: {} }),
     ).toContain('Keine offenen Fragen.');
+    expect(formatDateDe('2026-10-17T21:59:59.000Z')).toBe('17.10.2026');
+    expect(formatDateDe('2026-10-17T22:00:00.000Z')).toBe('18.10.2026');
   });
 
   it('writes a CSV spreadsheets open safely, and reads it back', async () => {
-    const items = openQuestions(await synthetic());
-    const csv = renderOpenQuestionsCsv(items);
-    expect(
-      csv.startsWith(`${CSV_BOM}"id";"Art";"Frage";"Ansprechpartner-Hinweis";"Antwort"\r\n`),
-    ).toBe(true);
+    const { index, items } = buildOpenQuestions(await synthetic());
+    const csv = renderOpenQuestionsCsv(items, new Map(items.map((q) => [q.id, index.concerns(q)])));
+    expect(csv.startsWith(`${CSV_BOM}"id";"Art";"Frage";"Ansprechpartner";"Antwort"\r\n`)).toBe(
+      true,
+    );
     expect(csv.endsWith('\r\n')).toBe(true);
     // The hold's question starts with "=": a leading apostrophe, so no formula runs.
     expect(csv).toContain(`"'=Kommt die Anforderung immer als Nachricht?`);
@@ -615,28 +736,54 @@ describe('the export', () => {
       const q = questions[i] as OpenQuestion;
       expect(row).toHaveLength(5);
       expect(row[1]).toBe(OPEN_QUESTION_KIND_LABELS[q.kind]);
-      expect(row[2]?.startsWith(q.text)).toBe(true);
+      // The question, its reason as the second sentence (an agent's attributed), then „Betrifft“.
+      const detail = detailText(q);
+      expect(row[2]?.startsWith(detail === null ? q.text : `${q.text} ${detail}`)).toBe(true);
+      expect(row[2]).toMatch(/\n\nBetrifft: /);
       expect(row[4]).toBe('');
     }
     const held = rows.find((r) => r[2]?.startsWith('=Kommt'));
     expect(held?.[2]).toBe(
-      '=Kommt die Anforderung immer als Nachricht?\n\nBetrifft: „Rechnung anfordern“ → „Rechnung angefordert“',
+      '=Kommt die Anforderung immer als Nachricht?\n\nBetrifft: „Rechnung anfordern“ in ' +
+        '„Auftragsabwicklung“ → „Rechnung angefordert“ in „Rechnungsstellung“',
     );
-    // Task_Rechnung's process is accepted on a step of „Vertrieb & Service“.
-    expect(held?.[3]).toBe(
-      'Organisationseinheit: Vertrieb & Service; Lanes: Vertriebsinnendienst; Ordner: vertrieb',
+    // Task_Rechnung's process is accepted on a step of „Vertrieb & Service“; no folder.
+    expect(held?.[3]).toBe('Vertrieb & Service, Vertriebsinnendienst');
+    const call = rows.find((r) =>
+      r[2]?.startsWith('Welchen Prozess ruft „Bonität prüfen“ auf? Das'),
+    );
+    expect(call?.[2]).toBe(
+      'Welchen Prozess ruft „Bonität prüfen“ auf? Das eingetragene Ziel „P_Bonitaet“ gibt es ' +
+        'in keinem Modell.\nLaut Agent: call-target: „Notizen“ prüft keine Bonität.\n' +
+        'Laut Agent: call-target: „Rechnungsstellung“ ist kein Prüfprozess.\n\n' +
+        'Betrifft: „Bonität prüfen“ in „Auftragsabwicklung“',
+    );
+    // An unsure verdict's reason is the agent's: attributed, as on the card.
+    const unsure = rows.find((r) =>
+      r[2]?.startsWith('Auf welchen Schritt der Wertschöpfungskette gehört „Rechnungsstellung“?'),
+    );
+    expect(unsure?.[2]).toContain('? Laut Agent: Kein Schritt passt eindeutig.\n\nBetrifft: ');
+    // Without names at hand, the subject label.
+    expect(parseOpenQuestionsCsv(renderOpenQuestionsCsv(items)).rows[0]?.[2]).toMatch(
+      /\n\nBetrifft: /,
     );
 
-    // As a spreadsheet saves it again: no BOM, commas, LF, bare fields, answers filled in.
-    const resaved = [
-      'id,Art,Frage,Ansprechpartner-Hinweis,Antwort,Antwortart',
-      `${items[0]?.id ?? ''},Art,"Frage, mit Komma",,"Ja, über ""Bonität""",Antwort`,
-      ',,,,,',
-      '',
-    ].join('\n');
-    expect(parseOpenQuestionsCsv(resaved).rows).toEqual([
-      [items[0]?.id, 'Art', 'Frage, mit Komma', '', 'Ja, über "Bonität"', 'Antwort'],
-    ]);
+    // As a spreadsheet saves it again: no BOM, commas, LF, bare fields, answers filled in;
+    // also with the contact column's header before UX2a.
+    for (const contact of CONTACT_COLUMNS) {
+      const resaved = [
+        `id,Art,Frage,${contact},Antwort,Antwortart`,
+        `${items[0]?.id ?? ''},Art,"Frage, mit Komma",,"Ja, über ""Bonität""",Antwort`,
+        ',,,,,',
+        '',
+      ].join('\n');
+      expect(parseOpenQuestionsCsv(resaved).rows).toEqual([
+        [items[0]?.id, 'Art', 'Frage, mit Komma', '', 'Ja, über "Bonität"', 'Antwort'],
+      ]);
+      expect(readAnswerSheet(resaved)).toEqual([
+        { id: items[0]?.id, text: 'Ja, über "Bonität"', kind: 'Antwort', line: 2 },
+      ]);
+    }
     expect(() => parseOpenQuestionsCsv('"a;b\r\n')).toThrow(/unterminated/);
     expect(() => parseOpenQuestionsCsv('"a"b;c\r\n')).toThrow(/after a closing quote/);
   });
@@ -740,20 +887,19 @@ describe('the review fixes', () => {
       kind: 'message-partner-missing',
       askWho: { lanes: ['Team Lager'], stepOwners: [], folder: 'lager' },
     });
-    expect(catchQuestion?.text).toMatch(/^Wer sendet, was „Karton bestellt“ in „Lager“ empfängt\?/);
+    expect(catchQuestion?.text).toBe('Wer sendet, was „Karton bestellt“ empfängt?');
   });
 
   it('asks signal findings about signals', async () => {
     const items = openQuestions(await libraryInput([{ key: 'lager/kommission', bytes: LAGER }]));
     const alarm = items.find((q) => q.subject.id === 'lager/kommission#Evt_Alarm');
     expect(alarm?.kind).toBe('message-partner-missing');
-    expect(alarm?.text).toBe(
-      'Wer fängt das Signal, das „Alarm geben“ in „Lager“ wirft? Signal „Lageralarm“ wird ' +
-        'geworfen, aber von keinem anderen Prozess gefangen und erreicht per Nachrichtenfluss ' +
-        'keinen Teilnehmer.',
+    expect(alarm?.text).toBe('Wer fängt das Signal, das „Alarm geben“ wirft?');
+    expect(alarm?.detail).toBe(
+      'Kein anderer Prozess der Landschaft fängt das Signal „Lageralarm“.',
     );
     expect(OPEN_QUESTION_KIND_LABELS['message-partner-missing']).toBe(
-      'Nachrichten- oder Signalpartner fehlt',
+      'Partner der Nachricht fehlt',
     );
   });
 
@@ -880,15 +1026,14 @@ describe('the review fixes', () => {
     expect(filterOpenQuestions(items, { askWho: 'Finanzbuchhaltung, Vertrieb & Service' })).toEqual(
       [],
     );
-    const md = renderOpenQuestionsMarkdown(items, {
-      projectName: 'P',
-      projectKey: 'p',
-      seq: 1,
-      filter: {},
-    });
+    const md = renderOpenQuestionsMarkdown(items, { projectName: 'P', asOf: AT, filter: {} });
     expect(md).toContain('\n## Organisationseinheiten Finanzbuchhaltung, Vertrieb & Service\n');
+    // The contact hint: the step owners, then the lanes; no folder (UX2a).
+    expect(md).toContain(
+      '- Ansprechpartner: Finanzbuchhaltung, Vertrieb & Service, Vertriebsinnendienst\n',
+    );
     expect(renderOpenQuestionsCsv(items)).toContain(
-      '"Organisationseinheiten: Finanzbuchhaltung, Vertrieb & Service; Lanes: Vertriebsinnendienst; Ordner: vertrieb"',
+      '"Finanzbuchhaltung, Vertrieb & Service, Vertriebsinnendienst"',
     );
   });
 
@@ -999,15 +1144,194 @@ describe('the export, after review', () => {
         },
         'csv',
       ),
-    ).toBe(
-      'offene-fragen-p-finanzen-mahnwesen-black-box-partner-signal-vertrieb-service-offen.csv',
+    ).toBe('offene-fragen-p-finanzen-mahnwesen-black-box-partner-signal-vertrieb-service.csv');
+    // The name says „offene“ already: `open` adds nothing (the web's customer export sends it).
+    expect(exportFilename('p', { state: 'open', group: ['ask'] }, 'csv')).toBe(
+      'offene-fragen-p.csv',
     );
+    expect(exportFilename('p', { state: 'answered' }, 'csv')).toBe('offene-fragen-p-erledigt.csv');
     expect(exportFilename('p', { askWho: 'Größe Überweisung – Café' }, 'markdown')).toBe(
       'offene-fragen-p-groesse-ueberweisung-cafe.md',
     );
     const long = exportFilename('p', { askWho: 'x'.repeat(200) }, 'csv');
     expect(long).toBe(`offene-fragen-p-${'x'.repeat(80)}.csv`);
     expect(exportFilename('p', { askWho: '„“' }, 'csv')).toBe('offene-fragen-p.csv');
+    // UX2a: the default groups (`ask`) keep the old name; other groups slug into it.
+    expect(exportFilename('p', { group: ['ask'] }, 'csv')).toBe('offene-fragen-p.csv');
+    expect(exportFilename('p', { group: ['ask', 'agent'] }, 'csv')).toBe(
+      'offene-fragen-p-ask-agent.csv',
+    );
+  });
+});
+
+// ------------------------------------------------------- groups and totals (UX2a)
+
+describe('groups and totals (UX2a)', () => {
+  it('give every kind a group, by a Record over the kinds', () => {
+    // A kind without a group fails here (and does not compile in `model.ts`).
+    expect(Object.keys(OPEN_QUESTION_GROUP_RULES).sort()).toEqual(
+      [...OpenQuestionKind.options].sort(),
+    );
+    for (const kind of OpenQuestionKind.options) {
+      for (const proposed of [false, true]) {
+        for (const source of OpenQuestionSource.options) {
+          expect(OpenQuestionGroup.options, `${kind} ${source} ${proposed}`).toContain(
+            groupOf(kind, { source, proposed }),
+          );
+        }
+      }
+    }
+    const of = (kind: OpenQuestionKind, proposed = false) =>
+      groupOf(kind, { source: 'finding', proposed });
+    expect(of('agent-question')).toBe('agent');
+    expect(of('summary-note')).toBe('info');
+    expect(of('descriptive-model')).toBe('info');
+    expect(of('process-without-step')).toBe('ask');
+    expect(of('process-without-step', true)).toBe('proposal');
+    expect(of('step-without-process', true)).toBe('proposal');
+    expect(of('unresolved-link', true)).toBe('ask');
+    expect(of('held', true)).toBe('ask');
+    expect(
+      OpenQuestionKind.options.filter((k) => of(k) === 'ask' && of(k, true) === 'ask'),
+    ).toEqual(
+      OpenQuestionKind.options.filter(
+        (k) =>
+          !['agent-question', 'summary-note', 'descriptive-model'].includes(k) &&
+          k !== 'process-without-step' &&
+          k !== 'step-without-process',
+      ),
+    );
+    expect(Object.keys(OPEN_QUESTION_GROUP_LABELS)).toEqual([...OpenQuestionGroup.options]);
+    expect(OPEN_QUESTION_GROUP_LABELS.ask).toBe('Zu klären');
+  });
+
+  it('filter by group, count per group under the other filters and the ask subjects per model', async () => {
+    const items = openQuestions(await synthetic());
+    const ask = filterOpenQuestions(items, { group: ['ask'] });
+    expect(ask.length).toBeGreaterThan(0);
+    expect(ask.every((q) => q.group === 'ask')).toBe(true);
+    expect(filterOpenQuestions(items, { group: ['agent', 'info'] }).map((q) => q.id)).toEqual(
+      items.filter((q) => q.group === 'agent' || q.group === 'info').map((q) => q.id),
+    );
+    // The order stays the list order in every filtered list.
+    expect(ask.map((q) => q.id)).toEqual(items.filter((q) => q.group === 'ask').map((q) => q.id));
+    expect(groupTotals(items)).toEqual({ ask: ask.length, agent: 2, proposal: 1, info: 3 });
+
+    // The page: `total` under every filter, `totals` and `askByModel` without `group`.
+    const page = openQuestionPage(items, { group: ['ask'], state: 'open' }, 5);
+    expect(page.items).toEqual(ask.slice(0, 5));
+    expect(page.total).toBe(ask.length);
+    expect(page.totals).toEqual(groupTotals(items));
+    expect(OpenQuestionPage.parse(page)).toEqual(page);
+    expect(openQuestionPage(items, { state: 'answered' }, 5)).toMatchObject({
+      items: [],
+      total: 0,
+      totals: { ask: 0, agent: 0, proposal: 0, info: 0 },
+      askByModel: {},
+    });
+    // Per model: the distinct subjects of the ask items about neither a relation nor a
+    // placement (two items about one call count once), under each model they touch.
+    const subjects = (key: string) =>
+      new Set(
+        ask
+          .filter(
+            (q) =>
+              q.modelKeys.includes(key) &&
+              q.subject.type !== 'relation' &&
+              q.subject.type !== 'placement',
+          )
+          .map((q) => `${q.subject.type}:${q.subject.id}`),
+      ).size;
+    const byModel = askByModel(items);
+    expect(Object.keys(byModel)).toEqual(
+      [...new Set(ask.flatMap((q) => q.modelKeys))].filter((k) => subjects(k) > 0).sort(),
+    );
+    for (const [key, n] of Object.entries(byModel)) expect(n, key).toBe(subjects(key));
+    // Bonität prüfen: the coded no-link about the call joins the finding, one item (UX2b review).
+    expect(
+      ask.filter((q) => q.subject.id === CALL && q.kind === 'call-target-unknown'),
+    ).toHaveLength(1);
+    expect(page.askByModel).toEqual(byModel);
+  });
+
+  it('asks one question per process: an agent question or an unsure verdict drops the chain finding', async () => {
+    const input = await synthetic();
+    if (!input.chain) throw new Error('no chain');
+    const pws = (i: OpenQuestionInput) =>
+      openQuestions(i).filter((q) => q.kind === 'process-without-step' && q.subject.id === N);
+    // An agent asks about Notizen's proposed placement: no chain finding for it.
+    expect(pws(input)).toEqual([]);
+    // Without the question, the finding is back, decided on the chain (proposal).
+    const histories = new Map(input.chain.histories);
+    const [, , notiz] = input.chain.placements;
+    if (!notiz) throw new Error('no placement of Notizen');
+    histories.set(
+      notiz.id,
+      (histories.get(notiz.id) ?? []).map((a) => ({ ...a, question: null })),
+    );
+    const quiet = { ...input, chain: { ...input.chain, histories } };
+    expect(pws(quiet)).toMatchObject([
+      {
+        group: 'proposal',
+        text: 'Auf welchen Schritt der Wertschöpfungskette gehört „Notizen“?',
+        detail: 'Ein Vorschlag wartet auf der Wertschöpfungskette auf Prüfung.',
+      },
+    ]);
+    // Without its placement, it asks (no proposal), with the plain reason.
+    const placements = input.chain.placements.filter((p) => p.id !== notiz.id);
+    const none = { ...quiet, chain: { ...quiet.chain, placements } };
+    expect(pws(none)).toMatchObject([
+      { group: 'ask', detail: 'Der Prozess ist noch auf keinem Schritt platziert.' },
+    ]);
+    // An unsure verdict on it: the unsure item asks, the finding goes.
+    const unsure = {
+      ...none,
+      chain: {
+        ...none.chain,
+        unsure: [
+          ...none.chain.unsure,
+          { process: N, reason: 'Unklar.', inputHash: 'h-n', handle: 'agent:sim', seq: 71 },
+        ],
+      },
+    };
+    expect(pws(unsure)).toEqual([]);
+    expect(
+      openQuestions(unsure).filter((q) => q.kind === 'placement-unsure' && q.subject.id === N),
+    ).toHaveLength(1);
+  });
+
+  it('exports the bundle of the Signavio fixture without an id, ref or seq in its text', async () => {
+    const dir = fileURLToPath(
+      new URL('../../../../tools/integrate/test/fixtures/signavio/bundle/', import.meta.url),
+    );
+    const files = (await readdir(dir, { recursive: true }))
+      .map((e) => e.split(path.sep).join('/'))
+      .filter((e) => e.endsWith('.bpmn'))
+      .sort();
+    const input = await libraryInput(
+      await Promise.all(
+        files.map(async (f) => ({
+          key: f.slice(0, -'.bpmn'.length),
+          bytes: new Uint8Array(await readFile(path.join(dir, f))),
+        })),
+      ),
+    );
+    const { index, items } = buildOpenQuestions(input);
+    expect(items.length).toBeGreaterThan(0);
+    const concerns = new Map(items.map((q) => [q.id, index.concerns(q)]));
+    const md = renderOpenQuestionsMarkdown(items, {
+      projectName: 'Signavio',
+      asOf: AT,
+      filter: {},
+      concerns,
+    });
+    expect(md.replace(/<!-- q-[0-9a-f]{16} -->/g, '')).not.toMatch(ID_IN_TEXT);
+    const csv = parseOpenQuestionsCsv(renderOpenQuestionsCsv(items, concerns));
+    expect(csv.rows.map((r) => r.slice(1).join('\n')).join('\n')).not.toMatch(ID_IN_TEXT);
+    // Its pool is named by the pool it talks to.
+    expect(items.filter((q) => q.kind === 'black-box-partner').map((q) => q.subjectLabel)).toEqual([
+      'Pool in „Vertrieb“',
+    ]);
   });
 });
 
@@ -1209,9 +1533,7 @@ describe('notes and outside marks on the items', () => {
       ],
     });
     const csv = renderOpenQuestionsCsv(answered);
-    expect(csv.split('\r\n')[0]).toBe(
-      `${CSV_BOM}"id";"Art";"Frage";"Ansprechpartner-Hinweis";"Antwort"`,
-    );
+    expect(csv.split('\r\n')[0]).toBe(`${CSV_BOM}"id";"Art";"Frage";"Ansprechpartner";"Antwort"`);
     // The latest note, protected against formulas like every cell; the mark is no note.
     expect(csv).toContain(`;"'=Dann so."\r\n`);
     expect(csv).not.toContain('Extern.');
@@ -1223,17 +1545,96 @@ describe('notes and outside marks on the items', () => {
     expect(checked.counts).toMatchObject({ recorded: 0, unchanged: 1, ignored: sheet.length - 1 });
     const md = renderOpenQuestionsMarkdown(answered, {
       projectName: 'P',
-      projectKey: 'p',
-      seq: 1,
+      asOf: AT,
       filter: { state: 'answered' },
     });
-    expect(md).toContain('- Notiz (owner, Ereignis 1001): Erst so.\n');
-    expect(md).toContain('- Notiz (owner, Ereignis 1002): \\=Dann so.\n');
-    expect(md).toContain('- Liegt außerhalb der Landschaft (owner, Ereignis 1003): Extern.\n');
+    // Dated, without event numbers (UX2a) and without handles (UX2b review: the customer's copy).
+    expect(md).toContain('- Notiz (16.10.2026): Erst so.\n');
+    expect(md).toContain('- Notiz (16.10.2026): \\=Dann so.\n');
+    expect(md).toContain('- Liegt außerhalb der Landschaft (16.10.2026): Extern.\n');
     expect(md).toContain(
-      '- Liegt außerhalb der Landschaft (owner, Ereignis 1004, zurückgenommen von owner (Ereignis 1200))\n',
+      '- Liegt außerhalb der Landschaft (16.10.2026, zurückgenommen am 16.10.2026)\n',
     );
-    expect(md).toContain('Filter: Status „Erledigt (außerhalb)“.');
+    expect(md).not.toContain('owner');
+    // The headline counts by state: the marked item is no open question.
+    expect(md).toContain(
+      `Stand 16.10.2026: ${answered.length - 1} offene Fragen und eine erledigte,`,
+    );
+    expect(md).not.toMatch(/Ereignis \d/);
+    expect(md).toContain('Filter: Status „Außerhalb der Landschaft“.');
+  });
+});
+
+describe('one item per gap: coded no-links join the rule tier’s items (UX2b review)', () => {
+  it('keeps what was recorded under a merged no-link: its notes on the survivor, a live mark as its own item', async () => {
+    const input = await synthetic();
+    // The no-link items as they stood on their own (before the merge, or without the finding).
+    const alone = openQuestions(
+      { ...input, findings: input.findings.filter((f) => !f.refs.includes(CALL)) },
+      { signals: SHIPPED_SIGNALS.filter((sig) => sig !== 'black-box-partner') },
+    );
+    const callNoLink = alone.find((q) => q.source === 'no-link' && q.subject.id === CALL);
+    const partner = alone.find((q) => q.source === 'no-link' && q.kind === 'external-partner');
+    if (!callNoLink || !partner) throw new Error('no coded no-links');
+    const survivor = (items: readonly OpenQuestion[]) =>
+      items.find((q) => q.source === 'finding' && q.subject.id === CALL);
+
+    // A note recorded under the call's no-link shows on the finding, which stays open.
+    const noted = openQuestions({
+      ...input,
+      answers: [stored(1, callNoLink, { answerText: 'Ruft die Bonitätsprüfung der Bank.' })],
+    });
+    expect(noted.some((q) => q.id === callNoLink.id)).toBe(false);
+    expect(survivor(noted)).toMatchObject({ state: 'open' });
+    expect(survivor(noted)?.answers.map((a) => [a.questionId, a.role, a.text])).toEqual([
+      [callNoLink.id, 'note', 'Ruft die Bonitätsprüfung der Bank.'],
+    ]);
+
+    // A live outside mark keeps the no-link an item of its own (answered, not „Zu klären“).
+    const marked = openQuestions({
+      ...input,
+      answers: [stored(2, partner, { kind: 'outside-landscape', answerText: 'Die Bank.' })],
+    });
+    expect(marked.find((q) => q.id === partner.id)).toMatchObject({ state: 'answered' });
+    expect(marked.filter((q) => q.kind === 'black-box-partner' && q.state === 'open')).toHaveLength(
+      1,
+    );
+    // Withdrawn, the mark no longer keeps it apart: it joins the pool's item, its history along.
+    const withdrawn = openQuestions({
+      ...input,
+      answers: [
+        stored(2, partner, {
+          kind: 'outside-landscape',
+          answerText: null,
+          withdrawal: withdrawal(1200),
+        }),
+      ],
+    });
+    expect(withdrawn.some((q) => q.id === partner.id)).toBe(false);
+    const pool = withdrawn.find((q) => q.kind === 'black-box-partner');
+    expect(pool?.state).toBe('open');
+    expect(pool?.answers.map((a) => [a.questionId, a.role, a.withdrawal !== null])).toEqual([
+      [partner.id, 'outside-mark', true],
+    ]);
+  });
+
+  it('labels a hold’s notes „Antwort“ in the export, without handles', async () => {
+    const input = await synthetic();
+    const held = openQuestions(input).find(
+      (q) => q.kind === 'held' && q.subject.type === 'relation',
+    );
+    if (!held) throw new Error('no held relation');
+    const answered = openQuestions({
+      ...input,
+      answers: [stored(3, held, { answerText: 'Ja, laut Einkauf immer.' })],
+    });
+    const md = renderOpenQuestionsMarkdown(
+      answered.filter((q) => q.id === held.id),
+      { projectName: 'P', asOf: AT, filter: { kind: 'held' } },
+    );
+    expect(md).toContain('- Antwort (16.10.2026): Ja, laut Einkauf immer.\n');
+    expect(md).toContain('- Notiz zur Vormerkung: ');
+    expect(md).not.toMatch(/owner|- Notiz \(/);
   });
 });
 

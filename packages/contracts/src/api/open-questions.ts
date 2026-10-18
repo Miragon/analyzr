@@ -35,7 +35,7 @@ import { MAX_VALUE_CHAIN_ID_CHARS } from './value-chains.ts';
  * - `placement-unsure`: an agent's current `unsure` verdict on an open process;
  * - `process-without-step`, `step-without-process`, `unresolved-link`: value chain findings;
  * - `external-partner`: no-link code `collaboration`;
- * - `summary-note`: the summary of a current submission (decision 24.9, read-only);
+ * - `summary-note`: the summary of a current submission (decision 24.8, read-only);
  * - `unjudged`: assigned pairs a current submission left without a judgement (`uncovered`).
  *
  * The gap signals, computed from the head facts (M6 §4.3):
@@ -103,6 +103,31 @@ export const OpenQuestionSource = z
 export type OpenQuestionSource = z.infer<typeof OpenQuestionSource>;
 
 /**
+ * Where an open question is worked (UX-SIMPLIFICATION §2.4, slice UX2a),
+ * computed by the server from the kind and, for the value chain's findings,
+ * from what waits on the chain, so the tab, its badge, the export and
+ * `analyzr questions` agree. A label and a filter, never a sort key (the list
+ * order stays: questions, then the value chain's findings, then
+ * informational items, each by `unlocks`):
+ * - `ask` („Zu klären“): what the landscape lacks and only a human or the
+ *   customer can say: the findings, the gap signals, holds, unsure verdicts,
+ *   external partners, pairs left unjudged, amendment conflicts, import
+ *   losses, unresolved links, and `process-without-step` and
+ *   `step-without-process` while nothing is proposed for them;
+ * - `agent` („Fragen der Agenten“): an agent's question on its proposal,
+ *   answered where the proposal is decided (the review screen, the chain);
+ * - `proposal` (decided on the value chain, not listed in the tab):
+ *   `process-without-step` while a placement of the process is proposed, and
+ *   `step-without-process` while a placement on the step or below it is
+ *   proposed; their action opens the chain („Auf der Kette prüfen“);
+ * - `info` („Zur Information“): `summary-note`, `descriptive-model`.
+ */
+export const OpenQuestionGroup = z
+  .enum(['ask', 'agent', 'proposal', 'info'])
+  .meta({ id: 'OpenQuestionGroup', description: 'Where an open question is worked.' });
+export type OpenQuestionGroup = z.infer<typeof OpenQuestionGroup>;
+
+/**
  * What a question is about: an element (`ref`), a process (its ref), a model
  * (its key), a relation or placement (their ids), a value chain step (its
  * element id in the chain `main`) or the value chain (its key, a placement
@@ -154,8 +179,8 @@ export type OpenQuestionRaisedBy = z.infer<typeof OpenQuestionRaisedBy>;
  * `answered` while a live outside mark („Liegt außerhalb der Landschaft“, not
  * withdrawn) is recorded for the item's id, else `open` (M6 §4.8 b, since
  * S5c-1: a note informs and leaves the item `open`; every other item ends
- * through its action, which takes it off the list). The web calls the state
- * „Erledigt (außerhalb)“.
+ * through its action, which takes it off the list). The web lists such items
+ * under „Erledigte zeigen“ as „Außerhalb der Landschaft“ (UX2b).
  */
 export const OpenQuestionState = z
   .enum(['open', 'answered'])
@@ -299,7 +324,9 @@ export type OpenQuestionAnswer = z.infer<typeof OpenQuestionAnswer>;
 /**
  * Type of an action on an open question (M6 §4.8 a, S5c-1):
  * - `decide`: decide the relation or placement in {@link OpenQuestionAction.decides}
- *   (accept, reject, correct, also hold) through the existing decision routes;
+ *   (accept, reject, correct, also hold) through the existing decision routes; on
+ *   the value chain's `proposal` items (UX2a) „Auf der Kette prüfen“, with the
+ *   step to open in {@link OpenQuestionAction.step};
  * - `link`: link the item's anchor to the picked targets through
  *   `POST …/open-questions/{q}/actions` (a live typed proposal between them is
  *   accepted, else an accepted `manual` relation is written);
@@ -487,7 +514,12 @@ export const OpenQuestionAction = z
     choices: z.array(Ref).optional(),
     /** The pairs to pick from (`link` with `pick: 'pair'`). */
     pairs: z.array(TypedPair).optional(),
-    /** The fixed step of a `place` action that needs no picker (`@outside`). */
+    /**
+     * The fixed step of a `place` action that needs no picker (`@outside`), or
+     * the chain step a `decide` on proposed placements opens („Auf der Kette
+     * prüfen“, the `proposal` items, UX2a): the process's proposed step, or
+     * the step whose sub-steps carry the proposals.
+     */
     step: z.string().optional(),
     /** What `decide` decides, and the calls `choose-copy` accepts or rejects. */
     decides: z.array(OpenQuestionDecisionItem).optional(),
@@ -510,19 +542,37 @@ export const OpenQuestion = z
     id: OpenQuestionId,
     kind: OpenQuestionKind,
     source: OpenQuestionSource,
+    /** Where it is worked (UX2a): `ask`, `agent`, `proposal` or `info`. */
+    group: OpenQuestionGroup,
     subject: OpenQuestionSubject,
-    /** Display name of the subject (German), e.g. `„Kreditprüfung“` or `„A“ → „B“`. */
+    /**
+     * Display name of the subject (German), e.g. `„Kreditprüfung“`, `„A“ → „B“`
+     * or, for a pool without a process, `Pool in „Nordwind Handel – Einkauf“`.
+     */
     subjectLabel: z.string(),
     /** The models the question touches, sorted (for filters); empty for steps and the chain. */
     modelKeys: z.array(ModelKey),
     /**
-     * The question, German: from code for findings, signals and uncovered
-     * pairs; verbatim (plain text, render it as such) for human and agent
-     * texts: the hold's question (else its note), the agent's question,
-     * unsure reason, no-link reasons or summary.
+     * The question, German, short and first (UX2a): from code for findings,
+     * signals, the value chain's findings, uncovered pairs, unsure verdicts
+     * and coded no-links; verbatim (plain text, render it as such) for human
+     * and agent texts: the hold's question (else its note), the agent's
+     * question, a summary.
      */
     text: z.string(),
-    /** Verbatim supporting text: a hold's note when it has a question; `null` otherwise. */
+    /**
+     * Why it is asked (UX2a), German, shown on demand („Warum?“) and in the
+     * export as the second sentence: from code for findings, signals, the
+     * value chain's findings, uncovered pairs, amendment conflicts and import
+     * losses; verbatim (plain text) for an unsure verdict (the agent's
+     * reason) and coded no-links (the agents' reasons); `null` where the
+     * question says it all (holds, agents' questions, summaries).
+     */
+    detail: z.string().nullable(),
+    /**
+     * Verbatim supporting text of a human: a hold's note when it has a
+     * question; `null` otherwise. Unlike `detail`, never from code.
+     */
     context: z.string().nullable(),
     /** A hold's label, e.g. „mit Fachbereich Finanzen klären“; `null` otherwise. */
     label: z.string().nullable(),
@@ -556,12 +606,40 @@ export const OpenQuestion = z
   .meta({ id: 'OpenQuestion', description: 'A gap in the landscape, as a question.' });
 export type OpenQuestion = z.infer<typeof OpenQuestion>;
 
-/** A page of open questions; `total` counts every item matching the filters. */
+/** A count of open questions. */
+const count = () => z.number().int().min(0);
+
+/**
+ * The items per group (UX2a), over every item matching the filters except
+ * `group` (all pages): the tab's badge (`ask` of `state=open`) and its count
+ * lines come from one call. Every group is present, 0 included.
+ */
+export const OpenQuestionTotals = z
+  .object({
+    ask: count(),
+    agent: count(),
+    proposal: count(),
+    info: count(),
+  } satisfies Record<OpenQuestionGroup, z.ZodType>)
+  .meta({ id: 'OpenQuestionTotals', description: 'Open questions per group.' });
+export type OpenQuestionTotals = z.infer<typeof OpenQuestionTotals>;
+
+/**
+ * A page of open questions: `total` counts every item matching the filters
+ * (all pages); `totals` counts them per group, `group` left out
+ * ({@link OpenQuestionTotals}); `askByModel` counts, per model, the distinct
+ * subjects of the `ask` items that are neither a relation nor a placement
+ * (those count where they are decided), over the same items as `totals`, an
+ * item under each model it touches; only models with at least one are
+ * listed (the models table's „Offene Punkte“, UX-SIMPLIFICATION §2.5).
+ */
 export const OpenQuestionPage = z
   .object({
     items: z.array(OpenQuestion),
     nextCursor: z.union([Cursor, z.null()]),
-    total: z.number().int().min(0),
+    total: count(),
+    totals: OpenQuestionTotals,
+    askByModel: z.record(ModelKey, z.number().int().min(1)),
   })
   .meta({ id: 'OpenQuestionPage', description: 'A page of open questions.' });
 export type OpenQuestionPage = z.infer<typeof OpenQuestionPage>;
@@ -569,7 +647,19 @@ export type OpenQuestionPage = z.infer<typeof OpenQuestionPage>;
 /** Longest `askWho` filter value (lane and org unit names are labels of at most 200 characters). */
 export const MAX_ASK_WHO_FILTER_CHARS = 200;
 
-/** Filters of the list and the export (M6 §4.4). */
+/**
+ * The repeatable `group` filter (UX2a): `?group=ask&group=agent`; one value
+ * is a list of one; at most one value per group (a repeated one counts once).
+ */
+const groupFilter = () =>
+  z
+    .preprocess(
+      (value) => (typeof value === 'string' ? [value] : value),
+      z.array(OpenQuestionGroup).min(1).max(OpenQuestionGroup.options.length),
+    )
+    .optional();
+
+/** Filters of the list and the export (M6 §4.4; `group` since UX2a). */
 export const OpenQuestionFilter = z.object({
   /** Items touching this model, or every model below this folder (`finanzen` matches `finanzen/mahnwesen`). */
   modelKey: ModelKey.optional(),
@@ -578,13 +668,15 @@ export const OpenQuestionFilter = z.object({
   /** Items whose `askWho` names exactly this lane, step owner (one of them) or folder. */
   askWho: plainName(MAX_ASK_WHO_FILTER_CHARS).optional(),
   state: OpenQuestionState.optional(),
+  /** Items in one of these groups (repeat the parameter for several). */
+  group: groupFilter(),
 });
 export type OpenQuestionFilter = z.infer<typeof OpenQuestionFilter>;
 
 /**
  * Query of `GET …/open-questions`: the filters and a cursor page; questions,
  * then the value chain findings, then informational items, each group
- * ordered by `unlocks` (descending).
+ * ordered by `unlocks` (descending). Without `group`, every group.
  */
 export const OpenQuestionQuery = OpenQuestionFilter.extend({
   cursor: Cursor.optional(),
@@ -598,7 +690,31 @@ export const OpenQuestionExportFormat = z
   .meta({ id: 'OpenQuestionExportFormat', description: 'Format of the open-questions export.' });
 export type OpenQuestionExportFormat = z.infer<typeof OpenQuestionExportFormat>;
 
-/** Query of `GET …/open-questions/export`: the filters and the format (default `markdown`). */
+/**
+ * The groups the export holds without a `group` filter (UX2a, owner decision
+ * 26, Q11): the customer is asked only what needs clarifying, not the
+ * agents' questions on proposals nobody has looked at yet.
+ */
+export const DEFAULT_EXPORT_GROUPS: readonly OpenQuestionGroup[] = ['ask'];
+
+/**
+ * The groups an export holds: the `group` filter, else
+ * {@link DEFAULT_EXPORT_GROUPS}, except that a `kind` or `source` filter
+ * names what to export by itself (then every group, so `kind=agent-question`
+ * is not empty).
+ */
+export function exportGroups(
+  filter: Pick<OpenQuestionFilter, 'group' | 'kind' | 'source'>,
+): readonly OpenQuestionGroup[] | undefined {
+  if (filter.group !== undefined) return filter.group;
+  if (filter.kind !== undefined || filter.source !== undefined) return undefined;
+  return DEFAULT_EXPORT_GROUPS;
+}
+
+/**
+ * Query of `GET …/open-questions/export`: the filters and the format
+ * (default `markdown`); without `group`, the groups of {@link exportGroups}.
+ */
 export const OpenQuestionExportQuery = OpenQuestionFilter.extend({
   format: OpenQuestionExportFormat.default('markdown'),
 });
@@ -607,13 +723,15 @@ export type OpenQuestionExportQuery = z.infer<typeof OpenQuestionExportQuery>;
 /**
  * The CSV export's columns, in order (M6 §4.4, five since S5c-1): the
  * customer fills in `Antwort`, and every filled `Antwort` is recorded as a
- * note (§4.8 b).
+ * note (§4.8 b). The contact column is „Ansprechpartner“ since UX2a (sheets
+ * exported before call it „Ansprechpartner-Hinweis“; the reader takes both,
+ * `CONTACT_COLUMNS` in `@analyzr/contracts/open-question-csv`).
  */
 export const OPEN_QUESTION_CSV_COLUMNS = [
   'id',
   'Art',
   'Frage',
-  'Ansprechpartner-Hinweis',
+  'Ansprechpartner',
   'Antwort',
 ] as const;
 

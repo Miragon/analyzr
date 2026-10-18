@@ -57,6 +57,9 @@ import { AmendForm } from './amend-form';
 import { WithdrawConfirm } from './withdraw-confirm';
 
 export { default as CollectBar } from './collect-bar';
+/** The change list for the project's export hub on „Übersicht“ (UX1), loaded with this module. */
+// eslint-disable-next-line react-refresh/only-export-components -- a lazy module's helper
+export { downloadChangeList } from '@/lib/amendments';
 
 /**
  * Model amendments in the model view (M6 §4.8 c "Web", S5c-2), one lazy
@@ -379,6 +382,7 @@ function useDownload() {
           tone: 'danger',
           title: 'Download fehlgeschlagen',
           description: errorMessage(error),
+          error,
         }),
       )
       .finally(() => setBusy(false));
@@ -521,45 +525,5 @@ export function ModelAmendHeader({
         </details>
       ) : null}
     </>
-  );
-}
-
-// ------------------------------------------------------------------ the change list
-
-/** „Änderungsliste herunterladen“ (Markdown or CSV), for the project or one model. */
-export function ChangeListExport({ project, modelKey }: { project: string; modelKey?: string }) {
-  const download = useDownload();
-  return (
-    <DropdownMenu modal={false}>
-      <DropdownMenuTrigger asChild>
-        <Button
-          variant="outline"
-          disabled={download.busy}
-          title="Alle Ergänzungen aus analyzr, zum Übertragen ins Quellsystem"
-          data-testid="change-list-export"
-        >
-          {download.busy ? (
-            <Spinner data-icon="inline-start" />
-          ) : (
-            <FileDownIcon data-icon="inline-start" />
-          )}
-          Änderungsliste herunterladen
-          <ChevronDownIcon data-icon="inline-end" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        {(['markdown', 'csv'] as const).map((format) => (
-          <DropdownMenuItem
-            key={format}
-            onSelect={() => download.run(() => downloadChangeList(project, format, modelKey))}
-            data-testid="change-list-format"
-            data-format={format}
-          >
-            <FileDownIcon />
-            {format === 'csv' ? 'Als CSV' : 'Als Markdown'}
-          </DropdownMenuItem>
-        ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
   );
 }

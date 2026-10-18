@@ -2,6 +2,7 @@ import type { AutoAcceptRule } from '@analyzr/client';
 import { useQuery } from '@tanstack/react-query';
 
 import { ToneBadge } from '@/components/badges';
+import { ErrorText } from '@/components/error-text';
 import { PlainText } from '@/components/review/plain-text';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import {
@@ -20,7 +21,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { errorMessage } from '@/lib/api';
+
 import { formatThreshold, narrowingOf, tierLabel } from '@/lib/auto-accept-rules';
 import { formatDateTime } from '@/lib/labels';
 import { autoAcceptRuleQuery } from '@/lib/auto-accept-queries';
@@ -32,7 +33,9 @@ function History({ project, rule }: { project: string; rule: AutoAcceptRule }) {
     return (
       <Alert variant="destructive">
         <AlertTitle>Verlauf konnte nicht geladen werden</AlertTitle>
-        <AlertDescription>{errorMessage(detail.error)}</AlertDescription>
+        <AlertDescription>
+          <ErrorText error={detail.error} />
+        </AlertDescription>
       </Alert>
     );
   return (

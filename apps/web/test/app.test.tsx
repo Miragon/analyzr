@@ -17,10 +17,12 @@ async function render(path: string, queryClient = new QueryClient()) {
 }
 
 describe('web app', () => {
-  it('renders the projects page in the shell', async () => {
+  it('renders the projects page in the shell, with no server line while all is well', async () => {
     const html = await render('/');
     expect(html).toContain('Projekte');
-    expect(html).toContain('Server wird geprüft…');
+    // UX1: the server's state shows only as a banner when something is wrong.
+    expect(html).not.toContain('Server wird geprüft');
+    expect(html).not.toContain('data-testid="server-status"');
   });
 
   it('shows server health and projects from the query cache', async () => {
@@ -41,10 +43,53 @@ describe('web app', () => {
       },
     ]);
     const html = await render('/', queryClient);
-    expect(html).toContain('Server verbunden · 0.1.0-test');
+    // The version sits in the logo's tooltip; no „Server verbunden“, no „Stand s42“ (UX1).
+    expect(html).toContain('title="analyzr 0.1.0-test"');
+    expect(html).not.toContain('Server verbunden');
+    expect(html).not.toContain('s42');
     expect(html).toContain('Nordwind Handel');
     expect(html).toContain('href="/projects/nordwind-handel"');
-    expect(html).toContain('Inhaber');
+    // Every role is „Inhaber“ (local mode): the column „Rolle“ hides.
+    expect(html).not.toContain('Inhaber');
+    expect(html).not.toContain('>Rolle<');
+  });
+
+  it('keeps „Rolle“ while any role is not „Inhaber“', async () => {
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(healthQuery.queryKey, { status: 'ok', version: '1', db: 'ok' });
+    queryClient.setQueryData(projectsQuery.queryKey, [
+      {
+        id: 'prj_01A',
+        key: 'a',
+        name: 'A',
+        role: 'owner',
+        lastSeq: 1,
+        createdAt: '2026-10-07T09:00:00.000Z',
+      },
+      {
+        id: 'prj_01B',
+        key: 'b',
+        name: 'B',
+        role: 'editor',
+        lastSeq: 1,
+        createdAt: '2026-10-07T09:00:00.000Z',
+      },
+    ]);
+    const html = await render('/', queryClient);
+    expect(html).toContain('>Rolle<');
+    expect(html).toContain('Bearbeiter');
+  });
+
+  it('shows the server banner while the server or its database is unreachable', async () => {
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(healthQuery.queryKey, {
+      status: 'degraded',
+      version: '1',
+      db: 'down',
+    });
+    const html = await render('/', queryClient);
+    expect(html).toContain('role="alert"');
+    expect(html).toContain('Datenbank nicht erreichbar');
   });
 
   it('offers an empty state with exactly two actions when there is no project', async () => {
@@ -70,9 +115,17 @@ describe('web app', () => {
       createdAt: '2026-10-07T09:00:00.000Z',
     });
     const tabs = await render('/projects/demo/relations', owner);
-    expect(tabs).toContain('Relationen');
-    expect(tabs).toContain('Hochladen');
-    expect(tabs).toContain('Agent verbinden');
+    // Four object tabs (owner decision 26); „Relationen“ covers /review and /relations.
+    for (const tab of ['Übersicht', 'Relationen', 'Wertschöpfungskette', 'Offene Fragen'])
+      expect(tabs).toContain(`>${tab}<`);
+    expect(tabs.match(/<a[^>]*href="\/projects\/demo\/review"[^>]*>/)?.[0]).toContain(
+      'data-status="active"',
+    );
+    expect(tabs).not.toContain('>Befunde<');
+    expect(tabs).toContain('aria-label="Hochladen"');
+    // „Agent verbinden“ and „Annahmeregeln“ sit in the closed menu „Einstellungen“.
+    expect(tabs).toContain('aria-label="Einstellungen"');
+    expect(tabs).not.toContain('Agent verbinden');
     const view = await render('/projects/demo/models/vertrieb/auftragsabwicklung?relation=rel_1');
     expect(view).toContain('vertrieb/auftragsabwicklung');
     expect(view).toContain('data-testid="model-view"');
@@ -80,7 +133,7 @@ describe('web app', () => {
 
   it('routes the review inbox and the review screen of a relation (the reviewUrl)', async () => {
     const inbox = await render('/projects/demo/review?view=held&tier=key');
-    expect(inbox).toContain('Prüfen');
+    expect(inbox).toContain('>Relationen<');
     expect(inbox).toContain('href="/projects/demo/review"');
     const screen = await render('/projects/demo/review/rel_01ABCDEFGHJKMNPQRSTVWXYZ01?tier=key');
     expect(screen).toContain('data-testid="review-screen"');
@@ -98,7 +151,7 @@ describe('web app', () => {
     expect(stepView).not.toContain('Seite nicht gefunden');
   });
 
-  it('shows the tab „Regeln“ to owners only and routes it (owner decision 19)', async () => {
+  it('routes „Annahmeregeln“ for owners through „Einstellungen“ (owner decisions 19, 26)', async () => {
     const project = (role: 'owner' | 'editor') => ({
       id: 'prj_01TEST',
       key: 'demo',
@@ -110,14 +163,16 @@ describe('web app', () => {
     const owner = new QueryClient();
     owner.setQueryData(projectQuery('demo').queryKey, project('owner'));
     const html = await render('/projects/demo/rules', owner);
-    expect(html).toContain('href="/projects/demo/rules"');
-    expect(html).toContain('>Regeln<');
+    // No tab is active there: the crumb names the page.
+    expect(html).toContain('>Annahmeregeln<');
+    expect(html).toContain('aria-label="Einstellungen"');
     expect(html).not.toContain('Seite nicht gefunden');
     const reviewer = new QueryClient();
     reviewer.setQueryData(projectQuery('demo').queryKey, project('editor'));
-    expect(await render('/projects/demo/relations', reviewer)).not.toContain(
-      'href="/projects/demo/rules"',
-    );
+    const editor = await render('/projects/demo/relations', reviewer);
+    expect(editor).not.toContain('aria-label="Einstellungen"');
+    expect(editor).not.toContain('href="/projects/demo/rules"');
+    expect(editor).toContain('aria-label="Hochladen"');
   });
 
   it('routes the tab „Offene Fragen“ for every role, its filters in the URL (M6 S4)', async () => {

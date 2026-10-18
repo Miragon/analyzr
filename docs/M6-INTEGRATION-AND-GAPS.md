@@ -75,12 +75,14 @@ the command or screen and the slice that adds it ("today" means it exists now):
    `analyzr value-chain push` or imported on the chain page), a draft from `draft_value_chain`
    (size limit: §6), or the chain editor (today).
 7. **Placements.** `/analyzr:placements <project>` (today).
-8. **Review** in the web (today); export „Offene Fragen“ with the agents' questions for the
-   customer (S4).
-9. **Answers.** Act on each question in „Offene Fragen“ or the model view: link, place, decide,
-   mark „Liegt außerhalb der Landschaft“, or fill in a missing call target, name or
-   documentation in the model (S5c, §4.8); the customer's answers come back as notes, one by one
-   or from the returned CSV (S5a, simplified by S5c-1).
+8. **Review** in the web (today); export the questions to clarify for the customer („Für den
+   Kunden exportieren …“ in „Offene Fragen“; the agents' questions only with „Auch Fragen der
+   Agenten“, owner decision 26, UX-SIMPLIFICATION.md Q11; S4).
+9. **Answers.** Act on each question in „Offene Fragen“ or the model view: link, place, mark
+   „Liegt außerhalb der Landschaft“, or fill in a missing call target, name or documentation in
+   the model (S5c, §4.8); answer a hold („Antwort geben“) and decide it where the diagrams are
+   („Jetzt entscheiden“: the review screen or the chain, decision 26, Q4); the customer's answers
+   come back as notes, one by one or from the returned CSV (S5a, simplified by S5c-1).
 10. **Next export.** Run the skill again, preview and re-import (S2b); analyzr re-applies its
     model amendments to the new export (S5c-2) and hands over the change list for the source
     tool; notes reach the agents with S5b and S7.
@@ -825,16 +827,29 @@ without a warning, and ships with S2, which stores the warnings.
   `Ansprechpartner-Hinweis`, `Antwort` and `Antwortart`, the last two empty (`Antwortart` one of
   „Antwort“, „Liegt außerhalb der Landschaft“, „Wird im Modell ergänzt“), so the customer can fill
   in the sheet and S5a reads it back. S5c-1 drops `Antwortart` (five columns, every filled
-  `Antwort` a note; §4.8 b).
+  `Antwort` a note; §4.8 b). UX2a ([UX-SIMPLIFICATION.md](UX-SIMPLIFICATION.md) §7) adds the
+  repeatable filter `group` and the page's `totals` and `askByModel`, holds only the `ask` items
+  in an export without `group` (unless `kind` or `source` names what to export), renames the
+  contact column `Ansprechpartner` and writes both files for the customer in plain German (§4.8
+  a and b).
 - **Web:** the tab „Offene Fragen“ after „Befunde“ with its count, filters (Art, Modell oder
   Ordner, Ansprechpartner-Hinweis, Quelle, Status), sorted by `unlocks` (since the owner's
   answer of 2026-10-16 the value chain's findings after the other questions, §8 "S4 as
   delivered"); a section „Offene
   Fragen“ in the model view; buttons „Als Markdown exportieren“ and „Als CSV exportieren“. Agent
   and human texts render with the existing `PlainText` component. The page is a lazy route chunk
-  (entry ceiling, decision 21).
-- **CLI:** `analyzr questions -p <project> [--model <key>] [--kind …] [--format md|csv|json]
-  [-o <file>]`.
+  (entry ceiling, decision 21). **Since UX2b** ([UX-SIMPLIFICATION.md](UX-SIMPLIFICATION.md)
+  §3.3, §7 "UX2b as delivered"): the last of the four project tabs (owner decision 26), its badge
+  and count line „21 zu klären“ (`group=ask`, `state=open`); the cards show only „Zu klären“ (the
+  agents' questions sit on their proposals and show here only under „Art“ „Frage eines
+  Agenten“, the chain's `proposal` items never), then the closed groups „Zur Information“ and
+  „Erledigte zeigen“; three filters (Art, Modell oder Ordner, Ansprechpartner), the list open by
+  default (`?source=` a removable chip, `?state=answered` opens „Erledigte zeigen“); one button
+  „Für den Kunden exportieren …“ opening a dialog („Zum Lesen (Markdown)“, „Zum Ausfüllen (CSV)“,
+  „Auch Fragen der Agenten (n)“ off, so the default holds `ask` under the old file name); the
+  model view's section „Fragen“ with the `ask` items only.
+- **CLI:** `analyzr questions -p <project> [--model <key>] [--kind …] [--group …] [--format
+  md|csv|json] [-o <file>]` (`--group` since UX2a).
 - **Summaries** (`summary-note`) are shown only if the owner reverses the resolution of
   M3-RELATIONS-PROCEDURE.md question 1 (§10.2); without it S4 leaves them out.
 - **MCP** `list_open_questions` (read) comes with S7, after the live runs.
@@ -1029,6 +1044,27 @@ call of a CMMN case (`camunda:caseRef`, no `calledElement`) also arrives as „A
 
 A conflict's text shows the incoming value and analyzr's value side by side.
 
+**Since UX2a** ([UX-SIMPLIFICATION.md](UX-SIMPLIFICATION.md) §2.4 and §7, owner decision 26):
+every item carries a `group` from a `Record` over the kinds (`model.ts`
+`OPEN_QUESTION_GROUP_RULES`): `ask` „Zu klären“, `agent` „Fragen der Agenten“ (`agent-question`),
+`proposal` (decided on the value chain) and `info` „Zur Information“ (`summary-note`,
+`descriptive-model`); a label and a filter, never a sort key, so the order of this section
+holds in every filtered list. One question per process extends: `process-without-step` is also
+dropped beside an agent's question on a placement of the process or an unsure verdict about it.
+`process-without-step` with a proposed placement and `step-without-process` with a proposal on
+the step or below it are `proposal` items: their primary action is `decide` „Auf der Kette
+prüfen“ with `step` (the chain page's `?step=`) and `decides` the proposals, instead of „Vorschlag
+prüfen“ and, for a step whose sub-steps carry the proposals, „Prozess zuordnen …“. The labels of
+the table change: `link` beside an `amend` „Nur verknüpfen …“ (else „Verknüpfen mit …“), `amend`
+„Ziel im Modell eintragen …“, „Nachrichtennamen im Modell eintragen …“ and „Signalnamen im
+Modell eintragen …“ for the empty and the named case alike, `decide` „Vorschlag prüfen“,
+`place` on a step item „Prozess platzieren …“, and the kinds „Ziel wird erst beim Ausführen
+bestimmt“ (`call-target-dynamic`) and „Partner der Nachricht fehlt“ (`message-partner-missing`).
+The question comes first and short (`text`), its reason apart (`detail`, from code; an unsure
+verdict's and a coded no-link's agent words verbatim), never the frozen findings' `detail`; a
+pool without a process is named „Pool in „<the pool it talks to>““. UX4 joins `link` and
+`amend` into one entry in the web.
+
 **Anchors of a pool's flows.** The inside end of a message flow to or from a box is whatever the
 flow's other end is: an element with a fact, or one without (a pool whose process the model
 holds, a collapsed subprocess, a gateway, an intermediate none event; S4 places such ends in their
@@ -1085,8 +1121,12 @@ themselves (S5c-1's review round). It also delegates to `acceptManualPlacement` 
 decision of `decideRelations` (all or nothing) and the answer row. It answers `{question:
 OpenQuestion | null, relations, placements, answer}`, the relations and placements it wrote or
 decided (for the undo below), with `question` null when the item is gone. `decide` uses the
-existing `decideRelation` and `decidePlacement` routes from the inline panels, `requeue` the
-existing `requeueAnalyses`, and `fix-link` the chain page; no route edits one step's link today,
+existing `decideRelation` and `decidePlacement` routes from the inline panels (since UX2b, owner
+decision 26 Q4, the web decides where the diagrams are instead: a hold's card answers in the
+note dialog, „Antwort geben“, and opens the review screen or the chain with „Jetzt
+entscheiden“, an agent's question its proposal with „Vorschlag öffnen“; the inline panels
+went; the API's actions are unchanged), `requeue` the existing `requeueAnalyses`, and
+`fix-link` the chain page; no route edits one step's link today,
 and S5c needs none. Typed human links (a human-accepted `call` where no proposal exists) are a
 later choice that M5's network map may want; the review's „Korrigieren“ stays as it is (HANDOFF
 §8 "`correct` on a typed pair").
@@ -1174,7 +1214,10 @@ today.
   row's text), and so is everything a note does there (the next claim shows it; it blocks
   auto-accept rules on the pair).
 - **The CSV round trip stays, with five columns**: `id`, `Art`, `Frage`,
-  `Ansprechpartner-Hinweis`, `Antwort`. The sheet route records each filled `Antwort` as a note,
+  `Ansprechpartner` (`Ansprechpartner-Hinweis` before UX2a; a sheet with either header reads),
+  `Antwort`; since UX2a `Frage` holds the question, its reason as the second sentence and
+  „Betrifft: …“ with names, the contact cell the step owners and lanes (no folder), and an export
+  without `group` holds the `ask` items only. The sheet route records each filled `Antwort` as a note,
   with S5a's checks (unknown ids, 2,000 characters, control characters, the personal-data
   warning, one transaction, the dry run). An S5a sheet with `Antwortart` still reads: „Liegt
   außerhalb der Landschaft“ (or `outside-landscape`) records the outside mark with the text as
@@ -2307,7 +2350,7 @@ export and the web read the same German labels), the tab „Offene Fragen“ aft
 count, the model view's section „Offene Fragen“ (both lazy chunks; the entry stays at 207.5 KB
 gzip, `apps/web/test/bundle.test.ts` says why it grew by 6 KB), and `analyzr questions` with
 `--model`, `--kind`, `--source`, `--ask-who`, `--state` and `--format text|md|csv|json`. Summaries
-are shown read-only (decision 24.9). Live-run neutral: `FindingKind`, claim inputs, MCP tools,
+are shown read-only (decision 24.8). Live-run neutral: `FindingKind`, claim inputs, MCP tools,
 prompts and snapshots, procedures, plugins, facts, stages, recordings and reports are unchanged.
 
 Counts. The seeded dev project (`nordwind-handel` with its golden chain, no agent yet) has 64
@@ -2954,7 +2997,7 @@ write-back or sync to the source tools (decision 7).
    `analyzr:write` token? In local mode a human-only rule still lets the consultant's own
    processes act with the owner key. Recommendation: decide with the trust policy; until then the
    toolkit's tokens carry no write scope.
-2. **Agent summaries for reviewers. Decided 2026-10-15: shown read-only (decision 24.9).** Showing submission summaries in „Offene Fragen“ and the
+2. **Agent summaries for reviewers. Decided 2026-10-15: shown read-only (decision 24.8).** Showing submission summaries in „Offene Fragen“ and the
    model view reverses the resolution of [M3-RELATIONS-PROCEDURE.md](M3-RELATIONS-PROCEDURE.md)
    question 1 (2026-10-08: summaries stay REST-only). They are where agents report gaps today.
    Recommendation: show them, read-only.

@@ -156,6 +156,16 @@ export function nameWords(text: string): string[] {
     .filter((w) => w !== '');
 }
 
+/**
+ * „Modell suchen …“ (UX-SIMPLIFICATION.md §2.3): every word of the query
+ * occurs in `text` (a model's name and key), umlauts and case folded, so
+ * „gutschrift“ finds „Gutschrift erstellen“ and `finanzen/gutschrift`.
+ */
+export function matchesName(text: string, query: string): boolean {
+  const haystack = nameWords(text).join(' ');
+  return nameWords(query).every((w) => haystack.includes(w));
+}
+
 /** Name key like the key tier's: case, umlauts, punctuation and word separators ignored. */
 export function nameKey(text: string): string {
   return nameWords(text).join('');

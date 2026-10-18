@@ -1166,6 +1166,10 @@ export type OpenQuestionPage = {
   items: Array<OpenQuestion>;
   nextCursor: Cursor | null;
   total: number;
+  totals: OpenQuestionTotals;
+  askByModel: {
+    [key: string]: number;
+  };
 };
 
 /**
@@ -1175,10 +1179,12 @@ export type OpenQuestion = {
   id: OpenQuestionId;
   kind: OpenQuestionKind;
   source: OpenQuestionSource;
+  group: OpenQuestionGroup;
   subject: OpenQuestionSubject;
   subjectLabel: string;
   modelKeys: Array<ModelKey>;
   text: string;
+  detail: string | null;
   context: string | null;
   label: string | null;
   askWho: OpenQuestionAskWho;
@@ -1235,6 +1241,11 @@ export type OpenQuestionSource =
   | 'unjudged'
   | 'signal'
   | 'amendment';
+
+/**
+ * Where an open question is worked.
+ */
+export type OpenQuestionGroup = 'ask' | 'agent' | 'proposal' | 'info';
 
 /**
  * What an open question is about.
@@ -1437,6 +1448,16 @@ export type OpenQuestionWithdrawCompare = {
   incoming: string | null;
   after: string;
   before: string | null;
+};
+
+/**
+ * Open questions per group.
+ */
+export type OpenQuestionTotals = {
+  ask: number;
+  agent: number;
+  proposal: number;
+  info: number;
 };
 
 /**
@@ -4862,6 +4883,7 @@ export type ListOpenQuestionsData = {
      * State of an open question.
      */
     state?: OpenQuestionState;
+    group?: Array<OpenQuestionGroup>;
     /**
      * Opaque pagination cursor.
      */
@@ -4928,6 +4950,7 @@ export type ExportOpenQuestionsData = {
      * State of an open question.
      */
     state?: OpenQuestionState;
+    group?: Array<OpenQuestionGroup>;
     /**
      * Format of the open-questions export.
      */

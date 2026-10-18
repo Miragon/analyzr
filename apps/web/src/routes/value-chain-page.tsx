@@ -17,8 +17,9 @@ import {
   ZoomInIcon,
   ZoomOutIcon,
 } from 'lucide-react';
-import { lazy, Suspense, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 
+import { ErrorText } from '@/components/error-text';
 import { MiragonMark } from '@/components/page-shell';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -158,6 +159,8 @@ export function ValueChainPage() {
   const [chainName, setChainName] = useState('');
   const [history, setHistory] = useState({ undo: false, redo: false });
   const [warnings, setWarnings] = useState<number | null>(null);
+  /** The canvas has shown a document (the export hub's `?export=svg` waits for it). */
+  const [shown, setShown] = useState(false);
   const [canvasError, setCanvasError] = useState<string | null>(null);
   const [draftPrompt, setDraftPrompt] = useState<{
     kind: 'restore' | 'download';
@@ -458,6 +461,7 @@ export function ValueChainPage() {
         tone: 'danger',
         title: 'Neuere Revision nicht geladen',
         description: errorMessage(error),
+        error,
       });
     }
     reload();
@@ -541,9 +545,22 @@ export function ValueChainPage() {
       const svg = canvas.current?.saveSVG();
       if (svg) downloadText(`${project}-wertschoepfungskette.svg`, svg, 'image/svg+xml');
     } catch (error) {
-      toast({ tone: 'danger', title: 'SVG nicht erzeugt', description: errorMessage(error) });
+      toast({
+        tone: 'danger',
+        title: 'SVG nicht erzeugt',
+        description: errorMessage(error),
+        error,
+      });
     }
   }
+  // „Bild (SVG)“ of the export hub on „Übersicht“ (UX1): once the drawing is shown, download it.
+  const exportSvg = search.export === 'svg' && shown && mode === 'view';
+  useEffect(() => {
+    if (!exportSvg) return;
+    downloadSvg();
+    void navigate({ search: ({ export: _, ...rest }) => rest, replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per request
+  }, [exportSvg]);
 
   // ------------------------------------------------------------ overlays
   const overlays = useMemo<CanvasOverlay[]>(() => {
@@ -629,6 +646,7 @@ export function ValueChainPage() {
               onChange={onCanvasChange}
               onImported={({ key, warnings: count }) => {
                 setWarnings(count);
+                setShown(true);
                 setCanvasError(null);
                 readCanvas(selectedId);
                 const imported = importing.current;
@@ -739,14 +757,10 @@ export function ValueChainPage() {
               <span className="max-w-48 truncate">{info.data?.name ?? project}</span>
             </Link>
           </Button>
-          <Button variant="ghost" size="sm" asChild>
-            <Link to="/projects/$project" params={{ project }}>
-              Modelle
-            </Link>
-          </Button>
+          {/* UX1's tab names; UX6 folds the header into the shared canvas header (§3.8 item 5). */}
           <Button variant="ghost" size="sm" asChild>
             <Link to="/projects/$project/review" params={{ project }}>
-              Prüfen
+              Relationen
             </Link>
           </Button>
         </div>
@@ -967,7 +981,9 @@ export function ValueChainPage() {
             {loadError ? (
               <Alert variant="destructive">
                 <AlertTitle>Die Kette konnte nicht geladen werden</AlertTitle>
-                <AlertDescription>{errorMessage(loadError)}</AlertDescription>
+                <AlertDescription>
+                  <ErrorText error={loadError} />
+                </AlertDescription>
               </Alert>
             ) : panelForSelection && selectedId ? (
               <StepPanel

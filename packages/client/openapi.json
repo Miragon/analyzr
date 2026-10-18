@@ -3132,12 +3132,24 @@
           "total": {
             "type": "integer",
             "minimum": 0
+          },
+          "totals": {
+            "$ref": "#/components/schemas/OpenQuestionTotals"
+          },
+          "askByModel": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer",
+              "minimum": 1
+            }
           }
         },
         "required": [
           "items",
           "nextCursor",
-          "total"
+          "total",
+          "totals",
+          "askByModel"
         ],
         "description": "A page of open questions."
       },
@@ -3153,6 +3165,9 @@
           "source": {
             "$ref": "#/components/schemas/OpenQuestionSource"
           },
+          "group": {
+            "$ref": "#/components/schemas/OpenQuestionGroup"
+          },
           "subject": {
             "$ref": "#/components/schemas/OpenQuestionSubject"
           },
@@ -3167,6 +3182,12 @@
           },
           "text": {
             "type": "string"
+          },
+          "detail": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "context": {
             "type": [
@@ -3216,10 +3237,12 @@
           "id",
           "kind",
           "source",
+          "group",
           "subject",
           "subjectLabel",
           "modelKeys",
           "text",
+          "detail",
           "context",
           "label",
           "askWho",
@@ -3280,6 +3303,16 @@
           "amendment"
         ],
         "description": "Source of an open question."
+      },
+      "OpenQuestionGroup": {
+        "type": "string",
+        "enum": [
+          "ask",
+          "agent",
+          "proposal",
+          "info"
+        ],
+        "description": "Where an open question is worked."
       },
       "OpenQuestionSubject": {
         "type": "object",
@@ -3806,6 +3839,34 @@
           "before"
         ],
         "description": "The values a value-changed amendment conflict chooses between."
+      },
+      "OpenQuestionTotals": {
+        "type": "object",
+        "properties": {
+          "ask": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "agent": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "proposal": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "info": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "ask",
+          "agent",
+          "proposal",
+          "info"
+        ],
+        "description": "Open questions per group."
       },
       "OpenQuestionExportFormat": {
         "type": "string",
@@ -13710,7 +13771,7 @@
           "open-questions"
         ],
         "summary": "Open questions: the gaps that block links and placements, from every source and the gap signals",
-        "description": "Computed on read, never stored (M6 §4.2): relation and value chain findings, holds (note, question, label), agents' questions on proposals waiting for review, current unsure placement verdicts, no-links coded `call-target` or `collaboration`, the summaries of current submissions and the pairs they left unjudged, and the gap signals over the head facts. Questions first, then the value chain findings (`process-without-step`, `step-without-process`, `unresolved-link`), then informational items (`summary-note`, `descriptive-model`), each group ordered by `unlocks` (descending), then subject, kind and id. `modelKey` matches a model or a folder (`finanzen` matches `finanzen/mahnwesen`); `askWho` matches a lane, one of the step owners or the folder exactly. Each item carries its `actions` (M6 §4.8 a: at most one primary, German labels from code) and its `answers` (notes and outside marks); it is `answered` while a live outside mark names its id (M6 S5c-1), and `state` filters by it. An item whose call, coded end or pool flows a human, an owner's rule or the rule tier linked by an accepted relation to another process leaves the list (R1), and so does a duplicated process id while no call towards its copies waits for a decision (R1b); `listFindings` keeps listing their findings.",
+        "description": "Computed on read, never stored (M6 §4.2): relation and value chain findings, holds (note, question, label), agents' questions on proposals waiting for review, current unsure placement verdicts, no-links coded `call-target` or `collaboration`, the summaries of current submissions and the pairs they left unjudged, and the gap signals over the head facts. Questions first, then the value chain findings (`process-without-step`, `step-without-process`, `unresolved-link`), then informational items (`summary-note`, `descriptive-model`), each group ordered by `unlocks` (descending), then subject, kind and id. `modelKey` matches a model or a folder (`finanzen` matches `finanzen/mahnwesen`); `askWho` matches a lane, one of the step owners or the folder exactly. Each item carries its `actions` (M6 §4.8 a: at most one primary, German labels from code) and its `answers` (notes and outside marks); it is `answered` while a live outside mark names its id (M6 S5c-1), and `state` filters by it. An item whose call, coded end or pool flows a human, an owner's rule or the rule tier linked by an accepted relation to another process leaves the list (R1), and so does a duplicated process id while no call towards its copies waits for a decision (R1b); `listFindings` keeps listing their findings. Since UX2a each item carries its `group` (`ask` „Zu klären“, `agent` „Fragen der Agenten“, `proposal` decided on the value chain, `info` „Zur Information“; a label and a filter, never a sort key) and its question first (`text`) with the reason apart (`detail`); `group` filters (repeat it for several), `totals` counts the items per group under every filter but `group`, and `askByModel` the distinct subjects of the `ask` items per model that are neither a relation nor a placement. One question per process: a process with a held placement, an agent's question on one of its placements or an unsure verdict has no `process-without-step` item.",
         "parameters": [
           {
             "schema": {
@@ -13770,6 +13831,19 @@
             "required": false,
             "description": "State of an open question.",
             "name": "state",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/OpenQuestionGroup"
+              },
+              "minItems": 1,
+              "maxItems": 4
+            },
+            "required": false,
+            "name": "group",
             "in": "query"
           },
           {
@@ -13854,7 +13928,7 @@
           "open-questions"
         ],
         "summary": "The open questions as a Markdown or CSV download, with the filters of the list",
-        "description": "Every open question matching the filters, in list order, as an attachment. `markdown` (default): German headings, grouped by the contact hint (step owners, else folder, else lanes). `csv`: the questions without the informational items (`summary-note`, `descriptive-model`, which ask nothing), UTF-8 with a byte order mark, `;`-separated (what German spreadsheet programs open directly), CRLF, every field quoted, the columns `id`, `Art`, `Frage`, `Ansprechpartner-Hinweis`, `Antwort`; `Antwort` is empty for the customer to fill in, or holds the item's latest note (M6 S5c-1; read back, it is `unchanged`); the Markdown lists every note and outside mark. A cell starting with `=`, `+`, `-`, `@`, a tab, a carriage return or their full-width forms (also after a run of `'`) gets a leading `'`, so spreadsheets never run it as a formula. The file name carries the filters (`offene-fragen-<project key>-<filters>.csv`).",
+        "description": "Every open question matching the filters, in list order, as an attachment. Without `group`, only the `ask` items („Zu klären“, UX2a: the customer is asked what needs clarifying, not the agents' questions on proposals), unless `kind` or `source` names what to export (then every group); the file name stays `offene-fragen-<project key>` for that default. `markdown` (default): for the customer, in plain German: the date of the project's latest event („Stand 17.10.2026“) with the count of open and settled items, grouped by the contact hint (step owners, else lanes, else „Ohne Ansprechpartner“; never the folder), per item its question and reason (an agent's verbatim reason after „Laut Agent:“), „Betrifft“ with the element and the model by name, the contact hint (lanes and step owners), notes (a hold's as „Antwort“) and outside marks with their dates; the id only as an HTML comment after the heading (`<!-- q-… -->`, invisible when rendered, the way back to `analyzr questions answer`); no refs, seqs, sources or handles. `csv`: the questions without the informational items (`summary-note`, `descriptive-model`, which ask nothing), UTF-8 with a byte order mark, `;`-separated (what German spreadsheet programs open directly), CRLF, every field quoted, the columns `id`, `Art`, `Frage`, `Ansprechpartner`, `Antwort`; `Frage` holds the question, its reason as the second sentence and „Betrifft: …“; `Antwort` is empty for the customer to fill in, or holds the item's latest note (M6 S5c-1; read back, it is `unchanged`); a sheet exported before UX2a names the contact column `Ansprechpartner-Hinweis` and reads all the same. A cell starting with `=`, `+`, `-`, `@`, a tab, a carriage return or their full-width forms (also after a run of `'`) gets a leading `'`, so spreadsheets never run it as a formula. The file name carries the filters (`offene-fragen-<project key>-<filters>.csv`; `state=open` adds nothing, the name says „offene“ already).",
         "parameters": [
           {
             "schema": {
@@ -13914,6 +13988,19 @@
             "required": false,
             "description": "State of an open question.",
             "name": "state",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/OpenQuestionGroup"
+              },
+              "minItems": 1,
+              "maxItems": 4
+            },
+            "required": false,
+            "name": "group",
             "in": "query"
           },
           {

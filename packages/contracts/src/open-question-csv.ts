@@ -19,6 +19,14 @@
  * undoes both.
  */
 
+/**
+ * The headers of the contact column, the current one first (UX2a: „Ansprechpartner“;
+ * sheets exported before call it „Ansprechpartner-Hinweis“). The reader takes a sheet
+ * with either: it finds `id`, `Antwort` and `Antwortart` by name and leaves the contact
+ * column as the customer wrote it.
+ */
+export const CONTACT_COLUMNS = ['Ansprechpartner', 'Ansprechpartner-Hinweis'] as const;
+
 /** The byte order mark the CSV starts with (UTF-8 for Excel). */
 export const CSV_BOM = '﻿';
 /** The CSV separator: German Excel's list separator. */

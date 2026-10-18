@@ -55,7 +55,7 @@ import {
 } from '../src/lib/queries';
 import { amendmentCountsText } from '../src/lib/upload';
 import { createAppRouter } from '../src/router';
-import { fact, model, openQuestion } from './support/fixtures';
+import { fact, model, openQuestion, openQuestionPage } from './support/fixtures';
 import { findToast, json, stubApi, type Call } from './support/render';
 
 const PROJECT = '/api/v1/projects/demo';
@@ -492,13 +492,7 @@ function project(role: Project['role']): Project {
 }
 
 function listRoute(list: readonly OpenQuestion[]) {
-  return (call: Call) => {
-    const query = new URLSearchParams(call.search);
-    const limit = Number(query.get('limit') ?? '50');
-    const modelKey = query.get('modelKey');
-    const matching = list.filter((q) => modelKey === null || q.modelKeys.includes(modelKey));
-    return json({ items: matching.slice(0, limit), nextCursor: null, total: matching.length });
-  };
+  return (call: Call) => json(openQuestionPage(list, call.search, { folders: false }));
 }
 
 /** The amendments route: a dry run answers 200, a save 201 and ends the items that asked for it. */
@@ -1335,8 +1329,12 @@ describe('the models table’s mark and the change list (M6 S5c-2)', () => {
     expect(marked[0]!.querySelector('[title]')?.getAttribute('title')).toContain(
       '2 Ergänzungen aus analyzr im Kopf',
     );
-    await user.click(await screen.findByTestId('change-list-export'));
-    await user.click(await screen.findByRole('menuitem', { name: 'Als Markdown' }));
+    // UX1: the change list is an entry of the export hub on „Übersicht“.
+    await user.click(await screen.findByTestId('export-hub'));
+    const group = within(screen.getByRole('menu', { name: 'Exportieren' })).getByRole('group', {
+      name: 'Änderungsliste fürs Quellsystem',
+    });
+    await user.click(within(group).getByRole('menuitem', { name: 'Markdown' }));
     await waitFor(() => expect(click).toHaveBeenCalledTimes(1));
     expect((click.mock.contexts[0] as HTMLAnchorElement).download).toBe('ergaenzungen-demo.md');
     const exported = calls.find((c) => c.path === `${PROJECT}/amendments/export`);

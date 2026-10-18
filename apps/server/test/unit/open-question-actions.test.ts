@@ -27,6 +27,7 @@ import {
   type LinkPair,
 } from '../../src/domain/open-questions/actions.ts';
 import { buildOpenQuestions, openQuestions } from '../../src/domain/open-questions/read-model.ts';
+import { SHIPPED_SIGNALS } from '../../src/domain/open-questions/signals.ts';
 import type { RelationRecord } from '../../src/domain/ports.ts';
 import { AT, PROJECT, relationId } from '../support/open-questions.ts';
 import {
@@ -38,6 +39,7 @@ import {
   START_RECHNUNG,
   STORNO,
   TASK_NOTIZ,
+  placementAssertion,
   placementId,
   synthetic,
 } from '../support/open-questions-synthetic.ts';
@@ -205,16 +207,38 @@ describe('the actions of every kind', () => {
 
     // call-target-unknown, every flavour (S5c-2): a target naming no process and a no-link
     // link first and amend second; no target amends first; an engine-null FEEL target is an
-    // expression in either dialect, so never an amendment.
-    const AMEND_CHANGE = 'amend Aufrufziel im Modell ändern …';
-    for (const q of [
-      at('call-target-unknown', CALL, 'finding'),
-      at('call-target-unknown', CALL, 'no-link'),
-    ]) {
-      expect(lines(q), q.subject.id).toEqual([LINK, AMEND_CHANGE, OUTSIDE_MARK, NOTE]);
-    }
+    // expression in either dialect, so never an amendment. UX2a: both amends say „Ziel im
+    // Modell eintragen …“; the link says „Nur verknüpfen …“ only as the second action beside a
+    // primary amend (UX2b review: the primary verb never reads as the lesser option).
+    const AMEND_TARGET = 'amend Ziel im Modell eintragen …';
+    expect(lines(at('call-target-unknown', CALL, 'finding'))).toEqual([
+      LINK,
+      AMEND_TARGET,
+      OUTSIDE_MARK,
+      NOTE,
+    ]);
+    // The coded no-links join the rule tier's items about the same gap (UX2b review); on
+    // their own, without the call's finding and the pool's signal, they act alike.
+    expect(items.filter((q) => q.source === 'no-link')).toEqual([]);
+    const alone = buildOpenQuestions(
+      { ...input, findings: input.findings.filter((f) => !f.refs.includes(CALL)) },
+      { signals: SHIPPED_SIGNALS.filter((sig) => sig !== 'black-box-partner') },
+    ).items;
+    const noLink = (kind: string, subject: string) => {
+      const found = alone.filter(
+        (q) => q.kind === kind && q.subject.id === subject && q.source === 'no-link',
+      );
+      expect(found, `${kind} ${subject}`).toHaveLength(1);
+      return found[0] as OpenQuestion;
+    };
+    expect(lines(noLink('call-target-unknown', CALL))).toEqual([
+      LINK,
+      AMEND_TARGET,
+      OUTSIDE_MARK,
+      NOTE,
+    ]);
     expect(lines(at('call-target-unknown', LEER))).toEqual([
-      'amend* Aufrufziel eintragen …',
+      'amend* Ziel im Modell eintragen …',
       'link Nur verknüpfen … [process]',
       OUTSIDE_MARK,
       NOTE,
@@ -258,13 +282,13 @@ describe('the actions of every kind', () => {
     // Named and nameless message endpoints: an endpoint picker, and the name in the model.
     expect(lines(at('message-partner-missing', STORNO))).toEqual([
       'link* Verknüpfen mit … [endpoint]',
-      'amend Nachrichtennamen ändern …',
+      'amend Nachrichtennamen im Modell eintragen …',
       OUTSIDE_MARK,
       NOTE,
     ]);
     expect(lines(at('message-partner-missing', NAMENLOS))).toEqual([
-      'amend* Nachrichtennamen eintragen …',
-      'link Verknüpfen mit … [endpoint]',
+      'amend* Nachrichtennamen im Modell eintragen …',
+      'link Nur verknüpfen … [endpoint]',
       OUTSIDE_MARK,
       NOTE,
     ]);
@@ -285,7 +309,7 @@ describe('the actions of every kind', () => {
       'held relation',
     ]);
     for (const q of decide) {
-      expect(lines(q)).toEqual(['decide* Entscheiden', NOTE]);
+      expect(lines(q)).toEqual(['decide* Vorschlag prüfen', NOTE]);
       expect(q.actions[0]?.decides).toEqual([
         { type: q.subject.type, id: q.subject.id, version: 1 },
       ]);
@@ -296,16 +320,24 @@ describe('the actions of every kind', () => {
       'place Gehört zu keinem Schritt @@outside',
       NOTE,
     ]);
-    // process-without-step by state: proposed (N), none (P_Sonder), held (R: dropped, the
-    // hold asks it).
-    const proposed = at('process-without-step', N);
-    expect(lines(proposed)).toEqual([
-      'decide* Vorschlag prüfen',
+    // process-without-step by state: proposed with an agent's question (N: dropped, the
+    // question asks it, UX2a), none (P_Sonder), held (R: dropped, the hold asks it).
+    expect(items.some((q) => q.kind === 'process-without-step' && q.subject.id === N)).toBe(false);
+    // Without the question, N's item is decided on the chain (group `proposal`, UX2a).
+    const histories = new Map(input.chain?.histories);
+    histories.set(placementId(3), [placementAssertion(3, placementId(3), {})]);
+    const chain = input.chain && { ...input.chain, histories };
+    const proposed = openQuestions({ ...input, chain }).find(
+      (q) => q.kind === 'process-without-step' && q.subject.id === N,
+    );
+    expect(proposed?.group).toBe('proposal');
+    expect(proposed?.actions.map(line)).toEqual([
+      'decide* Auf der Kette prüfen @step-ablage',
       'place Anderen Schritt wählen … [step]',
       'place Gehört zu keinem Schritt @@outside',
       NOTE,
     ]);
-    expect(proposed.actions[0]?.decides).toEqual([
+    expect(proposed?.actions[0]?.decides).toEqual([
       { type: 'placement', id: placementId(3), version: 1 },
     ]);
     expect(lines(at('process-without-step', SONDER_P))).toEqual([
@@ -314,23 +346,26 @@ describe('the actions of every kind', () => {
       NOTE,
     ]);
     expect(items.some((q) => q.kind === 'process-without-step' && q.subject.id === R)).toBe(false);
-    // step-without-process: a process picker; „Vorschlag prüfen“ while a placement is proposed.
+    // step-without-process: a process picker; „Auf der Kette prüfen“ while a placement is
+    // proposed on it (UX2a: group `proposal`).
     expect(lines(at('step-without-process', 'step-finanzen'))).toEqual([
-      'place* Prozess zuordnen … [process]',
+      'place* Prozess platzieren … [process]',
       OUTSIDE_MARK,
       NOTE,
     ]);
+    expect(at('step-without-process', 'step-finanzen').group).toBe('ask');
     expect(lines(at('step-without-process', 'step-ablage'))).toEqual([
-      'decide* Vorschlag prüfen',
-      'place Prozess zuordnen … [process]',
+      'decide* Auf der Kette prüfen @step-ablage',
+      'place Prozess platzieren … [process]',
       OUTSIDE_MARK,
       NOTE,
     ]);
+    expect(at('step-without-process', 'step-ablage').group).toBe('proposal');
     expect(lines(at('unresolved-link', 'step-ablage'))).toEqual([
       'fix-link* Link korrigieren',
       NOTE,
     ]);
-    expect(lines(at('external-partner', TASK_NOTIZ))).toEqual([
+    expect(lines(noLink('external-partner', TASK_NOTIZ))).toEqual([
       'outside* Liegt außerhalb der Landschaft',
       'link Verknüpfen mit … [process]',
       NOTE,
@@ -380,23 +415,23 @@ describe('the actions of every kind', () => {
     expect(
       actionsFor({ ...nameless, kind: 'message-without-name', source: 'signal' }, index).map(line),
     ).toEqual([
-      'amend* Nachrichtennamen eintragen …',
-      'link Verknüpfen mit … [endpoint]',
+      'amend* Nachrichtennamen im Modell eintragen …',
+      'link Nur verknüpfen … [endpoint]',
       OUTSIDE_MARK,
       NOTE,
     ]);
 
-    // Every kind of the contracts is here (amendment conflicts in their own test), and
-    // every item has at most one primary.
+    // Every kind of the contracts is here (amendment conflicts in their own test; the coded
+    // no-link's `external-partner` on its own), and every item has at most one primary.
     expect(
       OpenQuestionKind.options.filter(
         (k) =>
           k !== 'message-without-name' &&
           k !== 'amendment-conflict' &&
-          !items.some((q) => q.kind === k),
+          ![...items, ...alone].some((q) => q.kind === k),
       ),
     ).toEqual([]);
-    for (const q of items) {
+    for (const q of [...items, ...alone]) {
       expect(q.actions.filter((a) => a.primary).length, `${q.kind} ${q.subject.id}`).toBe(
         q.actions.length === 0 ? 0 : 1,
       );
@@ -440,14 +475,23 @@ describe('R1 and R1b: links and decisions take items off the list', () => {
         .filter((q) => q.kind === 'call-target-unknown' && q.subject.id === CALL)
         .map((q) => q.source)
         .sort();
-    // The agent's proposal from the call (proposed, with a question) leaves both listed.
-    expect(callItems(input.relations)).toEqual(['finding', 'no-link']);
+    // The agent's proposal from the call (proposed, with a question) leaves it listed: one
+    // item, the coded no-link about the same call joined to the finding (UX2b review).
+    expect(callItems(input.relations)).toEqual(['finding']);
     // A link inside the call's own process changes nothing; a rejected one neither.
-    expect(callItems([...input.relations, manual(1, CALL, STORNO)])).toHaveLength(2);
-    expect(callItems([...input.relations, manual(1, CALL, N, 'rejected')])).toHaveLength(2);
-    // An accepted manual relation to another process: both items go.
+    expect(callItems([...input.relations, manual(1, CALL, STORNO)])).toHaveLength(1);
+    expect(callItems([...input.relations, manual(1, CALL, N, 'rejected')])).toHaveLength(1);
+    // An accepted manual relation to another process: the item goes.
     const linked = [...input.relations, manual(1, CALL, N)];
     expect(callItems(linked)).toEqual([]);
+    // Without the finding, the no-link's own item goes the same way.
+    const noFinding = { ...input, findings: input.findings.filter((f) => !f.refs.includes(CALL)) };
+    const noLinkItems = (relations: readonly RelationRecord[]) =>
+      openQuestions({ ...noFinding, relations })
+        .filter((q) => q.kind === 'call-target-unknown' && q.subject.id === CALL)
+        .map((q) => q.source);
+    expect(noLinkItems(input.relations)).toEqual(['no-link']);
+    expect(noLinkItems(linked)).toEqual([]);
     // „Befunde“ still lists the finding (R1 is read model only).
     expect(input.findings.some((f) => f.refs.includes(CALL))).toBe(true);
     // The agent's proposal, accepted by a human: the same.
@@ -503,7 +547,7 @@ describe('R1 and R1b: links and decisions take items off the list', () => {
       openQuestions({ ...input, relations }).filter(
         (q) => q.kind === 'call-target-unknown' && q.subject.id === CALL,
       ).length;
-    expect(callItems([...input.relations, manual(4, TASK_NOTIZ, CALL)])).toBe(2);
+    expect(callItems([...input.relations, manual(4, TASK_NOTIZ, CALL)])).toBe(1);
     expect(callItems([...input.relations, manual(4, CALL, N)])).toBe(0);
   });
 
@@ -591,10 +635,11 @@ describe('what a link writes', () => {
       type: 'call',
       tier: 'semantic',
     };
-    const { index, items } = buildOpenQuestions({
-      ...input,
-      relations: [...input.relations, proposal, callInto],
-    });
+    // The coded no-link on its own: without the bank pool's signal, which it joins otherwise.
+    const { index, items } = buildOpenQuestions(
+      { ...input, relations: [...input.relations, proposal, callInto] },
+      { signals: SHIPPED_SIGNALS.filter((sig) => sig !== 'black-box-partner') },
+    );
     const external = items.find(
       (q) => q.kind === 'external-partner' && q.subject.id === TASK_NOTIZ,
     );
@@ -631,15 +676,19 @@ describe('what a link writes', () => {
 
     // The pool: the call into Versand's process is no suggestion, the anchors' processes
     // are left out of the picker, and a link writes one manual relation per flow.
-    const pool = items.find((q) => q.subject.id === SPEDITION);
+    const pools = buildOpenQuestions({
+      ...input,
+      relations: [...input.relations, proposal, callInto],
+    });
+    const pool = pools.items.find((q) => q.subject.id === SPEDITION);
     const poolLink = pool?.actions.find((a) => a.type === 'link');
     if (!pool || !poolLink) throw new Error('no pool with a link');
     expect(poolLink.suggested).toEqual([]);
     expect(poolLink.proposals).toBeUndefined();
     expect(poolLink.exclude).toEqual([LAGER, VERSAND]);
-    const poolPlan = linkPlan(index, pool, poolLink, { targets: [R] });
+    const poolPlan = linkPlan(pools.index, pool, poolLink, { targets: [R] });
     if (!poolPlan.ok) throw new Error(poolPlan.message);
-    expect(linkSteps(index, pool, poolLink, poolPlan.pairs).map((s) => s.kind)).toEqual([
+    expect(linkSteps(pools.index, pool, poolLink, poolPlan.pairs).map((s) => s.kind)).toEqual([
       'manual',
       'manual',
     ]);

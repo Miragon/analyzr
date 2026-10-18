@@ -145,7 +145,7 @@ export function AmendSummary({
                 params={{ project }}
                 className="text-link underline"
               >
-                „Prüfen“
+                „Relationen“
               </Link>
               .
             </>

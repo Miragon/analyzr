@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { TriangleAlertIcon, Undo2Icon } from 'lucide-react';
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
 
+import { ErrorText } from '@/components/error-text';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -15,7 +16,6 @@ import {
   withdrawEffectSentence,
   type WithdrawTarget,
 } from '@/lib/amendments';
-import { errorMessage } from '@/lib/api';
 
 /**
  * The confirmation before a withdrawal (M6 §4.8 c): a withdrawal writes a new
@@ -112,7 +112,9 @@ export function WithdrawConfirm({
       ) : dry.isError ? (
         <Alert variant="destructive">
           <AlertTitle>Nicht geprüft</AlertTitle>
-          <AlertDescription>{errorMessage(dry.error)}</AlertDescription>
+          <AlertDescription>
+            <ErrorText error={dry.error} />
+          </AlertDescription>
         </Alert>
       ) : (
         <>
@@ -144,7 +146,9 @@ export function WithdrawConfirm({
       ) : withdraw.isError ? (
         <Alert variant="destructive">
           <AlertTitle>Nicht zurückgenommen</AlertTitle>
-          <AlertDescription>{errorMessage(withdraw.error)}</AlertDescription>
+          <AlertDescription>
+            <ErrorText error={withdraw.error} />
+          </AlertDescription>
         </Alert>
       ) : null}
       <div className="flex flex-wrap justify-end gap-2">

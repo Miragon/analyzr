@@ -9,10 +9,9 @@ import { PERSONAL_DATA_HINT, personalDataWarnings } from '@analyzr/contracts/per
 import { useQuery } from '@tanstack/react-query';
 import { cn } from 'cn';
 import { InfoIcon, LinkIcon, MapPinIcon, SearchIcon, TriangleAlertIcon } from 'lucide-react';
-import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { useId, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 
 import { PICKER_SHOWN, PickerList, PickerTruncated } from '@/components/picker-list';
-import { DecisionPanel } from '@/components/review/decision-panel';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -22,11 +21,9 @@ import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Spinner } from '@/components/ui/spinner';
 import { Textarea } from '@/components/ui/textarea';
-import { PlacementDecisionPanel } from '@/components/value-chain/placement-decision-panel';
 import { StepOptionLabel } from '@/components/value-chain/step-options';
 import { ApiError, errorMessage } from '@/lib/api';
 import { nameWords } from '@/lib/generic-names';
-import { RELATION_TYPES } from '@/lib/labels';
 import { MAX_ANSWER_CHARS, MAX_LINK_TARGETS } from '@/lib/limits';
 import { personalDataHint } from '@/lib/open-question-answers';
 import { useQuestionAction } from '@/lib/open-question-actions';
@@ -50,20 +47,21 @@ import {
   type ModelFacts,
   type ProcessChoice,
 } from '@/lib/open-question-pickers';
-import { modelsQuery, placementsQuery, relationQuery, valueChainQuery } from '@/lib/queries';
+import { modelsQuery, valueChainQuery } from '@/lib/queries';
 import type { RefResolver } from '@/lib/refs';
-import { conflictOf, pairText } from '@/lib/review';
+import { conflictOf } from '@/lib/review';
 import { useProjectFacts } from '@/lib/use-project-facts';
-import { placementStepLabel, stepOptions, type StepOption } from '@/lib/value-chain';
+import { stepOptions, type StepOption } from '@/lib/value-chain';
 
 import { useActionFeedback } from './action-feedback';
 
 /**
  * The inline panels of an open question's actions (M6 §4.8 a, S5c-1): the
  * pickers of `link`, `place` and `choose-copy`, each naming what it will
- * write before it does, and the decision panels of `decide` (the review's
- * own components). They open below the item, in the tab and in the model
- * view's section, and load with those lazy chunks only.
+ * write before it does. They open below the item, in the tab and in the
+ * model view's section, and load with those lazy chunks only. A `decide` has
+ * no panel since UX2b: it is decided where the diagrams are (owner decision
+ * 26, Q4), the review screen or the chain.
  */
 
 export interface PanelProps {
@@ -782,153 +780,5 @@ export function ChooseCopyPanel(props: PanelProps) {
       </p>
       <Preview lines={picked ? [chooseCopyPreview(calls.length, refName(resolve, picked))] : []} />
     </PanelForm>
-  );
-}
-
-// --------------------------------------------------------------- decide
-
-function RelationDecision({
-  id,
-  project,
-  resolve,
-  onDone,
-}: {
-  id: string;
-  project: string;
-  resolve: RefResolver;
-  onDone: () => void;
-}) {
-  const relation = useQuery(relationQuery(project, id));
-  const { facts } = useModelFacts(project);
-  const all = useMemo(() => facts.flatMap((m) => m.facts), [facts]);
-  if (relation.isPending) return <Skeleton className="h-20" />;
-  if (relation.isError)
-    return (
-      <p className="text-sm text-destructive">
-        Die Relation konnte nicht geladen werden: {errorMessage(relation.error)}
-      </p>
-    );
-  const r = relation.data;
-  return (
-    <div className="flex flex-col gap-2" data-testid="action-decide-relation" data-relation-id={id}>
-      <p className="text-sm">
-        <span className="font-medium">{pairText(r, (ref) => `„${refName(resolve, ref)}“`)}</span>{' '}
-        <span className="text-muted-foreground">· {RELATION_TYPES[r.type].label}</span>
-      </p>
-      <DecisionPanel
-        project={project}
-        relation={r}
-        resolve={resolve}
-        facts={all}
-        shortcuts={false}
-        onDecided={onDone}
-        onReload={() => void relation.refetch()}
-      />
-    </div>
-  );
-}
-
-function PlacementDecision({
-  id,
-  project,
-  resolve,
-  onDone,
-}: {
-  id: string;
-  project: string;
-  resolve: RefResolver;
-  onDone: () => void;
-}) {
-  const placements = useQuery(placementsQuery(project));
-  const chain = useQuery(valueChainQuery(project));
-  const options = useMemo(
-    () => (chain.data ? stepOptions(chain.data.steps, { outside: true }) : []),
-    [chain.data],
-  );
-  if (placements.isPending) return <Skeleton className="h-20" />;
-  const placement = placements.data?.find((p) => p.id === id);
-  if (!placement)
-    return (
-      <p className="text-sm text-muted-foreground">
-        Die Platzierung ist inzwischen entschieden oder gibt es nicht mehr.
-      </p>
-    );
-  const processName = placement.processName ?? refName(resolve, placement.process);
-  return (
-    <div
-      className="flex flex-col gap-2"
-      data-testid="action-decide-placement"
-      data-placement-id={id}
-    >
-      <p className="text-sm">
-        <span className="font-medium">„{processName}“</span>{' '}
-        <span className="text-muted-foreground">→ „{placementStepLabel(placement)}“</span>
-      </p>
-      <PlacementDecisionPanel
-        project={project}
-        placement={placement}
-        processName={processName}
-        stepOptions={options}
-        onDecided={onDone}
-        onReload={() => void placements.refetch()}
-      />
-    </div>
-  );
-}
-
-/**
- * `decide`: the review's decision panels inline (accept, reject, hold,
- * correct), for each relation or placement the action decides; the
- * shortcuts stay off, since many items share the page. Like the other
- * panels it takes the focus when it opens and closes with Escape or
- * „Abbrechen“, the focus back on its opener.
- */
-export function DecidePanel({ action, project, resolve, onDone, onCancel }: PanelProps) {
-  const items = action.decides ?? [];
-  const frame = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    frame.current?.focus();
-  }, []);
-  return (
-    <div
-      ref={frame}
-      tabIndex={-1}
-      role="group"
-      aria-label={action.label}
-      onKeyDown={(event) => {
-        // Escape inside a popover (a portal, outside this frame's DOM) closes only that.
-        if (event.key !== 'Escape' || event.defaultPrevented) return;
-        if (!frame.current?.contains(event.target as Node)) return;
-        event.preventDefault();
-        onCancel();
-      }}
-      className="flex min-w-0 flex-col gap-3 outline-none"
-      data-testid="action-decide"
-    >
-      {items.map((d) =>
-        d.type === 'relation' ? (
-          <RelationDecision
-            key={d.id}
-            id={d.id}
-            project={project}
-            resolve={resolve}
-            onDone={onDone}
-          />
-        ) : (
-          <PlacementDecision
-            key={d.id}
-            id={d.id}
-            project={project}
-            resolve={resolve}
-            onDone={onDone}
-          />
-        ),
-      )}
-      <div className="flex justify-end">
-        <Button type="button" variant="outline" size="sm" onClick={onCancel}>
-          Abbrechen
-        </Button>
-      </div>
-    </div>
   );
 }

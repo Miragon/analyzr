@@ -11,6 +11,7 @@ import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-quer
 import { InfoIcon, PowerIcon, SaveIcon } from 'lucide-react';
 import { useId, useMemo, useState, type FormEvent } from 'react';
 
+import { ErrorText } from '@/components/error-text';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -457,7 +458,9 @@ function RuleForm({ project, rule, tokens, onOpenChange, onSaved }: Omit<RuleDia
           ) : preview.isError ? (
             <Alert variant="destructive">
               <AlertTitle>Vorschau fehlgeschlagen</AlertTitle>
-              <AlertDescription>{errorMessage(preview.error)}</AlertDescription>
+              <AlertDescription>
+                <ErrorText error={preview.error} />
+              </AlertDescription>
             </Alert>
           ) : preview.data ? (
             <RulePreview

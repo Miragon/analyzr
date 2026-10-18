@@ -5,8 +5,17 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { ReviewDetails } from '../src/components/review/review-details';
 import { buildRefIndex, resolverOf } from '../src/lib/refs';
-import { assertion, fact, noLink, provenance, relation } from './support/fixtures';
-import { renderWithRouter, stubApi } from './support/render';
+import {
+  assertion,
+  fact,
+  noLink,
+  openQuestion,
+  openQuestionAnswer,
+  openQuestionPage,
+  provenance,
+  relation,
+} from './support/fixtures';
+import { json, renderWithRouter, stubApi } from './support/render';
 
 const HOSTILE =
   '<img src=x onerror="alert(1)"><script>alert(2)</script> **fett** [link](javascript:x)';
@@ -202,5 +211,132 @@ describe('ReviewDetails', () => {
     expect(within(entries[3]!).getByText('Falscher Empfänger')).toBeTruthy();
     const link = within(entries[3]!).getByRole('link', { name: /Korrigiert durch/ });
     expect(link.getAttribute('href')).toBe('/projects/demo/review/rel_01MANUAL000000000000000001');
+  });
+
+  it('shows a hold’s question, note and label, and answers it in the dialog of „Offene Fragen“ (UX2b)', async () => {
+    const held = relation({
+      ...rel,
+      status: 'held',
+      provenance: provenance({
+        kind: 'decision',
+        verdict: 'hold',
+        sourceKind: 'human',
+        handle: 'owner',
+        rationale: 'Laut Handbuch der Vertrieb.',
+        question: 'Wer verschickt die Rechnung?',
+        label: 'mit Finanzen klären',
+      }),
+    });
+    const question = openQuestion({
+      id: 'q-00000000000000f1',
+      kind: 'held',
+      source: 'hold',
+      subject: { type: 'relation', id: held.id },
+      text: 'Wer verschickt die Rechnung?',
+      actions: [{ type: 'note', primary: false, label: 'Notiz hinzufügen' }],
+    });
+    const calls = stubApi({
+      'GET /api/v1/projects/demo/open-questions': (call) =>
+        json(openQuestionPage([question], call.search)),
+    });
+    await renderWithRouter(
+      <ReviewDetails
+        project="demo"
+        relation={held}
+        assertions={history}
+        resolve={resolve}
+        modelKeys={new Set(['shop', 'billing'])}
+        canAnswerHold
+      />,
+    );
+    const box = screen.getByTestId('hold-box');
+    expect(box.textContent).toContain('Offene Frage (vorgemerkt)');
+    expect(box.textContent).toContain('Wer verschickt die Rechnung?');
+    expect(box.textContent).toContain('Notiz zur Vormerkung: Laut Handbuch der Vertrieb.');
+    expect(box.textContent).toContain('mit Finanzen klären');
+    const user = userEvent.setup();
+    await user.click(await within(box).findByRole('button', { name: 'Antwort geben' }));
+    const dialog = await screen.findByTestId('note-dialog');
+    expect(within(dialog).getByRole('heading', { name: 'Antwort geben' })).toBeTruthy();
+    const list = calls.find((c) => c.path === '/api/v1/projects/demo/open-questions');
+    expect(new URLSearchParams(list?.search).get('kind')).toBe('held');
+  });
+
+  it('shows the hold’s latest answer where it is decided, and offers „Antwort ergänzen“', async () => {
+    const held = relation({
+      ...rel,
+      status: 'held',
+      provenance: provenance({
+        assertionId: 'ast_h',
+        kind: 'decision',
+        verdict: 'hold',
+        sourceKind: 'human',
+        handle: 'owner',
+        rationale: 'Laut Handbuch der Vertrieb.',
+        question: 'Wer verschickt die Rechnung?',
+      }),
+    });
+    const answered = [
+      ...history,
+      assertion({ id: 'ast_h', seq: 7, kind: 'decision', verdict: 'hold', sourceKind: 'human' }),
+      assertion({
+        id: 'ast_n1',
+        seq: 8,
+        kind: 'note',
+        sourceKind: 'human',
+        rationale: 'Erst so.',
+        at: '2026-10-17T09:00:00.000Z',
+      }),
+      assertion({
+        id: 'ast_n2',
+        seq: 9,
+        kind: 'note',
+        sourceKind: 'human',
+        rationale: 'Ja, laut Einkauf immer.',
+        at: '2026-10-18T09:00:00.000Z',
+      }),
+    ];
+    const question = openQuestion({
+      id: 'q-00000000000000f2',
+      kind: 'held',
+      source: 'hold',
+      subject: { type: 'relation', id: held.id },
+      answers: [openQuestionAnswer({ questionId: 'q-00000000000000f2', target: 'relation-note' })],
+      actions: [{ type: 'note', primary: false, label: 'Notiz hinzufügen' }],
+    });
+    stubApi({
+      'GET /api/v1/projects/demo/open-questions': (call) =>
+        json(openQuestionPage([question], call.search)),
+    });
+    await renderWithRouter(
+      <ReviewDetails
+        project="demo"
+        relation={held}
+        assertions={answered}
+        resolve={resolve}
+        modelKeys={new Set(['shop', 'billing'])}
+        canAnswerHold
+      />,
+    );
+    const box = screen.getByTestId('hold-box');
+    expect(within(box).getByTestId('hold-answer-latest').textContent).toBe(
+      'Antwort vom 18.10.2026: Ja, laut Einkauf immer.',
+    );
+    expect(await within(box).findByRole('button', { name: 'Antwort ergänzen' })).toBeTruthy();
+  });
+
+  it('offers no answer without the right to review', async () => {
+    stubApi({});
+    await renderWithRouter(
+      <ReviewDetails
+        project="demo"
+        relation={relation({ ...rel, status: 'held' })}
+        assertions={history}
+        resolve={resolve}
+        modelKeys={new Set(['shop', 'billing'])}
+      />,
+    );
+    expect(screen.getByTestId('hold-box')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Antwort geben' })).toBeNull();
   });
 });

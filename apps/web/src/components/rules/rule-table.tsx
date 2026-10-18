@@ -100,6 +100,7 @@ export function RuleTable({
               tone: 'danger',
               title: 'Nicht gespeichert',
               description: errorMessage(error),
+              error,
             });
         },
       },

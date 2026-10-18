@@ -49,7 +49,7 @@ docker compose -p analyzr -f docker/compose.yaml exec server analyzr seed   # th
 
 Open http://127.0.0.1:7400. Local mode has no login: the web UI on this machine is the owner.
 
-**Connect an agent.** Create an agent token in the web UI (project → „Agent verbinden“) or in the
+**Connect an agent.** Create an agent token in the web UI (project → „Einstellungen › Agent verbinden“) or in the
 container, then add the MCP server to Claude Code:
 
 ```sh

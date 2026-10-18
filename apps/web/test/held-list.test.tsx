@@ -4,12 +4,38 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 
 import { HeldList } from '../src/components/review/held-list';
-import { assertion, provenance, relation, sampleResolver } from './support/fixtures';
+import {
+  assertion,
+  openQuestion,
+  openQuestionAnswer,
+  openQuestionPage,
+  provenance,
+  relation,
+  sampleResolver,
+} from './support/fixtures';
 import { findToast, json, renderWithRouter, stubApi } from './support/render';
 
 const ID = 'rel_01HELD0000000000000000001';
 const ASSERTIONS = `/api/v1/projects/demo/relations/${ID}/assertions`;
-const NOTES = `/api/v1/projects/demo/relations/${ID}/notes`;
+const QUESTIONS = '/api/v1/projects/demo/open-questions';
+/** The hold as an open question (UX2b: its one answer place is the note dialog). */
+const QUESTION = openQuestion({
+  id: 'q-00000000000000e1',
+  kind: 'held',
+  source: 'hold',
+  subject: { type: 'relation', id: ID },
+  subjectLabel: '„Ware versandbereit“ → „Ware versandbereit“',
+  text: 'Wird bei Teillieferungen auch eine Rechnung gestellt?',
+  actions: [
+    {
+      type: 'decide',
+      primary: true,
+      label: 'Vorschlag prüfen',
+      decides: [{ type: 'relation', id: ID, version: 1 }],
+    },
+    { type: 'note', primary: false, label: 'Notiz hinzufügen' },
+  ],
+});
 
 const hold = provenance({
   assertionId: 'ast_01HOLD',
@@ -41,7 +67,10 @@ function setup(history: RelationAssertion[]) {
   let items = [...history];
   const calls = stubApi({
     [`GET ${ASSERTIONS}`]: () => json({ items }),
-    [`POST ${NOTES}`]: (call) => {
+    [`GET ${QUESTIONS}`]: (call) => json(openQuestionPage([QUESTION], call.search)),
+    // the open question's answer: a note on the relation, as the server records it
+    [`POST ${QUESTIONS}/${QUESTION.id}/answers`]: (call) => {
+      const text = (call.body as { text: string }).text;
       const note = assertion({
         id: `ast_01NOTE${items.length}`,
         kind: 'note',
@@ -52,11 +81,25 @@ function setup(history: RelationAssertion[]) {
         llmModel: null,
         tier: null,
         confidence: null,
-        rationale: (call.body as { text: string }).text,
+        rationale: text,
         at: '2026-10-08T08:00:00.000Z',
       });
       items = [...items, note];
-      return json(note, 201);
+      const answer = openQuestionAnswer({
+        questionId: QUESTION.id,
+        target: 'relation-note',
+        text,
+        note: { type: 'relation', subjectId: ID, assertionId: note.id },
+      });
+      return json(
+        {
+          result: 'recorded',
+          answer,
+          question: { ...QUESTION, answers: [answer] },
+          warnings: [],
+        },
+        201,
+      );
     },
   });
   return { calls, user: userEvent.setup() };
@@ -109,37 +152,73 @@ describe('HeldList', () => {
     expect(link.getAttribute('href')).toBe(`/projects/demo/review/${ID}?view=held`);
   });
 
-  it('saves an answer as a note and shows it', async () => {
+  it('answers in the note dialog of „Offene Fragen“, one place to answer a hold (UX2b)', async () => {
     const { calls, user } = setup(history.slice(0, 3));
     await renderWithRouter(<HeldList project="demo" relations={[held]} resolve={sampleResolver} />);
     const item = screen.getByTestId('held-item');
-    const save = within(item).getByRole('button', { name: /Antwort speichern/ });
-    expect((save as HTMLButtonElement).disabled).toBe(true);
-    const field = within(item).getByLabelText('Antwort');
-    await user.type(field, 'Ja, laut Frau Berg aus Finanzen.');
-    await user.click(save);
-    await findToast('Antwort gespeichert');
-    expect(calls.filter((c) => c.method === 'POST').map((c) => c.body)).toEqual([
-      { text: 'Ja, laut Frau Berg aus Finanzen.' },
+    // no open answer field in the row any more
+    expect(within(item).queryByRole('textbox')).toBeNull();
+    await user.click(await within(item).findByRole('button', { name: 'Antwort geben' }));
+    const dialog = await screen.findByTestId('note-dialog');
+    expect(within(dialog).getByRole('heading', { name: 'Antwort geben' })).toBeDefined();
+    expect(within(dialog).getByTestId('note-question').textContent).toContain(QUESTION.text);
+    await user.type(within(dialog).getByLabelText('Deine Antwort'), 'Ja, laut Finanzen.');
+    await user.click(within(dialog).getByRole('button', { name: 'Antwort speichern' }));
+    expect((await findToast('Antwort gespeichert')).textContent).toContain(
+      'Gespeichert an der Relation. Die Vormerkung bleibt, bis du sie entscheidest.',
+    );
+    expect(calls.filter((c) => c.method === 'POST').map((c) => [c.path, c.body])).toEqual([
+      [`${QUESTIONS}/${QUESTION.id}/answers`, { text: 'Ja, laut Finanzen.' }],
     ]);
-    expect((field as HTMLTextAreaElement).value).toBe('');
+    // the hold's question is found by its relation
+    const list = calls.find((c) => c.method === 'GET' && c.path === QUESTIONS);
+    expect(new URLSearchParams(list?.search).get('kind')).toBe('held');
     await waitFor(() =>
-      expect(within(item).getByTestId('held-answer').textContent).toContain(
-        'Ja, laut Frau Berg aus Finanzen.',
-      ),
+      expect(within(item).getByTestId('held-answer').textContent).toContain('Ja, laut Finanzen.'),
     );
   });
 
-  it('saves an answer with Cmd/Ctrl+Enter', async () => {
-    const { calls, user } = setup(history.slice(0, 3));
+  it('answers a hold without an open question on the relation itself (an end went missing)', async () => {
+    const calls = stubApi({
+      [`GET ${ASSERTIONS}`]: () => json({ items: history }),
+      // no `held` item: an end of the relation is missing from the head models
+      [`GET ${QUESTIONS}`]: (call) => json(openQuestionPage([], call.search)),
+      [`POST /api/v1/projects/demo/relations/${ID}/notes`]: (call) =>
+        json(
+          assertion({
+            id: 'ast_01NOTE_NEW',
+            kind: 'note',
+            sourceKind: 'human',
+            handle: 'owner',
+            rationale: (call.body as { text: string }).text,
+          }),
+          201,
+        ),
+    });
+    const user = userEvent.setup();
     await renderWithRouter(<HeldList project="demo" relations={[held]} resolve={sampleResolver} />);
-    const field = within(screen.getByTestId('held-item')).getByLabelText('Antwort');
-    await user.type(field, 'Geklärt.');
-    await user.keyboard('{Meta>}{Enter}{/Meta}');
-    await findToast('Antwort gespeichert');
-    expect(calls.filter((c) => c.method === 'POST').map((c) => c.body)).toEqual([
-      { text: 'Geklärt.' },
+    const item = screen.getByTestId('held-item');
+    await user.click(await within(item).findByRole('button', { name: 'Antwort geben' }));
+    const dialog = await screen.findByTestId('note-dialog');
+    expect(within(dialog).getByRole('heading', { name: 'Antwort geben' })).toBeTruthy();
+    expect(dialog.textContent).toContain('Die Vormerkung bleibt, bis du sie entscheidest.');
+    await user.type(within(dialog).getByLabelText('Deine Antwort'), 'Ja, laut Finanzen.');
+    await user.click(within(dialog).getByRole('button', { name: 'Antwort speichern' }));
+    expect((await findToast('Antwort gespeichert')).textContent).toContain(
+      'Gespeichert an der Relation.',
+    );
+    expect(calls.filter((c) => c.method === 'POST').map((c) => [c.path, c.body])).toEqual([
+      [`/api/v1/projects/demo/relations/${ID}/notes`, { text: 'Ja, laut Finanzen.' }],
     ]);
+  });
+
+  it('offers no answer to viewers', async () => {
+    setup(history);
+    await renderWithRouter(
+      <HeldList project="demo" relations={[held]} resolve={sampleResolver} canAnswer={false} />,
+    );
+    await screen.findAllByTestId('held-answer');
+    expect(screen.queryByRole('button', { name: 'Antwort geben' })).toBeNull();
   });
 
   it('explains an empty list', async () => {

@@ -62,7 +62,7 @@ Never reuse a project across runs:
 3. A worked project has nothing left to claim, and `eval:live` reads every done analysis of the
    project.
 
-**Never create auto-accept rules in a run project** (owner decision 19, tab „Regeln“, `analyzr rules
+**Never create auto-accept rules in a run project** (owner decision 19, „Einstellungen › Annahmeregeln“, `analyzr rules
 …`). A seeded project has none, and it should stay so: a rule would accept proposals while the
 agent works, and accepted relations and placements change the next claims (settled pairs, homed
 processes, neighbours' steps). The submission results, and so the recording, would not change
@@ -350,28 +350,40 @@ printf 'Authorization: Bearer %s\n' "$ANALYZR_TOKEN" |
 # {"total":14,"items":[{"projectId":"prj_…","projectKey":"nordwind-handel-cc-1","pending":14}]}
 ```
 
-In the web UI, the project's **Prüfen** tab (http://127.0.0.1:7400/projects/nordwind-handel-cc-1/review)
-counts models per stage: Wartet auf Agent → Agent arbeitet → Agent gescheitert → Wartet auf
-Prüfung → Klärung offen → Eingearbeitet; "Agent arbeitet" names the holder (`agent:claude-code-1`),
-the attempt and the lease end.
+In the web UI, the project's **Übersicht** (http://127.0.0.1:7400/projects/nordwind-handel-cc-1)
+counts models per stage in the phase chips above the models table („Modelle nach Phase: Alle 31 ·
+Wartet auf Agent 14 · Agent arbeitet 2 · …“, left to right: Wartet auf Agent → Agent arbeitet →
+Agent gescheitert → Wartet auf Prüfung → Klärung offen → Eingearbeitet; a chip filters the table);
+a model the agent holds says in its phase cell who holds it and until when („claude-code-1 ·
+reserviert bis 22:45“), and „Als Nächstes“ above the table says „Agent arbeitet – 2 Modelle offen“
+while nothing else waits.
 
 The run is complete when no model is left "waiting for agent", "agent working" or "agent failed"
 (only "waiting for review", "waiting for clarification" and "incorporated"). Decide nothing in the
 run project before that: human decisions go into the claim input of the tasks still to come.
 
+**In a run project, ignore „Als Nächstes“.** It is written for everyday work, not for a run:
+„Agent starten“ (the popover's commands, `/analyzr:relations …` first) and „Oder jetzt schon:
+Vorschläge prüfen … Was du entscheidest, sieht der Agent bei seiner nächsten Aufgabe.“ are not
+the run's instructions. Start agents only with the run's own command or script (step 3a or 3b,
+step 6a for placements), and decide nothing until the run is complete. Only „Agent arbeitet – n
+Modelle offen“ and the phase chips are for watching.
+
 **Stuck tasks.** A claim holds a task for 15 minutes (no renewal, at most 3 attempts):
 
-| Inbox | Meaning | What to do |
+| „Übersicht“, phase cell | Meaning | What to do |
 |---|---|---|
-| Agent arbeitet, "Lease bis …" | a session holds the task | wait: the agent submits, or hands the task back with `release_analysis` (queued again, the attempt does not count) |
-| Agent arbeitet, "Lease abgelaufen am …" | the session ended without submitting or releasing | nothing: the next claim takes the task again (the attempt counts); or **Erneut einplanen** |
-| Agent gescheitert, "Nach 3 Versuchen gescheitert" | three leases expired | **Erneut einplanen** (a new task), then one more batch |
+| Agent arbeitet, "reserviert bis …" | a session holds the task | wait: the agent submits, or hands the task back with `release_analysis` (queued again, the attempt does not count) |
+| Agent arbeitet, "Reservierung abgelaufen am …" | the session ended without submitting or releasing | nothing: the next claim takes the task again (the attempt counts); or **Nochmal versuchen** |
+| Agent gescheitert, "Nach 3 Versuchen gescheitert" | three leases expired | **Nochmal versuchen** (a new task), then one more batch |
 
 - Only the holder can release a task: the lease token goes to the agent once. While a lease runs,
   claims skip the task, so a batch can end with nothing pending while a model is still "agent
   working". Run one more batch after the lease end.
-- **Erneut einplanen** (the requeue) is in the web UI: the requeue route needs `analyzr:write` or
-  the owner, run tokens lack it; with the owner key the CLI does the same: `analyzr models
+- **Nochmal versuchen** (the requeue, in the phase cell and in „Als Nächstes“: „1 Analyse
+  gescheitert · Nochmal versuchen“, „Bei 1 Modell ist die Reservierung abgelaufen · Nochmal
+  versuchen“; owners then see the popover „Agent starten“ with the skill command) is in the web
+  UI: the requeue route needs `analyzr:write` or the owner, run tokens lack it; with the owner key the CLI does the same: `analyzr models
   requeue -p <project> <key>…` (M6 S1). It cancels a task whose lease expired and queues a new
   one.
 - Do not revoke the run's token to free its tasks: revoking withdraws every proposal and no-link
@@ -528,7 +540,10 @@ pnpm eval:replay                        # commit the recording with the reports
   stops only when nothing moved.
 - A placement task that failed (three expired leases) shows „Agent fehlgeschlagen“ on the chain
   page with „Erneut einplanen“; `analyzr value-chain requeue -p "$RUN_PROJECT"` does the same in the
-  container. A stack upgraded from M4a queues the first placement task of its existing chains at
+  container. Ignore „Als Nächstes“ on „Übersicht“ here as in [step 4](#4-watch-progress): its
+  „Agent starten“ lists `/analyzr:relations …` first, which would start exactly the relations
+  run this project must not have, and its review line invites decisions before the run is
+  complete. A stack upgraded from M4a queues the first placement task of its existing chains at
   start (`queued the first placement task of n value chain(s)` in the log).
 - Work only the placement task in this project (`--skill placements`, `kinds: ["placement"]`):
   the relations tasks the import queued stay queued, and relation proposals of a relations run
@@ -610,7 +625,7 @@ ANALYZR_TOKEN=$(docker compose -p analyzr -f docker/compose.yaml exec -T server 
 | Claude Code: the agent says a tool result was saved to a file, or works without the claim input | Claude Code moved a large result (claim input, model XML) to a file, which an agent with `--tools ""` cannot read. Rebuild the stack ([step 1](#1-rebuild-the-stack)): its tools declare `anthropic/maxResultSizeChars`; and start Claude Code with `MAX_MCP_OUTPUT_TOKENS=100000` as in step 3a. A run with such tasks measures the setup, not the procedure: stop it and start over in a fresh project; do not commit it. |
 | Claude Desktop lists `analyzr` as failed | Usually `command` is not absolute, or the container `analyzr-server-1` is not running (`docker ps`); also check that the config file is valid JSON. Try the entry by hand: `ANALYZR_TOKEN=… /usr/local/bin/docker exec -i -e ANALYZR_TOKEN analyzr-server-1 analyzr mcp` must wait for input instead of exiting. See [Connect Claude Desktop](DEVELOPMENT.md#connect-claude-desktop). |
 | Context limit: a Claude Desktop chat ends at its length limit; Claude Code compacts | A claim input is up to about 93 KB (measured: 82.0 KB on `nordwind-handel` and 75.5 KB on `stadtwerke-auental` with every task claimed at once, 92.9 KB with LLM-sized judgements in `judged`), the procedure about 33 KB. Lower the batch size (`{{ANZAHL}}`, the script's batch size, `/analyzr:relations <project> <n>`). After a compaction the skill and the start prompt make the agent reload the procedure with `get_procedure`. A task claimed in a cut-off chat comes back after its lease ([step 4](#4-watch-progress)). |
-| Usage limit of your subscription reached | The client stops mid-batch; the claimed task cannot be released and comes back when its lease expires (the attempt counts; after 3 lost leases: Agent gescheitert → Erneut einplanen). Headless: `claude exited with status …`, then `stopped: batch … failed`, exit 1. When the limit resets, run the same command again or open a new chat; the run continues where it stopped. Do not switch the model to go on. |
+| Usage limit of your subscription reached | The client stops mid-batch; the claimed task cannot be released and comes back when its lease expires (the attempt counts; after 3 lost leases: Agent gescheitert → Nochmal versuchen on „Übersicht“). Headless: `claude exited with status …`, then `stopped: batch … failed`, exit 1. When the limit resets, run the same command again or open a new chat; the run continues where it stopped. Do not switch the model to go on. |
 | The agent reports items `invalid:<reason>` | The server refused those items (`message-flow`, `same-process`, `unknown-ref`, `outside-task-model`, `type-mismatch`, …; for no-links also `type-required` and `also-proposed`; [Submissions](DEVELOPMENT.md#analysis-pipeline-and-review-m2)) and stored the rest. Invalid items are no proposals for the eval. Let the run go on: correcting the agent mid-run changes what is measured. Note the reasons for procedure work on the dev landscape (`eval:live --json` gives `invalid` per run). A refused submission as a whole (`Input validation error: …`, 422, 413) stored nothing; the procedure has the agent fix and resubmit, or release the task. |
 | The agent reports `uncovered` above 0 | It left pairs of its assignment without a verdict (call budget, lease, a skipped candidate). Nothing is queued for them. A partner task claimed later gets such a pair assigned again when it is among the partner's `rule`/`key`/`lexical` candidates or relations, and judges it then; the pair stays unjudged until one of its models changes only when the partner was analysed already or held it under a concurrent claim, when it is a `compatible` candidate for the partner and no relation, or when it is intra-model. Only then is a link among them missing from the run's recall. The `uncovered` sum in `eval:replay` adds up the results' counts, so it also counts pairs a later partner judged. Let the run go on; note it for procedure work on the dev landscape. |
 | `stopped: batch … failed; see <log>` | `claude` exited non-zero, or its JSON result is missing, not a `success` (`error_max_turns`, `error_max_budget_usd`, …) or has `is_error`: read `subtype` and `result` in that log. A task the batch claimed stays leased for up to 15 minutes, and that attempt counts (3 expired leases fail a task, [step 4](#4-watch-progress)). Fix the cause (usage limit, budget, connection), check the run, then start the script again; with `ANALYZR_LOG_DIR` set, name a new directory. |

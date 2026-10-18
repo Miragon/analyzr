@@ -10,7 +10,7 @@ import { DEMO_SKIP, probeServer } from './server-mode';
  * server with the built UI: a project from eval/corpus/nordwind-handel with
  * its golden chain and an agent token; the agent proposes key-tier pairs ad
  * hoc over REST (one the owner accepts, two at 0.97/0.96, one at 0.6). The
- * tab „Regeln“ shows the system rule and the empty state; a rule is created
+ * page „Annahmeregeln“ (owner menu „Einstellungen“) shows the system rule and the empty state; a rule is created
  * with its live preview (history precision, open count), saved and enabled,
  * and applied to the open proposals (dry run, then „2 Vorschläge annehmen“).
  * The Relations tab marks and filters the two; the review screen names rule,
@@ -172,10 +172,15 @@ test.afterAll(async () => {
   await owner?.dispose();
 });
 
-test('the tab „Regeln“: system rule, empty state, a rule with its live preview, apply', async ({
+test('„Einstellungen › Annahmeregeln“: system rule, empty state, a rule with its live preview, apply', async ({
   page,
 }) => {
-  await page.goto(`/projects/${PROJECT}/rules`);
+  // Owner decision 26: the owners' menu „Einstellungen“ holds „Annahmeregeln“ (decision 19's tab).
+  await page.goto(`/projects/${PROJECT}`);
+  await page.getByRole('button', { name: 'Einstellungen' }).click();
+  await page.getByRole('menuitem', { name: 'Annahmeregeln' }).click();
+  await expect(page).toHaveURL(new RegExp(`/projects/${PROJECT}/rules$`));
+  await expect(page.getByRole('navigation', { name: 'Brotkrumen' })).toContainText('Annahmeregeln');
   await expect(page.getByTestId('system-rule')).toContainText('Systemregel: Eindeutige Aufrufe');
   await expect(page.getByTestId('system-rule')).toContainText('immer aktiv, nicht änderbar');
   await expect(page.getByTestId('rules-empty')).toContainText(

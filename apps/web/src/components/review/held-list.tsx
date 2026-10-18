@@ -1,13 +1,8 @@
 import type { Relation } from '@analyzr/client';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
-import {
-  ArrowRightIcon,
-  BookmarkIcon,
-  MessageSquareReplyIcon,
-  SearchCheckIcon,
-} from 'lucide-react';
-import { useId, useState, type FormEvent } from 'react';
+import { ArrowRightIcon, BookmarkIcon, SearchCheckIcon } from 'lucide-react';
+import { lazy, Suspense } from 'react';
 
 import { TypeLabel } from '@/components/badges';
 import { Badge } from '@/components/ui/badge';
@@ -19,86 +14,22 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from '@/components/ui/empty';
-import { Field, FieldDescription, FieldLabel } from '@/components/ui/field';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Textarea } from '@/components/ui/textarea';
-import { errorMessage } from '@/lib/api';
 import { formatDateTime } from '@/lib/labels';
-import { MAX_NOTE_CHARS } from '@/lib/limits';
 import { assertionsQuery } from '@/lib/queries';
 import type { RefResolver } from '@/lib/refs';
 import { answersSinceHold, type QueueFilters } from '@/lib/review';
-import { useAddNote } from '@/lib/review-actions';
-import { toast } from '@/lib/toast';
 
 import { Endpoint } from '../relation-table';
 import { PlainText } from './plain-text';
 import { Principal } from './provenance';
 
-function AnswerForm({ project, relationId }: { project: string; relationId: string }) {
-  const id = useId();
-  const [text, setText] = useState('');
-  const add = useAddNote(project);
-  function submit(event: FormEvent) {
-    event.preventDefault();
-    const answer = text.trim();
-    if (answer === '' || add.isPending) return;
-    add.mutate(
-      { relationId, text: answer },
-      {
-        onSuccess: () => {
-          setText('');
-          toast({
-            tone: 'success',
-            title: 'Antwort gespeichert',
-            description: 'Der nächste Agent-Lauf für diese Modelle sieht sie.',
-          });
-        },
-        onError: (error) =>
-          toast({
-            tone: 'danger',
-            title: 'Antwort nicht gespeichert',
-            description: errorMessage(error),
-          }),
-      },
-    );
-  }
-  return (
-    <form
-      onSubmit={submit}
-      onKeyDown={(event) => {
-        // Cmd/Ctrl+Enter saves, as in the decision forms.
-        if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
-          event.preventDefault();
-          event.currentTarget.requestSubmit();
-        }
-      }}
-      aria-label="Antwort geben"
-      className="flex flex-col gap-2"
-    >
-      <Field>
-        <FieldLabel htmlFor={`${id}-answer`}>Antwort</FieldLabel>
-        <Textarea
-          id={`${id}-answer`}
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          maxLength={MAX_NOTE_CHARS}
-          placeholder="Was hat die Klärung ergeben?"
-          className="min-h-12"
-        />
-        <FieldDescription>
-          Die Antwort ist eine Notiz an der Relation; entschieden wird, sobald sie feststeht.
-        </FieldDescription>
-      </Field>
-      <div className="flex justify-end">
-        <Button type="submit" size="sm" disabled={text.trim() === '' || add.isPending}>
-          <MessageSquareReplyIcon data-icon="inline-start" />
-          Antwort speichern
-        </Button>
-      </div>
-    </form>
-  );
-}
+/**
+ * „Antwort geben“ (UX2b): the note dialog of „Offene Fragen“ for the hold's
+ * question, one place to answer a hold (UX-SIMPLIFICATION.md §2.4), loaded
+ * with the open-questions modules on first render, never with the entry.
+ */
+const HoldAnswer = lazy(() => import('@/components/open-questions/hold-answer'));
 
 function HeldItem({
   project,
@@ -185,16 +116,26 @@ function HeldItem({
         </div>
       ) : null}
 
-      {canAnswer ? <AnswerForm project={project} relationId={relation.id} /> : null}
+      {canAnswer ? (
+        <Suspense fallback={null}>
+          <HoldAnswer
+            project={project}
+            subject={{ type: 'relation', id: relation.id }}
+            className="self-start"
+          />
+        </Suspense>
+      ) : null}
     </li>
   );
 }
 
 /**
  * Held relations ("vorgemerkt", CONCEPT §3): their own list, with the hold
- * note, the question and label, the answers so far and, for reviewers, a
- * field for the next answer. An answer is a note; it reaches the next agent
- * run. Viewers (and the read-only demo) read the list without the field.
+ * note, the question and label, the answers so far and, for reviewers,
+ * „Antwort geben“ (since UX2b the note dialog of „Offene Fragen“, the one
+ * place to answer a hold). An answer is a note on the relation; it reaches
+ * the next agent run. Viewers (and the read-only demo) read the list
+ * without it.
  */
 export function HeldList({
   project,
@@ -207,7 +148,7 @@ export function HeldList({
   relations: readonly Relation[];
   resolve: RefResolver;
   filters?: QueueFilters;
-  /** Show the answer field (editors and owners). */
+  /** Offer „Antwort geben“ (editors and owners). */
   canAnswer?: boolean;
 }) {
   if (relations.length === 0) {
@@ -220,7 +161,7 @@ export function HeldList({
           <EmptyTitle className="text-base font-semibold">Nichts vorgemerkt</EmptyTitle>
           <EmptyDescription>
             {canAnswer
-              ? 'Merke eine Relation mit „Vormerken“ (H) vor, wenn eine Frage offen ist. Sie erscheint dann hier mit einem Feld für die Antwort.'
+              ? 'Merke eine Relation mit „Vormerken“ (H) vor, wenn eine Frage offen ist. Sie erscheint dann hier; mit „Antwort geben“ hältst du fest, was die Klärung ergeben hat.'
               : 'Vorgemerkte Relationen mit offener Frage erscheinen hier.'}
           </EmptyDescription>
         </EmptyHeader>

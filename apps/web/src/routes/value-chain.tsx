@@ -7,6 +7,8 @@ export interface ValueChainSearch {
   step?: string;
   /** Active placement (`plc_…`), the `reviewUrl` of placement writes. */
   placement?: string;
+  /** `svg`: download the drawing once it is shown (the export hub on „Übersicht“, UX1). */
+  export?: 'svg';
 }
 
 /**
@@ -28,6 +30,7 @@ export const valueChainRoute = createRoute({
     ...(typeof search['placement'] === 'string' && search['placement'] !== ''
       ? { placement: search['placement'] }
       : {}),
+    ...(search['export'] === 'svg' ? { export: 'svg' as const } : {}),
   }),
   component: lazyRouteComponent(() => import('./value-chain-page'), 'ValueChainPage'),
 });

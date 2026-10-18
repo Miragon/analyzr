@@ -1,13 +1,30 @@
-import { exportOpenQuestions, type OpenQuestionExportFormat } from '@analyzr/client';
 import { useQuery } from '@tanstack/react-query';
-import { CircleCheckIcon, FileDownIcon, FilterXIcon, SearchXIcon } from 'lucide-react';
+import { Link } from '@tanstack/react-router';
+import { cn } from 'cn';
+import {
+  ChevronRightIcon,
+  CircleCheckIcon,
+  FileDownIcon,
+  FilterIcon,
+  FilterXIcon,
+  InfoIcon,
+  SearchXIcon,
+  XIcon,
+} from 'lucide-react';
 import { useCallback, useMemo, useRef, useState } from 'react';
 
 import CollectBar from '@/components/amendments/collect-bar';
+import { ErrorText } from '@/components/error-text';
 import { AnswerSheetDialog } from '@/components/open-questions/answer-sheet-dialog';
+import CustomerExportDialog from '@/components/open-questions/customer-export-dialog';
 import { NoteDialog } from '@/components/open-questions/note-dialog';
 import type { QuestionActor } from '@/components/open-questions/question-actions';
-import { QuestionItem } from '@/components/open-questions/question-item';
+import {
+  ClosedGroup,
+  DoneItem,
+  InfoItem,
+  QuestionItem,
+} from '@/components/open-questions/question-item';
 import { useActionFocus } from '@/components/open-questions/use-action-focus';
 import { useNoteDialog } from '@/components/open-questions/use-note-dialog';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -20,164 +37,84 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from '@/components/ui/empty';
-import { Field, FieldLabel } from '@/components/ui/field';
 import {
   NativeSelect,
   NativeSelectOptGroup,
   NativeSelectOption,
 } from '@/components/ui/native-select';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Spinner } from '@/components/ui/spinner';
-import { api, errorMessage, unwrapWithResponse } from '@/lib/api';
-import { downloadBlob } from '@/lib/download';
 import {
-  attachmentName,
-  exportQuery,
-  filterOpenQuestions,
-  hasFilters,
+  OPEN_QUESTION_SOURCES,
+  activeFilterCount,
+  agentQuestionCount,
+  countText,
+  infoGroup,
   openQuestionFacets,
   parseOpenQuestionFilters,
-  type FacetOption,
-  type OpenQuestionFilters,
+  questionView,
 } from '@/lib/open-questions';
 import { useProjectPermissions } from '@/lib/permissions';
-import { modelsQuery, openQuestionsQuery } from '@/lib/queries';
-import { toast } from '@/lib/toast';
+import { landscapeQuery, modelsQuery, openQuestionsQuery } from '@/lib/queries';
 import { useProjectFacts } from '@/lib/use-project-facts';
 
 import { projectOpenQuestionsRoute, type OpenQuestionsSearch } from './project-open-questions';
 
-/** Items shown at first and added per „Weitere anzeigen“. */
+/** Cards shown at first and added per „Weitere anzeigen“. */
 const PAGE = 50;
 const ALL = '';
 
-const FORMATS: Record<OpenQuestionExportFormat, { label: string; ext: string }> = {
-  markdown: { label: 'Als Markdown exportieren', ext: 'md' },
-  csv: { label: 'Als CSV exportieren', ext: 'csv' },
-};
-
-/**
- * Downloads the export route's file for the filters, byte for byte (the CSV
- * keeps its byte order mark), under the name the server gives it.
- */
-async function downloadExport(
-  project: string,
-  format: OpenQuestionExportFormat,
-  filters: OpenQuestionFilters,
-): Promise<void> {
-  const { data, response } = await unwrapWithResponse(
-    exportOpenQuestions({
-      client: api,
-      path: { project },
-      query: { ...exportQuery(filters), format },
-      parseAs: 'blob',
-    }),
-  );
-  // `parseAs: 'blob'` hands over the bytes; the generated type says string (the schema's).
-  const body: unknown = data;
-  const blob =
-    body instanceof Blob
-      ? body
-      : new Blob([String(body)], { type: response.headers.get('content-type') ?? 'text/plain' });
-  downloadBlob(
-    attachmentName(
-      response.headers.get('content-disposition'),
-      `offene-fragen-${project}.${FORMATS[format].ext}`,
-    ),
-    blob,
-  );
-}
-
-function ExportButtons({ project, filters }: { project: string; filters: OpenQuestionFilters }) {
-  const [busy, setBusy] = useState<OpenQuestionExportFormat | null>(null);
-  const run = (format: OpenQuestionExportFormat) => {
-    setBusy(format);
-    downloadExport(project, format, filters)
-      .catch((error: unknown) =>
-        toast({
-          tone: 'danger',
-          title: 'Export fehlgeschlagen',
-          description: errorMessage(error),
-        }),
-      )
-      .finally(() => setBusy(null));
-  };
+/** „So funktioniert es“ (UX-SIMPLIFICATION.md §3.3 item 2, P6): closed, below the intro line. */
+function HowItWorks({ canReview }: { canReview: boolean }) {
   return (
-    <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Exportieren">
-      {(['markdown', 'csv'] as const).map((format) => (
-        <Button
-          key={format}
-          variant="outline"
-          disabled={busy !== null}
-          onClick={() => run(format)}
-          data-testid="open-questions-export"
-          data-format={format}
-          title={
-            format === 'csv'
-              ? 'Die Fragen mit der Spalte „Antwort“ zum Ausfüllen (steht an einer Frage schon eine Notiz, die letzte), ohne die Hinweise zur Information'
-              : 'Nach Ansprechpartner-Hinweis gruppiert, zum Lesen und für Gespräche'
-          }
-        >
-          {busy === format ? (
-            <Spinner data-icon="inline-start" />
-          ) : (
-            <FileDownIcon data-icon="inline-start" />
-          )}
-          {FORMATS[format].label}
-        </Button>
-      ))}
-    </div>
-  );
-}
-
-function FacetSelect({
-  id,
-  label,
-  allLabel,
-  value,
-  options,
-  onChange,
-  className,
-}: {
-  id: string;
-  label: string;
-  allLabel: string;
-  value: string | undefined;
-  options: readonly FacetOption[];
-  onChange: (value: string | undefined) => void;
-  className?: string;
-}) {
-  return (
-    <Field className={className ?? 'w-auto'}>
-      <FieldLabel htmlFor={id}>{label}</FieldLabel>
-      <NativeSelect
-        id={id}
-        className="w-full"
-        value={value ?? ALL}
-        onChange={(e) => onChange(e.target.value === ALL ? undefined : e.target.value)}
-      >
-        <NativeSelectOption value={ALL}>{allLabel}</NativeSelectOption>
-        {options.map((o) => (
-          <NativeSelectOption key={o.value} value={o.value}>
-            {o.label} ({o.count})
-          </NativeSelectOption>
-        ))}
-      </NativeSelect>
-    </Field>
+    <details
+      className="group/how min-w-0 text-sm leading-5 open:basis-full"
+      data-testid="open-questions-how"
+    >
+      <summary className="flex w-fit cursor-pointer list-none items-center gap-0.5 rounded-sm leading-5 text-link select-none hover:underline focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none [&::-webkit-details-marker]:hidden">
+        <ChevronRightIcon
+          className="size-4 transition-transform group-open/how:rotate-90 motion-reduce:transition-none"
+          aria-hidden
+        />
+        So funktioniert es
+      </summary>
+      <div className="mt-1 flex max-w-prose flex-col gap-1 border-l-2 pl-3 text-sm text-muted-foreground">
+        <p>
+          Oben stehen die Fragen, an denen die meisten offenen Entscheidungen hängen, danach die
+          Lücken der Wertschöpfungskette. „Ansprechpartner“ nennt Organisationseinheiten und Lanes:
+          ein Hinweis, keine Zuständigkeit.
+        </p>
+        <p>
+          Fragen der Agenten zu ihren Vorschlägen stehen bei den Vorschlägen, unter „Art“ auch hier;
+          den Kunden fragst du mit „Für den Kunden exportieren …“.
+        </p>
+        {canReview ? (
+          <p>
+            Was eine Aktion angelegt hat, nimmst du mit „Rückgängig“ zurück. Eine Notiz hält fest,
+            was du weißt; die Antworten des Kunden liest „Antworten aus CSV übernehmen …“ als
+            Notizen ein.
+          </p>
+        ) : null}
+      </div>
+    </details>
   );
 }
 
 /**
- * The tab „Offene Fragen“ (M6 §4.4): every open question of the project in
- * the server's order (questions, then the value chain findings, then the
- * informational items, each by the open decisions it touches), filtered by
- * kind, model or folder, contact hint, source and state (in the URL), and the
- * export of exactly the filtered list as Markdown or CSV. Every role reads
- * it; reviewers (editors and owners, never on the read-only demo) act on
- * each item (M6 §4.8 a, S5c-1: its primary action, „Weitere Aktionen“, the
- * panels, „Rückgängig“ in the toast), add notes and take a filled-in CSV
- * back with „Antworten aus CSV übernehmen“ (S5a); after an action the focus
- * moves to the next item.
+ * The tab „Offene Fragen“ (M6 §4.4; UX2b, UX-SIMPLIFICATION.md §2.4 and
+ * §3.3): one intro line with „So funktioniert es“ closed; three filters
+ * („Art“, „Modell oder Ordner“, „Ansprechpartner“; on a phone behind
+ * „Filter (n)“), the count line „21 zu klären“ (the badge's number), „Für
+ * den Kunden exportieren …“ and, for reviewers, „Antworten aus CSV
+ * übernehmen …“; then the open questions „Zu klären“ as lean cards in the
+ * server's order (questions by the open decisions they touch, then the
+ * value chain's findings), the closed group „Zur Information“, „Erledigte
+ * zeigen“ and the list „Befunde“ behind a link. The agents' questions show
+ * on their proposals, here only under „Art“ („Frage eines Agenten“); the
+ * chain's proposals are never listed (its badge counts them). Filters live
+ * in the URL (`?kind=&model=&askWho=`; `?source=` shows as a removable chip,
+ * `?state=answered` opens „Erledigte zeigen“). Every role reads it;
+ * reviewers act on each card (M6 §4.8 a), and after an action the focus
+ * moves to the next card.
  */
 export function OpenQuestionsPage() {
   const { project } = projectOpenQuestionsRoute.useParams();
@@ -185,24 +122,38 @@ export function OpenQuestionsPage() {
   const navigate = projectOpenQuestionsRoute.useNavigate();
   const questions = useQuery(openQuestionsQuery(project));
   const models = useQuery(modelsQuery(project));
+  const landscape = useQuery(landscapeQuery(project));
+  const findings = landscape.data?.findings.length ?? 0;
   const { resolve } = useProjectFacts(project, models.data);
   const { canReview } = useProjectPermissions(project);
   const noting = useNoteDialog();
   const [shown, setShown] = useState(PAGE);
+  const [exporting, setExporting] = useState(false);
+  const exportButton = useRef<HTMLButtonElement>(null);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const list = useRef<HTMLUListElement>(null);
 
   const filters = useMemo(() => parseOpenQuestionFilters({ ...search }), [search]);
   const all = useMemo(() => questions.data ?? [], [questions.data]);
-  const items = useMemo(() => filterOpenQuestions(all, filters), [all, filters]);
+  const view = useMemo(() => questionView(all, filters), [all, filters]);
   const facets = useMemo(() => openQuestionFacets(all, filters), [all, filters]);
-  const filtered = hasFilters(filters);
-  const visibleIds = useMemo(() => items.slice(0, shown).map((q) => q.id), [items, shown]);
+  const info = useMemo(
+    () => infoGroup(view.info, models.data?.length ?? 0),
+    [view.info, models.data],
+  );
+  const active = activeFilterCount(filters);
+  const visibleIds = useMemo(() => view.cards.slice(0, shown).map((q) => q.id), [view, shown]);
   const acted = useActionFocus(
     visibleIds,
     list,
     useCallback(() => document.getElementById('oq-count'), []),
   );
   const actor = useMemo<QuestionActor>(() => ({ note: noting.open, acted }), [noting.open, acted]);
+  // An agent's name only when the cards' agent texts come from more than one (UX2b).
+  const showRaiser =
+    new Set(
+      view.cards.filter((q) => q.raisedBy.sourceKind === 'agent').map((q) => q.raisedBy.handle),
+    ).size > 1;
 
   const set = (patch: Partial<OpenQuestionsSearch>) => {
     const next: OpenQuestionsSearch = { ...search, ...patch };
@@ -213,14 +164,8 @@ export function OpenQuestionsPage() {
     void navigate({ search: next, replace: true });
   };
   const reset = () => {
-    set({
-      kind: undefined,
-      source: undefined,
-      model: undefined,
-      askWho: undefined,
-      state: undefined,
-    });
-    // Both reset buttons leave with the filters: keep the keyboard focus in the filters.
+    set({ kind: undefined, source: undefined, model: undefined, askWho: undefined });
+    // The reset buttons leave with the filters: keep the keyboard focus in the filters.
     requestAnimationFrame(() => document.getElementById('oq-kind')?.focus());
   };
 
@@ -229,27 +174,39 @@ export function OpenQuestionsPage() {
     return (
       <Alert variant="destructive">
         <AlertTitle>Offene Fragen konnten nicht geladen werden</AlertTitle>
-        <AlertDescription>{errorMessage(questions.error)}</AlertDescription>
+        <AlertDescription>
+          <ErrorText error={questions.error} />
+        </AlertDescription>
       </Alert>
     );
 
   const intro = (
-    <p className="text-muted-foreground">
-      Hier steht, wo der Landschaft Wissen fehlt, um Relationen oder Platzierungen zu entscheiden:
-      Befunde, Vormerkungen, Fragen und Einschätzungen der Agenten und Lückensignale aus den
-      Modellen. Ganz oben stehen die Fragen, an denen die meisten offenen Entscheidungen hängen,
-      danach die Befunde der Wertschöpfungskette; Hinweise zur Information stehen zuletzt. Der
-      Ansprechpartner-Hinweis nennt Lanes, Organisationseinheiten und Ordner: ein Hinweis, keine
-      Zuständigkeit.
-      {canReview
-        ? ' Die meisten Fragen haben eine Aktion, die sie erledigt: verknüpfen, platzieren, entscheiden, einen fehlenden Wert im Modell ergänzen oder als außerhalb der Landschaft markieren; was eine Aktion angelegt hat, nimmst du mit „Rückgängig“ zurück. Ergänzungen sammelst du mit „Sammeln“ und speicherst sie je Modell in einem Schritt. Mit „Notiz hinzufügen“ hältst du fest, was du weißt, mit „Antworten aus CSV übernehmen“ die Antworten aus der ausgefüllten CSV (als Notizen).'
-        : null}
-    </p>
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+      <p className="text-sm leading-5 text-muted-foreground" data-testid="open-questions-intro">
+        Was in der Landschaft noch fehlt.
+        {canReview ? ' Zu jeder Frage gibt es eine Aktion, mit der du sie erledigst.' : ''}
+      </p>
+      <HowItWorks canReview={canReview} />
+    </div>
   );
+
+  // The tab „Befunde“ is gone (owner decision 26, Q2): its list stays one link away, also
+  // when no finding is an open question (R1, R1b) and nothing else is open.
+  const findingsLink =
+    findings > 0 ? (
+      <Link
+        to="/projects/$project/findings"
+        params={{ project }}
+        className="self-start text-sm text-link underline-offset-4 hover:underline"
+        data-testid="findings-link"
+      >
+        Alle Befunde der Modelle als Liste ({findings})
+      </Link>
+    ) : null;
 
   if (all.length === 0)
     return (
-      <div className="flex flex-col gap-4">
+      <div className="-mt-3.5 flex flex-col gap-2">
         {intro}
         <Empty className="border bg-card py-10" data-testid="open-questions-empty">
           <EmptyHeader>
@@ -258,37 +215,62 @@ export function OpenQuestionsPage() {
             </EmptyMedia>
             <EmptyTitle>Keine offenen Fragen</EmptyTitle>
             <EmptyDescription>
-              Weder die Befunde noch die Vormerkungen, die Agenten oder die Lückensignale lassen
-              gerade eine Frage offen.
+              Gerade fehlt der Landschaft nichts, was jemand klären muss.
             </EmptyDescription>
           </EmptyHeader>
         </Empty>
+        {findingsLink}
       </div>
     );
 
-  const visible = items.slice(0, shown);
+  const cards = view.cards.slice(0, shown);
+  const agentQuestions = agentQuestionCount(all, filters);
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="-mt-3.5 flex flex-col gap-2">
       {intro}
-      <div
-        className="flex flex-wrap items-end gap-3"
-        role="search"
-        aria-label="Offene Fragen filtern"
-      >
-        <FacetSelect
-          id="oq-kind"
-          label="Art"
-          allLabel="Alle Arten"
-          value={filters.kind}
-          options={facets.kinds}
-          onChange={(kind) => set({ kind })}
-        />
-        <Field className="w-auto min-w-56">
-          <FieldLabel htmlFor="oq-model">Modell oder Ordner</FieldLabel>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          className="sm:hidden"
+          aria-expanded={filtersOpen}
+          aria-controls="oq-filters"
+          onClick={() => setFiltersOpen((v) => !v)}
+          data-testid="open-questions-filter-toggle"
+        >
+          <FilterIcon data-icon="inline-start" />
+          Filter{active > 0 ? ` (${active})` : ''}
+        </Button>
+        <div
+          id="oq-filters"
+          role="search"
+          aria-label="Offene Fragen filtern"
+          className={cn(
+            'flex-wrap items-center gap-2 sm:flex sm:w-auto',
+            filtersOpen ? 'flex w-full' : 'hidden',
+          )}
+        >
+          <NativeSelect
+            id="oq-kind"
+            size="sm"
+            aria-label="Art"
+            className="w-full sm:w-40"
+            value={filters.kind ?? ALL}
+            onChange={(e) => set({ kind: e.target.value === ALL ? undefined : e.target.value })}
+          >
+            <NativeSelectOption value={ALL}>Alle Arten</NativeSelectOption>
+            {facets.kinds.map((o) => (
+              <NativeSelectOption key={o.value} value={o.value}>
+                {o.label} ({o.count})
+              </NativeSelectOption>
+            ))}
+          </NativeSelect>
           <NativeSelect
             id="oq-model"
-            className="w-full"
+            size="sm"
+            aria-label="Modell oder Ordner"
+            className="w-full sm:w-44"
             value={filters.model ?? ALL}
             onChange={(e) => set({ model: e.target.value === ALL ? undefined : e.target.value })}
           >
@@ -312,66 +294,61 @@ export function OpenQuestionsPage() {
               </NativeSelectOptGroup>
             ) : null}
           </NativeSelect>
-        </Field>
-        <Field className="w-auto min-w-48">
-          <FieldLabel htmlFor="oq-ask-who">Ansprechpartner-Hinweis</FieldLabel>
           <NativeSelect
             id="oq-ask-who"
-            className="w-full"
+            size="sm"
+            aria-label="Ansprechpartner"
+            className="w-full sm:w-44"
             value={filters.askWho ?? ALL}
             onChange={(e) => set({ askWho: e.target.value === ALL ? undefined : e.target.value })}
           >
-            <NativeSelectOption value={ALL}>Alle Hinweise</NativeSelectOption>
-            {facets.askWho.map((group) => (
-              <NativeSelectOptGroup key={group.label} label={group.label}>
-                {group.options.map((o) => (
-                  <NativeSelectOption key={o.value} value={o.value}>
-                    {o.label} ({o.count})
-                  </NativeSelectOption>
-                ))}
-              </NativeSelectOptGroup>
+            <NativeSelectOption value={ALL}>Alle Ansprechpartner</NativeSelectOption>
+            {facets.askWho.map((o) => (
+              <NativeSelectOption key={o.value} value={o.value}>
+                {o.label} ({o.count})
+              </NativeSelectOption>
             ))}
           </NativeSelect>
-        </Field>
-        <FacetSelect
-          id="oq-source"
-          label="Quelle"
-          allLabel="Alle Quellen"
-          value={filters.source}
-          options={facets.sources}
-          onChange={(source) => set({ source })}
-        />
-        <FacetSelect
-          id="oq-state"
-          label="Status"
-          allLabel="Alle"
-          value={filters.state}
-          options={facets.states}
-          onChange={(state) => set({ state })}
-        />
-        {filtered ? (
-          <Button variant="ghost" onClick={reset}>
-            <FilterXIcon data-icon="inline-start" />
-            Filter zurücksetzen
-          </Button>
-        ) : null}
-      </div>
-
-      <div className="flex flex-wrap items-center justify-between gap-3">
+          {filters.source ? (
+            // „Quelle“ left the UI (G9); a link or bookmark with it still filters, removably.
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => set({ source: undefined })}
+              aria-label={`Filter „Quelle: ${OPEN_QUESTION_SOURCES[filters.source]}“ entfernen`}
+              data-testid="open-questions-source-chip"
+            >
+              Quelle: {OPEN_QUESTION_SOURCES[filters.source]}
+              <XIcon data-icon="inline-end" />
+            </Button>
+          ) : null}
+          {active > 0 ? (
+            <Button variant="ghost" size="sm" onClick={reset}>
+              <FilterXIcon data-icon="inline-start" />
+              Filter zurücksetzen
+            </Button>
+          ) : null}
+        </div>
         <p
           id="oq-count"
           tabIndex={-1}
-          className="text-sm text-muted-foreground outline-none"
+          className="text-sm text-muted-foreground tabular-nums outline-none"
           aria-live="polite"
           data-testid="open-questions-count"
         >
-          {filtered
-            ? `${items.length} von ${all.length} ${all.length === 1 ? 'Frage' : 'Fragen'}`
-            : `${all.length} ${all.length === 1 ? 'Frage' : 'Fragen'}`}
-          , geordnet nach offenen Entscheidungen
+          {countText(view)}
         </p>
-        <div className="flex flex-wrap items-center gap-2">
-          <ExportButtons project={project} filters={filters} />
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          <Button
+            ref={exportButton}
+            variant="outline"
+            size="sm"
+            onClick={() => setExporting(true)}
+            data-testid="open-questions-export"
+          >
+            <FileDownIcon data-icon="inline-start" />
+            Für den Kunden exportieren …
+          </Button>
           {canReview ? <AnswerSheetDialog project={project} items={all} /> : null}
         </div>
       </div>
@@ -382,48 +359,95 @@ export function OpenQuestionsPage() {
         </div>
       ) : null}
 
-      {items.length === 0 ? (
-        <Empty className="border bg-card py-10" data-testid="open-questions-empty">
+      {view.cards.length === 0 ? (
+        <Empty className="border bg-card py-8" data-testid="open-questions-empty">
           <EmptyHeader>
             <EmptyMedia variant="icon">
-              <SearchXIcon />
+              {active > 0 ? <SearchXIcon /> : <CircleCheckIcon />}
             </EmptyMedia>
-            <EmptyTitle>Keine Frage passt zu den Filtern</EmptyTitle>
+            <EmptyTitle>
+              {active > 0 ? 'Keine Frage passt zu den Filtern' : 'Nichts zu klären'}
+            </EmptyTitle>
             <EmptyDescription>
-              Die Filter schließen jede der {all.length}{' '}
-              {all.length === 1 ? 'offenen Frage' : 'offenen Fragen'} aus.
+              {active > 0
+                ? `Die Filter schließen jede der ${view.total} Fragen aus.`
+                : 'Was die Agenten zu ihren Vorschlägen fragen, steht bei den Vorschlägen.'}
             </EmptyDescription>
           </EmptyHeader>
-          <EmptyContent>
-            <Button variant="outline" onClick={reset}>
-              <FilterXIcon data-icon="inline-start" />
-              Filter zurücksetzen
-            </Button>
-          </EmptyContent>
+          {active > 0 ? (
+            <EmptyContent>
+              <Button variant="outline" onClick={reset}>
+                <FilterXIcon data-icon="inline-start" />
+                Filter zurücksetzen
+              </Button>
+            </EmptyContent>
+          ) : null}
         </Empty>
       ) : (
-        <ul ref={list} className="flex flex-col gap-3" aria-label="Offene Fragen">
-          {visible.map((q) => (
+        <ul ref={list} className="flex flex-col gap-2" aria-label="Offene Fragen">
+          {cards.map((q) => (
             <QuestionItem
               key={q.id}
               q={q}
               project={project}
               resolve={resolve}
+              showRaiser={showRaiser}
               {...(canReview ? { actor } : {})}
             />
           ))}
         </ul>
       )}
-      {items.length > visible.length ? (
+      {view.cards.length > cards.length ? (
         <Button
           variant="outline"
           className="self-center"
           onClick={() => setShown((n) => n + PAGE)}
           data-testid="open-questions-more"
         >
-          {`Weitere ${Math.min(PAGE, items.length - visible.length)} anzeigen (${items.length - visible.length} übrig)`}
+          {`Weitere ${Math.min(PAGE, view.cards.length - cards.length)} anzeigen (${view.cards.length - cards.length} übrig)`}
         </Button>
       ) : null}
+
+      <div className="mt-2 flex flex-col gap-3">
+        {view.info.length > 0 ? (
+          <ClosedGroup
+            title="Zur Information"
+            count={view.info.length}
+            testId="open-questions-info"
+          >
+            <ul className="flex flex-col divide-y" aria-label="Zur Information">
+              {info.descriptive ? (
+                <li
+                  className="flex items-start gap-2 py-1.5 text-sm text-muted-foreground"
+                  data-testid="open-questions-descriptive"
+                >
+                  <InfoIcon className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+                  <span>{info.descriptive.text}</span>
+                </li>
+              ) : null}
+              {info.rest.map((q) => (
+                <InfoItem key={q.id} q={q} project={project} />
+              ))}
+            </ul>
+          </ClosedGroup>
+        ) : null}
+        {view.done.length > 0 ? (
+          <ClosedGroup
+            title="Erledigte zeigen"
+            count={view.done.length}
+            testId="open-questions-done"
+            defaultOpen={filters.state === 'answered'}
+          >
+            <ul className="flex flex-col gap-1.5" aria-label="Erledigt">
+              {view.done.map((q) => (
+                <DoneItem key={q.id} q={q} project={project} canWithdraw={canReview} />
+              ))}
+            </ul>
+          </ClosedGroup>
+        ) : null}
+        {findingsLink}
+      </div>
+
       {canReview ? (
         <NoteDialog
           project={project}
@@ -432,6 +456,14 @@ export function OpenQuestionsPage() {
           fallbackFocusId="oq-count"
         />
       ) : null}
+      <CustomerExportDialog
+        project={project}
+        open={exporting}
+        onOpenChange={setExporting}
+        filters={filters}
+        agentQuestions={agentQuestions}
+        returnFocus={() => exportButton.current}
+      />
     </div>
   );
 }

@@ -1,7 +1,7 @@
 import type { AnalysisTask, Landscape, Model, RequeueBody } from '@analyzr/client';
 import { QueryClient } from '@tanstack/react-query';
 import { createMemoryHistory } from '@tanstack/react-router';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 
@@ -120,19 +120,27 @@ describe('review inbox', () => {
       'Endpunkt geändert',
     );
     const nav = screen.getByRole('navigation', { name: 'Projektbereiche' });
-    const tab = within(nav).getByRole('link', { name: /Prüfen/ });
-    expect(tab.textContent).toBe('Prüfen1 zu prüfen');
+    const tab = within(nav).getByRole('link', { name: /Relationen/ });
+    expect(tab.textContent).toBe('Relationen1 zu prüfen');
+    expect(tab.dataset['status']).toBe('active');
     // Re-confirming is one by one: no bulk accept for it.
     expect(screen.queryByTestId('bulk-open')).toBeNull();
   });
 
-  it('shows the held items of a model waiting for clarification', async () => {
-    const { router, user } = setup('/projects/demo/review?stage=waiting_for_clarification');
-    const models = await screen.findByTestId('stage-models');
-    await user.click(within(models).getByRole('button', { name: 'Vorgemerkte zeigen' }));
-    await waitFor(() =>
-      expect(router.state.location.search).toMatchObject({ model: 'a/held', view: 'held' }),
+  it('counts a held relation in its model’s open points, and lists it under „Vorgemerkt“', async () => {
+    setup('/projects/demo');
+    const row = (await screen.findAllByTestId('model-row')).find(
+      (r) => r.dataset['modelKey'] === 'a/held',
     );
+    if (!row) throw new Error('no row for a/held');
+    // Text, not a link (no one list holds all of a model's points, P7); the split in a tooltip.
+    const points = within(row).getByTestId('open-points');
+    expect(points.textContent).toBe('1');
+    expect(points.closest('a')).toBeNull();
+    expect(points.parentElement?.textContent).toBe('1 offener Punkt');
+    expect(within(row).getByRole('tooltip', { hidden: true }).textContent).toBe('1 Relation');
+    cleanup();
+    setup('/projects/demo/review?model=a%2Fheld&view=held');
     const item = await screen.findByTestId('held-item');
     expect(item.dataset['relationId']).toBe('rel_01HELD');
     expect(
@@ -142,14 +150,31 @@ describe('review inbox', () => {
     ).toContain('view=held');
   });
 
-  it('offers a requeue for an expired lease that still says "Agent arbeitet"', async () => {
-    const { calls, user } = setup('/projects/demo/review?stage=agent_working');
-    const models = await screen.findByTestId('stage-models');
-    expect((await within(models).findByTestId('lease-expired')).textContent).toContain(
-      'Lease abgelaufen',
+  it('keeps the phase filter of „Übersicht“ visible in the queue, and removable', async () => {
+    const { router, user } = setup('/projects/demo/review?stage=waiting_for_review');
+    const chip = await screen.findByTestId('stage-chip');
+    expect(chip.textContent).toBe('Phase: Wartet auf Prüfung');
+    await user.click(chip);
+    await waitFor(() => expect(router.state.location.search).toEqual({}));
+  });
+
+  it('offers a requeue on „Übersicht“ for an expired reservation that still says "Agent arbeitet"', async () => {
+    const { calls, user } = setup('/projects/demo');
+    const row = (await screen.findAllByTestId('model-row')).find(
+      (r) => r.dataset['modelKey'] === 'b/stuck',
     );
-    await user.click(within(models).getByRole('button', { name: /Erneut einplanen/ }));
-    await findToast('Erneut eingeplant');
+    if (!row) throw new Error('no row for b/stuck');
+    expect((await within(row).findAllByTestId('lease-expired'))[0]?.textContent).toContain(
+      'Reservierung abgelaufen am',
+    );
+    // „Als Nächstes“ says it too.
+    expect(screen.getByTestId('next-step').textContent).toContain(
+      'Bei 1 Modell ist die Reservierung abgelaufen',
+    );
+    const [retry] = within(row).getAllByRole('button', { name: /Nochmal versuchen/ });
+    if (!retry) throw new Error('no retry');
+    await user.click(retry);
+    await findToast('Nochmal eingeplant');
     expect(calls.filter((c) => c.method === 'POST').map((c) => c.body)).toContainEqual({
       modelKeys: ['b/stuck'],
     });

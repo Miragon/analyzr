@@ -20,6 +20,12 @@ export interface ToastItem {
   tone: ToastTone;
   title: string;
   description?: string;
+  /**
+   * The failure behind a danger toast: its title and the server's detail
+   * show behind „Technische Details“ (`errorDetail`), the description says
+   * it in German (`errorMessage`).
+   */
+  error?: unknown;
   action?: ToastAction;
 }
 

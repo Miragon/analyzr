@@ -10,39 +10,47 @@ export function MiragonMark({ className }: { className?: string }) {
   return <img src="/favicon.svg" alt="" aria-hidden className={cn('size-6', className)} />;
 }
 
-function ServerStatus() {
+/**
+ * The server's state, only when something is wrong (UX-SIMPLIFICATION.md §3.1
+ * item 4): a banner instead of „Server verbunden“ on every page; the version
+ * sits in the logo's tooltip.
+ */
+function ServerAlert() {
   const health = useQuery(healthQuery);
-  const state = health.isPending
-    ? { dot: 'bg-contour', text: 'Server wird geprüft…' }
-    : health.isError
-      ? { dot: 'bg-danger', text: 'Server nicht erreichbar' }
-      : health.data.status === 'ok'
-        ? { dot: 'bg-success', text: `Server verbunden · ${health.data.version}` }
-        : { dot: 'bg-warning', text: 'Datenbank nicht erreichbar' };
+  const text = health.isError
+    ? 'Server nicht erreichbar'
+    : health.data && health.data.status !== 'ok'
+      ? 'Datenbank nicht erreichbar'
+      : null;
+  if (text === null) return null;
   return (
-    <span
-      className="inline-flex items-center gap-2 text-xs text-muted-foreground"
+    <div
+      role="alert"
       data-testid="server-status"
-      role="status"
+      className="mx-auto flex w-full max-w-6xl items-center gap-2 px-4 pt-3 text-sm font-medium text-danger sm:px-6"
     >
-      <span aria-hidden className={cn('size-2 rounded-full', state.dot)} />
-      {state.text}
-    </span>
+      <span aria-hidden className="size-2 shrink-0 rounded-full bg-danger" />
+      {text}
+    </div>
   );
 }
 
 /**
- * Page frame for list and settings pages: brand mark, breadcrumbs and the
- * server state, content on the 1152px grid. The model view has its own
+ * Page frame for list and settings pages: brand mark (the version in its
+ * tooltip), breadcrumbs, a banner only while the server or its database is
+ * unreachable, content on the 1152px grid (16 px gutters on a phone). The model view has its own
  * borderless canvas layout instead.
  */
 export function PageShell({ crumbs, children }: { crumbs?: ReactNode; children: ReactNode }) {
+  const health = useQuery(healthQuery);
   return (
     <div className="flex min-h-app-viewport flex-col">
-      <header className="mx-auto flex w-full max-w-6xl items-center gap-3 px-6 pt-5 pb-2">
+      <ServerAlert />
+      <header className="mx-auto flex w-full max-w-6xl items-center gap-3 px-4 pt-5 pb-2 sm:px-6">
         <Link
           to="/"
-          className="inline-flex items-center gap-2 rounded-lg font-semibold focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+          title={health.data ? `analyzr ${health.data.version}` : 'analyzr'}
+          className="inline-flex shrink-0 items-center gap-2 rounded-lg font-semibold focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
         >
           <MiragonMark />
           analyzr
@@ -55,11 +63,8 @@ export function PageShell({ crumbs, children }: { crumbs?: ReactNode; children: 
             {crumbs}
           </nav>
         ) : null}
-        <div className="ml-auto">
-          <ServerStatus />
-        </div>
       </header>
-      <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 px-6 pt-4 pb-12">
+      <main className="mx-auto flex w-full max-w-6xl min-w-0 flex-1 flex-col gap-6 px-4 pt-4 pb-12 sm:px-6">
         {children}
       </main>
     </div>

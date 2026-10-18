@@ -642,7 +642,7 @@ describe('value chain page: drafts and unsaved changes', () => {
     await editMode(user);
     canvas.text = EDITED;
     canvas.pending = true;
-    await user.click(screen.getByRole('link', { name: 'Prüfen' }));
+    await user.click(screen.getByRole('link', { name: 'Relationen' }));
     const dialog = await screen.findByTestId('discard-dialog');
     expect(dialog.textContent).toContain('Seite verlassen?');
     expect(router.state.location.pathname).toBe('/projects/demo/value-chain');

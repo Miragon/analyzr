@@ -216,7 +216,7 @@ describe('actions on the open questions of nordwind-handel', () => {
       (q) => q.source === 'finding' && q.subject.id === FRAUD_CHECK,
       'the fraud check',
     );
-    // S5c-2: the target can also be set in the model („Aufrufziel im Modell ändern …“).
+    // S5c-2: the target can also be set in the model („Ziel im Modell eintragen …“ since UX2a).
     expect(item.actions.map((a) => [a.type, a.primary])).toEqual([
       ['link', true],
       ['amend', false],
@@ -243,9 +243,8 @@ describe('actions on the open questions of nordwind-handel', () => {
       ],
     });
     expect(result.relations[0]?.relation.provenance?.rationale).toBe(
-      'Aus „Offene Fragen“: Aufrufziel unbekannt – Welchen Prozess ruft „Run fraud check“ in ' +
-        '„Order handling“ auf? calledElement „Process_FraudCheck“ passt zu keiner Prozess-ID im ' +
-        'Projekt.\n\nLaut Fachbereich.',
+      'Aus „Offene Fragen“: Aufrufziel unbekannt – Welchen Prozess ruft „Run fraud check“ auf? ' +
+        'Das eingetragene Ziel „Process_FraudCheck“ gibt es in keinem Modell.\n\nLaut Fachbereich.',
     );
     // The item leaves the list (R1); „Befunde“ still lists the finding.
     expect((await listAll()).some((q) => q.id === item.id)).toBe(false);
@@ -605,7 +604,7 @@ describe('actions on the open questions of nordwind-handel', () => {
     expect(back.answers.map((a) => [a.role, a.text])).toEqual([['note', note]]);
   });
 
-  it('keeps an external-partner mark when a re-judgement replaces its coded no-link', async () => {
+  it("joins a coded no-link to the pool it is about, and keeps the pool's mark across a re-judgement", async () => {
     const probe = asAgent(t, agent.secret);
     const judge = async (reason: string) => {
       const [task] = await claim(probe, { projectId: P, modelKey: ORDER });
@@ -624,17 +623,25 @@ describe('actions on the open questions of nordwind-handel', () => {
       );
       expect(result.noLinks?.counts.stored).toBe(1);
     };
+    // The confirmation goes to the customer's pool in its own file: the coded no-link asks
+    // what the pool's item asks, so it joins that item (UX2b review: one item per gap).
+    const customerPool = (q: OpenQuestion) =>
+      q.kind === 'black-box-partner' && q.refs.includes(SEND_CONFIRMATION);
     await judge('collaboration: Die Bestätigung geht an den Kunden-Pool.');
-    const partner = find(await listAll(), (q) => q.kind === 'external-partner', 'the partner');
-    expect(partner.subject.id).toBe(SEND_CONFIRMATION);
-    expect(partner.actions.map((a) => [a.type, a.primary])).toEqual([
+    const items = await listAll();
+    expect(items.some((q) => q.kind === 'external-partner')).toBe(false);
+    const pool = find(items, customerPool, 'the customer pool');
+    expect(pool.detail).toContain(
+      'Laut Agent: collaboration: Die Bestätigung geht an den Kunden-Pool.',
+    );
+    expect(pool.actions.map((a) => [a.type, a.primary])).toEqual([
       ['outside', true],
       ['link', false],
       ['note', false],
     ]);
-    await act(partner.id, { type: 'outside' });
+    await act(pool.id, { type: 'outside' });
     // Another element of the model changes (a re-import): the old no-link is no longer
-    // current; the re-judgement replaces it with the same code.
+    // current; the re-judgement replaces it with the same code, and the pool keeps its mark.
     const xml = (
       await readFile(
         new URL(`../../../../eval/corpus/${P}/models/${ORDER}.bpmn`, import.meta.url),
@@ -642,14 +649,17 @@ describe('actions on the open questions of nordwind-handel', () => {
       )
     ).replace('name="Validate order"', 'name="Check order"');
     expect((await t.putModel(P, ORDER, xml)).status).toBe(200);
-    expect((await listAll()).some((q) => q.kind === 'external-partner')).toBe(false);
+    expect(find(await listAll(), customerPool, 'the pool, re-imported').detail).not.toContain(
+      'Laut Agent',
+    );
     await judge('collaboration: Der Kunde bekommt die Bestätigung per E-Mail.');
-    const after = find(await listAll(), (q) => q.kind === 'external-partner', 'the partner, again');
-    expect(after).toMatchObject({
-      id: partner.id,
-      state: 'answered',
-      text: 'collaboration: Der Kunde bekommt die Bestätigung per E-Mail.',
-    });
+    const now = await listAll();
+    expect(now.some((q) => q.kind === 'external-partner')).toBe(false);
+    const after = find(now, customerPool, 'the pool, again');
+    expect(after).toMatchObject({ id: pool.id, state: 'answered' });
+    expect(after.detail).toContain(
+      'Laut Agent: collaboration: Der Kunde bekommt die Bestätigung per E-Mail.',
+    );
   });
 
   it('refuses an action the item does not offer and a link it cannot take; requeue stays write', async () => {

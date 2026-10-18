@@ -60,8 +60,28 @@ const WRITE_ACTIONS = [
   /^Weitere Aktionen$/,
   /^Entscheiden$/,
   /Verknüpfen mit/,
+  // UX2a: the API's renamed action labels (the decide labels in WRITE_BUTTONS below)
+  /^Nur verknüpfen …$/,
+  /im Modell eintragen …$/,
+  /^Prozess platzieren …$/,
   /^Liegt außerhalb der Landschaft$/,
   /^Markierung zurücknehmen$/,
+  // UX1: the shell's write entries, „Als Nächstes“ and the renamed write labels of the plan
+  /^Einstellungen$/,
+  /^Annahmeregeln$/,
+  /Agent starten/,
+  /Nochmal versuchen/,
+  /unauffällige annehmen/,
+  /^Ziel wählen …$/,
+  /^Partner wählen …$/,
+  /^Antwort ergänzen$/,
+  /^Antwort geben$/,
+  /^Jetzt entscheiden$/,
+  /^\+ Notiz$/,
+  /^Notiz$/,
+  // UX2b: a hold's answer in the note dialog
+  /^Antwort speichern$/,
+  /^Anlegen oder importieren$/,
   // M6 S5c-2: model amendments
   /^Eintragen …$/,
   /^Ändern …$/,
@@ -70,6 +90,13 @@ const WRITE_ACTIONS = [
   /^Jetzt speichern$/,
   /^Alle zurücknehmen$/,
 ];
+
+/**
+ * Write actions whose label a read link shares: as a button (the `decide` action of an open
+ * question, UX2a) they write; „Auf der Kette prüfen“ is also the viewer's link to a placement
+ * on the chain (M6 S4), so only buttons and menu items are checked.
+ */
+const WRITE_BUTTONS = [/^Vorschlag prüfen$/, /^Auf der Kette prüfen$/];
 
 /** Test ids of the value chain's write actions (stable where texts may change). */
 const WRITE_TEST_IDS = [
@@ -82,6 +109,7 @@ const WRITE_TEST_IDS = [
   'placement-decision',
   'question-actions',
   'question-withdraw-mark',
+  'hold-answer',
   'subprocess-link',
   'open-questions-import',
   'amend-form',
@@ -113,12 +141,34 @@ function watch(page: Page): void {
   });
 }
 
+/**
+ * No write action as a button, link or test id, and none in a menu: write
+ * entries in menus are `menuitem`s that exist only while the menu is open, so
+ * every visible menu trigger is opened (and closed again) and its items are
+ * checked too (UX-SIMPLIFICATION.md §7 "Demo write guard").
+ */
 async function noWriteActions(page: Page): Promise<void> {
   for (const name of WRITE_ACTIONS) {
     await expect(page.getByRole('button', { name }), String(name)).toHaveCount(0);
     await expect(page.getByRole('link', { name }), String(name)).toHaveCount(0);
   }
+  for (const name of WRITE_BUTTONS)
+    await expect(page.getByRole('button', { name }), String(name)).toHaveCount(0);
   for (const id of WRITE_TEST_IDS) await expect(page.getByTestId(id), id).toHaveCount(0);
+  const triggers = page.locator('[aria-haspopup=menu]').filter({ visible: true });
+  for (let i = 0; i < (await triggers.count()); i += 1) {
+    const trigger = triggers.nth(i);
+    if (await trigger.isDisabled()) continue;
+    await trigger.click();
+    const items = page.getByRole('menuitem');
+    await expect(items.first()).toBeVisible();
+    for (const name of await items.allInnerTexts()) {
+      for (const write of [...WRITE_ACTIONS, ...WRITE_BUTTONS])
+        expect(write.test(name.trim()), `menu item „${name.trim()}“`).toBe(false);
+    }
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('menuitem')).toHaveCount(0);
+  }
 }
 
 async function shot(page: Page, name: string): Promise<void> {
@@ -161,13 +211,31 @@ test('projects: the banner, both landscapes as a reader, nothing to create', asy
 });
 
 for (const project of PROJECTS) {
-  test(`${project}: models, relations, findings and the model view read`, async ({ page }) => {
+  test(`${project}: „Übersicht“, relations, findings and the model view read`, async ({ page }) => {
     await page.goto(`/projects/${project}`);
     await expect(page.getByTestId('model-row').first()).toBeVisible();
+    // Owner decision 26: four object tabs, no „Hochladen“, no „Einstellungen“ for a reader.
+    const nav = page.getByRole('navigation', { name: 'Projektbereiche' });
+    expect(
+      (await nav.getByRole('link').allTextContents()).map((t) => t.replace(/\d+.*/, '').trim()),
+    ).toEqual(['Übersicht', 'Relationen', 'Wertschöpfungskette', 'Offene Fragen']);
+    // „Als Nächstes“ reads, with nothing to click that writes (only „Exportieren“, a read).
+    const next = page.getByTestId('next-step');
+    await expect(next).toContainText('Als Nächstes');
+    await expect(next.getByRole('link').first()).toBeVisible();
+    for (const name of await next.getByRole('button').allInnerTexts())
+      expect(name.trim()).toBe('Exportieren');
     await noWriteActions(page);
-    await page.getByRole('link', { name: /^Relationen/ }).click();
+    await nav.getByRole('link', { name: /^Relationen/ }).click();
+    await expect(page.getByTestId('queue-row').first()).toBeVisible();
+    await page.getByTestId('all-relations').click();
     await expect(page.getByTestId('relation-row').first()).toBeVisible();
-    await page.getByRole('link', { name: /^Befunde/ }).click();
+    // Q2: the list „Befunde“ behind its link at the foot of „Offene Fragen“ (the dev landscape;
+    // the holdout's questions stay unread, its findings page opens by its URL as before).
+    if (project === 'nordwind-handel') {
+      await page.goto(`/projects/${project}/open-questions`);
+      await page.getByTestId('findings-link').click();
+    } else await page.goto(`/projects/${project}/findings`);
     await expect(page.getByRole('heading', { level: 2 }).first()).toBeVisible();
     await page.goto(`/projects/${project}`);
     await page.getByTestId('model-row').first().getByRole('link').first().click();
@@ -267,18 +335,27 @@ test('nordwind-handel: the open questions read, exported and in the model view',
   await page.goto('/projects/nordwind-handel/open-questions');
   const items = page.getByTestId('open-question');
   await expect(items.first()).toBeVisible();
-  await expect(page.getByTestId('open-questions-count')).toContainText('Fragen');
+  // UX2b: „Zu klären“ as cards, without the promise of an action to a reader
+  await expect(page.getByTestId('open-questions-count')).toContainText('zu klären');
+  await expect(page.getByTestId('open-questions-intro')).toHaveText(
+    'Was in der Landschaft noch fehlt.',
+  );
   await noWriteActions(page);
-  await shot(page, '08-open-questions');
+  // the export for the customer: a dialog, the default file name unchanged
+  await page.getByRole('button', { name: 'Für den Kunden exportieren …' }).click();
+  const dialog = page.getByTestId('customer-export-dialog');
+  await dialog.getByRole('radio', { name: /Zum Ausfüllen \(CSV\)/ }).check();
+  await noWriteActions(page);
   const [download] = await Promise.all([
     page.waitForEvent('download'),
-    page.getByRole('button', { name: 'Als CSV exportieren' }).click(),
+    dialog.getByRole('button', { name: 'Herunterladen' }).click(),
   ]);
   expect(download.suggestedFilename()).toBe('offene-fragen-nordwind-handel.csv');
   await page.goto('/projects/nordwind-handel');
   await page.getByTestId('model-row').first().getByRole('link').first().click();
+  // the model view's „Fragen“ (UX2b: „Zu klären“ only)
   const section = page.getByTestId('model-open-questions');
-  await expect(section.getByRole('heading', { name: /^Offene Fragen \(\d+\)$/ })).toBeVisible();
+  await expect(section.getByRole('heading', { name: /^Fragen \(\d+\)$/ })).toBeVisible();
   await noWriteActions(page);
 });
 

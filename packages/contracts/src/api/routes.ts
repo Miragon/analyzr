@@ -851,7 +851,15 @@ export const apiRoutes = withDemoReadOnly({
       "An item whose call, coded end or pool flows a human, an owner's rule or the rule tier " +
       'linked by an accepted relation to another process leaves the list (R1), and so does a ' +
       'duplicated process id while no call towards its copies waits for a decision (R1b); ' +
-      '`listFindings` keeps listing their findings.',
+      '`listFindings` keeps listing their findings. Since UX2a each item carries its `group` ' +
+      '(`ask` „Zu klären“, `agent` „Fragen der Agenten“, `proposal` decided on the value chain, ' +
+      '`info` „Zur Information“; a label and a filter, never a sort key) and its question first ' +
+      '(`text`) with the reason apart (`detail`); `group` filters (repeat it for several), ' +
+      '`totals` counts the items per group under every filter but `group`, and `askByModel` ' +
+      'the distinct subjects of the `ask` items per model that are neither a relation nor a ' +
+      "placement. One question per process: a process with a held placement, an agent's " +
+      'question on one of its placements or an unsure verdict has no `process-without-step` ' +
+      'item.',
     request: { params: projectParams, query: OpenQuestionQuery },
     responses: {
       200: json(OpenQuestionPage, 'A page of open questions'),
@@ -865,18 +873,30 @@ export const apiRoutes = withDemoReadOnly({
     tags: ['open-questions'],
     summary: 'The open questions as a Markdown or CSV download, with the filters of the list',
     description:
-      'Every open question matching the filters, in list order, as an attachment. `markdown` ' +
-      '(default): German headings, grouped by the contact hint (step owners, else folder, else ' +
-      'lanes). `csv`: the questions without the informational items (`summary-note`, ' +
+      'Every open question matching the filters, in list order, as an attachment. Without ' +
+      '`group`, only the `ask` items („Zu klären“, UX2a: the customer is asked what needs ' +
+      "clarifying, not the agents' questions on proposals), unless `kind` or `source` names " +
+      'what to export (then every group); the file name stays `offene-fragen-<project key>` for ' +
+      'that default. `markdown` (default): for the customer, in plain German: the date of the ' +
+      "project's latest event („Stand 17.10.2026“) with the count of open and settled items, " +
+      'grouped by the contact hint (step owners, else lanes, else „Ohne Ansprechpartner“; never ' +
+      "the folder), per item its question and reason (an agent's verbatim reason after „Laut " +
+      'Agent:“), „Betrifft“ with the element and the model by name, the contact hint (lanes and ' +
+      "step owners), notes (a hold's as „Antwort“) and outside marks with their dates; the id " +
+      'only as an HTML comment after the heading (`<!-- q-… -->`, invisible when rendered, the ' +
+      'way back to `analyzr questions answer`); no refs, seqs, sources or handles. `csv`: the ' +
+      'questions without the informational items (`summary-note`, ' +
       '`descriptive-model`, which ask nothing), UTF-8 with a byte order mark, `;`-separated (what ' +
       'German spreadsheet programs open directly), CRLF, every field quoted, the columns ' +
-      `${OPEN_QUESTION_CSV_COLUMNS.map((c) => `\`${c}\``).join(', ')}; \`Antwort\` is empty for ` +
+      `${OPEN_QUESTION_CSV_COLUMNS.map((c) => `\`${c}\``).join(', ')}; \`Frage\` holds the ` +
+      'question, its reason as the second sentence and „Betrifft: …“; `Antwort` is empty for ' +
       "the customer to fill in, or holds the item's latest note (M6 S5c-1; read back, it is " +
-      '`unchanged`); the Markdown lists every note and outside mark. A cell starting with `=`, ' +
+      '`unchanged`); a sheet exported before UX2a names the contact column ' +
+      '`Ansprechpartner-Hinweis` and reads all the same. A cell starting with `=`, ' +
       '`+`, `-`, `@`, a tab, a carriage return ' +
       "or their full-width forms (also after a run of `'`) gets a leading `'`, so spreadsheets " +
       'never run it as a formula. The file name carries the filters (`offene-fragen-<project ' +
-      'key>-<filters>.csv`).',
+      'key>-<filters>.csv`; `state=open` adds nothing, the name says „offene“ already).',
     request: { params: projectParams, query: OpenQuestionExportQuery },
     responses: {
       200: {

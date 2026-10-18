@@ -23,8 +23,13 @@
  *   item's latest note).
  *
  * `--model` (a model key or folder), `--kind`, `--source`, `--ask-who` (a
- * lane, a step owner or a folder, exactly) and `--state` are the server's
- * filters, checked before any request; `-o` writes to a file instead of stdout.
+ * lane, a step owner or a folder, exactly), `--state` and, since UX2a, the
+ * repeatable `--group` (`ask` „Zu klären“, `agent`, `proposal`, `info`; also
+ * comma-separated) are the server's filters, checked before any request; `-o`
+ * writes to a file instead of stdout. The list shows every group unless
+ * `--group` narrows it, and the summary counts them; the export (md, csv)
+ * holds only `ask` without `--group` (the customer's sheet, owner decision
+ * 26), unless `--kind` or `--source` names what to export.
  */
 import { writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -40,6 +45,7 @@ import {
   MAX_ASK_WHO_FILTER_CHARS,
   MAX_PAGE_LIMIT,
   OpenQuestionFilter,
+  OpenQuestionGroup,
   OpenQuestionKind,
   OpenQuestionSource,
   OpenQuestionState,
@@ -66,6 +72,8 @@ export interface QuestionsOptions extends CredentialOptions {
   askWho?: string;
   /** `open` or `answered` (a live outside mark). */
   state?: string;
+  /** Groups (UX2a): `ask`, `agent`, `proposal`, `info`; each value may list several, comma-separated. */
+  group?: readonly string[];
   /** `text` (default), `md` (also `markdown`), `csv` or `json`. */
   format?: string;
   /** Output file; default stdout. */
@@ -85,7 +93,7 @@ export function parseFormat(value: string | undefined): QuestionFormat {
 
 /** The flags as the server's filters; an invalid one is refused before any request. */
 export function parseFilter(
-  opts: Pick<QuestionsOptions, 'model' | 'kind' | 'source' | 'askWho' | 'state'>,
+  opts: Pick<QuestionsOptions, 'model' | 'kind' | 'source' | 'askWho' | 'state' | 'group'>,
 ) {
   const filter: OpenQuestionFilter = {};
   if (opts.model !== undefined) {
@@ -131,6 +139,19 @@ export function parseFilter(
       );
     }
     filter.state = state.data;
+  }
+  if (opts.group !== undefined) {
+    const groups: OpenQuestionGroup[] = [];
+    for (const value of opts.group.flatMap((g) => g.split(','))) {
+      const group = OpenQuestionGroup.safeParse(value.trim());
+      if (!group.success) {
+        throw new CliError(
+          `unknown group ${JSON.stringify(value)}; one of ${OpenQuestionGroup.options.join(', ')} (ask: to clarify, agent: the agents' questions on their proposals, proposal: decided on the value chain, info: for information)`,
+        );
+      }
+      if (!groups.includes(group.data)) groups.push(group.data);
+    }
+    if (groups.length > 0) filter.group = groups;
   }
   return filter;
 }
@@ -347,7 +368,8 @@ export function formatQuestions(
 /**
  * `vc-seed: 3 open questions (black-box-partner 2, call-target-unknown 1)`:
  * by count, then kind; `…, 1 answered (outside the landscape)` when a live
- * outside mark answers one.
+ * outside mark answers one; then, since UX2a, the groups in their order
+ * (`; groups: ask 2, proposal 1`).
  */
 export function summarizeQuestions(where: string, items: readonly OpenQuestion[]): string {
   const byKind = new Map<string, number>();
@@ -357,7 +379,11 @@ export function summarizeQuestions(where: string, items: readonly OpenQuestion[]
     .map(([k, n]) => `${k} ${n}`);
   const count = `${items.length} open question${items.length === 1 ? '' : 's'}`;
   const answered = items.filter((q) => q.state === 'answered').length;
-  return `${where}: ${count}${kinds.length === 0 ? '' : ` (${kinds.join(', ')})`}${answered === 0 ? '' : `, ${answered} answered (outside the landscape)`}`;
+  const groups = OpenQuestionGroup.options
+    .map((g) => [g, items.filter((q) => q.group === g).length] as const)
+    .filter(([, n]) => n > 0)
+    .map(([g, n]) => `${g} ${n}`);
+  return `${where}: ${count}${kinds.length === 0 ? '' : ` (${kinds.join(', ')})`}${answered === 0 ? '' : `, ${answered} answered (outside the landscape)`}${groups.length === 0 ? '' : `; groups: ${groups.join(', ')}`}`;
 }
 
 /** The project and the filters for messages: `p (kind held, model finanzen)`. */
@@ -368,6 +394,7 @@ function scope(project: string, filter: OpenQuestionFilter): string {
     filter.modelKey === undefined ? null : `model ${filter.modelKey}`,
     filter.askWho === undefined ? null : `ask-who ${JSON.stringify(filter.askWho)}`,
     filter.state === undefined ? null : `state ${filter.state}`,
+    filter.group === undefined ? null : `group ${filter.group.join(',')}`,
   ].filter((p) => p !== null);
   return parts.length === 0 ? project : `${project} (${parts.join(', ')})`;
 }
@@ -396,7 +423,7 @@ async function exportBytes(
 
 /**
  * `analyzr questions -p <project> [--model] [--kind] [--source] [--ask-who]
- * [--state] [--format text|md|csv|json] [-o <file>]`.
+ * [--state] [--group …] [--format text|md|csv|json] [-o <file>]`.
  */
 export async function questionsCommand(io: CliIo, opts: QuestionsOptions): Promise<void> {
   const format = parseFormat(opts.format);

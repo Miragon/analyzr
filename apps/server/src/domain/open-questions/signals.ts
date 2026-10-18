@@ -67,8 +67,12 @@ function rule(ix: OpenQuestionIndex, modelKey: string) {
  * `OpenQuestionIndex.processOfRef`), nor a participant some process fact
  * names (`attrs.participantId`). A collapsed subprocess or an intermediate
  * none event outside any lane still lands here, so the question calls the
- * end a pool only as the likely case. S4 shows its id (the name needs facts
- * v2). One question per end, listing its flows.
+ * end a pool only as the likely case. One question per end, listing its
+ * flows. Since UX2a it is named by where it is, never by its id (the pool's
+ * own name needs facts v2): „Pool in „<the pool it talks to>““, or the
+ * model's name when it talks to several; with the first partner element
+ * when the model has more than one such pool. The question names its
+ * messages; the detail lists the flows.
  */
 function blackBoxPartners(ix: OpenQuestionIndex): Draft[] {
   const out: Draft[] = [];
@@ -101,7 +105,6 @@ function blackBoxPartners(ix: OpenQuestionIndex): Draft[] {
       }
     }
     for (const [box, flows] of [...boxes].sort(([a], [b]) => byCodePoint(a, b))) {
-      const id = parseRef(box).elementId;
       const inside = sorted(flows.map((f) => f.inside).filter((r) => r !== box));
       const listed = flows
         .map(
@@ -110,11 +113,29 @@ function blackBoxPartners(ix: OpenQuestionIndex): Draft[] {
             quoteDe(ix.elementName(f.inside)),
         )
         .sort(byCodePoint);
+      const partners = sorted(
+        inside.flatMap((r) => {
+          const process = ix.processOf(r) ?? ix.poolProcess.get(r);
+          return process === undefined ? [] : [process];
+        }),
+      );
+      const [only] = partners;
+      const where =
+        partners.length === 1 && only !== undefined
+          ? ix.poolTitle(only)
+          : ix.modelTitle(model.modelKey);
+      const [firstInside] = inside;
+      const label =
+        `Pool in ${quoteDe(where)}` +
+        (boxes.size > 1 && firstInside !== undefined
+          ? ` (Nachrichten mit ${quoteDe(ix.elementName(firstInside))})`
+          : '');
+      const names = sorted(flows.flatMap((f) => (f.flow === null ? [] : [f.flow])));
       out.push({
         kind: 'black-box-partner',
         source: 'signal',
         subject: { type: 'ref', id: box },
-        subjectLabel: quoteDe(id),
+        subjectLabel: label,
         // What it asks about (S5c-1): the inside ends' facts, the box and its flows' ends and names.
         version: ix.factVersion(inside, [
           `box=${box}`,
@@ -122,9 +143,11 @@ function blackBoxPartners(ix: OpenQuestionIndex): Draft[] {
         ]),
         modelKeys: [model.modelKey],
         text:
-          `Ist ${quoteDe(id)} in ${model.modelKey} ein externer Partner, oder fehlt das Modell ` +
-          `seines Prozesses? ${quoteDe(id)} gehört zu keinem Prozess des Modells, ist also ` +
-          `vermutlich ein Pool ohne Prozess. Nachrichtenflüsse: ${listed.join('; ')}.`,
+          'Externer Partner oder fehlendes Modell?' +
+          (names.length === 0 ? '' : ` Nachrichten: ${names.map((n) => quoteDe(n)).join(', ')}.`),
+        detail:
+          'Der Pool hat im Modell keinen Prozess: ein externer Partner, oder ein Prozess, dessen ' +
+          `Modell fehlt. Nachrichtenflüsse: ${listed.join('; ')}.`,
         refs: [box, ...inside],
         raisedBy: rule(ix, model.modelKey),
         anchors: { refs: inside },
@@ -174,9 +197,10 @@ function unlabelledBoundaries(ix: OpenQuestionIndex): Draft[] {
           [`events=${sorted(events.map((f) => f.elementId)).join(',')}`],
         ),
         modelKeys: [model.modelKey],
-        text:
-          `${question} ${events.length === 1 ? 'Ein Start- oder Endereignis hat' : `${events.length} Start- oder Endereignisse haben`} ` +
-          'keinen Namen; Auslöser-Beziehungen zu anderen Prozessen brauchen benannte Ereignisse.',
+        text: question,
+        detail:
+          `${events.length === 1 ? 'Ein Start- oder Endereignis hat' : `${events.length} Start- oder Endereignisse haben`} ` +
+          'keinen Namen; ohne Namen findet analyzr keine Prozesse, die diesen auslösen oder die er auslöst.',
         refs: [process, ...events.map((f) => f.ref)],
         raisedBy: rule(ix, model.modelKey),
         anchors: { processes: [process] },
@@ -230,9 +254,10 @@ function messagesWithoutName(ix: OpenQuestionIndex): Draft[] {
         subjectLabel: quoteDe(ix.elementName(f.ref)),
         version: ix.factVersion([f.ref]),
         modelKeys: [model.modelKey],
-        text:
-          `Welche Nachricht ${verb} ${ix.elementInProcess(f.ref)}? Ohne Nachrichtennamen ` +
-          'kann die Regelebene keinen Partner zuordnen; die Verbindung hängt dann allein am Urteil eines Agenten.',
+        text: `Welche Nachricht ${verb} ${quoteDe(ix.elementName(f.ref))}?`,
+        detail:
+          'Ohne Nachrichtennamen findet die automatische Verknüpfung keinen Partner; die ' +
+          'Verbindung hängt dann allein am Urteil eines Agenten.',
         refs: [f.ref],
         raisedBy: rule(ix, model.modelKey),
         anchors: { refs: [f.ref] },
@@ -255,9 +280,10 @@ function undocumentedProcesses(ix: OpenQuestionIndex): Draft[] {
       subjectLabel: name,
       version: ix.factVersion([p.ref], [`doc=${p.fact?.attrs.documentation ?? ''}`]),
       modelKeys: [p.modelKey],
-      text:
-        `Was leistet ${name}? Der Prozess hat keine Dokumentation; die Agenten brauchen sie ` +
-        'vor allem, um ihn in die Wertschöpfungskette einzuordnen.',
+      text: `Was leistet ${name}?`,
+      detail:
+        'Der Prozess hat keine Dokumentation; die Agenten brauchen sie vor allem, um ihn auf ' +
+        'der Wertschöpfungskette zu platzieren.',
       refs: [p.ref],
       raisedBy: rule(ix, p.modelKey),
       anchors: { processes: [p.ref] },
@@ -312,9 +338,10 @@ function isolatedProcesses(ix: OpenQuestionIndex): Draft[] {
       subjectLabel: name,
       version: ix.factVersion([p.ref]),
       modelKeys: [p.modelKey],
-      text:
-        `Wie hängt ${name} mit dem Rest der Landschaft zusammen? Weder eine Beziehung noch ein ` +
-        'Kandidat aus Regel, gleichem Namen oder ähnlicher Bezeichnung verbindet ihn mit einem anderen Prozess.',
+      text: `Wie hängt ${name} mit dem Rest der Landschaft zusammen?`,
+      detail:
+        'Keine Relation und keine mögliche Relation (eindeutiger Aufruf, gleicher oder ähnlicher ' +
+        'Name) verbindet ihn mit einem anderen Prozess.',
       refs: [p.ref],
       raisedBy: rule(ix, p.modelKey),
       anchors: { processes: [p.ref] },
@@ -344,8 +371,10 @@ function descriptiveModels(ix: OpenQuestionIndex): Draft[] {
       modelKeys: [model.modelKey],
       text:
         `Hinweis: ${ix.modelName(model.modelKey)} ist ein beschreibendes Modell, ohne Engine und ` +
-        'ohne ausführbaren Prozess. Die Regelebene findet hier wenig; Aufrufziele, ' +
-        'Nachrichtennamen und Dokumentation helfen den Agenten, die Verbindungen zu finden.',
+        'ohne ausführbaren Prozess.',
+      detail:
+        'Die automatische Verknüpfung findet hier wenig; Aufrufziele, Nachrichtennamen und ' +
+        'Dokumentation helfen den Agenten, mögliche Relationen zu finden.',
       refs: [],
       raisedBy: rule(ix, model.modelKey),
       // Informational: it asks nothing itself and ranks last; it counts the model's open decisions.
@@ -502,9 +531,9 @@ function extractorLosses(ix: OpenQuestionIndex): Draft[] {
       subjectLabel: name,
       version: `loss=${[...texts].sort(byCodePoint).join('|')}`,
       modelKeys: [modelKey],
-      text:
-        `Welche Elemente von ${name} sind beim Import verloren gegangen? analyzr hat ` +
-        `${atLeast ? 'mindestens ' : ''}${count} übersprungen: ` +
+      text: `Welche Elemente von ${name} sind beim Import verloren gegangen?`,
+      detail:
+        `analyzr hat ${atLeast ? 'mindestens ' : ''}${count} übersprungen: ` +
         `${listed}${more}. Was dort modelliert ist, fehlt der Analyse. Korrigiere das Modell im ` +
         'Quellsystem (oder lass den Export mit normalize-bpmn normalisieren) und importiere es erneut.',
       refs: [],

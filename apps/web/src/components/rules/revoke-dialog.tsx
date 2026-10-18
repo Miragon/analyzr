@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Undo2Icon } from 'lucide-react';
 import { useId, useState } from 'react';
 
+import { ErrorText } from '@/components/error-text';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import {
@@ -16,7 +17,7 @@ import {
 import { Field, FieldDescription, FieldLabel } from '@/components/ui/field';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
-import { ApiError, errorMessage } from '@/lib/api';
+import { ApiError } from '@/lib/api';
 import { formatDecimal, revocationSummary } from '@/lib/auto-accept';
 import { useRevokeAutoAccepted } from '@/lib/auto-accept-actions';
 import { MAX_AUTO_ACCEPT_REASON_CHARS } from '@/lib/limits';
@@ -110,7 +111,9 @@ function RevokeBody({
       {dry.isError ? (
         <Alert variant="destructive">
           <AlertTitle>Vorschau fehlgeschlagen</AlertTitle>
-          <AlertDescription>{errorMessage(dry.error)}</AlertDescription>
+          <AlertDescription>
+            <ErrorText error={dry.error} />
+          </AlertDescription>
         </Alert>
       ) : !result ? (
         <Skeleton className="h-16 w-full" />
@@ -155,7 +158,9 @@ function RevokeBody({
       {failed ? (
         <Alert variant="destructive">
           <AlertTitle>Widerruf fehlgeschlagen</AlertTitle>
-          <AlertDescription>{errorMessage(real.error)}</AlertDescription>
+          <AlertDescription>
+            <ErrorText error={real.error} />
+          </AlertDescription>
         </Alert>
       ) : null}
       <DialogFooter>

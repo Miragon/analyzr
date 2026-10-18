@@ -5,6 +5,7 @@ import { PlusIcon, TerminalIcon } from 'lucide-react';
 import { useId, useState, type FormEvent, type ReactNode } from 'react';
 
 import { CopyButton } from '@/components/copy-button';
+import { ErrorText } from '@/components/error-text';
 import { MiragonMark, PageShell } from '@/components/page-shell';
 import { toast } from '@/lib/toast';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -39,7 +40,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { api, errorMessage, unwrap } from '@/lib/api';
+import { ApiError, api, errorMessage, unwrap } from '@/lib/api';
 import { formatDate } from '@/lib/labels';
 import { keys, projectsQuery } from '@/lib/queries';
 import { useServerMode } from '@/lib/server-mode';
@@ -58,8 +59,13 @@ function NewProjectDialog({ trigger }: { trigger: ReactNode }) {
   const [name, setName] = useState('');
   const [key, setKey] = useState('');
   const [keyTouched, setKeyTouched] = useState(false);
+  // The key follows the name, shown as one line; „(ändern)“ opens the field (UX1, §3.12 item 4).
+  const [editKey, setEditKey] = useState(false);
   const effectiveKey = keyTouched ? key : slugify(name);
   const keyValid = isProjectKey(effectiveKey);
+  // A name without Latin letters or digits („数据平台“, „—“) derives no key: the field shows
+  // at once, so „Projekt anlegen“ is never disabled without a way on.
+  const showKey = editKey || (name.trim() !== '' && effectiveKey === '');
 
   const create = useMutation({
     mutationFn: () =>
@@ -69,6 +75,10 @@ function NewProjectDialog({ trigger }: { trigger: ReactNode }) {
       await queryClient.invalidateQueries({ queryKey: keys.projects });
       toast({ tone: 'success', title: `Projekt „${project.name}“ angelegt` });
       await navigate({ to: '/projects/$project/upload', params: { project: project.key } });
+    },
+    // A taken key: show the field to change it.
+    onError: (error) => {
+      if (error instanceof ApiError && error.status === 409) setEditKey(true);
     },
   });
 
@@ -82,7 +92,10 @@ function NewProjectDialog({ trigger }: { trigger: ReactNode }) {
       open={open}
       onOpenChange={(next) => {
         setOpen(next);
-        if (!next) create.reset();
+        if (!next) {
+          create.reset();
+          setEditKey(false);
+        }
       }}
     >
       <DialogTrigger asChild>{trigger}</DialogTrigger>
@@ -90,9 +103,7 @@ function NewProjectDialog({ trigger }: { trigger: ReactNode }) {
         <form onSubmit={submit} className="flex flex-col gap-4">
           <DialogHeader>
             <DialogTitle>Neues Projekt</DialogTitle>
-            <DialogDescription>
-              Ein Projekt ist eine Prozesslandschaft. Du bist sein Inhaber.
-            </DialogDescription>
+            <DialogDescription>Ein Projekt ist eine Prozesslandschaft.</DialogDescription>
           </DialogHeader>
           <FieldGroup>
             <Field>
@@ -107,24 +118,48 @@ function NewProjectDialog({ trigger }: { trigger: ReactNode }) {
                 onChange={(e) => setName(e.target.value)}
               />
             </Field>
-            <Field data-invalid={effectiveKey !== '' && !keyValid}>
-              <FieldLabel htmlFor={`${id}-key`}>Schlüssel</FieldLabel>
-              <Input
-                id={`${id}-key`}
-                value={effectiveKey}
-                className="font-mono"
-                aria-invalid={effectiveKey !== '' && !keyValid}
-                placeholder="nordwind-handel"
-                onChange={(e) => {
-                  setKeyTouched(true);
-                  setKey(e.target.value);
-                }}
-              />
-              <FieldDescription>
-                Kleinbuchstaben, Ziffern und Bindestriche; erscheint in URLs und Befehlen.
-              </FieldDescription>
-            </Field>
-            {create.isError ? <FieldError>{errorMessage(create.error)}</FieldError> : null}
+            {showKey ? (
+              <Field data-invalid={effectiveKey !== '' && !keyValid}>
+                <FieldLabel htmlFor={`${id}-key`}>Kurzname</FieldLabel>
+                <Input
+                  id={`${id}-key`}
+                  value={effectiveKey}
+                  className="font-mono"
+                  aria-invalid={effectiveKey !== '' && !keyValid}
+                  placeholder="nordwind-handel"
+                  // Only when asked for: shown for a name without a key, it must not take the
+                  // focus from the name being typed.
+                  autoFocus={editKey}
+                  onChange={(e) => {
+                    setKeyTouched(true);
+                    setKey(e.target.value);
+                    setEditKey(true);
+                  }}
+                />
+                <FieldDescription>
+                  Kleinbuchstaben, Ziffern und Bindestriche; steht in Adressen und Befehlen und
+                  bleibt fest.
+                </FieldDescription>
+              </Field>
+            ) : effectiveKey !== '' ? (
+              <p className="text-sm text-muted-foreground" data-testid="key-preview">
+                Kurzname: <span className="font-mono text-foreground">{effectiveKey}</span>{' '}
+                <button
+                  type="button"
+                  className="text-link underline-offset-4 hover:underline"
+                  onClick={() => setEditKey(true)}
+                >
+                  (ändern)
+                </button>
+              </p>
+            ) : null}
+            {create.isError ? (
+              <FieldError>
+                {create.error instanceof ApiError && create.error.status === 409
+                  ? `Den Kurznamen „${effectiveKey}“ gibt es schon. Wähl einen anderen.`
+                  : errorMessage(create.error)}
+              </FieldError>
+            ) : null}
           </FieldGroup>
           <DialogFooter>
             <Button type="submit" disabled={create.isPending || name.trim() === '' || !keyValid}>
@@ -144,6 +179,8 @@ function ProjectsPage() {
   // Creating projects and seeding are for an analyzr of your own: hidden until the
   // server's mode is known, and never on the read-only demo.
   const writable = mode.known && !mode.demo;
+  // „Rolle“ tells a reader why nothing can be changed; in local mode every role is „Inhaber“.
+  const showRole = mode.demo || (projects.data ?? []).some((p) => p.role !== 'owner');
 
   return (
     <PageShell>
@@ -175,7 +212,9 @@ function ProjectsPage() {
       ) : projects.isError ? (
         <Alert variant="destructive">
           <AlertTitle>Projekte konnten nicht geladen werden</AlertTitle>
-          <AlertDescription>{errorMessage(projects.error)}</AlertDescription>
+          <AlertDescription>
+            <ErrorText error={projects.error} />
+          </AlertDescription>
         </Alert>
       ) : projects.data.length === 0 ? (
         <Empty className="border bg-card py-12">
@@ -189,8 +228,14 @@ function ProjectsPage() {
                 'Diese Demo zeigt gerade kein Projekt.'
               ) : (
                 <>
-                  Leg ein Projekt an und lade BPMN-Modelle hoch. Die Testlandschaften lädst du im
-                  Repo mit <code className="font-mono">{SEED_COMMAND}</code>.
+                  Leg ein Projekt an und lade BPMN-Modelle hoch.
+                  {import.meta.env.DEV ? (
+                    <>
+                      {' '}
+                      Die Testlandschaften lädst du im Repo mit{' '}
+                      <code className="font-mono">{SEED_COMMAND}</code>.
+                    </>
+                  ) : null}
                 </>
               )}
             </EmptyDescription>
@@ -205,13 +250,15 @@ function ProjectsPage() {
                   </Button>
                 }
               />
-              <CopyButton
-                value={SEED_COMMAND}
-                label="Seed-Befehl kopieren"
-                copiedMessage="Befehl kopiert"
-                variant="ghost"
-                size="default"
-              />
+              {import.meta.env.DEV ? (
+                <CopyButton
+                  value={SEED_COMMAND}
+                  label="Seed-Befehl kopieren"
+                  copiedMessage="Befehl kopiert"
+                  variant="ghost"
+                  size="default"
+                />
+              ) : null}
             </EmptyContent>
           ) : null}
         </Empty>
@@ -221,42 +268,41 @@ function ProjectsPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>Projekt</TableHead>
-                <TableHead>Schlüssel</TableHead>
-                <TableHead>Rolle</TableHead>
-                <TableHead className="text-right">Stand</TableHead>
-                <TableHead>Angelegt</TableHead>
+                {showRole ? <TableHead>Rolle</TableHead> : null}
+                <TableHead className="hidden sm:table-cell">Angelegt</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {projects.data.map((p) => (
                 <TableRow key={p.id} data-testid="project-row">
-                  <TableCell className="font-medium">
-                    <Link
-                      to="/projects/$project"
-                      params={{ project: p.key }}
-                      className="text-link hover:underline"
-                    >
-                      {p.name}
-                    </Link>
+                  <TableCell className="whitespace-normal">
+                    <div className="flex min-w-0 flex-col">
+                      <Link
+                        to="/projects/$project"
+                        params={{ project: p.key }}
+                        className="font-medium text-link hover:underline"
+                      >
+                        {p.name}
+                      </Link>
+                      <span className="font-mono text-xs text-muted-foreground">{p.key}</span>
+                    </div>
                   </TableCell>
-                  <TableCell className="font-mono text-xs">{p.key}</TableCell>
-                  <TableCell>
-                    <Badge variant="outline">{ROLE_LABELS[p.role]}</Badge>
+                  {showRole ? (
+                    <TableCell>
+                      <Badge variant="outline">{ROLE_LABELS[p.role]}</Badge>
+                    </TableCell>
+                  ) : null}
+                  <TableCell className="hidden text-muted-foreground sm:table-cell">
+                    {formatDate(p.createdAt)}
                   </TableCell>
-                  <TableCell
-                    className="text-right tabular-nums text-muted-foreground"
-                    title="Laufende Nummer des letzten Ereignisses"
-                  >
-                    s{p.lastSeq}
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">{formatDate(p.createdAt)}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
           </Table>
         </div>
       )}
-      {projects.data?.length === 0 || !writable ? null : (
+      {/* The seed is a developer's tool: only in the dev server (UX1, §3.12 item 3). */}
+      {projects.data?.length === 0 || !writable || !import.meta.env.DEV ? null : (
         <p className="flex items-center gap-2 text-sm text-muted-foreground">
           <TerminalIcon className="size-4" aria-hidden />
           Testlandschaften laden: <code className="font-mono">{SEED_COMMAND}</code>

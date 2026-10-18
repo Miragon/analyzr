@@ -12,6 +12,7 @@ import {
 import { lazy, Suspense, useMemo, useState, useSyncExternalStore } from 'react';
 
 import { EngineBadge, StageBadge } from '@/components/badges';
+import { ErrorText } from '@/components/error-text';
 import { MiragonMark } from '@/components/page-shell';
 import { DecisionPanel, type DecisionOutcome } from '@/components/review/decision-panel';
 import { ReviewDetails } from '@/components/review/review-details';
@@ -20,7 +21,7 @@ import { Button } from '@/components/ui/button';
 import { Kbd } from '@/components/ui/kbd';
 import { Spinner } from '@/components/ui/spinner';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
-import { ApiError, errorMessage } from '@/lib/api';
+import { ApiError } from '@/lib/api';
 import { useAutoAcceptIndex } from '@/lib/auto-accept-actions';
 import type { CanvasHighlight } from '@/lib/bpmn-elements';
 import { useProjectPermissions } from '@/lib/permissions';
@@ -155,7 +156,9 @@ function Pane({
         <div className="absolute inset-x-4 top-1/3 z-20">
           <Alert variant="destructive">
             <AlertTitle>Modell konnte nicht geladen werden</AlertTitle>
-            <AlertDescription>{errorMessage(content.error)}</AlertDescription>
+            <AlertDescription>
+              <ErrorText error={content.error} />
+            </AlertDescription>
           </Alert>
         </div>
       ) : !model ? (
@@ -462,6 +465,7 @@ function ReviewScreen() {
                     }
                   : undefined
               }
+              canAnswerHold={reviewer}
             />
           ) : notFound ? (
             <Alert>
@@ -480,7 +484,9 @@ function ReviewScreen() {
           ) : loadError ? (
             <Alert variant="destructive">
               <AlertTitle>Prüfung konnte nicht geladen werden</AlertTitle>
-              <AlertDescription>{errorMessage(loadError)}</AlertDescription>
+              <AlertDescription>
+                <ErrorText error={loadError} />
+              </AlertDescription>
             </Alert>
           ) : (
             <div className="grid h-full place-items-center">

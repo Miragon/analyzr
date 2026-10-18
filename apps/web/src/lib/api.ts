@@ -2,6 +2,7 @@ import { createAnalyzrClient } from '@analyzr/client';
 import type { ApiProblem } from '@analyzr/client';
 
 import { PROBLEM_TYPE_BASE } from './limits';
+import { PROBLEM_TEXTS, problemText } from './problem-texts';
 
 /**
  * REST client of the web UI (CONCEPT §6, local mode).
@@ -161,17 +162,27 @@ export async function unwrapWithResponse<T>(
 }
 
 /** The message for a write the read-only demo refused (403 `demo-readonly`, owner decision 20). */
-export const DEMO_READONLY_MESSAGE = 'Das ist eine Demo: Hier kannst du nichts ändern.';
+export const DEMO_READONLY_MESSAGE = PROBLEM_TEXTS['demo-readonly'];
 
-/** A short German message for any error thrown by {@link unwrap}. */
+/**
+ * A short German message for any error thrown by {@link unwrap}: for a
+ * problem the sentence of its `reason` or its code (`lib/problem-texts.ts`,
+ * UX-SIMPLIFICATION.md §3.13 item 7), never the English title; the title and
+ * the server's detail are {@link errorDetail}.
+ */
 export function errorMessage(error: unknown): string {
-  if (error instanceof ApiError && error.problem.code === 'demo-readonly') {
-    return DEMO_READONLY_MESSAGE;
-  }
-  if (error instanceof ApiError) {
-    const detail = error.problem.detail ? `: ${error.problem.detail}` : '';
-    return `${error.problem.title}${detail}`;
-  }
+  if (error instanceof ApiError) return problemText(error.problem.code, error.problem['reason']);
   if (error instanceof Error) return error.message;
   return 'Unbekannter Fehler';
+}
+
+/**
+ * What the server said, for „Technische Details“ under the German message
+ * (toasts and alerts): `Conflict (409): the relation changed meanwhile`;
+ * `undefined` for an error that is no problem (its message is the text).
+ */
+export function errorDetail(error: unknown): string | undefined {
+  if (!(error instanceof ApiError)) return undefined;
+  const { title, status, detail } = error.problem;
+  return `${title} (${status})${detail ? `: ${detail}` : ''}`;
 }

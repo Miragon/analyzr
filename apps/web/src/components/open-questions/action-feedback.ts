@@ -92,7 +92,12 @@ export async function undoWrites(
             : 'Die Relationen sind abgelehnt; die Frage ist wieder offen.',
     });
   } catch (error) {
-    toast({ tone: 'danger', title: 'Nicht rückgängig gemacht', description: errorMessage(error) });
+    toast({
+      tone: 'danger',
+      title: 'Nicht rückgängig gemacht',
+      description: errorMessage(error),
+      error,
+    });
   } finally {
     await refresh(queryClient, project);
   }
@@ -133,6 +138,7 @@ export async function withdrawMark(
       tone: 'danger',
       title: 'Markierung nicht zurückgenommen',
       description: errorMessage(error),
+      error,
     });
   } finally {
     await refresh(queryClient, project);

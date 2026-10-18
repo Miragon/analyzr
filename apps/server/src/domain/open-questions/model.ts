@@ -21,6 +21,7 @@ import {
   type ModelId,
   type OpenQuestion,
   type OpenQuestionAnswer,
+  type OpenQuestionGroup,
   type OpenQuestionRaisedBy,
   type OpenQuestionSource,
   type OpenQuestionSubject,
@@ -211,12 +212,26 @@ export interface Draft {
   /** The source version: the id changes with it. */
   version: string;
   modelKeys: readonly string[];
+  /** The question, short (UX2a). */
   text: string;
+  /** Why it is asked (UX2a): from code, or an agent's verbatim reason; absent for none. */
+  detail?: string | null;
   context?: string | null;
   label?: string | null;
   refs: readonly string[];
   raisedBy: OpenQuestionRaisedBy;
   anchors: Anchors;
+  /**
+   * A value chain finding while a placement waits for review on the chain
+   * (`process-without-step`: of the process; `step-without-process`: on the
+   * step or below it): the item's group is `proposal` (UX2a).
+   */
+  proposed?: boolean;
+  /**
+   * The ids of the coded no-link items merged into this one (`mergeCodedNoLinks`):
+   * their notes and withdrawn marks show among its answers.
+   */
+  merged?: readonly string[];
 }
 
 interface ProcessEntry {
@@ -473,6 +488,55 @@ export class OpenQuestionIndex {
       : `${quoteDe(this.elementName(ref))} in ${quoteDe(this.processName(process))}`;
   }
 
+  /**
+   * The title of a process as its diagram shows it (UX2a): its pool's name,
+   * else its own name, else its id; „Nordwind Handel – Einkauf“ rather than
+   * „Bestellanforderung“.
+   */
+  poolTitle(processRef: string): string {
+    const entry = this.processes.get(processRef);
+    if (!entry) return parseRef(processRef).elementId;
+    return entry.info.participantName ?? entry.info.name ?? entry.info.processId;
+  }
+
+  /** The name of a model (`bpmn:definitions` or its first process), else its key. */
+  modelTitle(modelKey: string): string {
+    const name = this.input.models.get(modelKey)?.name ?? null;
+    return name === null || name === '' ? modelKey : name;
+  }
+
+  /**
+   * What an item is about, in names (UX2a, the export's „Betrifft“): an
+   * element in its pool or process („„Bestellung freigeben lassen“ in
+   * „Nordwind Handel – Einkauf““), a process with its pool when that is named
+   * otherwise, a relation's two ends each in theirs, a step on the value
+   * chain; the subject label for the rest (a pool without a process, a
+   * model, a placement, the chain).
+   */
+  concerns(q: Pick<OpenQuestion, 'subject' | 'subjectLabel'>): string {
+    const at = (ref: string): string => {
+      const process = this.processOf(ref);
+      if (process === undefined) return quoteDe(this.elementName(ref));
+      const title = this.poolTitle(process);
+      const name = this.elementName(ref);
+      return name === title ? quoteDe(name) : `${quoteDe(name)} in ${quoteDe(title)}`;
+    };
+    switch (q.subject.type) {
+      case 'ref':
+        return this.factsAt(q.subject.id).length > 0 ? at(q.subject.id) : q.subjectLabel;
+      case 'process':
+        return this.processes.has(q.subject.id) ? at(q.subject.id) : q.subjectLabel;
+      case 'relation': {
+        const r = this.input.relations.find((x) => x.id === q.subject.id);
+        return r ? `${at(r.fromRef)} → ${at(r.toRef)}` : q.subjectLabel;
+      }
+      case 'step':
+        return `${q.subjectLabel} auf der Wertschöpfungskette`;
+      default:
+        return q.subjectLabel;
+    }
+  }
+
   /** Display name of a model: `„Name“ (key)`, or the key. */
   modelName(modelKey: string): string {
     const name = this.input.models.get(modelKey)?.name ?? null;
@@ -603,6 +667,61 @@ function relationPair(r: Pick<RelationRecord, 'type' | 'fromRef' | 'toRef'>) {
   return { type: r.type, from: r.fromRef, to: r.toRef };
 }
 
+// ------------------------------------------------------------------ groups
+
+/** What a kind's group may depend on: the item's source and whether the chain has a proposal for it. */
+export interface GroupFacts {
+  source: OpenQuestionSource;
+  /** {@link Draft.proposed}. */
+  proposed: boolean;
+}
+
+/** A kind's group, or how to tell it from the item. */
+export type GroupRule = OpenQuestionGroup | ((item: GroupFacts) => OpenQuestionGroup);
+
+/** `proposal` while the chain has a proposal for the item, else `ask`. */
+const byProposal = ({ proposed }: GroupFacts): OpenQuestionGroup => (proposed ? 'proposal' : 'ask');
+
+/**
+ * The group of each kind (UX2a, UX-SIMPLIFICATION §2.4): where the item is
+ * worked. A `Record` over every kind, so a new kind does not compile without
+ * a group (and the unit test fails on an unmapped one). The agents' questions
+ * are answered on their proposals (`agent`), summaries and descriptive models
+ * inform (`info`); the value chain's `process-without-step` and
+ * `step-without-process` are decided on the chain while it has a proposal for
+ * them (`proposal`), and asked otherwise; everything else needs a human or
+ * the customer to say what the landscape lacks (`ask`), whatever its source.
+ */
+export const OPEN_QUESTION_GROUP_RULES: Readonly<Record<OpenQuestionKind, GroupRule>> = {
+  'call-target-unknown': 'ask',
+  'call-target-dynamic': 'ask',
+  'duplicate-process-id': 'ask',
+  'message-partner-missing': 'ask',
+  held: 'ask',
+  'agent-question': 'agent',
+  'placement-unsure': 'ask',
+  'process-without-step': byProposal,
+  'step-without-process': byProposal,
+  'unresolved-link': 'ask',
+  'external-partner': 'ask',
+  'summary-note': 'info',
+  unjudged: 'ask',
+  'black-box-partner': 'ask',
+  'unlabelled-boundary': 'ask',
+  'message-without-name': 'ask',
+  'undocumented-process': 'ask',
+  'isolated-process': 'ask',
+  'descriptive-model': 'info',
+  'amendment-conflict': 'ask',
+  'extractor-loss': 'ask',
+};
+
+/** The group of an item of this kind ({@link OPEN_QUESTION_GROUP_RULES}). */
+export function groupOf(kind: OpenQuestionKind, facts: GroupFacts): OpenQuestionGroup {
+  const rule = OPEN_QUESTION_GROUP_RULES[kind];
+  return typeof rule === 'function' ? rule(facts) : rule;
+}
+
 // -------------------------------------------------------------- ids, order
 
 /** `q-` + the first 16 hex characters of `sha256(kind|subject|source version)` (M6 §4.2). */
@@ -619,7 +738,8 @@ export function openQuestionId(
 
 /**
  * A draft as an open question: `answered` while a live outside mark names
- * its id (M6 S5c-1), with its answers and its actions (`actionsOf`, the
+ * its id (M6 S5c-1), with its answers (and the notes and withdrawn marks of
+ * the items merged into it, oldest first) and its actions (`actionsOf`, the
  * read model passes `actionsFor` of `actions.ts`).
  */
 export function finish(
@@ -628,15 +748,20 @@ export function finish(
   actionsOf: (item: OpenQuestion, index: OpenQuestionIndex) => OpenQuestion['actions'] = () => [],
 ): OpenQuestion {
   const id = openQuestionId(draft.kind, draft.subject, draft.version);
-  const answers = [...index.answersOf(id)];
+  const merged = (draft.merged ?? []).flatMap((m) =>
+    index.answersOf(m).filter((a) => !isLiveMark(a)),
+  );
+  const answers = [...index.answersOf(id), ...merged].sort((a, b) => a.seq - b.seq);
   const item: OpenQuestion = {
     id,
     kind: draft.kind,
     source: draft.source,
+    group: groupOf(draft.kind, { source: draft.source, proposed: draft.proposed === true }),
     subject: draft.subject,
     subjectLabel: draft.subjectLabel,
     modelKeys: sorted(draft.modelKeys),
     text: draft.text,
+    detail: draft.detail ?? null,
     context: draft.context ?? null,
     label: draft.label ?? null,
     askWho: index.askWho(draft),

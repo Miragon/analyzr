@@ -54,15 +54,19 @@ async function blankSecrets(page: Page): Promise<void> {
 
 test('projects', async ({ page }) => {
   await page.goto('/');
-  await expect(page.getByTestId('server-status')).toContainText('Server verbunden');
   await expect(page.getByRole('link', { name: /Nordwind Handel/ })).toBeVisible();
   await shot(page, '01-projects');
 });
 
-test('models with stage and engine', async ({ page }) => {
+test('„Übersicht“: the next step, phase chips and the models table', async ({ page }) => {
   await page.goto(`/projects/${PROJECT}`);
   await expect(page.getByTestId('model-row').first()).toBeVisible();
-  await expect(page.getByTestId('model-row').filter({ hasText: 'C8' }).first()).toBeVisible();
+  await expect(page.getByTestId('next-step')).toContainText('Als Nächstes');
+  await expect(page.locator('[data-testid=stage-filter]').first()).toBeVisible();
+  // The counts load in parallel; on a fresh stack the open questions answer last.
+  await expect(
+    page.getByTestId('project-tabs').getByRole('link', { name: /Offene Fragen.*\d/ }),
+  ).toBeVisible({ timeout: 30_000 });
   await shot(page, '02-models');
 });
 

@@ -134,6 +134,7 @@ function BulkList({
               tone: 'danger',
               title: 'Nichts angenommen',
               description: errorMessage(error),
+              error,
             });
         },
       },

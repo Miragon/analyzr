@@ -771,7 +771,8 @@ describe('re-import of amended models', () => {
       'the expression conflict',
     );
     expect(conflict.source).toBe('amendment');
-    expect(conflict.text).toContain('${zahlung}');
+    // The question first, the values in the detail (UX2a).
+    expect(conflict.detail).toContain('${zahlung}');
     expect(conflict.actions.map((a) => `${a.type}${a.primary ? '*' : ''} ${a.label}`)).toEqual([
       'withdraw-amendment* Ergänzung zurücknehmen',
       'note Notiz hinzufügen',
@@ -794,8 +795,8 @@ describe('re-import of amended models', () => {
       (q) => q.kind === 'amendment-conflict' && q.subject.id === CALL,
       'the value conflict',
     );
-    expect(conflict.text).toContain('Process_Andere');
-    expect(conflict.text).toContain('Process_Rechnung');
+    expect(conflict.detail).toContain('Process_Andere');
+    expect(conflict.detail).toContain('Process_Rechnung');
     expect(conflict.actions.map((a) => `${a.type}${a.primary ? '*' : ''} ${a.label}`)).toEqual([
       'withdraw-amendment* Wert aus dem Quellsystem übernehmen',
       'amend Meine Ergänzung behalten',
@@ -1259,7 +1260,7 @@ describe('review round: history, keep, withdrawal preconditions', () => {
       (q) => q.kind === 'amendment-conflict' && q.subject.id === `${AUFTRAG_KEY}#Message_Zahlung`,
     );
     expect(conflict?.text).toContain('Welcher Nachrichtenname gilt für die Empfangsaufgabe');
-    expect(conflict?.text).toContain('Jetzt im Quellsystem: „Zahlung vom Tool“');
+    expect(conflict?.detail).toContain('Jetzt im Quellsystem: „Zahlung vom Tool“');
     expect(conflict?.subjectLabel).toBe('„Mahnung abwarten“');
   });
 

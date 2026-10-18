@@ -235,6 +235,10 @@ async function review(page: Page, id: string | undefined, markers = 2): Promise<
     await expect(page.locator('.analyzr-overlay', { hasText: 'Nach' })).toBeVisible();
 }
 
+/**
+ * The phase chips of „Übersicht“ (UX1): one per stage with models, its count;
+ * a stage without models has no chip.
+ */
 async function expectStageCounts(page: Page, expected: Record<string, number>): Promise<void> {
   for (const stage of [
     'waiting_for_agent',
@@ -244,10 +248,10 @@ async function expectStageCounts(page: Page, expected: Record<string, number>): 
     'waiting_for_clarification',
     'incorporated',
   ]) {
-    await expect(
-      page.locator(`[data-testid=stage-filter][data-stage=${stage}]`),
-      `stage ${stage}`,
-    ).toHaveAttribute('data-count', String(expected[stage] ?? 0));
+    const chip = page.locator(`[data-testid=stage-filter][data-stage=${stage}]`);
+    if ((expected[stage] ?? 0) === 0) await expect(chip, `stage ${stage}`).toHaveCount(0);
+    else
+      await expect(chip, `stage ${stage}`).toHaveAttribute('data-count', String(expected[stage]));
   }
 }
 
@@ -357,7 +361,7 @@ test.afterAll(async () => {
   await owner?.dispose();
 });
 
-test('after the agent run: no model waits for the agent; the inbox counts the stages', async ({
+test('after the agent run: no model waits for the agent; „Übersicht“ counts the stages', async ({
   page,
 }) => {
   const counts = await stages();
@@ -367,12 +371,15 @@ test('after the agent run: no model waits for the agent; the inbox counts the st
   expect(counts['waiting_for_review']).toBeGreaterThan(0);
   expect(counts['incorporated']).toBeGreaterThan(0);
 
-  await page.goto(`/projects/${PROJECT}/review`);
+  await page.goto(`/projects/${PROJECT}`);
   await expectStageCounts(page, counts);
+  // „Als Nächstes“: the agent is done, the review is the one next step.
+  await expect(page.getByTestId('next-step-primary')).toHaveText(/^Vorschläge prüfen \(\d+\)$/);
+  await shot(page, 'm2-08-pipeline-stages');
+  await page.goto(`/projects/${PROJECT}/review`);
   await expect(page.getByTestId('queue-row').first()).toBeVisible();
   // the agent's borderline cases carry its question
   await expect(page.getByTestId('queue-row').filter({ hasText: 'Frage' }).first()).toBeVisible();
-  await shot(page, 'm2-08-pipeline-stages');
 
   // the relations table shows the agent's provenance
   await page.goto(`/projects/${PROJECT}/relations?status=proposed`);
@@ -433,10 +440,11 @@ test('reject with a reason (twice) and hold with a question; answer it in the he
   await page.goto(`/projects/${PROJECT}/review?view=held`);
   const item = page.getByTestId('held-item').filter({ hasText: 'mit Finanzbuchhaltung klären' });
   await expect(item).toContainText('Meldet der Zahlungslauf Anordnungen');
-  await item
-    .getByRole('textbox', { name: 'Antwort' })
-    .fill('Nein, nur Zuordnungen aus dem Zahlungseingang.');
-  await item.getByRole('button', { name: /Antwort speichern/ }).click();
+  // UX2b: the note dialog of „Offene Fragen“, one place to answer a hold
+  await item.getByRole('button', { name: 'Antwort geben' }).click();
+  const dialog = page.getByTestId('note-dialog');
+  await dialog.getByLabel('Deine Antwort').fill('Nein, nur Zuordnungen aus dem Zahlungseingang.');
+  await dialog.getByRole('button', { name: 'Antwort speichern' }).click();
   await expect(page.getByTestId('toast').filter({ hasText: 'Antwort gespeichert' })).toBeVisible();
   await expect(item.getByTestId('held-answer')).toContainText('nur Zuordnungen');
   // the answer is a note: the status stays held

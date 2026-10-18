@@ -3,7 +3,10 @@ import { XIcon } from 'lucide-react';
 import { Toast as ToastPrimitive } from 'radix-ui';
 import { useSyncExternalStore } from 'react';
 
+import { errorDetail } from '@/lib/api';
 import { dismissToast, getToasts, subscribeToasts, type ToastTone } from '@/lib/toast';
+
+import { TechnicalDetails } from './error-text';
 
 /**
  * Toasts per modeler-tool-design §8/§9: bottom centre, surface card with a
@@ -55,6 +58,7 @@ export function Toaster() {
                 {t.description}
               </ToastPrimitive.Description>
             ) : null}
+            <TechnicalDetails detail={errorDetail(t.error)} />
             {t.action ? (
               <ToastPrimitive.Action
                 altText={t.action.altText ?? t.action.label}

@@ -92,6 +92,43 @@ describe('UploadPanel', () => {
     expect(await findToast('1 von 3 Dateien nicht importiert')).toBeTruthy();
   });
 
+  it('keeps the server’s reason when a whole batch fails, behind „Technische Details“', async () => {
+    stubApi({
+      [`POST ${IMPORT_PATH}`]: () =>
+        json(
+          {
+            type: 'urn:analyzr:problem:validation-failed',
+            title: 'Validation failed',
+            status: 422,
+            code: 'validation-failed',
+            detail: 'files[1].path: not a model key',
+          },
+          422,
+        ),
+    });
+    renderWithQuery(<UploadPanel project="demo" />);
+    fireEvent.change(screen.getByTestId('file-input'), {
+      target: {
+        files: [
+          withRelativePath('a.bpmn', 'models/a.bpmn'),
+          withRelativePath('b.bpmn', 'models/b.bpmn'),
+        ],
+      },
+    });
+    const table = await screen.findByRole('table', { name: 'Import je Datei' });
+    await waitFor(() => expect(within(table).getAllByTestId('import-outcome')).toHaveLength(2));
+    for (const row of within(table).getAllByTestId('import-outcome')) {
+      expect(row.dataset['outcome']).toBe('failed');
+      // the German sentence in the row, the server's words one level down (P3)
+      expect(row.textContent).toContain('Die Eingabe passt so nicht.');
+      const details = within(row).getByTestId('technical-details');
+      expect(details.hasAttribute('open')).toBe(false);
+      expect(details.textContent).toContain(
+        'Validation failed (422): files[1].path: not a model key',
+      );
+    }
+  });
+
   it('says so when nothing is a BPMN file, naming the suffixes of the file rule', async () => {
     const calls = stubApi({});
     renderWithQuery(<UploadPanel project="demo" />);

@@ -65,10 +65,12 @@ function question(extra: Partial<OpenQuestion> = {}): OpenQuestion {
     id: Q1,
     kind: 'held',
     source: 'hold',
+    group: 'ask',
     subject: { type: 'relation', id: 'rel_1' },
     subjectLabel: '„A“ → „B“',
     modelKeys: ['finanzen/gutschrift', 'vertrieb/auftrag'],
     text: 'Wer verschickt\ndie Mahnung?',
+    detail: null,
     context: 'Mit Finanzen klären.',
     label: null,
     askWho: { lanes: [], stepOwners: [], folder: 'finanzen' },
@@ -844,7 +846,7 @@ describe('analyzr questions (subcommands)', () => {
     ]) {
       const t = owner(fakeApi({ 'GET /api/v1/projects/p/open-questions': page }).fetch);
       expect(await runCli(argv, t.io), argv.join(' ')).toBe(0);
-      expect(t.out()).toContain('p: 1 open question (held 1)\n');
+      expect(t.out()).toContain('p: 1 open question (held 1); groups: ask 1\n');
     }
   });
 
@@ -863,7 +865,7 @@ describe('analyzr questions (subcommands)', () => {
       '„A“ → „B“: Wer verschickt die Mahnung?  [answered: outside the landscape]\n',
     );
     expect(t.out()).toContain(
-      'p: 2 open questions (call-target-unknown 1, held 1), 1 answered (outside the landscape)\n',
+      'p: 2 open questions (call-target-unknown 1, held 1), 1 answered (outside the landscape); groups: ask 2\n',
     );
   });
 });

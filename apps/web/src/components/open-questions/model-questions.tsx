@@ -5,27 +5,30 @@ import { useCallback, useMemo, useRef } from 'react';
 
 import { Skeleton } from '@/components/ui/skeleton';
 import { errorMessage } from '@/lib/api';
-import { questionsOfModel } from '@/lib/open-questions';
+import { infoGroup, questionsOfModel } from '@/lib/open-questions';
 import { useProjectPermissions } from '@/lib/permissions';
 import { modelOpenQuestionsQuery } from '@/lib/queries';
 import type { RefResolver } from '@/lib/refs';
 
 import { NoteDialog } from './note-dialog';
 import type { QuestionActor } from './question-actions';
-import { QuestionItem } from './question-item';
+import { ClosedGroup, InfoItem, QuestionItem } from './question-item';
 import { useActionFocus } from './use-action-focus';
 import { useNoteDialog } from './use-note-dialog';
 
 export { default as SubprocessLink } from './subprocess-link';
 
 /**
- * The section „Offene Fragen“ of the model view (M6 §4.4): the questions
- * touching this model, in list order, compact, with their notes and marks
- * and, for reviewers, their actions (M6 §4.8 a, S5c-1: the primary action,
- * „Weitere Aktionen“, the panels, „Notiz hinzufügen“), and a link to the tab
- * filtered by the model. Loaded lazily with the model view's panel, so the
- * entry chunk carries none of it; the model view takes `SubprocessLink`
- * from this module too, so both share one lazy chunk.
+ * The section „Fragen“ of the model view (M6 §4.4; UX2b: the open questions
+ * „Zu klären“ as cards, UX-SIMPLIFICATION.md §3.5 items 2 and 5): the
+ * questions touching this model, in list order, compact cards as in the tab
+ * and, for reviewers, their actions (M6 §4.8 a), and a link to the tab
+ * filtered by the model; below them one link to the agents' questions about
+ * its proposals (until UX3 shows each on its relation card) and the closed
+ * „Zur Information“ with the agent's summary (decision 24.8: read-only in the
+ * model view too). Loaded lazily with the model view's panel, so the entry
+ * chunk carries none of it; the model view takes `SubprocessLink` from this
+ * module too, so both share one lazy chunk.
  */
 export default function ModelQuestions({
   project,
@@ -37,7 +40,21 @@ export default function ModelQuestions({
   resolve: RefResolver;
 }) {
   const query = useQuery(modelOpenQuestionsQuery(project, modelKey));
-  const items = useMemo(() => questionsOfModel(query.data ?? [], modelKey), [query.data, modelKey]);
+  const own = useMemo(
+    () => questionsOfModel(query.data ?? [], modelKey).filter((q) => q.state === 'open'),
+    [query.data, modelKey],
+  );
+  const items = useMemo(() => own.filter((q) => q.group === 'ask'), [own]);
+  const agentCount = own.filter((q) => q.group === 'agent').length;
+  const info = useMemo(
+    () =>
+      infoGroup(
+        own.filter((q) => q.group === 'info'),
+        1,
+      ),
+    [own],
+  );
+  const infoCount = (info.descriptive?.items.length ?? 0) + info.rest.length;
   const { canReview } = useProjectPermissions(project);
   const noting = useNoteDialog();
   const list = useRef<HTMLUListElement>(null);
@@ -53,7 +70,7 @@ export default function ModelQuestions({
     <section aria-labelledby="model-open-questions" data-testid="model-open-questions">
       <div className="flex items-center gap-2 px-2 pb-1">
         <h3 id="model-open-questions" tabIndex={-1} className="text-sm font-semibold outline-none">
-          Offene Fragen{query.data ? ` (${items.length})` : ''}
+          Fragen{query.data ? ` (${items.length})` : ''}
         </h3>
         {items.length > 0 ? (
           <Link
@@ -71,14 +88,12 @@ export default function ModelQuestions({
         <Skeleton className="mx-2 h-16" />
       ) : query.isError ? (
         <p className="px-2 text-sm text-destructive">
-          Offene Fragen konnten nicht geladen werden: {errorMessage(query.error)}
+          Fragen konnten nicht geladen werden: {errorMessage(query.error)}
         </p>
       ) : items.length === 0 ? (
-        <p className="px-2 text-sm text-muted-foreground">
-          Zu diesem Modell ist keine Frage offen.
-        </p>
+        <p className="px-2 text-sm text-muted-foreground">Zu diesem Modell ist nichts zu klären.</p>
       ) : (
-        <ul ref={list} className="flex flex-col gap-1.5" aria-label="Offene Fragen dieses Modells">
+        <ul ref={list} className="flex flex-col gap-1.5" aria-label="Fragen zu diesem Modell">
           {items.map((q) => (
             <QuestionItem
               key={q.id}
@@ -92,6 +107,34 @@ export default function ModelQuestions({
           ))}
         </ul>
       )}
+      {agentCount > 0 || infoCount > 0 ? (
+        <div className="mt-2 flex flex-col gap-2 px-2">
+          {agentCount > 0 ? (
+            // The agents' questions sit on their proposals (owner decision 26); one link to them.
+            <Link
+              to="/projects/$project/open-questions"
+              params={{ project }}
+              search={{ model: modelKey, kind: 'agent-question' }}
+              className="self-start text-xs text-link hover:underline"
+              data-testid="model-agent-questions"
+            >
+              Fragen der Agenten zu Vorschlägen ({agentCount})
+            </Link>
+          ) : null}
+          {infoCount > 0 ? (
+            <ClosedGroup title="Zur Information" count={infoCount} testId="model-questions-info">
+              <ul className="flex flex-col divide-y" aria-label="Zur Information">
+                {info.descriptive ? (
+                  <li className="py-1.5 text-sm text-muted-foreground">{info.descriptive.text}</li>
+                ) : null}
+                {info.rest.map((q) => (
+                  <InfoItem key={q.id} q={q} project={project} currentModel={modelKey} />
+                ))}
+              </ul>
+            </ClosedGroup>
+          ) : null}
+        </div>
+      ) : null}
       {canReview ? (
         <NoteDialog
           project={project}

@@ -3,12 +3,12 @@ import type {
   OpenQuestionAction,
   OpenQuestionWithdrawCompare,
 } from '@analyzr/client';
-import { useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import {
-  CheckCheckIcon,
+  ArrowUpRightIcon,
   ChevronDownIcon,
   CopyCheckIcon,
+  CopyIcon,
   EarthIcon,
   InboxIcon,
   LinkIcon,
@@ -32,46 +32,48 @@ import { Spinner } from '@/components/ui/spinner';
 import { useCollected } from '@/lib/amendments';
 import { ApiError, errorMessage } from '@/lib/api';
 import { useQuestionAction } from '@/lib/open-question-actions';
+import {
+  CARD_ACTION_LABELS,
+  cardActions,
+  decideLink,
+  type CardAction,
+  type QuestionLink,
+} from '@/lib/open-questions';
 import type { RefResolver } from '@/lib/refs';
 import { useRequeue } from '@/lib/review-actions';
 import { toast } from '@/lib/toast';
 
-import { useActionFeedback, withdrawMark } from './action-feedback';
-import {
-  ChooseCopyPanel,
-  DecidePanel,
-  LinkPanel,
-  PlacePanel,
-  type PanelProps,
-} from './action-panels';
+import { useActionFeedback } from './action-feedback';
+import { ChooseCopyPanel, LinkPanel, PlacePanel, type PanelProps } from './action-panels';
 import { AmendPanel, WithdrawAllPanel, WithdrawOnePanel } from './amend-panel';
 
 /**
- * The action row of an open question (M6 §4.8 a, S5c-1), for reviewers
- * only: the primary action as the visible button, the others under
- * „Weitere Aktionen“, the item's links next to them; a panel below for the
- * actions that pick something or decide (link, place, choose the copy,
- * decide), one click for the rest (the outside mark, „Gehört zu keinem
- * Schritt“, requeue), the chain page for a step's link, the note dialog for
- * „Notiz hinzufügen“. An item marked „außerhalb“ offers to take the mark
- * back instead. Model amendments (S5c-2): `amend` opens the amend form
- * below the item (with „Sammeln“); `withdraw-amendment` opens a
- * confirmation with the withdrawal's cost (its dry run), for one amendment
- * („Wert aus dem Quellsystem übernehmen“) or every amendment of the model;
- * a `value-changed` conflict shows both values side by side, with „Meine
- * Ergänzung behalten“ as a visible second button where it is offered.
+ * The action row of an open question (M6 §4.8 a, S5c-1; UX2b), for
+ * reviewers only, at most three actions (UX-SIMPLIFICATION.md §3.3 item 5):
+ * the primary one, one beside it where the card needs two (a hold's
+ * „Jetzt entscheiden“, an amendment conflict's „Meine Ergänzung behalten“),
+ * the rest under „Weitere Aktionen“ with „Kennung kopieren“ last. A panel
+ * opens below the item for the actions that pick something (link, place,
+ * choose the copy, amend, a withdrawal's cost); one click runs the rest (the
+ * outside mark, „Gehört zu keinem Schritt“, requeue); „Link korrigieren“
+ * opens the chain page at the step; a note opens the note dialog, for a
+ * hold as „Antwort geben“ (its one answer place, §2.4). A `decide` is
+ * decided where the diagrams are (owner decision 26, Q4): a hold's
+ * „Jetzt entscheiden“ and an agent's question's „Vorschlag öffnen“ open the
+ * review screen or the chain, the `proposal` items' „Auf der Kette prüfen“
+ * the chain at the step.
  */
 
 /** What the row needs from the list it sits in. */
 export interface QuestionActor {
-  /** Opens the note dialog from its button (one dialog per list). */
+  /** Opens the note dialog from its button (one dialog per list; a hold's answer, M6 §2.4). */
   note: (q: OpenQuestion, trigger: HTMLElement) => void;
   /** An action ran: the item left the list or changed, the focus moves on. */
   acted: (q: OpenQuestion) => void;
 }
 
 const ICONS: Record<OpenQuestionAction['type'], LucideIcon> = {
-  decide: CheckCheckIcon,
+  decide: ArrowUpRightIcon,
   link: LinkIcon,
   place: MapPinIcon,
   'choose-copy': CopyCheckIcon,
@@ -83,22 +85,15 @@ const ICONS: Record<OpenQuestionAction['type'], LucideIcon> = {
   note: MessageSquarePlusIcon,
 };
 
-function MenuIcon({ type }: { type: OpenQuestionAction['type'] }) {
-  const Icon = ICONS[type];
-  return <Icon />;
-}
-
-/** Whether an action opens a panel below the item (it picks something or decides). */
+/** Whether an action opens a panel below the item (it picks something). */
 function hasPanel(action: OpenQuestionAction): boolean {
   switch (action.type) {
-    case 'decide':
     case 'link':
     case 'choose-copy':
+    case 'amend':
       return true;
     case 'place':
       return action.step === undefined;
-    case 'amend':
-      return true;
     case 'withdraw-amendment':
       // A withdrawal writes a new head: its cost first, from the dry run (M6 §4.8 c).
       return true;
@@ -107,11 +102,13 @@ function hasPanel(action: OpenQuestionAction): boolean {
   }
 }
 
+/** Whether an action is a link to another page (decided or corrected there). */
+const isLink = (action: OpenQuestionAction) =>
+  action.type === 'decide' || action.type === 'fix-link';
+
 /** The panel of an action that has one. */
 function ActionPanel(props: PanelProps) {
   switch (props.action.type) {
-    case 'decide':
-      return <DecidePanel {...props} />;
     case 'link':
       return <LinkPanel {...props} />;
     case 'choose-copy':
@@ -131,42 +128,70 @@ function ActionPanel(props: PanelProps) {
   }
 }
 
-/** The chain page at the item's step, where its link editor corrects the link. */
-function FixLinkButton({
-  action,
+/** Where a link action leads: a `decide` by what it decides, `fix-link` the chain at the step. */
+function linkOf(q: OpenQuestion, action: OpenQuestionAction): QuestionLink | null {
+  return action.type === 'fix-link' ? { to: 'chain', step: q.subject.id } : decideLink(q, action);
+}
+
+/** A link action as a button or a menu entry: the review screen or the chain page. */
+function ActionLink({
+  q,
+  card,
   project,
-  step,
-  variant,
+  className,
   describedBy,
+  primary,
+  children,
 }: {
-  action: OpenQuestionAction;
+  q: OpenQuestion;
+  card: CardAction;
   project: string;
-  step: string;
-  variant: 'default' | 'outline';
-  describedBy: string;
+  className?: string;
+  describedBy?: string;
+  primary: boolean;
+  children: ReactNode;
 }) {
-  return (
-    <Button variant={variant} size="sm" asChild>
+  const link = linkOf(q, card.action);
+  const common = {
+    className,
+    'aria-describedby': describedBy,
+    'data-testid': 'question-action',
+    'data-action': card.action.type,
+    'data-primary': primary,
+  };
+  if (link?.to === 'review')
+    return (
       <Link
-        to="/projects/$project/value-chain"
-        params={{ project }}
-        search={{ step }}
-        aria-describedby={describedBy}
-        data-testid="question-action"
-        data-action={action.type}
-        data-primary={action.primary}
+        to="/projects/$project/review/$relation"
+        params={{ project, relation: link.relation }}
+        search={link.held ? { view: 'held' as const } : {}}
+        {...common}
       >
-        <PenLineIcon data-icon="inline-start" />
-        {action.label}
+        {children}
       </Link>
-    </Button>
+    );
+  return (
+    <Link
+      to="/projects/$project/value-chain"
+      params={{ project }}
+      search={{
+        ...(link?.to === 'chain' && link.step ? { step: link.step } : {}),
+        ...(link?.to === 'chain' && link.placement ? { placement: link.placement } : {}),
+      }}
+      {...common}
+    >
+      {children}
+    </Link>
   );
 }
 
-/** One action as a button: the primary one in the row. */
+/** One action as a button: the primary one, or the one beside it. */
 function ActionButton({
-  action,
+  q,
+  card,
+  project,
   variant,
+  primary,
   busy,
   running,
   expanded,
@@ -174,8 +199,11 @@ function ActionButton({
   describedBy,
   onChoose,
 }: {
-  action: OpenQuestionAction;
+  q: OpenQuestion;
+  card: CardAction;
+  project: string;
   variant: 'default' | 'outline';
+  primary: boolean;
   /** Another action of the item runs: wait for it. */
   busy: boolean;
   /** This one runs (a one-click action): a spinner instead of its icon. */
@@ -183,24 +211,34 @@ function ActionButton({
   expanded: boolean;
   panelId: string;
   describedBy: string;
-  onChoose: (action: OpenQuestionAction, trigger: HTMLElement) => void;
+  onChoose: (card: CardAction, trigger: HTMLElement) => void;
 }) {
+  const { action } = card;
   const Icon = ICONS[action.type];
+  if (isLink(action))
+    return (
+      <Button variant={variant} size="sm" asChild>
+        <ActionLink q={q} card={card} project={project} describedBy={describedBy} primary={primary}>
+          <Icon data-icon="inline-start" />
+          {card.label}
+        </ActionLink>
+      </Button>
+    );
   const expands = hasPanel(action);
   return (
     <Button
       variant={variant}
       size="sm"
       disabled={busy}
-      onClick={(event) => onChoose(action, event.currentTarget)}
+      onClick={(event) => onChoose(card, event.currentTarget)}
       aria-describedby={describedBy}
       {...(expands ? { 'aria-expanded': expanded, 'aria-controls': panelId } : {})}
       data-testid="question-action"
       data-action={action.type}
-      data-primary={action.primary}
+      data-primary={primary}
     >
       {running ? <Spinner data-icon="inline-start" /> : <Icon data-icon="inline-start" />}
-      {action.label}
+      {card.label}
     </Button>
   );
 }
@@ -251,12 +289,25 @@ const isGone = (error: unknown) =>
 const keyOf = (a: OpenQuestionAction) =>
   `${a.type}:${a.pick ?? ''}:${a.step ?? ''}:${a.withdraw?.amendment ?? ''}:${a.amend?.targets[0]?.op ?? ''}`;
 
+/** „Kennung kopieren“: the id for `analyzr questions …`, never shown on the card (P2). */
+async function copyId(id: string): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(id);
+    toast({ tone: 'success', title: 'Kennung kopiert', description: id });
+  } catch {
+    toast({
+      tone: 'danger',
+      title: 'Kopieren hat nicht geklappt',
+      description: `Der Browser erlaubt keinen Zugriff auf die Zwischenablage. Die Kennung ist ${id}.`,
+    });
+  }
+}
+
 export function QuestionActions({
   q,
   project,
   resolve,
   describedBy,
-  links,
   actor,
 }: {
   q: OpenQuestion;
@@ -264,12 +315,9 @@ export function QuestionActions({
   resolve: RefResolver;
   /** The id of the item's subject: every button names it for screen readers. */
   describedBy: string;
-  /** The item's links („Im Modell zeigen“, „Prüfen“ …), shown after the actions. */
-  links: ReactNode;
   actor: QuestionActor;
 }) {
   const panelId = useId();
-  const queryClient = useQueryClient();
   const [open, setOpen] = useState<string | null>(null);
   const opener = useRef<HTMLElement | null>(null);
   const act = useQuestionAction(project);
@@ -277,23 +325,22 @@ export function QuestionActions({
   const feedback = useActionFeedback(project, resolve);
   // An amendment collected at this item waits in the collection's bar („Sammeln“).
   const collected = useCollected().some((c) => c.questionId === q.id);
-  const [withdrawing, setWithdrawing] = useState(false);
   /** The one-click action that runs (its button shows a spinner). */
   const [running, setRunning] = useState<string | null>(null);
 
-  // A live outside mark: the item is done; the row offers to take the mark back.
-  const mark = q.answers.find((a) => a.role === 'outside-mark' && a.withdrawal === null);
-  const actions = q.actions.filter((a) => !(mark && a.type === 'outside'));
-  const primary = mark ? undefined : actions.find((a) => a.primary);
-  // A conflict between the source tool's value and analyzr's (M6 §4.8 a): both values side
-  // by side, and keeping analyzr's value as a visible second button where it is offered.
-  const compare = primary?.type === 'withdraw-amendment' ? primary.withdraw?.compare : undefined;
-  const keep = compare
-    ? actions.find((a) => a.type === 'amend' && a.amend?.replaces === primary?.withdraw?.amendment)
-    : undefined;
-  const others = actions.filter((a) => a !== primary && a !== keep);
-  const current = actions.find((a) => keyOf(a) === open && hasPanel(a));
-  const busy = act.isPending || requeue.isPending || withdrawing;
+  const { primary, secondary, menu } = cardActions(q);
+  // A conflict between the source tool's value and analyzr's (M6 §4.8 a): both values side by side.
+  const compare =
+    primary?.action.type === 'withdraw-amendment' ? primary.action.withdraw?.compare : undefined;
+  const all = [primary, secondary, ...menu].filter((c): c is CardAction => c !== undefined);
+  const current = all.find((c) => keyOf(c.action) === open && hasPanel(c.action));
+  const busy = act.isPending || requeue.isPending;
+  const menuTrigger = useRef<HTMLButtonElement>(null);
+  // A menu item that opens the note dialog or a panel runs once the menu has closed, so the
+  // dialog's field or the panel's search keeps the focus (not the menu's trigger).
+  const deferred = useRef<CardAction | null>(null);
+
+  if (all.length === 0) return null;
 
   function closePanel() {
     setOpen(null);
@@ -337,7 +384,12 @@ export function QuestionActions({
                 },
         );
       } catch (error) {
-        toast({ tone: 'danger', title: 'Nicht eingeplant', description: errorMessage(error) });
+        toast({
+          tone: 'danger',
+          title: 'Nicht eingeplant',
+          description: errorMessage(error),
+          error,
+        });
       }
       return;
     }
@@ -351,11 +403,18 @@ export function QuestionActions({
       actor.acted(q);
     } catch (error) {
       if (isGone(error)) feedback.gone();
-      else toast({ tone: 'danger', title: 'Nicht ausgeführt', description: errorMessage(error) });
+      else
+        toast({
+          tone: 'danger',
+          title: 'Nicht ausgeführt',
+          description: errorMessage(error),
+          error,
+        });
     }
   }
 
-  function choose(action: OpenQuestionAction, trigger: HTMLElement | null) {
+  function choose(card: CardAction, trigger: HTMLElement | null) {
+    const { action } = card;
     if (action.type === 'note') {
       if (trigger) actor.note(q, trigger);
       return;
@@ -368,75 +427,31 @@ export function QuestionActions({
     void runNow(action);
   }
 
-  async function takeBack() {
-    if (!mark) return;
-    setWithdrawing(true);
-    try {
-      await withdrawMark(queryClient, project, q.id, mark.id);
-    } finally {
-      setWithdrawing(false);
-    }
-  }
-
-  const menuTrigger = useRef<HTMLButtonElement>(null);
-  // A menu item that opens the note dialog or a panel runs once the menu has closed, so the
-  // dialog's field or the panel's search keeps the focus (not the menu's trigger).
-  const deferred = useRef<OpenQuestionAction | null>(null);
+  const button = (card: CardAction, isPrimary: boolean) => (
+    <ActionButton
+      key={keyOf(card.action)}
+      q={q}
+      card={card}
+      project={project}
+      variant={isPrimary ? 'default' : 'outline'}
+      primary={isPrimary}
+      busy={busy}
+      running={running === keyOf(card.action)}
+      expanded={open === keyOf(card.action)}
+      panelId={panelId}
+      describedBy={describedBy}
+      onChoose={choose}
+    />
+  );
 
   return (
     <>
       {compare ? <ConflictValues compare={compare} /> : null}
       <div className="flex flex-wrap items-center gap-2" data-testid="question-actions">
-        {mark ? (
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={busy}
-            onClick={() => void takeBack()}
-            aria-describedby={describedBy}
-            data-testid="question-withdraw-mark"
-          >
-            {withdrawing ? (
-              <Spinner data-icon="inline-start" />
-            ) : (
-              <Undo2Icon data-icon="inline-start" />
-            )}
-            Markierung zurücknehmen
-          </Button>
-        ) : null}
-        {primary?.type === 'fix-link' ? (
-          <FixLinkButton
-            action={primary}
-            project={project}
-            step={q.subject.id}
-            variant="default"
-            describedBy={describedBy}
-          />
-        ) : primary ? (
-          <ActionButton
-            action={primary}
-            variant="default"
-            busy={busy}
-            running={running === keyOf(primary)}
-            expanded={open === keyOf(primary)}
-            panelId={panelId}
-            describedBy={describedBy}
-            onChoose={choose}
-          />
-        ) : null}
-        {keep ? (
-          <ActionButton
-            action={keep}
-            variant="outline"
-            busy={busy}
-            running={false}
-            expanded={open === keyOf(keep)}
-            panelId={panelId}
-            describedBy={describedBy}
-            onChoose={choose}
-          />
-        ) : null}
-        <ActionHint action={primary} />
+        {/* Keyed, so a button that changes places (a hold's „Antwort geben“ once answered)
+            stays the same element and keeps the focus the note dialog gives back. */}
+        {[primary ? button(primary, true) : null, secondary ? button(secondary, false) : null]}
+        <ActionHint action={primary?.action} />
         {collected ? (
           <span
             className="inline-flex items-center gap-1 text-xs text-primary"
@@ -446,12 +461,12 @@ export function QuestionActions({
             gesammelt
           </span>
         ) : null}
-        {others.length > 0 ? (
+        {menu.length > 0 ? (
           <DropdownMenu modal={false}>
             <DropdownMenuTrigger asChild>
               <Button
                 ref={menuTrigger}
-                variant="outline"
+                variant="ghost"
                 size="sm"
                 disabled={busy}
                 aria-describedby={describedBy}
@@ -464,53 +479,52 @@ export function QuestionActions({
             <DropdownMenuContent
               align="start"
               onCloseAutoFocus={(event) => {
-                const action = deferred.current;
+                const card = deferred.current;
                 deferred.current = null;
-                if (action) {
+                if (card) {
                   event.preventDefault();
-                  choose(action, menuTrigger.current);
+                  choose(card, menuTrigger.current);
                 }
               }}
             >
-              {others.map((action) =>
-                action.type === 'fix-link' ? (
-                  <DropdownMenuItem key={keyOf(action)} asChild>
-                    <Link
-                      to="/projects/$project/value-chain"
-                      params={{ project }}
-                      search={{ step: q.subject.id }}
-                      data-testid="question-action"
-                      data-action={action.type}
-                    >
-                      <PenLineIcon />
-                      {action.label}
-                    </Link>
+              {menu.map((card) => {
+                const Icon = ICONS[card.action.type];
+                return isLink(card.action) ? (
+                  <DropdownMenuItem key={keyOf(card.action)} asChild>
+                    <ActionLink q={q} card={card} project={project} primary={false}>
+                      <Icon />
+                      {card.label}
+                    </ActionLink>
                   </DropdownMenuItem>
                 ) : (
                   <DropdownMenuItem
-                    key={keyOf(action)}
+                    key={keyOf(card.action)}
                     onSelect={() => {
-                      if (action.type === 'note' || hasPanel(action)) deferred.current = action;
-                      else choose(action, menuTrigger.current);
+                      if (card.action.type === 'note' || hasPanel(card.action))
+                        deferred.current = card;
+                      else choose(card, menuTrigger.current);
                     }}
                     data-testid="question-action"
-                    data-action={action.type}
+                    data-action={card.action.type}
                     data-primary={false}
                   >
-                    <MenuIcon type={action.type} />
-                    {action.label}
-                    {action.hint ? (
+                    <Icon />
+                    {card.label}
+                    {card.action.hint ? (
                       <span className="ml-auto pl-2 text-xs text-muted-foreground">
-                        {action.hint}
+                        {card.action.hint}
                       </span>
                     ) : null}
                   </DropdownMenuItem>
-                ),
-              )}
+                );
+              })}
+              <DropdownMenuItem onSelect={() => void copyId(q.id)} data-testid="question-copy-id">
+                <CopyIcon />
+                {CARD_ACTION_LABELS.copyId}
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         ) : null}
-        <div className="flex flex-1 flex-wrap justify-end gap-2">{links}</div>
       </div>
       {current ? (
         <div
@@ -519,11 +533,11 @@ export function QuestionActions({
           aria-label={current.label}
           className="rounded-lg border bg-muted/40 p-3"
           data-testid="question-action-panel"
-          data-action={current.type}
+          data-action={current.action.type}
         >
           <ActionPanel
             q={q}
-            action={current}
+            action={current.action}
             project={project}
             resolve={resolve}
             onCancel={closePanel}

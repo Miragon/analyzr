@@ -2,16 +2,28 @@
  * The zod-free parts of answering open questions (M6 S5a): the
  * personal-data check (true and false positives on texts as process
  * landscapes have them), the answer kinds and their labels, and the reader
- * of a filled-in sheet.
+ * of a filled-in sheet; the groups, their filter and the export's default
+ * (UX2a).
  */
 import { readFileSync } from 'node:fs';
 
 import { describe, expect, it } from 'vitest';
 
-import { OPEN_QUESTION_ANSWER_KINDS, OpenQuestionAnswerKind } from '../src/api/open-questions.ts';
-import { CsvError, readAnswerSheet } from '../src/open-question-csv.ts';
+import {
+  DEFAULT_EXPORT_GROUPS,
+  OPEN_QUESTION_ANSWER_KINDS,
+  OPEN_QUESTION_CSV_COLUMNS,
+  OpenQuestionAnswerKind,
+  OpenQuestionExportQuery,
+  OpenQuestionGroup,
+  OpenQuestionPage,
+  OpenQuestionQuery,
+  exportGroups,
+} from '../src/api/open-questions.ts';
+import { CONTACT_COLUMNS, CsvError, readAnswerSheet } from '../src/open-question-csv.ts';
 import {
   OPEN_QUESTION_ANSWER_KIND_LABELS,
+  OPEN_QUESTION_GROUP_LABELS,
   answerKindFromCell,
 } from '../src/open-question-labels.ts';
 import {
@@ -207,5 +219,54 @@ describe('the answer sheet reader', () => {
     expect(codeOf('"Frage";"Antwort"\r\n')).toEqual(['missing-columns', null]);
     expect(codeOf('"id";"Antwort"\r\n"a";"b\r\n')).toEqual(['unterminated-quote', 2]);
     expect(codeOf('"id";"Antwort"\r\n\r\n"a"x;"b"\r\n')).toEqual(['text-after-quote', 3]);
+  });
+});
+
+describe('the groups, their filter and the export (UX2a)', () => {
+  it('reads one group as a list of one, several as a list, and refuses others', () => {
+    expect(OpenQuestionQuery.parse({ group: 'ask' }).group).toEqual(['ask']);
+    expect(OpenQuestionQuery.parse({ group: ['ask', 'agent'] }).group).toEqual(['ask', 'agent']);
+    expect(OpenQuestionQuery.parse({}).group).toBeUndefined();
+    expect(OpenQuestionQuery.safeParse({ group: 'fragen' }).success).toBe(false);
+    expect(OpenQuestionQuery.safeParse({ group: [] }).success).toBe(false);
+    expect(OpenQuestionExportQuery.parse({ group: 'agent', format: 'csv' })).toEqual({
+      group: ['agent'],
+      format: 'csv',
+    });
+  });
+
+  it('exports what needs clarifying by default, every group for a kind or a source', () => {
+    expect(DEFAULT_EXPORT_GROUPS).toEqual(['ask']);
+    expect(exportGroups({})).toEqual(['ask']);
+    expect(exportGroups({ group: ['ask', 'agent'] })).toEqual(['ask', 'agent']);
+    expect(exportGroups({ kind: 'agent-question' })).toBeUndefined();
+    expect(exportGroups({ source: 'summary' })).toBeUndefined();
+    expect(exportGroups({ kind: 'held', group: ['ask'] })).toEqual(['ask']);
+  });
+
+  it('labels every group, and counts every group on a page', () => {
+    expect(OpenQuestionGroup.options.map((g) => OPEN_QUESTION_GROUP_LABELS[g])).toEqual([
+      'Zu klären',
+      'Fragen der Agenten',
+      'Auf der Kette zu prüfen',
+      'Zur Information',
+    ]);
+    const totals = { ask: 21, agent: 22, proposal: 27, info: 32 };
+    const page = { items: [], nextCursor: null, total: 0, totals, askByModel: { 'a/b': 1 } };
+    expect(OpenQuestionPage.parse(page)).toEqual(page);
+    expect(OpenQuestionPage.safeParse({ ...page, totals: { ask: 1 } }).success).toBe(false);
+    expect(OpenQuestionPage.safeParse({ ...page, askByModel: { 'a/b': 0 } }).success).toBe(false);
+  });
+
+  it('names the contact column „Ansprechpartner“ and reads a sheet with either header', () => {
+    expect(OPEN_QUESTION_CSV_COLUMNS).toEqual(['id', 'Art', 'Frage', 'Ansprechpartner', 'Antwort']);
+    expect(CONTACT_COLUMNS).toEqual(['Ansprechpartner', 'Ansprechpartner-Hinweis']);
+    for (const contact of CONTACT_COLUMNS) {
+      expect(
+        readAnswerSheet(
+          `"id";"Art";"Frage";"${contact}";"Antwort"\r\n"q-0000000000000001";"";"";"Einkauf";"Ja"\r\n`,
+        ),
+      ).toEqual([{ id: 'q-0000000000000001', text: 'Ja', kind: '', line: 2 }]);
+    }
   });
 });

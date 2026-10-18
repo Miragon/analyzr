@@ -6,12 +6,13 @@ import type { ReactNode } from 'react';
 
 import { AutoAcceptMark } from '@/components/auto-accept-mark';
 import { EndpointStateBadge, StatusBadge, TierBadge, ToneBadge } from '@/components/badges';
+import { ErrorText } from '@/components/error-text';
 import { PlainText } from '@/components/review/plain-text';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ApiError, errorMessage } from '@/lib/api';
+import { ApiError } from '@/lib/api';
 import type { AutoAcceptIndex } from '@/lib/auto-accept';
 import { useAutoAcceptIndex } from '@/lib/auto-accept-actions';
 import { LINK_KINDS, REACHED_BY_CALL_LABEL, STEP_KINDS, formatConfidence } from '@/lib/labels';
@@ -175,7 +176,9 @@ export function StepView() {
     return (
       <Alert variant="destructive">
         <AlertTitle>Schritt konnte nicht geladen werden</AlertTitle>
-        <AlertDescription>{errorMessage(q.error)}</AlertDescription>
+        <AlertDescription>
+          <ErrorText error={q.error} />
+        </AlertDescription>
       </Alert>
     );
   }

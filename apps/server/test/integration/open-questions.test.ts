@@ -32,7 +32,7 @@ import {
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { libraryAnalysis } from '../../src/analysis.ts';
-import { parseOpenQuestionsCsv } from '../../src/domain/open-questions/export.ts';
+import { detailText, parseOpenQuestionsCsv } from '../../src/domain/open-questions/export.ts';
 import { startTestApp, type TestApp } from '../support/app.ts';
 import { corpusFiles, importAll } from '../support/corpus.ts';
 import { createTestDatabase, type TestDatabase } from '../support/db.ts';
@@ -41,6 +41,8 @@ import { asAgent, claim, post, submission, submit } from '../support/pipeline.ts
 import { NORDWIND_CHAIN, chainPath } from '../support/value-chain.ts';
 
 const P = 'nordwind-handel';
+/** The UI load guard's id regex (UX-SIMPLIFICATION §7): no id, seq or ref in visible text. */
+const ID_IN_TEXT = /rel_|plc_|agt_|mam_|oqa_|q-[0-9a-f]{16}|sid-|Stand s\d|Ereignis \d/;
 const BASE = `/api/v1/projects/${P}/open-questions`;
 const ORDER = 'vertrieb/order-handling';
 const FRAUD_CHECK = `${ORDER}#Call_FraudCheck`;
@@ -84,11 +86,28 @@ async function listAll(query = '', limit = 50, call: Call = owner): Promise<Open
   return out;
 }
 
+/** The items per group, every group present (as `totals` counts them). */
+const groupCounts = (items: readonly OpenQuestion[]) => ({
+  ask: items.filter((q) => q.group === 'ask').length,
+  agent: items.filter((q) => q.group === 'agent').length,
+  proposal: items.filter((q) => q.group === 'proposal').length,
+  info: items.filter((q) => q.group === 'info').length,
+});
+
 const counts = (items: readonly OpenQuestion[], by: (q: OpenQuestion) => string) => {
   const out: Record<string, number> = {};
   for (const q of items) out[by(q)] = (out[by(q)] ?? 0) + 1;
   return Object.fromEntries(Object.entries(out).sort(([a], [b]) => (a < b ? -1 : 1)));
 };
+
+/** The first page's `totals` and `askByModel` (UX2a), checked against the items. */
+async function summary(
+  query = '',
+  call: Call = owner,
+): Promise<Pick<OpenQuestionPage, 'totals' | 'askByModel'>> {
+  const page = OpenQuestionPage.parse(await getJson(call, `${BASE}?limit=1${query}`));
+  return { totals: page.totals, askByModel: page.askByModel };
+}
 
 function report(label: string, items: readonly OpenQuestion[]): void {
   console.log(
@@ -139,6 +158,60 @@ describe('open questions on nordwind-handel', () => {
   it('maps every finding of the seeded project, stably and for viewers too', async () => {
     seeded = await listAll();
     report('seeded', seeded);
+    // UX2a: the groups as seeded (no agent yet): the rule tier's placement proposals wait on
+    // the chain (`proposal`), everything else is to clarify; the ask subjects per model.
+    const seededSummary = await summary('&state=open');
+    expect(seededSummary).toEqual({
+      totals: { ask: 58, agent: 0, proposal: 6, info: 0 },
+      askByModel: {
+        'controlling/management-reporting': 1,
+        'einkauf/archiv/bestellfreigabe-2019': 1,
+        'einkauf/bestellanforderung': 2,
+        'einkauf/bestellfreigabe': 2,
+        'einkauf/lieferantenanlage': 1,
+        'finanzen/briefversand': 1,
+        'finanzen/e-rechnung-versand': 1,
+        'finanzen/forderungsmanagement': 3,
+        'finanzen/gutschrift': 1,
+        'finanzen/kreditpruefung': 2,
+        'finanzen/lieferantenrechnung': 3,
+        'finanzen/monatsabschluss': 1,
+        'finanzen/rechnungsstellung': 1,
+        'finanzen/zahlungseingang': 1,
+        'finanzen/zahlungslauf': 3,
+        'lager/bestandsueberwachung': 1,
+        'lager/kommissionierung': 1,
+        'logistik/shipping': 2,
+        'logistik/speditionsversand': 2,
+        'partner/customer-account-lock': 1,
+        'partner/partner-onboarding': 1,
+        'qualitaet/produktrueckruf': 1,
+        'qualitaet/wareneingangspruefung': 1,
+        'service/ersatzlieferung': 1,
+        'service/kundenbenachrichtigung': 1,
+        'service/reklamation': 2,
+        'service/returns': 3,
+        'vertrieb/marketplace-order-import': 3,
+        'vertrieb/order-handling': 4,
+      },
+    });
+    expect(groupCounts(seeded)).toEqual(seededSummary.totals);
+    expect(
+      counts(
+        seeded.filter((q) => q.group === 'proposal'),
+        (q) => q.kind,
+      ),
+    ).toEqual({
+      'process-without-step': 4,
+      'step-without-process': 2,
+    });
+    // The group filter, repeatable; `totals` stays the same under it.
+    expect(await listAll('&group=ask')).toEqual(seeded.filter((q) => q.group === 'ask'));
+    expect(await listAll('&group=proposal&group=info')).toEqual(
+      seeded.filter((q) => q.group === 'proposal'),
+    );
+    expect(await summary('&state=open&group=agent')).toEqual(seededSummary);
+    expect((await t.asOwner(`${BASE}?group=nope`)).status).toBe(422);
     const findings = await getJson<FindingList>(owner, `/api/v1/projects/${P}/findings`);
     for (const f of findings.items) {
       const subject =
@@ -227,6 +300,66 @@ describe('open questions on nordwind-handel', () => {
     }
     const afterSim = await listAll();
     report('after the simulation agent', afterSim);
+    // UX2a, the pinned groups on seeded nordwind-handel with its chain after the simulation
+    // agent (the state the UI load guard and the owner's walkthrough use): 21 to clarify,
+    // the agents' questions on their proposals, the chain's own queue, the summaries.
+    const simSummary = await summary('&state=open');
+    expect(simSummary.totals).toEqual({ ask: 21, agent: 22, proposal: 27, info: 32 });
+    expect(groupCounts(afterSim)).toEqual(simSummary.totals);
+    expect(counts(afterSim, (q) => `${q.group} ${q.kind}`)).toEqual({
+      'agent agent-question': 22,
+      'ask black-box-partner': 6,
+      'ask call-target-dynamic': 2,
+      'ask call-target-unknown': 2,
+      'ask duplicate-process-id': 1,
+      'ask message-partner-missing': 3,
+      'ask placement-unsure': 3,
+      'ask step-without-process': 4,
+      'info summary-note': 32,
+      'proposal process-without-step': 19,
+      // The top-level steps whose sub-steps carry proposals.
+      'proposal step-without-process': 8,
+    });
+    // One question per process: no chain finding beside an agent's question on a placement
+    // of its process or an unsure verdict about it.
+    const askedProcesses = new Set([
+      ...afterSim.filter((q) => q.kind === 'placement-unsure').map((q) => q.subject.id),
+      ...afterSim
+        .filter((q) => q.kind === 'agent-question' && q.subject.type === 'placement')
+        .flatMap((q) => q.refs),
+    ]);
+    expect(askedProcesses.size).toBeGreaterThan(0);
+    expect(
+      afterSim.filter((q) => q.kind === 'process-without-step' && askedProcesses.has(q.subject.id)),
+    ).toEqual([]);
+    // The proposal items open the chain: „Auf der Kette prüfen“ at a step.
+    for (const q of afterSim.filter((x) => x.group === 'proposal')) {
+      expect(q.actions[0], q.id).toMatchObject({
+        type: 'decide',
+        primary: true,
+        label: 'Auf der Kette prüfen',
+        step: expect.any(String) as unknown,
+      });
+      expect(q.actions[0]?.decides?.length, q.id).toBeGreaterThan(0);
+    }
+    expect(simSummary.askByModel).toEqual({
+      'controlling/management-reporting': 1,
+      'einkauf/archiv/bestellfreigabe-2019': 1,
+      // The pool question (the models table's „Offene Punkte“: 6 relations + 1 placement + 1).
+      'einkauf/bestellanforderung': 1,
+      'einkauf/bestellfreigabe': 1,
+      'finanzen/forderungsmanagement': 3,
+      'finanzen/gutschrift': 1,
+      'finanzen/lieferantenrechnung': 1,
+      'finanzen/rechnungsstellung': 1,
+      'finanzen/zahlungslauf': 1,
+      'logistik/shipping': 1,
+      'logistik/speditionsversand': 1,
+      'service/reklamation': 1,
+      'service/returns': 1,
+      'vertrieb/marketplace-order-import': 1,
+      'vertrieb/order-handling': 2,
+    });
     const relations = await getJson<RelationPage>(
       owner,
       `/api/v1/projects/${P}/relations?status=proposed&limit=200`,
@@ -332,7 +465,16 @@ describe('open questions on nordwind-handel', () => {
 
     const after = await listAll();
     report('after the simulation agent, holds and the probe agent', after);
+    // The probe's two coded no-links join the rule tier's items about the same gaps (the
+    // fraud check's finding, the customer's pool; UX2b review): 26, not 28.
+    expect((await summary('&state=open')).totals).toEqual({
+      ask: 26,
+      agent: 19,
+      proposal: 26,
+      info: 32,
+    });
     // Every source of §4.1 and the signals.
+    // (the coded no-links joined the items about their gaps, below)
     expect(new Set(after.map((q) => q.source))).toEqual(
       new Set<OpenQuestionSource>([
         'finding',
@@ -340,7 +482,6 @@ describe('open questions on nordwind-handel', () => {
         'hold',
         'agent-question',
         'unsure',
-        'no-link',
         'summary',
         'unjudged',
         'signal',
@@ -369,10 +510,11 @@ describe('open questions on nordwind-handel', () => {
     // The simulation agent's current unsure verdicts, as the chain lists them.
     const unsure = detail.unsure.filter((u) => u.current);
     expect(unsure.length).toBeGreaterThan(0);
+    // The question from code, the agent's reason verbatim as the detail (UX2a).
     expect(
       after
         .filter((q) => q.kind === 'placement-unsure')
-        .map((q) => [q.subject.id, q.text, q.raisedBy.handle])
+        .map((q) => [q.subject.id, q.detail, q.raisedBy.handle])
         .sort(),
     ).toEqual(unsure.map((u) => [u.process, u.reason, u.by]).sort());
     // The probe's question on its ad-hoc placement, next to the simulation agent's.
@@ -392,15 +534,27 @@ describe('open questions on nordwind-handel', () => {
     expect(
       after.filter((q) => q.kind === 'agent-question' && q.subject.type === 'placement').length,
     ).toBeGreaterThan(1);
-    expect(
-      one((q) => q.source === 'no-link' && q.kind === 'call-target-unknown', 'call-target'),
-    ).toMatchObject({
-      subject: { type: 'ref', id: FRAUD_CHECK },
-      text: 'call-target: Die Betrugsprüfung ist in keinem Modell beschrieben.',
+    // One item per gap: the coded no-links join the finding on the call and the pool the
+    // confirmation goes to, the agent's words attributed in the reason.
+    expect(after.some((q) => q.source === 'no-link')).toBe(false);
+    const fraud = one(
+      (q) => q.kind === 'call-target-unknown' && q.subject.id === FRAUD_CHECK,
+      'the fraud check, once',
+    );
+    expect(fraud).toMatchObject({
+      source: 'finding',
+      text: 'Welchen Prozess ruft „Run external fraud check“ auf?',
     });
-    expect(one((q) => q.kind === 'external-partner', 'collaboration')).toMatchObject({
-      subject: { type: 'ref', id: SEND_CONFIRMATION },
-    });
+    expect(fraud.detail).toMatch(
+      /\nLaut Agent: call-target: Die Betrugsprüfung ist in keinem Modell beschrieben\.$/,
+    );
+    const customer = one(
+      (q) => q.kind === 'black-box-partner' && q.refs.includes(SEND_CONFIRMATION),
+      'the customer pool',
+    );
+    expect(customer.detail).toMatch(
+      /\nLaut Agent: collaboration: Die Bestätigung geht an den Kunden-Pool im eigenen Modell\.$/,
+    );
     expect(
       one((q) => q.kind === 'summary-note' && q.subject.id === ORDER, 'the probe summary').text,
     ).toBe('Process_FraudCheck fehlt in der Landschaft; die Bestätigung geht an den Kunden.');
@@ -418,7 +572,8 @@ describe('open questions on nordwind-handel', () => {
     expect(unjudged.subject).toEqual({ type: 'model', id: ORDER });
     expect(unjudged.askWho.folder).toBe('vertrieb');
     expect(unjudged.refs.length).toBeGreaterThan(0);
-    expect(unjudged.text).toMatch(/^Gehören diese Paare zusammen\? Die Analyse von /);
+    expect(unjudged.text).toMatch(/^Gehör(t dieses Paar|en diese Paare) zusammen\?$/);
+    expect(unjudged.detail).toMatch(/^Die Analyse von /);
 
     // Ids: stable across reads; new for the items about what changed (the renamed fraud
     // check) and the new hold, the same for everything else, also the other items of the
@@ -448,10 +603,11 @@ describe('open questions on nordwind-handel', () => {
     expect(after.find((q) => q.subject.id === CARRIER)?.id).toBe(
       seeded.find((q) => q.subject.id === CARRIER)?.id,
     );
-    // The exports round trip: every question in list order (the informational items
-    // ask nothing, so the sheet leaves them out), the answer column empty, the hold's
-    // question (it starts with "=") protected in the file and exact when read back.
-    const questions = after.filter((q) => !isInformationalKind(q.kind));
+    // The exports round trip. Without a group the export holds what needs clarifying only
+    // (UX2a, owner decision 26: not the agents' questions), under the old file name, in list
+    // order, the answer column empty, the hold's question (it starts with "=") protected in
+    // the file and exact when read back.
+    const questions = after.filter((q) => q.group === 'ask');
     const csvRes = await t.asToken(viewer.secret, `${BASE}/export?format=csv`);
     expect(csvRes.status).toBe(200);
     expect(csvRes.headers.get('content-type')).toBe('text/csv; charset=utf-8');
@@ -459,17 +615,38 @@ describe('open questions on nordwind-handel', () => {
       `attachment; filename="offene-fragen-${P}.csv"`,
     );
     const csv = new TextDecoder('utf-8', { ignoreBOM: true }).decode(await csvRes.arrayBuffer());
-    expect(csv.startsWith('\uFEFF"id";"Art";"Frage";"Ansprechpartner-Hinweis";"Antwort"\r\n')).toBe(
-      true,
-    );
+    expect(csv.startsWith('\uFEFF"id";"Art";"Frage";"Ansprechpartner";"Antwort"\r\n')).toBe(true);
     expect(csv).toContain(`"'=Gilt diese Verbindung in jedem Fall?`);
     const parsed = parseOpenQuestionsCsv(csv);
     expect(parsed.header).toEqual([...OPEN_QUESTION_CSV_COLUMNS]);
     expect(parsed.rows.map((r) => r[0])).toEqual(questions.map((q) => q.id));
     expect(parsed.rows.every((r) => r.length === 5 && r[4] === '')).toBe(true);
+    // The question, its reason (an unsure verdict's attributed: „Laut Agent: …“), „Betrifft“.
     for (const [i, row] of parsed.rows.entries()) {
-      expect(row[2]?.startsWith(questions[i]?.text ?? '?')).toBe(true);
+      const q = questions[i];
+      const detail = q ? detailText(q) : null;
+      expect(row[2]?.startsWith(detail ? `${q?.text} ${detail}` : (q?.text ?? '?'))).toBe(true);
     }
+    expect(
+      parsed.rows.some((r) => r[1] === 'Einordnung unsicher' && r[2]?.includes('? Laut Agent: ')),
+    ).toBe(true);
+    // The id regex of the UI load guard finds nothing in the sheet's visible columns.
+    expect(parsed.rows.map((r) => r.slice(1).join('\n')).join('\n')).not.toMatch(ID_IN_TEXT);
+    // „Auch Fragen der Agenten“: both groups, in list order, the groups in the file name.
+    const withAgents = await t.asOwner(`${BASE}/export?format=csv&group=ask&group=agent`);
+    expect(withAgents.headers.get('content-disposition')).toBe(
+      `attachment; filename="offene-fragen-${P}-ask-agent.csv"`,
+    );
+    expect(parseOpenQuestionsCsv(await withAgents.text()).rows.map((r) => r[0])).toEqual(
+      after.filter((q) => q.group === 'ask' || q.group === 'agent').map((q) => q.id),
+    );
+    // A kind names what to export: the agents' questions are not left out by the default.
+    const agentOnly = parseOpenQuestionsCsv(
+      await (await t.asOwner(`${BASE}/export?format=csv&kind=agent-question`)).text(),
+    );
+    expect(agentOnly.rows.map((r) => r[0])).toEqual(
+      after.filter((q) => q.kind === 'agent-question').map((q) => q.id),
+    );
     const heldOnly = await listAll('&kind=held');
     expect(heldOnly).toHaveLength(2);
     const md = await t.asOwner(`${BASE}/export?kind=held`);
@@ -483,10 +660,23 @@ describe('open questions on nordwind-handel', () => {
     expect(text.startsWith(`# Offene Fragen: ${P}\n`)).toBe(true);
     expect(text).toContain('Filter: Art „Vorgemerkt“.');
     expect(text).toContain('\n\\=Gilt diese Verbindung in jedem Fall?\n');
-    for (const q of heldOnly) expect(text).toContain(`- Kennung: \`${q.id}\``);
+    // The id as an HTML comment after each heading only.
+    for (const q of heldOnly) expect(text).toMatch(new RegExp(`^### .*\\n<!-- ${q.id} -->$`, 'm'));
     expect(text.match(/^### /gm)).toHaveLength(2);
     const all = await (await t.asOwner(`${BASE}/export?format=markdown`)).text();
-    for (const q of after) expect(all).toContain(`- Kennung: \`${q.id}\``);
+    // A date, „Betrifft“ in names, no folder, no refs, no seq, no source, no „Kennung“.
+    expect(all).toMatch(
+      /\nStand \d{2}\.\d{2}\.\d{4}: \d+ offene Fragen, nach Ansprechpartner gruppiert\.\n/,
+    );
+    expect(all).toContain(
+      '- Betrifft: „Run external fraud check“ in „Nordwind Online Shop – Order handling“\n',
+    );
+    expect(all).not.toMatch(
+      /Kennung|- Quelle|Offene Entscheidungen|Bezug|Ordner:|vertrieb\/order-handling#/,
+    );
+    for (const q of questions) expect(all).toContain(`<!-- ${q.id} -->`);
+    expect(all.match(/^### /gm)).toHaveLength(questions.length);
+    expect(all.replace(/<!-- q-[0-9a-f]{16} -->/g, '')).not.toMatch(ID_IN_TEXT);
 
     // A new hold decision: a new id for that item only.
     const heldId = after.find((q) => q.kind === 'held' && q.subject.id === target.id)?.id;

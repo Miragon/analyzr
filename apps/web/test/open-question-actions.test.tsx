@@ -5,8 +5,9 @@
  * first; processes as „Name (Modell)“, the complementary endpoints, the
  * steps with „außerhalb der Kette“, the listed pairs, the copies), the
  * sentence naming what an action writes before it runs (the proposals it
- * accepts by name), the inline decision panels (focus, Escape, „Abbrechen“),
- * a refusal in German, the one-click outside mark and its withdrawal,
+ * accepts by name), a `decide` decided where the diagrams are (UX2b, owner
+ * decision 26, Q4: a hold's „Antwort geben“ and „Jetzt entscheiden“, an
+ * agent's question's „Vorschlag öffnen“), a refusal in German, the one-click outside mark and its withdrawal,
  * „Rückgängig“ after every action that wrote a manual relation or placement
  * (one bulk decision; none after one that decided proposals), requeue,
  * „Link korrigieren“, the focus moving on, and „Verknüpfen mit …“ on a
@@ -56,6 +57,7 @@ import {
   placement,
   relation,
   step,
+  openQuestionPage,
 } from './support/fixtures';
 import { findToast, json, stubApi, type Call } from './support/render';
 
@@ -226,7 +228,7 @@ function fixtures(): OpenQuestion[] {
         {
           type: 'decide',
           primary: true,
-          label: 'Entscheiden',
+          label: 'Vorschlag prüfen',
           decides: [{ type: 'relation', id: 'rel_01HELD', version: 1 }],
         },
         NOTE,
@@ -352,6 +354,7 @@ function fixtures(): OpenQuestion[] {
       id: 'q-00000000000000b8',
       kind: 'agent-question',
       source: 'agent-question',
+      group: 'agent',
       subject: { type: 'placement', id: 'plc_01PROP' },
       subjectLabel: '„Zahlungsdienst“ auf „Vertrieb“',
       modelKeys: ['c/payment'],
@@ -363,7 +366,7 @@ function fixtures(): OpenQuestion[] {
         {
           type: 'decide',
           primary: true,
-          label: 'Entscheiden',
+          label: 'Vorschlag prüfen',
           decides: [{ type: 'placement', id: 'plc_01PROP', version: 1 }],
         },
         NOTE,
@@ -394,7 +397,7 @@ function fixtures(): OpenQuestion[] {
       refs: [],
       unlocks: 1,
       actions: [
-        { type: 'place', primary: true, label: 'Prozess zuordnen …', pick: 'process' },
+        { type: 'place', primary: true, label: 'Prozess platzieren …', pick: 'process' },
         OUTSIDE(false),
         NOTE,
       ],
@@ -425,6 +428,7 @@ function fixtures(): OpenQuestion[] {
       id: 'q-00000000000000c5',
       kind: 'summary-note',
       source: 'summary',
+      group: 'info',
       subject: { type: 'model', id: 'a/order' },
       subjectLabel: '„Auftrag“',
       text: 'Zwei Nachrichten ohne Gegenstück.',
@@ -443,18 +447,7 @@ function project(role: Project['role']): Project {
 
 /** The server's list: the full list, the tab's count (`limit=1`) and a model's items. */
 function listRoute(list: readonly OpenQuestion[]) {
-  return (call: Call) => {
-    const query = new URLSearchParams(call.search);
-    const modelKey = query.get('modelKey');
-    const matching = list.filter(
-      (q) =>
-        (modelKey === null ||
-          q.modelKeys.some((k) => k === modelKey || k.startsWith(`${modelKey}/`))) &&
-        (query.get('state') === null || q.state === query.get('state')),
-    );
-    const limit = Number(query.get('limit') ?? '50');
-    return json({ items: matching.slice(0, limit), nextCursor: null, total: matching.length });
-  };
+  return (call: Call) => json(openQuestionPage(list, call.search));
 }
 
 /**
@@ -723,6 +716,7 @@ describe('actions in the tab „Offene Fragen“ (M6 S5c-1)', () => {
   it('shows the primary action as the button and the others under „Weitere Aktionen“', async () => {
     const { user } = setup('/projects/demo/open-questions');
     const all = await rows();
+    // „Zu klären“ only: the agent's question sits on its proposal, the summary is closed
     expect(
       all.map((r) => [
         short(r.dataset['questionId']!),
@@ -732,28 +726,27 @@ describe('actions in the tab „Offene Fragen“ (M6 S5c-1)', () => {
           .map((b) => b.textContent),
       ]),
     ).toEqual([
-      ['b1', ['Entscheiden']],
+      ['b1', ['Antwort geben']],
       ['b2', ['Verknüpfen mit …']],
       ['b3', ['Mögliche Ziele verknüpfen …']],
       ['b4', ['Verknüpfen mit …']],
       ['b5', ['Gültige Kopie wählen …']],
       ['b6', ['Liegt außerhalb der Landschaft']],
       ['b7', ['Erneut einplanen']],
-      ['b8', ['Entscheiden']],
       ['c1', ['Schritt wählen …']],
-      ['c2', ['Prozess zuordnen …']],
+      ['c2', ['Prozess platzieren …']],
       ['c3', ['Link korrigieren']],
       ['c4', ['Notiz hinzufügen']],
-      ['c5', []],
     ]);
     // nothing to classify: an item with a single action has no menu
     expect(within(all[4]!).queryByTestId('question-more-actions')).toBeNull();
-    expect(within(all[11]!).queryByTestId('question-more-actions')).toBeNull();
-    // the secondary ones are menu items
-    await user.click(within(all[8]!).getByTestId('question-more-actions'));
+    expect(within(all[10]!).queryByTestId('question-more-actions')).toBeNull();
+    // the secondary ones are menu items, the id last
+    await user.click(within(all[7]!).getByTestId('question-more-actions'));
     expect((await screen.findAllByRole('menuitem')).map((m) => m.textContent)).toEqual([
       'Gehört zu keinem Schritt',
       'Notiz hinzufügen',
+      'Kennung kopieren',
     ]);
   });
 
@@ -1049,24 +1042,20 @@ describe('actions in the tab „Offene Fragen“ (M6 S5c-1)', () => {
     );
   });
 
-  it('outside: one click marks the item, „Rückgängig“ withdraws the mark, and a marked item offers to take it back', async () => {
+  it('outside: one click marks the item, „Rückgängig“ withdraws the mark, and a marked item is taken back under „Erledigte zeigen“', async () => {
     const { calls, user } = setup('/projects/demo/open-questions');
-    let item = await row('q-00000000000000b6');
-    await user.click(primary(item));
+    await user.click(primary(await row('q-00000000000000b6')));
     const undo = await toastAction('Als außerhalb der Landschaft markiert');
     expect(posts(calls, `${BASE}/q-00000000000000b6/actions`)[0]!.body).toEqual({
       type: 'outside',
     });
-    item = await row('q-00000000000000b6');
-    await waitFor(() => expect(item.dataset['state']).toBe('answered'));
-    expect(within(item).getByTestId('question-state').textContent).toBe('Erledigt (außerhalb)');
-    // marked: no second mark, but the way back
-    expect(
-      within(item)
-        .queryAllByTestId('question-action')
-        .map((b) => b.dataset['action']),
-    ).not.toContain('outside');
-    expect(within(item).getByTestId('question-withdraw-mark')).toBeDefined();
+    // marked: the item leaves the cards for „Erledigte zeigen“
+    await waitFor(async () =>
+      expect((await rows()).map((r) => short(r.dataset['questionId']!))).not.toContain('b6'),
+    );
+    expect(screen.getByTestId('open-questions-done').querySelector('summary')?.textContent).toBe(
+      'Erledigte zeigen (1)',
+    );
     await user.click(undo);
     expect((await findToast('Markierung zurückgenommen')).textContent).toContain(
       'Die Frage ist wieder offen.',
@@ -1078,12 +1067,16 @@ describe('actions in the tab „Offene Fragen“ (M6 S5c-1)', () => {
       expect((await row('q-00000000000000b6')).dataset['state']).toBe('open'),
     );
 
-    // marked again, then taken back on the item itself
+    // marked again, then taken back on its line under „Erledigte zeigen“
     await user.click(primary(await row('q-00000000000000b6')));
-    await waitFor(async () =>
-      expect((await row('q-00000000000000b6')).dataset['state']).toBe('answered'),
-    );
-    await user.click(within(await row('q-00000000000000b6')).getByTestId('question-withdraw-mark'));
+    const done = await screen.findByTestId('open-questions-done');
+    await user.click(done.querySelector('summary')!);
+    const line = await within(done).findByTestId('open-question');
+    expect(line.dataset['state']).toBe('answered');
+    expect(within(line).getByTestId('question-state').textContent).toBe('Außerhalb der Landschaft');
+    // a done line offers nothing but the way back
+    expect(within(line).queryAllByTestId('question-action')).toEqual([]);
+    await user.click(within(line).getByTestId('question-withdraw-mark'));
     await waitFor(() =>
       expect(posts(calls, `${BASE}/q-00000000000000b6/answers/oqa_01MARK/withdrawal`)).toHaveLength(
         2,
@@ -1091,7 +1084,7 @@ describe('actions in the tab „Offene Fragen“ (M6 S5c-1)', () => {
     );
   });
 
-  it('outside: an item marked elsewhere offers only the way back; a second mark there changes nothing', async () => {
+  it('outside: an item marked elsewhere is one line under „Erledigte zeigen“ with the way back only', async () => {
     const list = fixtures().map((q) =>
       q.id === 'q-00000000000000b6'
         ? {
@@ -1110,87 +1103,40 @@ describe('actions in the tab „Offene Fragen“ (M6 S5c-1)', () => {
         : q,
     );
     const { calls, user } = setup('/projects/demo/open-questions', { list });
-    const item = await row('q-00000000000000b6');
-    expect(
-      within(item)
-        .queryAllByTestId('question-action')
-        .map((b) => b.dataset['action']),
-    ).toEqual([]);
-    // „Verknüpfen mit …“ and the note stay under „Weitere Aktionen“
-    await user.click(within(item).getByTestId('question-more-actions'));
-    expect((await screen.findAllByRole('menuitem')).map((m) => m.textContent)).toEqual([
-      'Verknüpfen mit …',
-      'Notiz hinzufügen',
-    ]);
-    await user.keyboard('{Escape}');
-    await user.click(within(item).getByTestId('question-withdraw-mark'));
+    await rows();
+    const done = screen.getByTestId('open-questions-done');
+    await user.click(done.querySelector('summary')!);
+    const line = within(done).getByTestId('open-question');
+    expect(line.dataset['questionId']).toBe('q-00000000000000b6');
+    expect(within(line).queryByTestId('question-more-actions')).toBeNull();
+    await user.click(within(line).getByTestId('question-withdraw-mark'));
     expect(await findToast('Markierung zurückgenommen')).toBeDefined();
     expect(posts(calls, `${BASE}/q-00000000000000b6/answers/oqa_01MARK/withdrawal`)).toHaveLength(
       1,
     );
   });
 
-  it('decide: the review’s panel inline for a held relation, without shortcuts', async () => {
+  it('decide: a hold answers in the note dialog and is decided on the review screen (Q4)', async () => {
     const { calls, user } = setup('/projects/demo/open-questions');
     const item = await row('q-00000000000000b1');
+    // no inline decision any more
+    const decideNow = within(item).getByRole('link', { name: 'Jetzt entscheiden' });
+    expect(decideNow.getAttribute('href')).toBe('/projects/demo/review/rel_01HELD?view=held');
+    expect(decideNow.dataset['action']).toBe('decide');
     await user.click(primary(item));
-    const panel = within(item).getByTestId('question-action-panel');
-    const decision = await within(panel).findByTestId('action-decide-relation');
-    expect(decision.textContent).toContain('„Rechnung senden“ → „Rechnung empfangen“');
-    // many items share the page: no single-key shortcuts, no key hints
-    expect(within(decision).queryAllByText('A')).toEqual([]);
-    const accept = within(decision).getByRole('button', { name: 'Annehmen' });
-    await user.keyboard('a');
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByRole('heading', { name: 'Antwort geben' })).toBeDefined();
+    expect(within(item).queryByTestId('question-action-panel')).toBeNull();
     expect(posts(calls, `${PROJECT}/relations/rel_01HELD/decision`)).toEqual([]);
-    await user.click(accept);
-    expect(await findToast('Angenommen')).toBeDefined();
-    expect(posts(calls, `${PROJECT}/relations/rel_01HELD/decision`)[0]!.body).toEqual({
-      verdict: 'accept',
-      version: 1,
-    });
-    await waitFor(async () =>
-      expect((await rows()).map((r) => r.dataset['questionId'])).not.toContain(
-        'q-00000000000000b1',
-      ),
-    );
   });
 
-  it('decide: the panel takes the focus and closes with Escape or „Abbrechen“, focus back on its opener', async () => {
-    const { user } = setup('/projects/demo/open-questions');
-    const item = await row('q-00000000000000b1');
-    const opener = primary(item);
-    await user.click(opener);
-    let frame = within(item).getByTestId('action-decide');
-    await waitFor(() => expect(document.activeElement).toBe(frame));
-    expect(frame.getAttribute('aria-label')).toBe('Entscheiden');
-    // Tab goes into the decision, not through the rest of the row first.
-    await within(frame).findByTestId('action-decide-relation');
-    await user.tab();
-    expect(frame.contains(document.activeElement)).toBe(true);
-    await user.keyboard('{Escape}');
-    expect(within(item).queryByTestId('question-action-panel')).toBeNull();
-    await waitFor(() => expect(document.activeElement).toBe(opener));
-    await user.click(opener);
-    frame = within(item).getByTestId('action-decide');
-    await user.click(within(frame).getByRole('button', { name: 'Abbrechen' }));
-    expect(within(item).queryByTestId('question-action-panel')).toBeNull();
-    await waitFor(() => expect(document.activeElement).toBe(opener));
-  });
-
-  it('decide: a proposed placement an agent asked about, also „Vormerken“', async () => {
-    const { calls, user } = setup('/projects/demo/open-questions');
+  it('decide: an agent’s question, under „Frage eines Agenten“, opens its proposal on the chain', async () => {
+    setup('/projects/demo/open-questions?kind=agent-question');
     const item = await row('q-00000000000000b8');
-    await user.click(primary(item));
-    const panel = within(item).getByTestId('question-action-panel');
-    const decision = await within(panel).findByTestId('action-decide-placement');
-    expect(decision.textContent).toContain('„Zahlungsdienst“');
-    expect(decision.textContent).toContain('→ „Vertrieb“');
-    expect(within(decision).getByRole('button', { name: 'Vormerken' })).toBeDefined();
-    await user.click(within(decision).getByRole('button', { name: 'Annehmen' }));
-    expect(await findToast('Angenommen')).toBeDefined();
-    expect(
-      posts(calls, `${PROJECT}/value-chains/main/placements/plc_01PROP/decision`)[0]!.body,
-    ).toEqual({ verdict: 'accept', version: 1 });
+    const open = primary(item);
+    expect(open.textContent).toBe('Vorschlag öffnen');
+    expect(open.tagName).toBe('A');
+    expect(open.getAttribute('href')).toBe('/projects/demo/value-chain?placement=plc_01PROP');
   });
 
   it('requeue: queues the analysed model again', async () => {
@@ -1301,14 +1247,16 @@ describe('actions in the model view’s section (M6 S5c-1)', () => {
     expect(posts(calls, `${PROJECT}/decisions`)).toHaveLength(1);
   });
 
-  it('decides the held relation inline', async () => {
-    const { calls, user } = setup('/projects/demo/models/b/billing');
+  it('offers a hold’s answer and „Jetzt entscheiden“ there too', async () => {
+    const { user } = setup('/projects/demo/models/b/billing');
     const held = await item('q-00000000000000b1');
+    expect(within(held).getByRole('link', { name: 'Jetzt entscheiden' }).getAttribute('href')).toBe(
+      '/projects/demo/review/rel_01HELD?view=held',
+    );
     await user.click(primary(held));
-    const decision = await within(held).findByTestId('action-decide-relation');
-    await user.click(within(decision).getByRole('button', { name: 'Annehmen' }));
-    expect(await findToast('Angenommen')).toBeDefined();
-    expect(posts(calls, `${PROJECT}/relations/rel_01HELD/decision`)).toHaveLength(1);
+    expect(
+      within(await screen.findByRole('dialog')).getByRole('heading', { name: 'Antwort geben' }),
+    ).toBeDefined();
   });
 
   it('places a process on a step', async () => {

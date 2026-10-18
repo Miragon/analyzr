@@ -76,14 +76,28 @@ export const ANSWER_TARGET_LABELS: Readonly<Record<OpenQuestionAnswerTarget, str
 
 /** The sentence about agents, where it applies (a note on a relation, M6 §4.5). */
 export const AGENTS_SENTENCE =
-  'Die Agenten berücksichtigen die Notiz, sobald das Paar neu bewertet wird.';
+  'Die Agenten berücksichtigen die Notiz, sobald sie diese Relation neu bewerten.';
+
+/** {@link AGENTS_SENTENCE} for a hold's answer (UX2b review: „Antwort“ throughout). */
+export const AGENTS_SENTENCE_ANSWER =
+  'Die Agenten berücksichtigen die Antwort, sobald sie diese Relation neu bewerten.';
 
 /** Notes are append-only (M6 §7: no erasure path), said next to the note field. */
 export const NOTE_PERMANENT = 'Eine gespeicherte Notiz lässt sich nicht mehr ändern oder löschen.';
 
-/** Answers from a sheet are notes, append-only as well (said in the sheet dialog). */
+/**
+ * Answers are notes, append-only as well (said in the sheet dialog and next
+ * to a hold's answer field).
+ */
 export const ANSWER_PERMANENT =
   'Eine gespeicherte Antwort lässt sich nicht mehr ändern oder löschen.';
+
+/**
+ * A hold stays until a human decides it (owner decision 26, Q4): said after
+ * its answer, without naming a control (the card, the „Vorgemerkt“ row and the
+ * review screen each decide it with their own).
+ */
+export const HOLD_STAYS = 'Die Vormerkung bleibt, bis du sie entscheidest.';
 
 /** A note informs; the item stays open until its action ends it (M6 §4.8 b). */
 export const NOTE_KEEPS_OPEN = 'Die Frage bleibt offen; erledigt wird sie durch ihre Aktion.';
@@ -133,14 +147,14 @@ export function noteEffectText(
   const keepsOpen = noteKeepsOpen(question);
   switch (question.subject.type) {
     case 'relation':
-      return (
-        `Die Notiz wird an der Relation gespeichert und steht auch im Prüfbildschirm. ${AGENTS_SENTENCE} ` +
-        (held ? 'Die Vormerkung bleibt; die Entscheidung triffst du mit „Entscheiden“.' : keepsOpen)
-      );
+      // A hold's note is its answer (UX2b review): one term in the whole dialog.
+      return held
+        ? `Die Antwort wird an der Relation gespeichert. ${AGENTS_SENTENCE_ANSWER} ${HOLD_STAYS}`
+        : `Die Notiz wird an der Relation gespeichert und steht auch im Prüfbildschirm. ${AGENTS_SENTENCE} ${keepsOpen}`;
     case 'placement':
       return held
-        ? 'Die Notiz wird an der Platzierung gespeichert. Die Platzierung bleibt vorgemerkt; ' +
-            'solange bekommt kein Agent den Prozess. Entscheide sie mit „Entscheiden“.'
+        ? 'Die Antwort wird an der Platzierung gespeichert. Die Platzierung bleibt vorgemerkt, ' +
+            'bis du sie entscheidest; solange bekommt kein Agent den Prozess.'
         : 'Die Notiz wird an der Platzierung gespeichert. Der Prozess wird damit fällig: ' +
             'Der Platzierungsagent sieht die Notiz mit seiner nächsten Aufgabe zur Kette; eingeplant wird dadurch noch keine. ' +
             keepsOpen;
@@ -163,16 +177,19 @@ export function noteEffectText(
 
 /**
  * The answers of an item in one line, by how they count: „2 Notizen“,
- * „1 Notiz · Als außerhalb markiert“, „Markierung zurückgenommen“.
+ * „1 Notiz · Als außerhalb markiert“, „Markierung zurückgenommen“; a hold's
+ * notes are its answers („2 Antworten“, `answer`).
  */
 export function answersSummaryText(
   answers: readonly Pick<OpenQuestionAnswer, 'role' | 'withdrawal'>[],
+  answer = false,
 ): string {
   const notes = answers.filter((a) => a.role === 'note').length;
   const marks = answers.filter((a) => a.role === 'outside-mark');
   const live = marks.some((a) => a.withdrawal === null);
+  const [one, many] = answer ? ['Antwort', 'Antworten'] : ['Notiz', 'Notizen'];
   return [
-    notes === 0 ? null : notes === 1 ? '1 Notiz' : `${notes} Notizen`,
+    notes === 0 ? null : notes === 1 ? `1 ${one}` : `${notes} ${many}`,
     marks.length === 0 ? null : live ? 'Als außerhalb markiert' : 'Markierung zurückgenommen',
   ]
     .filter((p) => p !== null)
@@ -182,13 +199,19 @@ export function answersSummaryText(
 /**
  * The note on an item with notes before (the dialog: „Deine kommt hinzu“; a
  * sheet row in the preview: „Diese kommt hinzu“): notes are append-only, so
- * a new one joins the earlier ones; `null` without any.
+ * a new one joins the earlier ones; `null` without any. A hold's notes are
+ * its answers (`answer`).
  */
-export function notesBeforeText(n: number, who: 'Deine' | 'Diese' = 'Deine'): string | null {
+export function notesBeforeText(
+  n: number,
+  who: 'Deine' | 'Diese' = 'Deine',
+  answer = false,
+): string | null {
   if (n === 0) return null;
+  const [one, many] = answer ? ['eine Antwort', 'Antworten'] : ['eine Notiz', 'Notizen'];
   return n === 1
-    ? `Schon eine Notiz. ${who} kommt hinzu; die bisherige bleibt stehen.`
-    : `Schon ${n} Notizen. ${who} kommt hinzu; die bisherigen bleiben stehen.`;
+    ? `Schon ${one}. ${who} kommt hinzu; die bisherige bleibt stehen.`
+    : `Schon ${n} ${many}. ${who} kommt hinzu; die bisherigen bleiben stehen.`;
 }
 
 /** `1.234 von 2.000 Zeichen` (the field's counter). */
@@ -296,7 +319,7 @@ export function readSheet(name: string, text: string): SheetRead {
     if (!has('id') || !has('Antwort')) {
       return {
         ok: false,
-        message: `${quote(name)} hat keine Spalten „id“ und „Antwort“. Nimm die Datei, die „Als CSV exportieren“ geschrieben hat, und lass ihre Kopfzeile stehen.`,
+        message: `${quote(name)} hat keine Spalten „id“ und „Antwort“. Nimm die CSV aus „Für den Kunden exportieren …“ und lass ihre Kopfzeile stehen.`,
       };
     }
     const rows = readAnswerSheet(text);

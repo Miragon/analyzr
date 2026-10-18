@@ -110,6 +110,7 @@ function Panel({
             tone: 'danger',
             title: 'Entscheidung nicht gespeichert',
             description: errorMessage(error),
+            error,
           });
         }
       },

@@ -1,6 +1,7 @@
 import type { AutoAcceptRule } from '@analyzr/client';
 import { useQuery } from '@tanstack/react-query';
 
+import { ErrorText } from '@/components/error-text';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import {
   Dialog,
@@ -10,7 +11,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Skeleton } from '@/components/ui/skeleton';
-import { errorMessage } from '@/lib/api';
+
 import { criteriaOf, draftOf } from '@/lib/auto-accept-rules';
 import { autoAcceptPreviewQuery } from '@/lib/auto-accept-queries';
 
@@ -22,7 +23,9 @@ function Preview({ project, rule }: { project: string; rule: AutoAcceptRule }) {
     return (
       <Alert variant="destructive">
         <AlertTitle>Vorschau fehlgeschlagen</AlertTitle>
-        <AlertDescription>{errorMessage(preview.error)}</AlertDescription>
+        <AlertDescription>
+          <ErrorText error={preview.error} />
+        </AlertDescription>
       </Alert>
     );
   if (!preview.data) return <Skeleton className="h-48 w-full" />;

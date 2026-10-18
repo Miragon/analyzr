@@ -254,8 +254,13 @@ export function buildProgram(io: CliIo = processIo): Command {
       'only open, or only answered questions (marked outside the landscape)',
     )
     .option(
+      '--group <group>',
+      "only this group: ask (to clarify), agent (the agents' questions on their proposals), proposal (decided on the value chain) or info; repeat or comma-separate for several (the export holds only ask without it)",
+      collect,
+    )
+    .option(
       '--format <format>',
-      'text (a table, the default), md (the Markdown export), csv (the CSV export, its column Antwort empty or holding the latest note) or json',
+      'text (a table, the default), md (the Markdown export), csv (the CSV export for the customer, its column Antwort empty or holding the latest note; both only the questions to clarify unless --group, --kind or --source says otherwise) or json',
     )
     .option('-o, --output <file>', 'write to this file (default: stdout)')
     .action(
@@ -266,6 +271,7 @@ export function buildProgram(io: CliIo = processIo): Command {
         source?: string;
         askWho?: string;
         state?: string;
+        group?: string[];
         format?: string;
         output?: string;
       }) => questionsCommand(io, { ...globals(), ...opts }),

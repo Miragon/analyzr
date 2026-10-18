@@ -621,9 +621,12 @@ describe('conflicts of amendments as open questions', () => {
       source: 'amendment',
       raisedBy: { sourceKind: 'rule', handle: null },
     });
+    // The question first, the values side by side as the detail (UX2a).
     expect(call.text).toBe(
-      'Welches Aufrufziel gilt für die Aufrufaktivität „Rechnung stellen“ in „Auftragsabwicklung“? ' +
-        'Das Quellsystem hat den Wert seit der Ergänzung geändert, deshalb überschreibt analyzr ihn ' +
+      'Welches Aufrufziel gilt für die Aufrufaktivität „Rechnung stellen“ in „Auftragsabwicklung“?',
+    );
+    expect(call.detail).toBe(
+      'Das Quellsystem hat den Wert seit der Ergänzung geändert, deshalb überschreibt analyzr ihn ' +
         'nicht. Jetzt im Quellsystem: „Process_Andere“, in analyzr ergänzt: „Process_Rechnung“; ' +
         'vorher: (leer).',
     );
@@ -683,7 +686,7 @@ describe('conflicts of amendments as open questions', () => {
     // A start name the tool set is a label: analyzr never writes over it (§4.8 c), so the
     // conflict only takes the tool's value.
     const start = byElement('Start_Auftrag');
-    expect(start.text).toBe(
+    expect(`${start.text} ${start.detail}`).toBe(
       'Welcher Name gilt für das Startereignis „Neu“ in „Auftragsabwicklung“? Das Quellsystem ' +
         'hat den Wert seit der Ergänzung geändert, deshalb überschreibt analyzr ihn nicht. Jetzt ' +
         'im Quellsystem: „Neu“, in analyzr ergänzt: „Auftrag eingegangen“; vorher: (leer).',
@@ -799,7 +802,7 @@ describe('conflicts of amendments as open questions', () => {
     );
     const amend = call?.actions.find((a) => a.type === 'amend');
     expect(amend).toMatchObject({
-      label: 'Aufrufziel im Modell ändern …',
+      label: 'Ziel im Modell eintragen …',
       hint: 'in analyzr ergänzt',
       amend: { replaces: amendmentId(4) },
     });

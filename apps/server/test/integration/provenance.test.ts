@@ -727,10 +727,10 @@ describe('stored extractor warnings and extractor-loss', () => {
       ['test/doppelt', 'signal'],
       ['test/illegal', 'signal'],
     ]);
-    expect(items[0]?.text).toContain(
+    expect(items[0]?.detail).toContain(
       '2 Elemente übersprungen: doppelte ID „Task_Doppelt“; nicht lesbares Element „bpmn:unknownThing“.',
     );
-    expect(items[1]?.text).toContain('ein Element übersprungen: ungültige ID „Aufgabe_Bonität“.');
+    expect(items[1]?.detail).toContain('ein Element übersprungen: ungültige ID „Aufgabe_Bonität“.');
   });
 
   it('drops the question once a clean export replaces the model', async () => {

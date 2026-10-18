@@ -1,12 +1,16 @@
 /**
- * The tab „Offene Fragen“ and the model view's section (M6 S4, §4.4; notes
+ * The tab „Offene Fragen“ and the model view's „Fragen“ (M6 S4, §4.4; notes
  * and the sheet since S5c-1, §4.8 b; the actions in
- * `open-question-actions.test.tsx`): the
- * tab after „Befunde“ with its count, the items in the server's order with
- * their texts (human and agent texts as plain text), contact hints, raisers
- * and links, the filters in the URL, the export through the export route
- * (byte for byte, under the server's file name), the empty states, every
- * role (read permission), and the section in the model view.
+ * `open-question-actions.test.tsx`; reworked in UX2b,
+ * UX-SIMPLIFICATION.md §3.3): the last of the four tabs with its count, „Zu
+ * klären“ as lean cards in the server's order (the subject a link, the
+ * question with „Warum?“ closed, human and agent texts as plain text, whom
+ * to ask, no ids, no event numbers, no source label), the agents' questions
+ * only under „Art“, „Zur Information“ and „Erledigte zeigen“ closed, three
+ * filters in the URL (the source a removable chip), the export dialog for
+ * the customer (`group=ask` by default, the agents' questions on request,
+ * byte for byte under the server's name), the empty states, every role
+ * (read permission), and the model view's „Fragen“ (`ask` only).
  */
 import type { Health, Landscape, Model, OpenQuestion, Project } from '@analyzr/client';
 import { QueryClient } from '@tanstack/react-query';
@@ -24,7 +28,7 @@ import {
   projectsQuery,
 } from '../src/lib/queries';
 import { createAppRouter } from '../src/router';
-import { model, openQuestion, openQuestionAnswer } from './support/fixtures';
+import { model, openQuestion, openQuestionAnswer, openQuestionPage } from './support/fixtures';
 import { findToast, json, stubApi, type Call } from './support/render';
 
 const BASE = '/api/v1/projects/demo/open-questions';
@@ -44,7 +48,7 @@ const OUTSIDE = (primary: boolean): Action => ({
 const decide = (decides: NonNullable<Action['decides']>): Action => ({
   type: 'decide',
   primary: true,
-  label: 'Entscheiden',
+  label: 'Vorschlag prüfen',
   decides,
 });
 
@@ -73,6 +77,7 @@ const items: OpenQuestion[] = [
     subject: { type: 'relation', id: 'rel_01ASKED' },
     subjectLabel: '„Ware versandbereit“ → „Versand starten“',
     modelKeys: ['a/order', 'c/shipping'],
+    group: 'agent',
     text: HOSTILE,
     askWho: { lanes: [], stepOwners: [], folder: 'a' },
     unlocks: 3,
@@ -102,7 +107,7 @@ const items: OpenQuestion[] = [
     refs: [],
     raisedBy: { sourceKind: 'rule', handle: null, seq: 8 },
     actions: [
-      { type: 'place', primary: true, label: 'Prozess zuordnen …', pick: 'process' },
+      { type: 'place', primary: true, label: 'Prozess platzieren …', pick: 'process' },
       OUTSIDE(false),
       NOTE,
     ],
@@ -127,6 +132,7 @@ const items: OpenQuestion[] = [
     id: 'q-00000000000000a6',
     kind: 'summary-note',
     source: 'summary',
+    group: 'info',
     subject: { type: 'model', id: 'a/order' },
     subjectLabel: '„Auftrag“',
     modelKeys: ['a/order'],
@@ -156,18 +162,7 @@ function project(role: Project['role']): Project {
 
 /** The list route answers both the tab's count (`limit=1`) and the full list. */
 function listRoute(list: readonly OpenQuestion[]) {
-  return (call: Call) => {
-    const query = new URLSearchParams(call.search);
-    const modelKey = query.get('modelKey');
-    const matching = list.filter(
-      (q) =>
-        (modelKey === null ||
-          q.modelKeys.some((k) => k === modelKey || k.startsWith(`${modelKey}/`))) &&
-        (query.get('state') === null || q.state === query.get('state')),
-    );
-    const limit = Number(query.get('limit') ?? '50');
-    return json({ items: matching.slice(0, limit), nextCursor: null, total: matching.length });
-  };
+  return (call: Call) => json(openQuestionPage(list, call.search));
 }
 
 function setup(
@@ -177,11 +172,13 @@ function setup(
     role = 'owner',
     health = LOCAL,
     routes = {},
+    findings = [],
   }: {
     list?: readonly OpenQuestion[];
     role?: Project['role'];
     health?: Health;
     routes?: Parameters<typeof stubApi>[0];
+    findings?: Landscape['findings'];
   } = {},
 ) {
   const landscape: Landscape = {
@@ -189,7 +186,7 @@ function setup(
     seq: 12,
     models: [],
     relations: [],
-    findings: [],
+    findings,
   };
   // A write refreshes the whole project (`keys.project`): its reads answer again.
   const calls = stubApi({
@@ -218,123 +215,220 @@ function setup(
 
 const rows = () => screen.findAllByTestId('open-question');
 const ids = async () => (await rows()).map((r) => r.dataset['questionId']?.slice(-2));
+/** Opens a closed group of the tab („Zur Information“, „Erledigte zeigen“). */
+async function openGroup(user: ReturnType<typeof userEvent.setup>, testId: string) {
+  const group = await screen.findByTestId(testId);
+  await user.click(group.querySelector('summary')!);
+  return group;
+}
 
 describe('tab „Offene Fragen“', () => {
-  it('follows „Befunde“ with the count of open questions', async () => {
+  it('is the last of the four tabs and counts „Zu klären“ (owner decision 26)', async () => {
     const { calls } = setup('/projects/demo');
     const nav = await screen.findByRole('navigation', { name: 'Projektbereiche' });
     const links = within(nav).getAllByRole('link');
     const names = links.map((l) => l.textContent.replace(/\d+.*/, '').trim());
-    expect(names.indexOf('Offene Fragen')).toBe(names.indexOf('Befunde') + 1);
+    expect(names).toEqual(['Übersicht', 'Relationen', 'Wertschöpfungskette', 'Offene Fragen']);
     const tab = within(nav).getByRole('link', { name: /Offene Fragen/ });
     expect(tab.getAttribute('href')).toBe('/projects/demo/open-questions');
-    await waitFor(() => expect(tab.textContent).toBe('Offene Fragen6 offen'));
-    // the count asks for one open item and reads `total`
+    const ask = items.filter((q) => q.state === 'open' && q.group === 'ask').length;
+    expect(ask).toBe(4);
+    await waitFor(() => expect(tab.textContent).toBe(`Offene Fragen${ask} zu klären`));
+    // one call: the first open item of `group=ask`, whose page carries `totals` and `askByModel`
     const count = calls.find((c) => c.path === BASE);
-    expect(new URLSearchParams(count?.search).get('limit')).toBe('1');
-    expect(new URLSearchParams(count?.search).get('state')).toBe('open');
+    const query = new URLSearchParams(count?.search);
+    expect(query.get('limit')).toBe('1');
+    expect(query.get('state')).toBe('open');
+    expect(query.getAll('group')).toEqual(['ask']);
   });
 
-  it('lists every question in the server order with kind, subject, ranking and id', async () => {
+  it('keeps the list „Befunde“ behind a link at its foot (Q2)', async () => {
+    setup('/projects/demo/open-questions', {
+      findings: [
+        { kind: 'unresolved-call', refs: ['a/order#Call_1'], detail: 'Pay' },
+        { kind: 'dynamic-call', refs: ['a/order#Call_2'], detail: '${x}' },
+      ],
+    });
+    await rows();
+    const link = screen.getByTestId('findings-link');
+    expect(link.textContent).toBe('Alle Befunde der Modelle als Liste (2)');
+    expect(link.getAttribute('href')).toBe('/projects/demo/findings');
+  });
+
+  it('keeps the link to „Befunde“ when nothing is open (findings resolved by links, R1)', async () => {
+    setup('/projects/demo/open-questions', {
+      list: [],
+      findings: [{ kind: 'unresolved-call', refs: ['a/order#Call_1'], detail: 'Pay' }],
+    });
+    expect(await screen.findByText('Keine offenen Fragen')).toBeTruthy();
+    expect(screen.getByTestId('findings-link').textContent).toBe(
+      'Alle Befunde der Modelle als Liste (1)',
+    );
+  });
+
+  it('shows no link to „Befunde“ without findings', async () => {
     setup('/projects/demo/open-questions');
-    expect(await ids()).toEqual(['a1', 'a2', 'a3', 'a4', 'a5', 'a6']);
-    const [first, , third, , pool, summary] = await rows();
-    expect(first!.textContent).toContain('Vorgemerkt');
-    // the source only where the badge and the verbatim intro leave it unsaid
-    expect(within(first!).queryByTestId('question-source')).toBeNull();
-    expect(within(summary!).queryByTestId('question-source')).toBeNull();
-    expect(within(third!).getByTestId('question-source').textContent).toBe('Befund');
-    expect(within(pool!).getByTestId('question-source').textContent).toBe('Lückensignal');
-    expect(first!.textContent).toContain('„Rechnung senden“ → „Rechnung empfangen“');
-    expect(within(first!).getByTestId('question-unlocks').textContent).toBe(
-      '5 offene Entscheidungen',
+    await rows();
+    expect(screen.queryByTestId('findings-link')).toBeNull();
+  });
+
+  it('lists „Zu klären“ in the server order as lean cards: no id, no event number, no source label', async () => {
+    setup('/projects/demo/open-questions');
+    expect(await ids()).toEqual(['a1', 'a3', 'a4', 'a5']);
+    const [held, call, step, pool] = await rows();
+    expect(held!.textContent).toContain('Vorgemerkt');
+    expect(within(held!).getByTestId('question-subject').textContent).toBe(
+      '„Rechnung senden“ → „Rechnung empfangen“',
     );
-    expect(first!.textContent).toContain('q-00000000000000a1');
-    expect(within(third!).getByTestId('question-text').textContent).toBe(items[2]!.text);
-    expect(third!.textContent).toContain('Erkannt vonanalyzrs3');
-    // informational items rank last and say so
-    expect(within(summary!).getByTestId('question-unlocks').textContent).toBe('Zur Information');
-    expect(screen.getByTestId('open-questions-count').textContent).toBe(
-      '6 Fragen, geordnet nach offenen Entscheidungen',
+    // the ranking only from two open decisions on, as „Betrifft …“
+    expect(within(held!).getByTestId('question-unlocks').textContent).toBe(
+      'Betrifft 5 offene Entscheidungen',
     );
+    expect(within(call!).getByTestId('question-unlocks').textContent).toBe(
+      'Betrifft 2 offene Entscheidungen',
+    );
+    expect(within(step!).queryByTestId('question-unlocks')).toBeNull();
+    expect(within(call!).getByTestId('question-text').textContent).toBe(items[2]!.text);
+    for (const row of [held!, call!, step!, pool!]) {
+      expect(row.textContent).not.toMatch(
+        /q-[0-9a-f]{16}|\bs\d+\b|Erkannt von|Lückensignal|Befund/,
+      );
+      expect(within(row).queryByTestId('question-source')).toBeNull();
+    }
+    expect(screen.getByTestId('open-questions-count').textContent).toBe('4 zu klären');
     // a screen reader hears the count change with the filters
     expect(screen.getByTestId('open-questions-count').getAttribute('aria-live')).toBe('polite');
+    // one intro line, how it works closed
+    expect(screen.getByTestId('open-questions-intro').textContent).toBe(
+      'Was in der Landschaft noch fehlt. Zu jeder Frage gibt es eine Aktion, mit der du sie erledigst.',
+    );
+    expect(screen.getByTestId('open-questions-how').hasAttribute('open')).toBe(false);
+    expect(screen.getByTestId('open-questions-how').textContent).toContain(
+      'ein Hinweis, keine Zuständigkeit',
+    );
   });
 
-  it('says when an item touches no open decision, and names the subject of each link', async () => {
-    setup('/projects/demo/open-questions', {
-      list: [openQuestion({ id: 'q-00000000000000b1', kind: 'isolated-process', unlocks: 0 })],
+  it('keeps the agents’ questions on their proposals and the informational items closed', async () => {
+    const { user } = setup('/projects/demo/open-questions');
+    await rows();
+    expect(screen.queryByText(HOSTILE)).toBeNull();
+    const info = screen.getByTestId('open-questions-info');
+    expect(info.hasAttribute('open')).toBe(false);
+    expect(info.querySelector('summary')?.textContent).toBe('Zur Information (1)');
+    // closed, the group holds nothing to click
+    expect(within(info).queryAllByRole('link')).toEqual([]);
+    await openGroup(user, 'open-questions-info');
+    const summary = within(info).getByTestId('open-question');
+    expect(summary.dataset['questionId']).toBe('q-00000000000000a6');
+    expect(summary.textContent).toContain('Zusammenfassung des Agenten anzeigen');
+    expect(within(summary).getByTestId('question-text').textContent).toBe(items[5]!.text);
+    expect(within(summary).getByTestId('question-subject').getAttribute('href')).toBe(
+      '/projects/demo/models/a/order',
+    );
+  });
+
+  it('folds descriptive models with one reason into one notice in „Zur Information“', async () => {
+    const descriptive = (id: string, key: string) =>
+      openQuestion({
+        id,
+        kind: 'descriptive-model',
+        source: 'signal',
+        group: 'info',
+        subject: { type: 'model', id: key },
+        subjectLabel: `„${key}“`,
+        modelKeys: [key],
+        text: `Hinweis: „${key}“ ist ein beschreibendes Modell, ohne Engine und ohne ausführbaren Prozess.`,
+        detail:
+          'Die automatische Verknüpfung findet hier wenig; Aufrufziele, Nachrichtennamen und Dokumentation helfen den Agenten, mögliche Relationen zu finden.',
+      });
+    const { user } = setup('/projects/demo/open-questions', {
+      list: [
+        items[2]!,
+        descriptive('q-00000000000000d1', 'a/order'),
+        descriptive('q-00000000000000d2', 'b/billing'),
+      ],
     });
-    const [row] = await rows();
-    expect(within(row!).getByTestId('question-unlocks').textContent).toBe(
-      'Keine offene Entscheidung',
+    await rows();
+    const info = await openGroup(user, 'open-questions-info');
+    expect(info.querySelector('summary')?.textContent).toBe('Zur Information (2)');
+    expect(within(info).getByTestId('open-questions-descriptive').textContent).toBe(
+      '2 von 3 Modellen sind beschreibend (ohne Engine). Die automatische Verknüpfung findet hier wenig; Aufrufziele, Nachrichtennamen und Dokumentation helfen den Agenten, mögliche Relationen zu finden.',
     );
-    const link = within(row!).getByTestId('question-link');
-    const subject = document.getElementById(link.getAttribute('aria-describedby') ?? '');
-    expect(subject?.textContent).toBe('„Zahlung abwickeln“');
+    expect(within(info).queryAllByTestId('open-question')).toEqual([]);
   });
 
-  it('shows human and agent texts verbatim as plain text, with who said them', async () => {
-    setup('/projects/demo/open-questions');
-    const [held, asked, , , , summary] = await rows();
-    const hold = within(held!).getByTestId('question-verbatim');
-    expect(hold.textContent).toContain('Vorgemerkt vonowner');
-    expect(within(hold).getByTestId('question-text').textContent).toBe(items[0]!.text);
-    expect(within(hold).getByTestId('question-context').textContent).toBe(
-      `Notiz${items[0]!.context}`,
+  it('shows the question first, its reason behind „Warum?“, an agent’s words as plain text', async () => {
+    const { user } = setup('/projects/demo/open-questions', {
+      list: [
+        openQuestion({
+          id: 'q-00000000000000c1',
+          text: 'Welchen Prozess ruft „Zahlung abwickeln“ auf?',
+          detail: 'Das eingetragene Ziel „Pay“ gibt es in keinem Modell.',
+        }),
+        openQuestion({
+          id: 'q-00000000000000c2',
+          kind: 'placement-unsure',
+          source: 'unsure',
+          subject: { type: 'process', id: 'a/order#Process_Order' },
+          subjectLabel: '„Auftrag“',
+          text: 'Auf welchen Schritt der Wertschöpfungskette gehört „Auftrag“?',
+          detail: HOSTILE,
+          raisedBy: { sourceKind: 'agent', handle: 'agent:sim', seq: 10 },
+        }),
+      ],
+    });
+    const [finding, unsure] = await rows();
+    expect(within(finding!).getByTestId('question-text').textContent).toBe(
+      'Welchen Prozess ruft „Zahlung abwickeln“ auf?',
     );
-    expect(within(hold).getByTestId('question-label').textContent).toBe(
+    const why = within(finding!).getByTestId('question-why');
+    expect(why.tagName).toBe('DETAILS');
+    expect(why.hasAttribute('open')).toBe(false);
+    expect(within(why).getByTestId('question-detail').textContent).toBe(
+      'Das eingetragene Ziel „Pay“ gibt es in keinem Modell.',
+    );
+    await user.click(within(why).getByText('Warum?'));
+    expect(why.hasAttribute('open')).toBe(true);
+    // The question from code, the agent's words verbatim behind „Warum?“, one agent unnamed.
+    expect(within(unsure!).getByTestId('question-text').textContent).toBe(
+      'Auf welchen Schritt der Wertschöpfungskette gehört „Auftrag“?',
+    );
+    const words = within(unsure!).getByTestId('question-detail');
+    expect(words.textContent).toBe(`Laut Agent: ${HOSTILE}`);
+    expect(words.querySelector('img, b')).toBeNull();
+    expect(unsure!.textContent).not.toContain('agent:sim');
+  });
+
+  it('shows a hold’s question, its note behind „Warum?“, its label and whom to ask', async () => {
+    setup('/projects/demo/open-questions');
+    const [held] = await rows();
+    expect(within(held!).getByTestId('question-text').textContent).toBe(items[0]!.text);
+    expect(within(held!).getByTestId('question-context').textContent).toBe(
+      `Notiz zur Vormerkung: ${items[0]!.context}`,
+    );
+    expect(within(held!).getByTestId('question-label').textContent).toBe(
       'mit Fachbereich Finanzen klären',
     );
-    // the agent's HTML stays text: no element, the characters as written
-    const question = within(asked!).getByTestId('question-text');
-    expect(question.textContent).toBe(HOSTILE);
-    expect(question.querySelector('img, b')).toBeNull();
-    expect(question.querySelector('[data-plain-text]')).not.toBeNull();
-    expect(within(asked!).getByTestId('question-verbatim').textContent).toContain(
-      'Frage vonagent:sim',
-    );
-    expect(within(summary!).getByTestId('question-verbatim').textContent).toContain(
-      'Zusammenfassung vonagent:sim',
-    );
-    // the contact hint, as in the export
+    // step owners, then lanes; no folder
     expect(within(held!).getByTestId('question-ask-who').textContent).toBe(
-      'Ansprechpartner-Hinweis:Organisationseinheit: Finanzen; Lanes: Vertrieb; Ordner: a',
+      'Ansprechpartner: Finanzen, Vertrieb',
     );
   });
 
-  it('links to the review screen, the value chain page and the model view, and lists the refs', async () => {
+  it('links each subject to where it is: the review screen, the chain, the model view', async () => {
     setup('/projects/demo/open-questions');
-    const [held, , call, step, pool, summary] = await rows();
-    const links = (row: HTMLElement) =>
-      within(row)
-        .getAllByTestId('question-link')
-        .map((a) => [a.textContent, a.getAttribute('href')]);
-    expect(links(held!)).toEqual([['Prüfen', '/projects/demo/review/rel_01HELD']]);
-    expect(links(step!)).toEqual([
-      ['Schritt auf der Kette zeigen', '/projects/demo/value-chain?step=step-einkauf'],
-    ]);
-    expect(links(call!)).toEqual([
-      ['Im Modell zeigen', '/projects/demo/models/a/order?element=Call_1'],
-    ]);
-    expect(links(pool!)).toEqual([
-      ['Im Modell zeigen', '/projects/demo/models/c/shipping?element=Participant_Carrier'],
-    ]);
-    expect(links(summary!)).toEqual([['Modell öffnen', '/projects/demo/models/a/order']]);
-    // both ends of the held relation, each into the model view
-    const refs = within(held!).getByRole('list', { name: 'Bezug' });
-    expect(
-      within(refs)
-        .getAllByRole('link')
-        .map((a) => a.getAttribute('href')),
-    ).toEqual([
-      '/projects/demo/models/a/order?element=Send_Invoice',
-      '/projects/demo/models/b/billing?element=Catch_Invoice',
-    ]);
-    expect(within(call!).queryByRole('list', { name: 'Bezug' })).toBeNull();
+    const [held, call, step, pool] = await rows();
+    const href = (row: HTMLElement) =>
+      within(row).getByTestId('question-subject').getAttribute('href');
+    expect(href(held!)).toBe('/projects/demo/review/rel_01HELD');
+    expect(href(call!)).toBe('/projects/demo/models/a/order?element=Call_1');
+    expect(href(step!)).toBe('/projects/demo/value-chain?step=step-einkauf');
+    expect(href(pool!)).toBe('/projects/demo/models/c/shipping?element=Participant_Carrier');
+    // no refs list any more
+    expect(within(held!).queryByRole('list', { name: 'Bezug' })).toBeNull();
   });
 
-  it('filters by kind, model or folder, contact hint and source in the URL, and resets', async () => {
+  it('filters by kind, model or folder and contact in the URL, and resets', async () => {
     const { router, user } = setup('/projects/demo/open-questions');
     await rows();
     const kind = screen.getByLabelText('Art');
@@ -345,24 +439,28 @@ describe('tab „Offene Fragen“', () => {
     ).toEqual([
       'Alle Arten',
       'Vorgemerkt (1)',
-      'Frage eines Agenten (1)',
       'Aufrufziel unbekannt (1)',
       'Schritt ohne Prozess (1)',
       'Pool ohne Prozess (1)',
-      'Zusammenfassung eines Agenten (1)',
+      'Frage eines Agenten (1)',
     ]);
     await user.selectOptions(kind, 'black-box-partner');
     await waitFor(() =>
       expect(router.state.location.search).toEqual({ kind: 'black-box-partner' }),
     );
     expect(await ids()).toEqual(['a5']);
-    expect(screen.getByTestId('open-questions-count').textContent).toBe(
-      '1 von 6 Fragen, geordnet nach offenen Entscheidungen',
-    );
+    expect(screen.getByTestId('open-questions-count').textContent).toBe('1 von 4 zu klären');
+    expect(screen.getByTestId('open-questions-filter-toggle').textContent).toBe('Filter (1)');
     await user.click(screen.getByRole('button', { name: 'Filter zurücksetzen' }));
     await waitFor(() => expect(router.state.location.search).toEqual({}));
     // the button leaves with the filters; the focus stays in the filters
     await waitFor(() => expect(document.activeElement).toBe(screen.getByLabelText('Art')));
+
+    // „Frage eines Agenten“ lists the agents' questions (the web twin of `--group agent`)
+    await user.selectOptions(screen.getByLabelText('Art'), 'agent-question');
+    expect(await ids()).toEqual(['a2']);
+    expect(screen.getByTestId('open-questions-count').textContent).toBe('1 Fragen der Agenten');
+    await user.selectOptions(screen.getByLabelText('Art'), '');
 
     // only steps match: the model select has no empty „Modelle“ group
     await user.selectOptions(screen.getByLabelText('Art'), 'step-without-process');
@@ -377,43 +475,59 @@ describe('tab „Offene Fragen“', () => {
     // a folder matches every model below it
     const modelSelect = screen.getByLabelText('Modell oder Ordner');
     await user.selectOptions(modelSelect, 'a');
-    expect(await ids()).toEqual(['a1', 'a2', 'a3', 'a6']);
+    expect(await ids()).toEqual(['a1', 'a3']);
     await user.selectOptions(modelSelect, 'b/billing');
     expect(await ids()).toEqual(['a1']);
     await user.selectOptions(modelSelect, '');
 
-    const askWho = screen.getByLabelText('Ansprechpartner-Hinweis');
+    // step owners and lanes in one list, without groups or folders
+    const askWho = screen.getByLabelText('Ansprechpartner');
+    expect(within(askWho).queryAllByRole('group')).toEqual([]);
     expect(
       within(askWho)
-        .getAllByRole('group')
-        .map((g) => g.getAttribute('label')),
-    ).toEqual(['Organisationseinheiten', 'Lanes', 'Ordner']);
+        .getAllByRole('option')
+        .map((o) => o.textContent),
+    ).toEqual(['Alle Ansprechpartner', 'Einkauf (1)', 'Finanzen (1)', 'Vertrieb (1)']);
     await user.selectOptions(askWho, 'Einkauf');
     expect(await ids()).toEqual(['a4']);
     await user.selectOptions(askWho, '');
+    // „Quelle“ has no select any more
+    expect(screen.queryByLabelText('Quelle')).toBeNull();
+    expect(screen.queryByLabelText('Status')).toBeNull();
+  });
 
-    await user.selectOptions(screen.getByLabelText('Quelle'), 'signal');
+  it('keeps a source from a link as a removable chip', async () => {
+    const { router, user } = setup('/projects/demo/open-questions?source=signal');
     expect(await ids()).toEqual(['a5']);
-    expect(router.state.location.search).toEqual({ source: 'signal' });
+    const chip = screen.getByTestId('open-questions-source-chip');
+    expect(chip.textContent).toBe('Quelle: Lückensignal');
+    await user.click(chip);
+    await waitFor(() => expect(router.state.location.search).toEqual({}));
+    expect(await ids()).toEqual(['a1', 'a3', 'a4', 'a5']);
   });
 
   it('reads its filters from the URL and says when none matches', async () => {
-    const { user } = setup('/projects/demo/open-questions?state=answered&kind=nope');
+    const { user } = setup('/projects/demo/open-questions?kind=unjudged&model=nope');
     const empty = await screen.findByTestId('open-questions-empty');
     expect(empty.textContent).toContain('Keine Frage passt zu den Filtern');
     expect(screen.queryAllByTestId('open-question')).toEqual([]);
-    // an unknown kind is no filter; the state option without items stays selectable
-    expect(screen.getByLabelText<HTMLSelectElement>('Art').value).toBe('');
-    expect(screen.getByLabelText<HTMLSelectElement>('Status').value).toBe('answered');
+    // the selected kind without items stays selectable
+    expect(screen.getByLabelText<HTMLSelectElement>('Art').value).toBe('unjudged');
     await user.click(within(empty).getByRole('button', { name: 'Filter zurücksetzen' }));
-    expect(await ids()).toHaveLength(6);
+    expect(await ids()).toHaveLength(4);
   });
 
-  it('says so when there is no open question', async () => {
+  it('says so when there is no open question, and when nothing is left to clarify', async () => {
     setup('/projects/demo/open-questions', { list: [] });
     const empty = await screen.findByTestId('open-questions-empty');
     expect(empty.textContent).toContain('Keine offenen Fragen');
     expect(screen.queryByRole('search')).toBeNull();
+    cleanup();
+    setup('/projects/demo/open-questions', { list: [items[1]!, items[5]!] });
+    const none = await screen.findByTestId('open-questions-empty');
+    expect(none.textContent).toContain('Nichts zu klären');
+    expect(screen.getByTestId('open-questions-count').textContent).toBe('0 zu klären');
+    expect(screen.getByTestId('open-questions-info')).toBeDefined();
   });
 
   it('shows 50 at first and more on request', async () => {
@@ -430,14 +544,14 @@ describe('tab „Offene Fragen“', () => {
     expect(screen.queryByTestId('open-questions-more')).toBeNull();
   });
 
-  it('exports the filtered list through the export route, byte for byte under the server’s name', async () => {
+  it('exports for the customer: „Zu klären“ by default under the server’s name, the agents’ questions on request', async () => {
     const createObjectURL = vi.fn((_blob: Blob) => 'blob:analyzr');
     vi.stubGlobal('URL', Object.assign(URL, { createObjectURL, revokeObjectURL: vi.fn() }));
     const click = vi
       .spyOn(HTMLAnchorElement.prototype, 'click')
       .mockImplementation(() => undefined);
-    const csv = '\uFEFF"id";"Art";"Frage";"Ansprechpartner-Hinweis";"Antwort";"Antwortart"\r\n';
-    const { calls, user } = setup('/projects/demo/open-questions?kind=held&model=a', {
+    const csv = '﻿"id";"Art";"Frage";"Ansprechpartner";"Antwort"\r\n';
+    const { calls, user } = setup('/projects/demo/open-questions?model=a', {
       routes: {
         [`GET ${BASE}/export`]: (call) => {
           const format = new URLSearchParams(call.search).get('format');
@@ -445,30 +559,54 @@ describe('tab „Offene Fragen“', () => {
             headers: {
               'content-type':
                 format === 'csv' ? 'text/csv; charset=utf-8' : 'text/markdown; charset=utf-8',
-              'content-disposition': `attachment; filename="offene-fragen-demo.${format === 'csv' ? 'csv' : 'md'}"`,
+              'content-disposition': `attachment; filename="offene-fragen-demo-a.${format === 'csv' ? 'csv' : 'md'}"`,
             },
           });
         },
       },
     });
     await rows();
-    await user.click(screen.getByRole('button', { name: 'Als CSV exportieren' }));
+    await user.click(screen.getByRole('button', { name: 'Für den Kunden exportieren …' }));
+    const box = await screen.findByTestId('customer-export-dialog');
+    expect(within(box).getByRole('heading', { name: 'Für den Kunden exportieren' })).toBeDefined();
+    expect(within(box).getByRole('radio', { name: /Zum Lesen \(Markdown\)/ })).toHaveProperty(
+      'checked',
+      true,
+    );
+    // the agents' questions under the same filters, off by default
+    const agents = within(box).getByRole('checkbox', { name: 'Auch Fragen der Agenten (1)' });
+    expect(agents.getAttribute('aria-checked')).toBe('false');
+    await user.click(within(box).getByRole('radio', { name: /Zum Ausfüllen \(CSV\)/ }));
+    await user.click(within(box).getByRole('button', { name: 'Herunterladen' }));
     await waitFor(() => expect(click).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.queryByTestId('customer-export-dialog')).toBeNull());
+    // the focus goes back to the button that opened it (the dialog has no Radix trigger)
+    const opener = screen.getByRole('button', { name: 'Für den Kunden exportieren …' });
+    await waitFor(() => expect(document.activeElement).toBe(opener));
     const exported = calls.filter((c) => c.path === `${BASE}/export`);
-    expect(Object.fromEntries(new URLSearchParams(exported[0]?.search))).toEqual({
-      kind: 'held',
-      modelKey: 'a',
-      format: 'csv',
-    });
-    expect((click.mock.contexts[0] as HTMLAnchorElement).download).toBe('offene-fragen-demo.csv');
+    const first = new URLSearchParams(exported[0]?.search);
+    expect([...first.keys()].sort()).toEqual(['format', 'group', 'modelKey', 'state']);
+    expect(first.getAll('group')).toEqual(['ask']);
+    // the open items, as the list shows them: a marked item is settled, not asked again
+    expect(first.get('state')).toBe('open');
+    expect(first.get('modelKey')).toBe('a');
+    expect(first.get('format')).toBe('csv');
+    expect((click.mock.contexts[0] as HTMLAnchorElement).download).toBe('offene-fragen-demo-a.csv');
     const blob = createObjectURL.mock.calls[0]![0];
     // the byte order mark survives (Excel needs it for umlauts)
     expect([...new Uint8Array(await blob.arrayBuffer()).slice(0, 3)]).toEqual([0xef, 0xbb, 0xbf]);
 
-    await user.click(screen.getByRole('button', { name: 'Als Markdown exportieren' }));
+    await user.click(screen.getByRole('button', { name: 'Für den Kunden exportieren …' }));
+    const again = await screen.findByTestId('customer-export-dialog');
+    await user.click(within(again).getByRole('radio', { name: /Zum Lesen \(Markdown\)/ }));
+    await user.click(within(again).getByRole('checkbox', { name: /Auch Fragen der Agenten/ }));
+    await user.click(within(again).getByRole('button', { name: 'Herunterladen' }));
     await waitFor(() => expect(click).toHaveBeenCalledTimes(2));
-    expect((click.mock.contexts[1] as HTMLAnchorElement).download).toBe('offene-fragen-demo.md');
-    expect(new URLSearchParams(calls.at(-1)?.search).get('format')).toBe('markdown');
+    const second = new URLSearchParams(
+      calls.filter((c) => c.path === `${BASE}/export`).at(-1)?.search,
+    );
+    expect(second.getAll('group')).toEqual(['ask', 'agent']);
+    expect(second.get('format')).toBe('markdown');
   });
 
   it('reports a failed export', async () => {
@@ -479,8 +617,14 @@ describe('tab „Offene Fragen“', () => {
       },
     });
     await rows();
-    await user.click(screen.getByRole('button', { name: 'Als Markdown exportieren' }));
-    expect((await findToast('Export fehlgeschlagen')).textContent).toContain('Validation failed');
+    await user.click(screen.getByRole('button', { name: 'Für den Kunden exportieren …' }));
+    const box = await screen.findByTestId('customer-export-dialog');
+    await user.click(within(box).getByRole('button', { name: 'Herunterladen' }));
+    expect((await findToast('Export fehlgeschlagen')).textContent).toContain(
+      'Die Eingabe passt so nicht.',
+    );
+    // the dialog stays, so the reviewer may try again
+    expect(screen.getByTestId('customer-export-dialog')).toBeDefined();
   });
 
   it('is every role’s: a viewer on the read-only demo reads and exports without writing', async () => {
@@ -492,15 +636,24 @@ describe('tab „Offene Fragen“', () => {
       health: DEMO,
       routes: { [`GET ${BASE}/export`]: () => new Response('# Offene Fragen\n') },
     });
-    expect(await rows()).toHaveLength(6);
-    await user.click(screen.getByRole('button', { name: 'Als Markdown exportieren' }));
+    expect(await rows()).toHaveLength(4);
+    // no action, so no promise of one in the intro
+    expect(screen.getByTestId('open-questions-intro').textContent).toBe(
+      'Was in der Landschaft noch fehlt.',
+    );
+    await user.click(screen.getByRole('button', { name: 'Für den Kunden exportieren …' }));
+    await user.click(
+      within(await screen.findByTestId('customer-export-dialog')).getByRole('button', {
+        name: 'Herunterladen',
+      }),
+    );
     await waitFor(() => expect(createObjectURL).toHaveBeenCalledTimes(1));
     expect(calls.filter((c) => c.method !== 'GET' && c.path !== '/api/v1/session')).toEqual([]);
   });
 });
 
-describe('model view section „Offene Fragen“', () => {
-  it('lists the questions of exactly this model, compact, with a link to the tab', async () => {
+describe('model view section „Fragen“', () => {
+  it('lists the open questions „Zu klären“ of exactly this model, compact, with a link to the tab', async () => {
     const child = openQuestion({
       id: 'q-00000000000000b1',
       modelKeys: ['a/order/sub'],
@@ -508,46 +661,48 @@ describe('model view section „Offene Fragen“', () => {
     });
     const { calls } = setup('/projects/demo/models/a/order', { list: [...items, child] });
     const section = await screen.findByTestId('model-open-questions');
+    // the agent's question sits on its relation, the summary in the tab's „Zur Information“
     await waitFor(() =>
       expect(
         within(section)
           .getAllByTestId('open-question')
           .map((r) => r.dataset['questionId']),
-      ).toEqual([
-        'q-00000000000000a1',
-        'q-00000000000000a2',
-        'q-00000000000000a3',
-        'q-00000000000000a6',
-      ]),
+      ).toEqual(['q-00000000000000a1', 'q-00000000000000a3']),
     );
-    expect(within(section).getByRole('heading', { name: 'Offene Fragen (4)' })).toBeDefined();
+    expect(within(section).getByRole('heading', { name: 'Fragen (2)' })).toBeDefined();
     expect(
       within(section)
         .getByRole('link', { name: /Im Tab zeigen/ })
         .getAttribute('href'),
     ).toBe('/projects/demo/open-questions?model=a%2Forder');
     const request = calls.find((c) => c.path === BASE && c.search.includes('modelKey'));
-    expect(new URLSearchParams(request?.search).get('modelKey')).toBe('a/order');
-    // compact: no refs list, no link back to the model in view without an element
-    const rows = within(section).getAllByTestId('open-question');
-    expect(within(rows[0]!).queryByRole('list', { name: 'Bezug' })).toBeNull();
-    expect(within(rows[3]!).queryAllByTestId('question-link')).toEqual([]);
+    const query = new URLSearchParams(request?.search);
+    expect(query.get('modelKey')).toBe('a/order');
+    expect(query.get('state')).toBe('open');
+    expect(query.getAll('group')).toEqual(['ask', 'agent', 'info']);
+    // the agents' questions: one link to them (they sit on their proposals until UX3 shows
+    // them on the relation cards); the summary read-only, closed (decision 24.8)
     expect(
-      within(rows[2]!)
-        .getAllByTestId('question-link')
-        .map((a) => a.getAttribute('href')),
-    ).toEqual(['/projects/demo/models/a/order?element=Call_1']);
-    // agent texts stay plain text here as well
-    expect(within(rows[1]!).getByTestId('question-text').querySelector('img')).toBeNull();
+      within(section)
+        .getByRole('link', { name: 'Fragen der Agenten zu Vorschlägen (1)' })
+        .getAttribute('href'),
+    ).toBe('/projects/demo/open-questions?model=a%2Forder&kind=agent-question');
+    const info = within(section).getByTestId('model-questions-info');
+    expect(info.hasAttribute('open')).toBe(false);
+    expect(info.querySelector('summary')?.textContent).toBe('Zur Information (1)');
+    const rows = within(section).getAllByTestId('open-question');
+    expect(within(rows[1]!).getByTestId('question-subject').getAttribute('href')).toBe(
+      '/projects/demo/models/a/order?element=Call_1',
+    );
   });
 
-  it('says when the model has no open question', async () => {
+  it('says when nothing about the model is to clarify', async () => {
     setup('/projects/demo/models/b/billing', { list: items.slice(2) });
     const section = await screen.findByTestId('model-open-questions');
     await waitFor(() =>
-      expect(section.textContent).toContain('Zu diesem Modell ist keine Frage offen.'),
+      expect(section.textContent).toContain('Zu diesem Modell ist nichts zu klären.'),
     );
-    expect(within(section).getByRole('heading', { name: 'Offene Fragen (0)' })).toBeDefined();
+    expect(within(section).getByRole('heading', { name: 'Fragen (0)' })).toBeDefined();
   });
 });
 
@@ -682,11 +837,11 @@ async function openNote(user: ReturnType<typeof userEvent.setup>, row: HTMLEleme
   return dialog();
 }
 
-describe('notes (M6 S5a, S5c-1)', () => {
-  it('offers the actions on every item that asks something and the CSV takeover to reviewers only', async () => {
+describe('notes (M6 S5a, S5c-1; a hold’s answer since UX2b)', () => {
+  it('offers the actions on every card and the CSV takeover to reviewers only', async () => {
     setup('/projects/demo/open-questions', { role: 'editor' });
     const all = await rows();
-    // the primary action as the visible button, the rest under „Weitere Aktionen“
+    // the primary action as the visible button; a hold answers first (UX2b)
     const primaries = all.map((row) =>
       within(row)
         .queryAllByTestId('question-action')
@@ -694,39 +849,60 @@ describe('notes (M6 S5a, S5c-1)', () => {
         .map((b) => b.textContent),
     );
     expect(primaries).toEqual([
-      ['Entscheiden'],
-      ['Entscheiden'],
+      ['Antwort geben'],
       ['Verknüpfen mit …'],
-      ['Prozess zuordnen …'],
+      ['Prozess platzieren …'],
       ['Liegt außerhalb der Landschaft'],
-      [],
     ]);
-    // the informational summary has no action row at all; „Beantworten“ is gone
-    expect(within(all[5]!).queryByTestId('question-actions')).toBeNull();
+    // a hold is decided where the diagrams are (Q4): „Jetzt entscheiden“ beside its answer
+    const decideNow = within(all[0]!).getByRole('link', { name: 'Jetzt entscheiden' });
+    expect(decideNow.getAttribute('href')).toBe('/projects/demo/review/rel_01HELD?view=held');
+    expect(within(all[0]!).queryByTestId('question-more-actions')).toBeNull();
+    // at most three actions per card
+    for (const row of all)
+      expect(
+        within(row).getByTestId('question-actions').querySelectorAll(':scope > button, :scope > a')
+          .length,
+      ).toBeLessThanOrEqual(3);
     expect(screen.queryByRole('button', { name: /Beantworten/ })).toBeNull();
-    expect(screen.getByRole('button', { name: 'Antworten aus CSV übernehmen' })).toBeDefined();
+    expect(screen.getByRole('button', { name: 'Antworten aus CSV übernehmen …' })).toBeDefined();
     // the buttons name the item's subject for screen readers
-    const button = within(all[0]!).getByTestId('question-action');
+    const button = within(all[0]!).getAllByTestId('question-action')[0]!;
     const subject = document.getElementById(button.getAttribute('aria-describedby') ?? '');
     expect(subject?.textContent).toBe('„Rechnung senden“ → „Rechnung empfangen“');
   });
 
-  it('hides every action from viewers and on the read-only demo', async () => {
-    setup('/projects/demo/open-questions', { role: 'viewer' });
-    expect(await rows()).toHaveLength(6);
-    expect(screen.queryAllByTestId('question-actions')).toEqual([]);
-    expect(screen.queryByRole('button', { name: 'Antworten aus CSV übernehmen' })).toBeNull();
-    expect(screen.getByRole('button', { name: 'Als CSV exportieren' })).toBeDefined();
-    // the links stay: reading is every role's
-    expect(screen.getAllByTestId('question-link').length).toBeGreaterThan(0);
-    cleanup();
-    setup('/projects/demo/open-questions', { role: 'owner', health: DEMO });
-    expect(await rows()).toHaveLength(6);
-    expect(screen.queryAllByTestId('question-actions')).toEqual([]);
-    expect(screen.queryByRole('button', { name: 'Antworten aus CSV übernehmen' })).toBeNull();
+  it('keeps the id in „Weitere Aktionen“ as „Kennung kopieren“', async () => {
+    // user-event puts a clipboard of its own on `navigator`
+    const { user } = setup('/projects/demo/open-questions');
+    const [, call] = await rows();
+    await user.click(within(call!).getByTestId('question-more-actions'));
+    expect((await screen.findAllByRole('menuitem')).map((i) => i.textContent)).toEqual([
+      'Liegt außerhalb der Landschaft',
+      'Notiz hinzufügen',
+      'Kennung kopieren',
+    ]);
+    await user.click(screen.getByRole('menuitem', { name: 'Kennung kopieren' }));
+    expect(await findToast('Kennung kopiert')).toBeDefined();
+    expect(await navigator.clipboard.readText()).toBe('q-00000000000000a3');
   });
 
-  it('adds a note to a held relation: no kinds, the hint, the agents sentence, the live warning; the item stays open', async () => {
+  it('hides every action from viewers and on the read-only demo', async () => {
+    setup('/projects/demo/open-questions', { role: 'viewer' });
+    expect(await rows()).toHaveLength(4);
+    expect(screen.queryAllByTestId('question-actions')).toEqual([]);
+    expect(screen.queryByRole('button', { name: /Antworten aus CSV übernehmen/ })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Für den Kunden exportieren …' })).toBeDefined();
+    // the subjects stay links: reading is every role's
+    expect(screen.getAllByTestId('question-subject').length).toBe(4);
+    cleanup();
+    setup('/projects/demo/open-questions', { role: 'owner', health: DEMO });
+    expect(await rows()).toHaveLength(4);
+    expect(screen.queryAllByTestId('question-actions')).toEqual([]);
+    expect(screen.queryByRole('button', { name: /Antworten aus CSV übernehmen/ })).toBeNull();
+  });
+
+  it('answers a held relation in the note dialog: no kinds, the hint, the agents sentence, the live warning; the hold stays', async () => {
     const list = items.map((q) => ({ ...q }));
     const { calls, user } = setup('/projects/demo/open-questions', {
       list,
@@ -734,7 +910,7 @@ describe('notes (M6 S5a, S5c-1)', () => {
     });
     const [held] = await rows();
     const box = await openNote(user, held!);
-    expect(within(box).getByRole('heading', { name: 'Notiz hinzufügen' })).toBeDefined();
+    expect(within(box).getByRole('heading', { name: 'Antwort geben' })).toBeDefined();
     expect(within(box).getByTestId('note-question').textContent).toContain(items[0]!.text);
     // no answer kinds any more (M6 §4.8 b)
     expect(within(box).queryAllByRole('radio')).toEqual([]);
@@ -742,21 +918,20 @@ describe('notes (M6 S5a, S5c-1)', () => {
     expect(within(box).getByTestId('note-hint').textContent).toBe(
       'Keine Namen oder anderen personenbezogenen Daten.',
     );
+    // A hold's note is its answer: „Antwort“ throughout the dialog (UX2b review).
     expect(within(box).getByTestId('note-permanent').textContent).toBe(
-      'Eine gespeicherte Notiz lässt sich nicht mehr ändern oder löschen.',
+      'Eine gespeicherte Antwort lässt sich nicht mehr ändern oder löschen.',
     );
     const effect = within(box).getByTestId('note-effect').textContent;
-    expect(effect).toContain(
-      'Die Agenten berücksichtigen die Notiz, sobald das Paar neu bewertet wird.',
+    expect(effect).toBe(
+      'Die Antwort wird an der Relation gespeichert. Die Agenten berücksichtigen die Antwort, ' +
+        'sobald sie diese Relation neu bewerten. Die Vormerkung bleibt, bis du sie entscheidest.',
     );
-    expect(effect).toContain('Die Notiz wird an der Relation gespeichert');
-    expect(effect).toContain(
-      'Die Vormerkung bleibt; die Entscheidung triffst du mit „Entscheiden“.',
-    );
-    const save = within(box).getByRole('button', { name: 'Notiz speichern' });
+    expect(box.textContent).not.toMatch(/Notiz|Paar/);
+    const save = within(box).getByRole('button', { name: 'Antwort speichern' });
     expect(save).toHaveProperty('disabled', true);
 
-    const field = within(box).getByLabelText('Deine Notiz');
+    const field = within(box).getByLabelText('Deine Antwort');
     expect(document.activeElement).toBe(field);
     expect(field.getAttribute('maxlength')).toBe('2000');
     await user.type(field, 'Die Buchhaltung, Rückfragen an max.muster@example.com');
@@ -772,8 +947,8 @@ describe('notes (M6 S5a, S5c-1)', () => {
     expect(warning.textContent).toBe('');
     await user.click(save);
 
-    expect((await findToast('Notiz gespeichert')).textContent).toContain(
-      'Gespeichert als Notiz an der Relation. Die Frage bleibt offen',
+    expect((await findToast('Antwort gespeichert')).textContent).toContain(
+      'Gespeichert an der Relation. Die Vormerkung bleibt, bis du sie entscheidest.',
     );
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     const post = calls.find((c) => c.method === 'POST' && c.path.endsWith('/answers'));
@@ -782,22 +957,23 @@ describe('notes (M6 S5a, S5c-1)', () => {
     expect(post?.body).toEqual({ text: 'Die Buchhaltung verschickt sie.' });
 
     const [noted] = await rows();
-    await waitFor(() => expect(within(noted!).queryByTestId('question-answer')).not.toBeNull());
-    // a note informs: the item stays open
-    expect(noted!.dataset['state']).toBe('open');
-    expect(within(noted!).queryByTestId('question-state')).toBeNull();
-    const answer = within(noted!).getByTestId('question-answer');
-    expect(answer.dataset['target']).toBe('relation-note');
-    expect(answer.dataset['role']).toBe('note');
-    expect(within(answer).getByTestId('question-answer-kind').textContent).toBe('Notiz');
-    expect(answer.textContent).toContain('als Notiz an der Relation');
-    expect(within(answer).getByTestId('question-answer-text').textContent).toBe(
-      'Die Buchhaltung verschickt sie.',
-    );
-    // the focus goes back to the menu that opened the dialog
+    // an answer informs: the item stays open, the latest answer on the card
     await waitFor(() =>
-      expect(document.activeElement).toBe(within(noted!).getByTestId('question-more-actions')),
+      expect(within(noted!).getByTestId('question-note').textContent).toBe(
+        'Antwort vom 16.10.2026: Die Buchhaltung verschickt sie.',
+      ),
     );
+    expect(noted!.dataset['state']).toBe('open');
+    // one answer needs no „Verlauf“
+    expect(within(noted!).queryByTestId('question-answers')).toBeNull();
+    // answered, the decision is next: „Jetzt entscheiden“ leads, „Antwort ergänzen“ beside it,
+    // and the focus goes back to the button that opened the dialog, now that one
+    const actions = within(noted!).getAllByTestId('question-action');
+    expect(actions.map((a) => [a.textContent, a.dataset['primary']])).toEqual([
+      ['Jetzt entscheiden', 'true'],
+      ['Antwort ergänzen', 'false'],
+    ]);
+    await waitFor(() => expect(document.activeElement?.textContent).toBe('Antwort ergänzen'));
   });
 
   it('points at the model’s source for every other subject, and says the item stays open', async () => {
@@ -819,18 +995,22 @@ describe('notes (M6 S5a, S5c-1)', () => {
       await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
       return text;
     };
-    const finding = await effect(all[2]!);
+    const finding = await effect(all[1]!);
     expect(finding).toContain('ergänze es im Quellwerkzeug und importiere das Modell erneut');
     expect(finding).toContain('Die Frage bleibt offen; erledigt wird sie durch ihre Aktion.');
     expect(finding).not.toContain('Die Agenten berücksichtigen');
-    expect(await effect(all[3]!)).toContain('Fehlt ein Modell, importiere es.');
+    expect(await effect(all[2]!)).toContain('Fehlt ein Modell, importiere es.');
     // A held placement homes its process: the note makes nothing due, the hold stays.
-    const plc = await effect(all[6]!);
-    expect(plc).toContain('Die Notiz wird an der Platzierung gespeichert');
+    const plc = await effect(all[4]!);
+    expect(plc).toContain('Die Antwort wird an der Platzierung gespeichert');
     expect(plc).not.toContain('fällig');
     expect(plc).toContain(
-      'Die Platzierung bleibt vorgemerkt; solange bekommt kein Agent den Prozess.',
+      'Die Platzierung bleibt vorgemerkt, bis du sie entscheidest; solange bekommt kein Agent den Prozess.',
     );
+    // its „Jetzt entscheiden“ opens the chain at the placement
+    expect(
+      within(all[4]!).getByRole('link', { name: 'Jetzt entscheiden' }).getAttribute('href'),
+    ).toBe('/projects/demo/value-chain?placement=plc_01HELD');
   });
 
   it('starts every dialog afresh, says when a note was there already, and keeps the text on a refusal', async () => {
@@ -857,11 +1037,12 @@ describe('notes (M6 S5a, S5c-1)', () => {
             : record(call),
       },
     });
-    let box = await openNote(user, (await rows())[2]!);
+    let box = await openNote(user, (await rows())[1]!);
+    expect(within(box).getByRole('heading', { name: 'Notiz hinzufügen' })).toBeDefined();
     await user.type(within(box).getByLabelText('Deine Notiz'), 'Der Zahlungsdienst.');
     await user.click(within(box).getByRole('button', { name: 'Notiz speichern' }));
     expect((await within(box).findByTestId('note-error')).textContent).toContain(
-      'Validation failed: text: too long',
+      'Die Eingabe passt so nicht.',
     );
     expect(within(box).getByLabelText<HTMLTextAreaElement>('Deine Notiz').value).toBe(
       'Der Zahlungsdienst.',
@@ -873,7 +1054,7 @@ describe('notes (M6 S5a, S5c-1)', () => {
 
     // the next dialog starts empty and says the item has a note; the same note again
     // changes nothing
-    box = await openNote(user, (await rows())[2]!);
+    box = await openNote(user, (await rows())[1]!);
     expect(within(box).getByLabelText<HTMLTextAreaElement>('Deine Notiz').value).toBe('');
     expect(within(box).getByTestId('note-before').textContent).toBe(
       'Schon eine Notiz. Deine kommt hinzu; die bisherige bleibt stehen.',
@@ -891,7 +1072,7 @@ describe('notes (M6 S5a, S5c-1)', () => {
           json({ title: 'Not Found', status: 404, code: 'not-found' }, 404),
       },
     });
-    const box = await openNote(user, (await rows())[4]!);
+    const box = await openNote(user, (await rows())[3]!);
     await user.type(within(box).getByLabelText('Deine Notiz'), 'Ein externer Spediteur.');
     await user.click(within(box).getByRole('button', { name: 'Notiz speichern' }));
     expect((await findToast('Frage gibt es so nicht mehr')).textContent).toContain(
@@ -900,10 +1081,9 @@ describe('notes (M6 S5a, S5c-1)', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   });
 
-  it('shows notes and outside marks as plain text, and the Status filter finds the marked items', async () => {
-    const marked = openQuestion({
+  it('shows notes and withdrawn marks as plain text under „Verlauf“, and a marked item under „Erledigte zeigen“', async () => {
+    const noted = openQuestion({
       ...items[2]!,
-      state: 'answered',
       answers: [
         openQuestionAnswer({ questionId: items[2]!.id, text: 'Erst <b>so</b>', seq: 21 }),
         // S5a's „Wird im Modell ergänzt“ shows as a note
@@ -923,76 +1103,79 @@ describe('notes (M6 S5a, S5c-1)', () => {
           seq: 23,
           withdrawal: { by: 'owner', seq: 24, at: '2026-10-16T11:00:00.000Z' },
         }),
+      ],
+    });
+    const marked = openQuestion({
+      ...items[4]!,
+      state: 'answered',
+      answers: [
         openQuestionAnswer({
           id: 'oqa_04',
-          questionId: items[2]!.id,
+          questionId: items[4]!.id,
           kind: 'outside-landscape',
           role: 'outside-mark',
-          text: 'Ein externer Zahlungsdienst.',
+          text: 'Ein externer Spediteur.',
           seq: 25,
         }),
       ],
     });
-    const list = items.map((q) => (q.id === marked.id ? marked : q));
-    const { router, user } = setup('/projects/demo/open-questions', { list });
-    const row = (await rows())[2]!;
-    expect(row.dataset['state']).toBe('answered');
-    expect(within(row).getByTestId('question-state').textContent).toBe('Erledigt (außerhalb)');
-    const answers = within(row).getAllByTestId('question-answer');
+    const list = items.map((q) => (q.id === noted.id ? noted : q.id === marked.id ? marked : q));
+    const { user } = setup('/projects/demo/open-questions', { list });
+    expect(await ids()).toEqual(['a1', 'a3', 'a4']);
+    const row = (await rows())[1]!;
+    expect(within(row).getByTestId('question-note').textContent).toBe(
+      'Notiz vom 16.10.2026: Wird modelliert.',
+    );
+    const history = within(row).getByTestId('question-answers');
+    expect(history.hasAttribute('open')).toBe(false);
+    expect(history.querySelector('summary')?.textContent).toBe('Verlauf (3)');
+    const answers = within(history).getAllByTestId('question-answer');
     expect(answers.map((a) => [a.dataset['role'], a.dataset['withdrawn']])).toEqual([
       ['note', 'false'],
       ['note', 'false'],
       ['outside-mark', 'true'],
-      ['outside-mark', 'false'],
     ]);
-    expect(answers.map((a) => within(a).getByTestId('question-answer-kind').textContent)).toEqual([
-      'Notiz',
-      'Notiz',
-      'Liegt außerhalb der Landschaft',
-      'Liegt außerhalb der Landschaft',
-    ]);
-    expect(within(row).getByTestId('question-answers').textContent).toContain(
-      '2 Notizen · Als außerhalb markiert',
-    );
     expect(answers[0]!.querySelector('b')).toBeNull();
     expect(within(answers[0]!).getByTestId('question-answer-text').textContent).toBe(
       'Erst <b>so</b>',
     );
-    expect(answers[0]!.textContent).toContain('bei der Frage');
-    // a mark without a note has no text; a withdrawn one says by whom
-    expect(within(answers[2]!).queryByTestId('question-answer-text')).toBeNull();
     expect(within(answers[2]!).getByTestId('question-answer-withdrawn').textContent).toContain(
       'zurückgenommen von owner',
     );
-    const at = within(answers[0]!).getByTestId('question-answer-at');
-    expect(at.getAttribute('datetime')).toBe('2026-10-16T10:00:00.000Z');
-    expect(at.getAttribute('title')).toBe('Projektstand s21');
-    // a marked item offers to take the mark back instead of marking again
-    expect(within(row).getByTestId('question-withdraw-mark').textContent).toBe(
+    // no event numbers, not even in a tooltip
+    expect(history.innerHTML).not.toMatch(/Projektstand s\d/);
+
+    // the marked item: one line under „Erledigte zeigen“, its mark taken back from there
+    const done = await openGroup(user, 'open-questions-done');
+    expect(done.querySelector('summary')?.textContent).toBe('Erledigte zeigen (1)');
+    const line = within(done).getByTestId('open-question');
+    expect(line.dataset['state']).toBe('answered');
+    expect(line.textContent).toContain(
+      'Außerhalb der Landschaft·Pool „Participant_Carrier“·Ein externer Spediteur.',
+    );
+    expect(within(line).getByTestId('question-withdraw-mark').textContent).toBe(
       'Markierung zurücknehmen',
     );
-
-    const state = screen.getByLabelText('Status');
-    expect(
-      within(state)
-        .getAllByRole('option')
-        .map((o) => o.textContent),
-    ).toEqual(['Alle', 'Offen (5)', 'Erledigt (außerhalb) (1)']);
-    await user.selectOptions(state, 'answered');
-    await waitFor(() => expect(router.state.location.search).toEqual({ state: 'answered' }));
-    expect(await ids()).toEqual(['a3']);
-    await user.selectOptions(state, 'open');
-    expect(await ids()).toEqual(['a1', 'a2', 'a4', 'a5', 'a6']);
   });
 
-  it('adds a note in the model view’s section as well', async () => {
+  it('opens „Erledigte zeigen“ from a link with `state=answered`', async () => {
+    const marked = openQuestion({ ...items[4]!, state: 'answered' });
+    setup('/projects/demo/open-questions?state=answered', {
+      list: items.map((q) => (q.id === marked.id ? marked : q)),
+    });
+    const done = await screen.findByTestId('open-questions-done');
+    expect(done.hasAttribute('open')).toBe(true);
+    expect(within(done).getByTestId('open-question').dataset['questionId']).toBe(marked.id);
+  });
+
+  it('adds a note in the model view’s „Fragen“ as well', async () => {
     const list = items.map((q) => ({ ...q }));
     const { calls, user } = setup('/projects/demo/models/a/order', {
       list,
       routes: { ...noteRoutes(list), [`GET ${BASE}`]: listRoute(list) },
     });
     const section = await screen.findByTestId('model-open-questions');
-    await waitFor(() => expect(within(section).getAllByTestId('open-question')).toHaveLength(4));
+    await waitFor(() => expect(within(section).getAllByTestId('open-question')).toHaveLength(2));
     const call = within(section)
       .getAllByTestId('open-question')
       .find((r) => r.dataset['questionId'] === 'q-00000000000000a3')!;
@@ -1009,7 +1192,7 @@ describe('notes (M6 S5a, S5c-1)', () => {
         within(section)
           .getAllByTestId('open-question')
           .find((r) => r.dataset['questionId'] === 'q-00000000000000a3')
-          ?.querySelector('[data-testid=question-answer]'),
+          ?.querySelector('[data-testid=question-note]'),
       ).not.toBeNull(),
     );
   });
@@ -1017,7 +1200,7 @@ describe('notes (M6 S5a, S5c-1)', () => {
   it('hides the actions in the model view from viewers', async () => {
     setup('/projects/demo/models/a/order', { role: 'viewer' });
     const section = await screen.findByTestId('model-open-questions');
-    await waitFor(() => expect(within(section).getAllByTestId('open-question')).toHaveLength(4));
+    await waitFor(() => expect(within(section).getAllByTestId('open-question')).toHaveLength(2));
     expect(within(section).queryAllByTestId('question-actions')).toEqual([]);
   });
 });
@@ -1054,7 +1237,7 @@ describe('„Antworten aus CSV übernehmen“ (M6 S5a, S5c-1)', () => {
       routes: answerRoutes(list),
     });
     await rows();
-    await user.click(screen.getByRole('button', { name: 'Antworten aus CSV übernehmen' }));
+    await user.click(screen.getByRole('button', { name: 'Antworten aus CSV übernehmen …' }));
     const box = await dialog();
     const confirm = within(box).getByTestId('answer-sheet-confirm');
     expect(confirm).toHaveProperty('disabled', true);
@@ -1161,19 +1344,16 @@ describe('„Antworten aus CSV übernehmen“ (M6 S5a, S5c-1)', () => {
     expect(within(box).queryByTestId('answer-sheet-personal-data')).toBeNull();
     await user.click(within(box).getByRole('button', { name: 'Schließen' }));
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
-    // the note leaves the held relation open; the old sheet's outside mark marks the call
-    await waitFor(async () =>
-      expect(
-        (await rows())
-          .filter((r) => r.dataset['state'] === 'answered')
-          .map((r) => r.dataset['questionId']),
-      ).toEqual(['q-00000000000000a3']),
+    // the note leaves the held relation open; the old sheet's outside mark marks the call,
+    // which leaves the cards for „Erledigte zeigen“
+    await waitFor(async () => expect(await ids()).toEqual(['a1', 'a4', 'a5']));
+    expect(within((await rows())[0]!).getByTestId('question-note').textContent).toContain(
+      'Die Buchhaltung, max@example.com',
     );
-    expect(
-      within((await rows())[0]!)
-        .getAllByTestId('question-answer')
-        .map((a) => a.dataset['role']),
-    ).toEqual(['note']);
+    const done = await openGroup(user, 'open-questions-done');
+    expect(within(done).getByTestId('open-question').dataset['questionId']).toBe(
+      'q-00000000000000a3',
+    );
   });
 
   it('says in the dialog that every filled answer becomes a note, without „Antwortart“', async () => {
@@ -1181,7 +1361,7 @@ describe('„Antworten aus CSV übernehmen“ (M6 S5a, S5c-1)', () => {
     await rows();
     await userEvent
       .setup()
-      .click(screen.getByRole('button', { name: 'Antworten aus CSV übernehmen' }));
+      .click(screen.getByRole('button', { name: 'Antworten aus CSV übernehmen …' }));
     const box = await dialog();
     expect(box.textContent).toContain('in der die Spalte „Antwort“ ausgefüllt ist');
     expect(box.textContent).toContain('Jede Antwort wird als Notiz an ihrer Frage gespeichert');
@@ -1191,7 +1371,7 @@ describe('„Antworten aus CSV übernehmen“ (M6 S5a, S5c-1)', () => {
   it('refuses a file without the export’s columns before sending anything', async () => {
     const { calls, user } = setup('/projects/demo/open-questions');
     await rows();
-    await user.click(screen.getByRole('button', { name: 'Antworten aus CSV übernehmen' }));
+    await user.click(screen.getByRole('button', { name: 'Antworten aus CSV übernehmen …' }));
     const box = await dialog();
     await user.upload(
       within(box).getByLabelText('CSV-Datei'),
@@ -1211,7 +1391,7 @@ describe('„Antworten aus CSV übernehmen“ (M6 S5a, S5c-1)', () => {
       routes: answerRoutes(list),
     });
     await rows();
-    await user.click(screen.getByRole('button', { name: 'Antworten aus CSV übernehmen' }));
+    await user.click(screen.getByRole('button', { name: 'Antworten aus CSV übernehmen …' }));
     const box = await dialog();
     await user.upload(within(box).getByLabelText('CSV-Datei'), sheet([['q-00000000000000a1', '']]));
     expect(await within(box).findByTestId('answer-sheet-nothing')).toBeDefined();
@@ -1228,7 +1408,7 @@ describe('„Antworten aus CSV übernehmen“ (M6 S5a, S5c-1)', () => {
   it('refuses a sheet saved as ANSI before sending anything, so no umlaut is stored as „�“', async () => {
     const { calls, user } = setup('/projects/demo/open-questions');
     await rows();
-    await user.click(screen.getByRole('button', { name: 'Antworten aus CSV übernehmen' }));
+    await user.click(screen.getByRole('button', { name: 'Antworten aus CSV übernehmen …' }));
     const box = await dialog();
     // „Prüfung“ in Windows-1252, as German Excel saves „CSV (Trennzeichen-getrennt)“
     const bytes = new Uint8Array([
@@ -1261,7 +1441,7 @@ describe('„Antworten aus CSV übernehmen“ (M6 S5a, S5c-1)', () => {
       routes: answerRoutes(list),
     });
     await rows();
-    await user.click(screen.getByRole('button', { name: 'Antworten aus CSV übernehmen' }));
+    await user.click(screen.getByRole('button', { name: 'Antworten aus CSV übernehmen …' }));
     const box = await dialog();
     await user.upload(
       within(box).getByLabelText('CSV-Datei'),
@@ -1291,7 +1471,7 @@ describe('„Antworten aus CSV übernehmen“ (M6 S5a, S5c-1)', () => {
     const list = items.map((q) => ({ ...q }));
     const { user } = setup('/projects/demo/open-questions', { list, routes: answerRoutes(list) });
     await rows();
-    await user.click(screen.getByRole('button', { name: 'Antworten aus CSV übernehmen' }));
+    await user.click(screen.getByRole('button', { name: 'Antworten aus CSV übernehmen …' }));
     const box = await dialog();
     await user.upload(
       within(box).getByLabelText('CSV-Datei'),

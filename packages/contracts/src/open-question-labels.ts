@@ -1,7 +1,7 @@
 /**
  * The German labels of the open questions' kinds and sources (M6 §4.4), the
- * kinds that ask nothing themselves, the answer kinds and roles (M6 §4.5,
- * §4.8 b), the states and the actions (M6 §4.8 a), shared by the server
+ * groups (UX2a), the kinds that ask nothing themselves, the answer kinds and
+ * roles (M6 §4.5, §4.8 b), the states and the actions (M6 §4.8 a), shared by the server
  * (the export's column `Art` and Markdown headings, the actions' labels) and
  * the web's tab „Offene Fragen“ and model view, so the sheet, the tab and the
  * CLI say the same. Zod-free on purpose: the web imports it at runtime as
@@ -12,6 +12,7 @@ import type {
   OpenQuestionAnswerKind,
   OpenQuestionAnswerRole,
   OpenQuestionAnswerTarget,
+  OpenQuestionGroup,
   OpenQuestionKind,
   OpenQuestionSource,
   OpenQuestionState,
@@ -20,10 +21,10 @@ import type {
 /** German label of each kind. */
 export const OPEN_QUESTION_KIND_LABELS: Readonly<Record<OpenQuestionKind, string>> = {
   'call-target-unknown': 'Aufrufziel unbekannt',
-  'call-target-dynamic': 'Aufrufziel erst zur Laufzeit bekannt',
+  'call-target-dynamic': 'Ziel wird erst beim Ausführen bestimmt',
   'duplicate-process-id': 'Prozess-ID mehrfach vergeben',
   // `dangling-throw` and `unmatched-catch` cover message and signal endpoints alike.
-  'message-partner-missing': 'Nachrichten- oder Signalpartner fehlt',
+  'message-partner-missing': 'Partner der Nachricht fehlt',
   held: 'Vorgemerkt',
   'agent-question': 'Frage eines Agenten',
   'placement-unsure': 'Einordnung unsicher',
@@ -58,6 +59,18 @@ export const OPEN_QUESTION_SOURCE_LABELS: Readonly<Record<OpenQuestionSource, st
 };
 
 /**
+ * German label of each group (UX2a): the headings of the tab „Offene Fragen“
+ * and the export's filter line. `proposal` items are decided on the value
+ * chain and not listed in the tab.
+ */
+export const OPEN_QUESTION_GROUP_LABELS: Readonly<Record<OpenQuestionGroup, string>> = {
+  ask: 'Zu klären',
+  agent: 'Fragen der Agenten',
+  proposal: 'Auf der Kette zu prüfen',
+  info: 'Zur Information',
+};
+
+/**
  * Kinds that ask nothing themselves (a submission's summary, a descriptive
  * model): the list ranks them last, the CSV for the customer leaves them out,
  * the tab marks them „Zur Information“.
@@ -74,11 +87,12 @@ export function isInformationalKind(kind: OpenQuestionKind): boolean {
 
 /**
  * German label of each state (M6 §4.8 b): `answered` means a live outside
- * mark, so the Status filter calls it „Erledigt (außerhalb)“.
+ * mark, „Außerhalb der Landschaft“ (UX2b's done card; „Erledigt (außerhalb)“
+ * before).
  */
 export const OPEN_QUESTION_STATE_LABELS: Readonly<Record<OpenQuestionState, string>> = {
   open: 'Offen',
-  answered: 'Erledigt (außerhalb)',
+  answered: 'Außerhalb der Landschaft',
 };
 
 /** German label of how a stored answer counts (M6 §4.8 b). */
@@ -88,12 +102,47 @@ export const OPEN_QUESTION_ANSWER_ROLE_LABELS: Readonly<Record<OpenQuestionAnswe
 };
 
 /**
+ * A note on a hold is its answer (UX2b: „Antwort geben“ answers a hold), so
+ * the tab, the review screen and the export call it „Antwort“.
+ */
+export const HOLD_ANSWER_LABEL = 'Antwort';
+
+/** The label of a stored answer on an item of this kind: a hold's notes are its answers. */
+export function answerRoleLabel(kind: OpenQuestionKind, role: OpenQuestionAnswerRole): string {
+  return kind === 'held' && role === 'note'
+    ? HOLD_ANSWER_LABEL
+    : OPEN_QUESTION_ANSWER_ROLE_LABELS[role];
+}
+
+/**
+ * Sources whose texts are a human's or an agent's, verbatim (plain text,
+ * never from code). Where such an item has a `detail` (an unsure verdict, a
+ * coded no-link), it is the agent's reason: the tab and the export attribute
+ * it ({@link AGENT_WORDS}), so it never reads as analyzr's own statement.
+ */
+export const VERBATIM_OPEN_QUESTION_SOURCES: readonly OpenQuestionSource[] = [
+  'hold',
+  'agent-question',
+  'unsure',
+  'no-link',
+  'summary',
+];
+
+/** Whether an item's texts are verbatim ({@link VERBATIM_OPEN_QUESTION_SOURCES}). */
+export function isVerbatimSource(source: OpenQuestionSource): boolean {
+  return VERBATIM_OPEN_QUESTION_SOURCES.includes(source);
+}
+
+/** The attribution before an agent's verbatim reason: „Laut Agent: …“. */
+export const AGENT_WORDS = 'Laut Agent';
+
+/**
  * The German labels of the actions (M6 §4.8 a), by what the action does:
  * the read model puts them on each item's actions, so the tab, the model
  * view and the CLI say the same.
  */
 export const OPEN_QUESTION_ACTION_LABELS = {
-  /** `link`: a process or endpoint picker. */
+  /** `link`: a process or endpoint picker, whenever it is the item's primary action. */
   link: 'Verknüpfen mit …',
   /** `link` on `call-target-dynamic`: several possible targets. */
   linkTargets: 'Mögliche Ziele verknüpfen …',
@@ -106,11 +155,11 @@ export const OPEN_QUESTION_ACTION_LABELS = {
   /** `place` on `@outside`. */
   placeOutside: 'Gehört zu keinem Schritt',
   /** `place` on a step item: a process picker. */
-  placeProcess: 'Prozess zuordnen …',
-  /** `decide` on a hold or an agent's question. */
-  decide: 'Entscheiden',
-  /** `decide` on a proposed placement. */
-  decideProposal: 'Vorschlag prüfen',
+  placeProcess: 'Prozess platzieren …',
+  /** `decide` on a hold or an agent's question (UX2a: the web opens the proposal). */
+  decide: 'Vorschlag prüfen',
+  /** `decide` on the value chain's proposed placements (`proposal` items, UX2a): opens the chain. */
+  reviewOnChain: 'Auf der Kette prüfen',
   /** `choose-copy`. */
   chooseCopy: 'Gültige Kopie wählen …',
   /** `outside`. */
@@ -119,20 +168,18 @@ export const OPEN_QUESTION_ACTION_LABELS = {
   requeue: 'Erneut einplanen',
   /** `fix-link`. */
   fixLink: 'Link korrigieren',
-  /** `link` next to the primary `amend` on a call without a target (S5c-2). */
+  /**
+   * `link` as the second action beside a primary `amend` (a call without a target, a
+   * nameless message or signal endpoint): the two outcomes side by side, the web joins
+   * them into one entry (UX4). A primary link is always „Verknüpfen mit …“.
+   */
   linkOnly: 'Nur verknüpfen …',
-  /** `amend` `call-target` on a call without a target. */
-  amendCallTarget: 'Aufrufziel eintragen …',
-  /** `amend` `call-target` on a call whose target names no process. */
-  amendCallTargetChange: 'Aufrufziel im Modell ändern …',
-  /** `amend` `message-name` on a message endpoint without a name. */
-  amendMessageName: 'Nachrichtennamen eintragen …',
-  /** `amend` `message-name` on a named message endpoint. */
-  amendMessageNameChange: 'Nachrichtennamen ändern …',
-  /** `amend` `message-name` on a signal endpoint without a name. */
-  amendSignalName: 'Signalnamen eintragen …',
-  /** `amend` `message-name` on a named signal endpoint. */
-  amendSignalNameChange: 'Signalnamen ändern …',
+  /** `amend` `call-target`: a call without a target, or one whose target names no process. */
+  amendCallTarget: 'Ziel im Modell eintragen …',
+  /** `amend` `message-name` on a message endpoint, with or without a name. */
+  amendMessageName: 'Nachrichtennamen im Modell eintragen …',
+  /** `amend` `message-name` on a signal endpoint, with or without a name. */
+  amendSignalName: 'Signalnamen im Modell eintragen …',
   /** `amend` `event-name` on unnamed start or end events. */
   amendEventName: 'Namen eintragen …',
   /** `amend` `process-documentation`. */

@@ -308,7 +308,12 @@ function PipelineStage({
         }
       },
       onError: (error) =>
-        toast({ tone: 'danger', title: 'Nicht eingeplant', description: errorMessage(error) }),
+        toast({
+          tone: 'danger',
+          title: 'Nicht eingeplant',
+          description: errorMessage(error),
+          error,
+        }),
     });
   }
 

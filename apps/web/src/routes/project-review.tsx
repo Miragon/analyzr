@@ -1,16 +1,15 @@
-import type { AnalysisTask, Fact, Model, ModelStage, Tier } from '@analyzr/client';
+import type { Fact, Tier } from '@analyzr/client';
 import { useQuery } from '@tanstack/react-query';
 import { Link, createRoute } from '@tanstack/react-router';
-import { CheckCheckIcon, FilterXIcon, MapIcon, PlugIcon, RotateCcwIcon } from 'lucide-react';
+import { CheckCheckIcon, FilterXIcon, MapIcon, XIcon } from 'lucide-react';
 import { useMemo, useState } from 'react';
 
-import { StageBadge } from '@/components/badges';
+import { AgentStart } from '@/components/agent-start';
+import { ErrorText } from '@/components/error-text';
 import { BulkAcceptDialog } from '@/components/review/bulk-accept-dialog';
 import { HeldList } from '@/components/review/held-list';
 import { NoLinkList } from '@/components/review/no-link-list';
-import { PlainText } from '@/components/review/plain-text';
 import { QueueTable } from '@/components/review/queue-table';
-import { StageBar } from '@/components/review/stage-bar';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import {
@@ -23,27 +22,13 @@ import {
 import { Field, FieldLabel } from '@/components/ui/field';
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
 import { Skeleton } from '@/components/ui/skeleton';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { errorMessage } from '@/lib/api';
+
 import { useAutoAcceptIndex } from '@/lib/auto-accept-actions';
 import { nameUsage } from '@/lib/generic-names';
-import { STAGES, TIERS, TIER_ORDER, formatDateTime } from '@/lib/labels';
+import { STAGES, TIERS, TIER_ORDER } from '@/lib/labels';
 import { useProjectPermissions } from '@/lib/permissions';
-import {
-  analysesQuery,
-  landscapeQuery,
-  modelsQuery,
-  noLinksQuery,
-  valueChainQuery,
-} from '@/lib/queries';
+import { landscapeQuery, modelsQuery, noLinksQuery, valueChainQuery } from '@/lib/queries';
 import {
   heldList,
   noLinkList,
@@ -53,8 +38,6 @@ import {
   stageCounts,
   type QueueFilters,
 } from '@/lib/review';
-import { useRequeue } from '@/lib/review-actions';
-import { toast } from '@/lib/toast';
 import { useProjectFacts } from '@/lib/use-project-facts';
 import { openPlacementCount } from '@/lib/value-chain';
 
@@ -77,162 +60,6 @@ export const projectReviewRoute = createRoute({
   }),
   component: ReviewInbox,
 });
-
-/** Tasks of the stages where the task says more than the model (who works, why it failed). */
-const TASK_STATE: Partial<Record<ModelStage, AnalysisTask['state']>> = {
-  waiting_for_agent: 'queued',
-  agent_working: 'claimed',
-  agent_failed: 'failed',
-};
-
-function StageModels({
-  project,
-  stage,
-  models,
-  onModel,
-  canRequeue,
-}: {
-  project: string;
-  stage: ModelStage;
-  models: readonly Model[];
-  onModel: (key: string) => void;
-  /** Offer „Erneut einplanen“ (editors and owners; never on the read-only demo). */
-  canRequeue: boolean;
-}) {
-  const state = TASK_STATE[stage];
-  const tasks = useQuery({ ...analysesQuery(project, state ?? 'queued'), enabled: !!state });
-  const requeue = useRequeue(project);
-  const inStage = models
-    .filter((m) => m.stage === stage)
-    .sort((a, b) => a.key.localeCompare(b.key));
-  const taskOf = new Map<string, AnalysisTask>();
-  for (const t of tasks.data ?? []) {
-    if (t.modelKey !== null && !taskOf.has(t.modelKey)) taskOf.set(t.modelKey, t);
-  }
-
-  if (inStage.length === 0) {
-    return (
-      <p className="text-sm text-muted-foreground" data-testid="stage-models">
-        Kein Modell in der Phase „{STAGES[stage].label}“.
-      </p>
-    );
-  }
-  return (
-    <div className="rounded-xl border bg-card" data-testid="stage-models">
-      <Table aria-label={`Modelle: ${STAGES[stage].label}`}>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Modell</TableHead>
-            <TableHead>Phase</TableHead>
-            <TableHead className="text-right">Offen</TableHead>
-            <TableHead>Analyse</TableHead>
-            <TableHead>
-              <span className="sr-only">Aktion</span>
-            </TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {inStage.map((m) => {
-            const task = taskOf.get(m.key);
-            // Nothing runs on a timer: until an agent asks for work again, an
-            // expired lease still says "Agent arbeitet". Requeue it from here.
-            const expired =
-              stage === 'agent_working' &&
-              task?.leaseUntil != null &&
-              Date.parse(task.leaseUntil) < tasks.dataUpdatedAt;
-            return (
-              <TableRow key={m.id} data-testid="stage-model-row">
-                <TableCell className="whitespace-normal">
-                  <Link
-                    to="/projects/$project/models/$"
-                    params={{ project, _splat: m.key }}
-                    className="font-mono text-[13px] text-link hover:underline"
-                  >
-                    {m.key}
-                  </Link>
-                  {m.name ? <p className="text-xs text-muted-foreground">{m.name}</p> : null}
-                </TableCell>
-                <TableCell>
-                  <StageBadge stage={m.stage} />
-                </TableCell>
-                <TableCell className="text-right tabular-nums">{m.openItems}</TableCell>
-                <TableCell className="text-xs whitespace-normal text-muted-foreground">
-                  {!state ? (
-                    '–'
-                  ) : !task ? (
-                    tasks.isPending ? (
-                      <Skeleton className="h-4 w-32" />
-                    ) : (
-                      '–'
-                    )
-                  ) : stage === 'agent_working' ? (
-                    <>
-                      <span className="font-mono">{task.claimedBy ?? 'Agent'}</span>, Versuch{' '}
-                      {task.attempts},{' '}
-                      {expired ? (
-                        <span className="text-warning" data-testid="lease-expired">
-                          Lease abgelaufen am{' '}
-                          {task.leaseUntil ? formatDateTime(task.leaseUntil) : '–'}
-                        </span>
-                      ) : (
-                        <>Lease bis {task.leaseUntil ? formatDateTime(task.leaseUntil) : '–'}</>
-                      )}
-                    </>
-                  ) : stage === 'agent_failed' ? (
-                    <>
-                      Nach {task.attempts} Versuchen gescheitert
-                      {task.lastError ? (
-                        <>
-                          : <PlainText as="span" text={task.lastError} />
-                        </>
-                      ) : null}
-                    </>
-                  ) : (
-                    <>Eingeplant am {formatDateTime(task.createdAt)}</>
-                  )}
-                </TableCell>
-                <TableCell className="text-right">
-                  {canRequeue && (stage === 'agent_failed' || expired) ? (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={requeue.isPending}
-                      onClick={() =>
-                        requeue.mutate([m.key], {
-                          onSuccess: () =>
-                            toast({
-                              tone: 'success',
-                              title: 'Erneut eingeplant',
-                              description: `${m.key} wartet wieder auf einen Agenten.`,
-                            }),
-                          onError: (error) =>
-                            toast({
-                              tone: 'danger',
-                              title: 'Nicht eingeplant',
-                              description: errorMessage(error),
-                            }),
-                        })
-                      }
-                    >
-                      <RotateCcwIcon data-icon="inline-start" />
-                      Erneut einplanen
-                    </Button>
-                  ) : m.openItems > 0 ? (
-                    <Button variant="ghost" size="sm" onClick={() => onModel(m.key)}>
-                      {stage === 'waiting_for_clarification'
-                        ? 'Vorgemerkte zeigen'
-                        : 'Vorschläge zeigen'}
-                    </Button>
-                  ) : null}
-                </TableCell>
-              </TableRow>
-            );
-          })}
-        </TableBody>
-      </Table>
-    </div>
-  );
-}
 
 const ALL = '';
 
@@ -293,7 +120,9 @@ function ReviewInbox() {
     return (
       <Alert variant="destructive">
         <AlertTitle>Prüfliste konnte nicht geladen werden</AlertTitle>
-        <AlertDescription>{errorMessage(landscape.error ?? models.error)}</AlertDescription>
+        <AlertDescription>
+          <ErrorText error={landscape.error ?? models.error} />
+        </AlertDescription>
       </Alert>
     );
 
@@ -324,19 +153,6 @@ function ReviewInbox() {
           </AlertDescription>
         </Alert>
       ) : null}
-      <StageBar counts={counts} selected={search.stage} onSelect={(stage) => set({ stage })} />
-      {search.stage ? (
-        <StageModels
-          project={project}
-          stage={search.stage}
-          models={modelList}
-          canRequeue={can.canWrite}
-          onModel={(model) =>
-            // Models waiting for clarification have only held items: show those.
-            set({ model, view: search.stage === 'waiting_for_clarification' ? 'held' : undefined })
-          }
-        />
-      ) : null}
 
       <Tabs
         value={search.view ?? 'proposals'}
@@ -344,21 +160,32 @@ function ReviewInbox() {
           set({ view: value === 'held' || value === 'no-links' ? value : undefined })
         }
       >
-        <TabsList variant="line" aria-label="Prüfliste">
-          <TabsTrigger value="proposals">
-            Vorschläge <span className="tabular-nums">{queue.length}</span>
-          </TabsTrigger>
-          <TabsTrigger value="held">
-            Vorgemerkt <span className="tabular-nums">{held.length}</span>
-          </TabsTrigger>
-          <TabsTrigger
-            value="no-links"
-            title="Paare, zwischen denen ein Agent keinen Zusammenhang sieht"
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+          <TabsList variant="line" aria-label="Prüfliste">
+            <TabsTrigger value="proposals">
+              Vorschläge <span className="tabular-nums">{queue.length}</span>
+            </TabsTrigger>
+            <TabsTrigger value="held">
+              Vorgemerkt <span className="tabular-nums">{held.length}</span>
+            </TabsTrigger>
+            <TabsTrigger
+              value="no-links"
+              title="Paare, zwischen denen ein Agent keinen Zusammenhang sieht"
+            >
+              Kein Zusammenhang{' '}
+              <span className="tabular-nums">{noLinks.data ? unlinked.length : '…'}</span>
+            </TabsTrigger>
+          </TabsList>
+          {/* „Relationen“ holds both: the decisions to make here, the results one link away (UX1). */}
+          <Link
+            to="/projects/$project/relations"
+            params={{ project }}
+            className="text-sm text-link underline-offset-4 hover:underline"
+            data-testid="all-relations"
           >
-            Kein Zusammenhang{' '}
-            <span className="tabular-nums">{noLinks.data ? unlinked.length : '…'}</span>
-          </TabsTrigger>
-        </TabsList>
+            Alle Relationen
+          </Link>
+        </div>
 
         <div
           className="flex flex-wrap items-end gap-3 pt-2"
@@ -401,6 +228,18 @@ function ReviewInbox() {
               ))}
             </NativeSelect>
           </Field>
+          {search.stage ? (
+            // The phase chips of „Übersicht“ link here with `?stage=`: the filter stays visible.
+            <Button
+              variant="outline"
+              onClick={() => set({ stage: undefined })}
+              aria-label={`Filter „Phase: ${STAGES[search.stage].label}“ entfernen`}
+              data-testid="stage-chip"
+            >
+              Phase: {STAGES[search.stage].label}
+              <XIcon data-icon="inline-end" />
+            </Button>
+          ) : null}
           {filtered || search.stage ? (
             <Button
               variant="ghost"
@@ -463,12 +302,12 @@ function ReviewInbox() {
               </EmptyHeader>
               {can.isOwner && counts.waiting_for_agent > 0 ? (
                 <EmptyContent>
-                  <Button variant="outline" asChild>
-                    <Link to="/projects/$project/agents" params={{ project }}>
-                      <PlugIcon data-icon="inline-start" />
-                      Agent verbinden
-                    </Link>
-                  </Button>
+                  <AgentStart
+                    project={project}
+                    hasChain={chain.data !== undefined}
+                    variant="outline"
+                    align="start"
+                  />
                 </EmptyContent>
               ) : null}
             </Empty>
@@ -487,7 +326,9 @@ function ReviewInbox() {
           {noLinks.isError ? (
             <Alert variant="destructive">
               <AlertTitle>Einschätzungen konnten nicht geladen werden</AlertTitle>
-              <AlertDescription>{errorMessage(noLinks.error)}</AlertDescription>
+              <AlertDescription>
+                <ErrorText error={noLinks.error} />
+              </AlertDescription>
             </Alert>
           ) : noLinks.data ? (
             <NoLinkList

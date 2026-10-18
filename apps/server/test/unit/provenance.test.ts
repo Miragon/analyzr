@@ -557,16 +557,19 @@ describe('extractor-loss', () => {
       [{ type: 'model', id: 'test/illegal' }, 'signal', ['note']],
       [{ type: 'model', id: 'test/unbekannt' }, 'signal', ['note']],
     ]);
+    // The question first, what was lost as the detail (UX2a).
     expect(items[0]?.text).toBe(
-      'Welche Elemente von „Verlust“ (test/doppelt) sind beim Import verloren gegangen? analyzr ' +
-        'hat ein Element übersprungen: doppelte ID „Task_A“. Was dort modelliert ist, fehlt der ' +
-        'Analyse. Korrigiere das Modell im Quellsystem (oder lass den Export mit normalize-bpmn ' +
-        'normalisieren) und importiere es erneut.',
+      'Welche Elemente von „Verlust“ (test/doppelt) sind beim Import verloren gegangen?',
     );
-    expect(items[1]?.text).toContain(
+    expect(items[0]?.detail).toBe(
+      'analyzr hat ein Element übersprungen: doppelte ID „Task_A“. Was dort modelliert ist, ' +
+        'fehlt der Analyse. Korrigiere das Modell im Quellsystem (oder lass den Export mit ' +
+        'normalize-bpmn normalisieren) und importiere es erneut.',
+    );
+    expect(items[1]?.detail).toContain(
       '2 Elemente übersprungen: ungültige ID „Aufgabe_Bonität“; ungültige ID „4711“.',
     );
-    expect(items[2]?.text).toContain('nicht lesbares Element „bpmn:unknownThing“');
+    expect(items[2]?.detail).toContain('nicht lesbares Element „bpmn:unknownThing“');
     expect(items.every((q) => q.askWho.folder === 'test')).toBe(true);
   });
 
@@ -584,7 +587,7 @@ describe('extractor-loss', () => {
     );
     const [grown] = await lossItems([{ key: 'test/doppelt', bytes: more }]);
     expect(grown?.id).not.toBe(before?.id);
-    expect(grown?.text).toContain('2 Elemente übersprungen');
+    expect(grown?.detail).toContain('2 Elemente übersprungen');
   });
 
   it('reads the losses from the stored warnings only; other warnings and old revisions raise nothing', () => {
@@ -645,9 +648,9 @@ describe('extractor-loss', () => {
     ]);
     expect(items.map((q) => q.subject.id)).toEqual(['test/lang', 'test/layout', 'test/prozess']);
     // The stored message is cut to 300 characters inside the id: its beginning is shown.
-    expect(items[0]?.text).toMatch(/hat ein Element übersprungen: ungültige ID „9{100,}…“\./);
-    expect(items[1]?.text).toContain('hat ein Element übersprungen: doppelte ID „Task_A“.');
-    expect(items[2]?.text).toContain(
+    expect(items[0]?.detail).toMatch(/hat ein Element übersprungen: ungültige ID „9{100,}…“\./);
+    expect(items[1]?.detail).toContain('hat ein Element übersprungen: doppelte ID „Task_A“.');
+    expect(items[2]?.detail).toContain(
       'hat mindestens ein Element übersprungen: Prozess mit ungültiger ID „4711“ (samt Inhalt).',
     );
     expect(
@@ -673,8 +676,8 @@ describe('extractor-loss', () => {
         `    <bpmn:task id="T_${i}" name="Erst"/>\n    <bpmn:task id="T_${i}" name="Zweit"/>`,
     ).join('\n');
     const [item] = await lossItems([{ key: 'test/viele', bytes: model(tasks) }]);
-    expect(item?.text).toContain('hat mindestens 100 Elemente übersprungen: doppelte ID „T_0“;');
-    expect(item?.text).toContain('und 90 weitere.');
+    expect(item?.detail).toContain('hat mindestens 100 Elemente übersprungen: doppelte ID „T_0“;');
+    expect(item?.detail).toContain('und 90 weitere.');
   });
 });
 

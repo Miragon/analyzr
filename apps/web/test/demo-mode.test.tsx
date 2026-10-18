@@ -251,46 +251,60 @@ describe('the projects page', () => {
 });
 
 describe('project tabs and write pages', () => {
-  it('shows a viewer no upload, agent or rules tab', async () => {
+  const tabNames = (nav: HTMLElement) =>
+    within(nav)
+      .getAllByRole('link')
+      .map((l) => l.textContent.replace(/\d+.*/, '').trim());
+
+  it('shows a viewer the four object tabs and no upload or settings entry', async () => {
     setup('/projects/demo', { health: DEMO_HEALTH, role: 'viewer' });
     const nav = await screen.findByRole('navigation', { name: 'Projektbereiche' });
-    const tabs = within(nav)
-      .getAllByRole('link')
-      .map((l) => l.textContent.replace(/\d+.*/, '').trim());
-    // „Offene Fragen“ needs only read permission (M6 S4)
-    expect(tabs).toEqual([
-      'Modelle',
-      'Prüfen',
-      'Wertschöpfungskette',
+    // Owner decision 26: four object tabs, every role reads them.
+    expect(tabNames(nav)).toEqual([
+      'Übersicht',
       'Relationen',
-      'Befunde',
+      'Wertschöpfungskette',
       'Offene Fragen',
     ]);
+    expect(screen.queryByRole('link', { name: 'Hochladen' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Einstellungen' })).toBeNull();
   });
 
-  it('shows an owner every tab outside the demo', async () => {
-    setup('/projects/demo', { health: LOCAL_HEALTH, role: 'owner' });
+  it('shows an owner „Hochladen“ and the menu „Einstellungen“ outside the demo', async () => {
+    const { user } = setup('/projects/demo', { health: LOCAL_HEALTH, role: 'owner' });
     const nav = await screen.findByRole('navigation', { name: 'Projektbereiche' });
-    for (const name of ['Hochladen', 'Agent verbinden', 'Regeln']) {
-      expect(within(nav).getByRole('link', { name })).toBeDefined();
-    }
+    expect(tabNames(nav)).toEqual([
+      'Übersicht',
+      'Relationen',
+      'Wertschöpfungskette',
+      'Offene Fragen',
+    ]);
+    expect(screen.getByRole('link', { name: 'Hochladen' }).getAttribute('href')).toBe(
+      '/projects/demo/upload',
+    );
+    const gear = screen.getByRole('button', { name: 'Einstellungen' });
+    expect(gear.getAttribute('aria-expanded')).toBe('false');
+    await user.click(gear);
+    const menu = screen.getByRole('menu', { name: 'Einstellungen' });
+    expect(
+      within(menu)
+        .getAllByRole('menuitem')
+        .map((i) => [i.textContent, i.getAttribute('href')]),
+    ).toEqual([
+      ['Agent verbinden', '/projects/demo/agents'],
+      ['Annahmeregeln', '/projects/demo/rules'],
+    ]);
+    // Escape closes it and gives the focus back.
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(document.activeElement).toBe(gear);
   });
 
-  it('shows an editor the upload tab, but neither agents nor rules', async () => {
+  it('shows an editor „Hochladen“, but no menu „Einstellungen“', async () => {
     setup('/projects/demo', { health: LOCAL_HEALTH, role: 'editor' });
-    const nav = await screen.findByRole('navigation', { name: 'Projektbereiche' });
-    const tabs = within(nav)
-      .getAllByRole('link')
-      .map((l) => l.textContent.replace(/\d+.*/, '').trim());
-    expect(tabs).toEqual([
-      'Modelle',
-      'Prüfen',
-      'Wertschöpfungskette',
-      'Relationen',
-      'Befunde',
-      'Offene Fragen',
-      'Hochladen',
-    ]);
+    await screen.findByRole('navigation', { name: 'Projektbereiche' });
+    expect(screen.getByRole('link', { name: 'Hochladen' })).toBeDefined();
+    expect(screen.queryByRole('button', { name: 'Einstellungen' })).toBeNull();
   });
 
   it.each([
@@ -356,13 +370,17 @@ describe('the review inbox for a viewer', () => {
     expect(writes(calls)).toEqual([]);
   });
 
-  it('lists failed models without „Erneut einplanen“', async () => {
-    const { calls } = setup('/projects/demo/review?stage=agent_failed', {
-      health: DEMO_HEALTH,
-      role: 'viewer',
-    });
-    expect(await screen.findAllByTestId('stage-model-row')).toHaveLength(1);
-    expect(screen.queryByRole('button', { name: /Erneut einplanen/ })).toBeNull();
+  it('lists failed models on „Übersicht“ without „Nochmal versuchen“', async () => {
+    const { calls } = setup('/projects/demo', { health: DEMO_HEALTH, role: 'viewer' });
+    const row = (await screen.findAllByTestId('model-row')).find(
+      (r) => r.dataset['modelKey'] === 'b/failed',
+    );
+    expect(row?.textContent).toContain('Agent gescheitert');
+    expect(screen.queryByRole('button', { name: /Nochmal versuchen/ })).toBeNull();
+    // „Als Nächstes“ names the failure as text, with nothing to click.
+    const next = screen.getByTestId('next-step');
+    expect(next.textContent).toContain('1 Analyse gescheitert');
+    expect(within(next).queryByRole('button')).toBeNull();
     expect(writes(calls)).toEqual([]);
   });
 

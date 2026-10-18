@@ -110,7 +110,9 @@ export function AnswerSheetDialog({
     const mine = round.current;
     setFileName(file.name);
     if (file.size > MAX_SHEET_FILE_BYTES) {
-      setError(`„${file.name}“ ist größer als 16 MB. Nimm die CSV aus „Als CSV exportieren“.`);
+      setError(
+        `„${file.name}“ ist größer als 16 MB. Nimm die CSV aus „Für den Kunden exportieren …“.`,
+      );
       return;
     }
     setReading(true);
@@ -181,13 +183,9 @@ export function AnswerSheetDialog({
   return (
     <Dialog open={open} onOpenChange={close}>
       <DialogTrigger asChild>
-        <Button
-          variant="outline"
-          data-testid="open-questions-import"
-          title="Die ausgefüllte CSV aus „Als CSV exportieren“ einlesen: erst eine Vorschau, dann speichern"
-        >
+        <Button variant="outline" size="sm" data-testid="open-questions-import">
           <FileUpIcon data-icon="inline-start" />
-          Antworten aus CSV übernehmen
+          Antworten aus CSV übernehmen …
         </Button>
       </DialogTrigger>
       <DialogContent
@@ -197,10 +195,10 @@ export function AnswerSheetDialog({
         <DialogHeader>
           <DialogTitle>Antworten aus CSV übernehmen</DialogTitle>
           <DialogDescription>
-            Nimm die Datei aus „Als CSV exportieren“, in der die Spalte „Antwort“ ausgefüllt ist.
-            Jede Antwort wird als Notiz an ihrer Frage gespeichert; erledigt wird eine Frage durch
-            ihre Aktion. Zuerst siehst du, was gespeichert würde; gespeichert wird erst nach deiner
-            Bestätigung. Zeilen ohne Antwort bleiben unberührt. {ANSWER_PERMANENT}
+            Nimm die Datei aus „Für den Kunden exportieren …“ (CSV), in der die Spalte „Antwort“
+            ausgefüllt ist. Jede Antwort wird als Notiz an ihrer Frage gespeichert; erledigt wird
+            eine Frage durch ihre Aktion. Zuerst siehst du, was gespeichert würde; gespeichert wird
+            erst nach deiner Bestätigung. Zeilen ohne Antwort bleiben unberührt. {ANSWER_PERMANENT}
           </DialogDescription>
         </DialogHeader>
 

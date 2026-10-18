@@ -623,7 +623,7 @@ test('an edit committed by the click on „Fertig“ or a link is not lost', asy
 
   // the same through a link of the header
   await page.getByLabel('Name', { exact: true }).fill('Disposition (beim Link)');
-  await page.getByRole('link', { name: 'Prüfen' }).click();
+  await page.getByRole('link', { name: 'Relationen', exact: true }).click();
   await expect(dialog).toContainText('Seite verlassen?');
   await expect(page).toHaveURL(new RegExp(`/projects/${PROJECT}/value-chain`));
   await page.keyboard.press('Escape');

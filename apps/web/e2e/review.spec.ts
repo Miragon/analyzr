@@ -13,7 +13,7 @@ import { DEMO_SKIP, probeServer } from './server-mode';
  * proposals built from the claim input's lexical candidates, release one
  * task, keep one claimed), then reviews in the browser: inbox by stage, the
  * review screen with both models, A/R/H/C and J/K, the held list with an
- * answer, a correction and its timeline, a version conflict, an agent's
+ * answer (since UX2b in the note dialog of „Offene Fragen“), a correction and its timeline, a version conflict, an agent's
  * no-link on a key-tier pair (judge each pair once: flagged in the bulk
  * dialog, shown on the review screen) and the bulk accept of the key tier.
  * With ANALYZR_SCREENSHOTS_DIR set it writes m2-*.png there. Skips itself when
@@ -295,23 +295,29 @@ test.afterAll(async () => {
   await owner?.dispose();
 });
 
-test('inbox: models by stage and the review queue', async ({ page }) => {
-  await page.goto(`/projects/${PROJECT}/review`);
-  await expect(page.getByRole('link', { name: /Prüfen/ }).first()).toBeVisible();
+test('„Übersicht“: models by stage and who holds them; the inbox queue', async ({ page }) => {
+  // UX1: the stages are the phase chips of „Übersicht“; holder and reservation sit in the row.
+  await page.goto(`/projects/${PROJECT}`);
   const stage = (s: string) => page.locator(`[data-testid=stage-filter][data-stage=${s}]`);
   await expect(stage('agent_working')).toHaveAttribute('data-count', '1');
   await expect(stage('waiting_for_agent')).toHaveAttribute('data-count', '22');
+
+  // a stage is a filter: who works on what
+  await stage('agent_working').click();
+  await expect(page).toHaveURL(/stage=agent_working/);
+  await expect(page.getByTestId('model-row')).toHaveCount(1);
+  await expect(
+    page.getByTestId('model-row').getByTestId('stage-note').filter({ visible: true }),
+  ).toContainText(`${AGENT_NAME} · reserviert bis`);
+  await stage('agent_working').click();
+  await expect(page.getByTestId('model-row')).not.toHaveCount(1);
+
+  await page.goto(`/projects/${PROJECT}/review`);
+  await expect(page.getByRole('link', { name: /^Relationen/ }).first()).toBeVisible();
   await expect(page.getByTestId('queue-row').first()).toBeVisible();
   const rows = await page.getByTestId('queue-row').count();
   expect(rows).toBeGreaterThan(proposed.length);
   await shot(page, 'm2-01-inbox');
-
-  // a stage is a filter: who works on what
-  await stage('agent_working').click();
-  await expect(page.getByTestId('stage-model-row')).toHaveCount(1);
-  await expect(page.getByTestId('stage-model-row')).toContainText(`agent:${AGENT_NAME}`);
-  await stage('agent_working').click();
-  await expect(page.getByTestId('stage-models')).toHaveCount(0);
 });
 
 test('review screen: both models, highlights, rationale, evidence, provenance', async ({
@@ -385,15 +391,21 @@ test('decide with the keyboard: A accepts, R rejects with a reason, H holds', as
   expect((await relationOf(held)).status).toBe('held');
 });
 
-test('held list: answer a held question', async ({ page }) => {
+test('held list: answer a held question in the note dialog of „Offene Fragen“', async ({
+  page,
+}) => {
   await page.goto(`/projects/${PROJECT}/review?view=held`);
   const item = page.getByTestId('held-item').first();
   await expect(item).toContainText('mit Fachbereich Logistik klären');
   await expect(item).toContainText('Kommt die Meldung auch bei Expresslieferungen?');
-  await item
-    .getByRole('textbox', { name: 'Antwort' })
+  // UX2b: one place to answer a hold, the same dialog as its card in „Offene Fragen“
+  await item.getByRole('button', { name: 'Antwort geben' }).click();
+  const dialog = page.getByTestId('note-dialog');
+  await expect(dialog.getByRole('heading', { name: 'Antwort geben' })).toBeVisible();
+  await dialog
+    .getByLabel('Deine Antwort')
     .fill('Ja, Logistik bestätigt: auch bei Expresslieferungen.');
-  await item.getByRole('button', { name: /Antwort speichern/ }).click();
+  await dialog.getByRole('button', { name: 'Antwort speichern' }).click();
   await expect(page.getByTestId('toast').filter({ hasText: 'Antwort gespeichert' })).toBeVisible();
   await expect(item.getByTestId('held-answer')).toContainText('auch bei Expresslieferungen');
   await shot(page, 'm2-04-held');

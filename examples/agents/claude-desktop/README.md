@@ -24,7 +24,7 @@ the start prompt below tells it to (the procedure contains the whole loop).
    (Windows: `%APPDATA%\Claude\claude_desktop_config.json`; keep other entries) and put the token
    into `env`. `command` must be an absolute path, since Claude Desktop does not get your shell's
    `PATH`: `which docker` for the Docker entry, `node -p process.execPath` for the checkout entry
-   (and the absolute path of `apps/cli/src/main.ts`). The **Agent verbinden** page of the web UI
+   (and the absolute path of `apps/cli/src/main.ts`). The **Einstellungen › Agent verbinden** page of the web UI (the project's gear menu)
    prints both entries with the real token; `analyzr token create` and `analyzr seed --issue-tokens`
    print the one for where they run (in the container the Docker entry, with `"command":
    "docker"` to make absolute; from the checkout the checkout entry).

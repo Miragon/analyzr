@@ -56,14 +56,17 @@ end to end](#verified-end-to-end) lists exactly what was run and what was not.
 | `plugins/analyzr-integrate` and `tools/integrate` (M6 S3b, [below](#the-integrate-plugin-and-toolsintegrate-m6-s3b)): the second Claude Code plugin (0.1.1; 0.1.1 changed only the skill text, M6 S2a) with `/analyzr-integrate:integrate-landscape` for BPMN 2.0 exports, the reference notes per tool and the bundled scripts `inspect.mjs` and `normalize-bpmn.mjs`; their sources and tests in `@analyzr/integrate` | working; 145 tests (normalized outputs extracted with `@analyzr/bpmn-facts`, keys, bundle, inventory, the scripts as the plugin runs them, the drift test, the release table), the CLI and web tests on the golden bundle, `claude plugin validate --strict` (Claude Code 2.1.300); followed by hand by the implementing agent and imported into a scratch stack with the checkout CLI and „Hochladen“; not yet invoked as a skill in a Claude Code or Codex session, its guard setup not tried live |
 | `examples/agents` (M3, placements since M4 S5): reference setups for Claude Code (interactive, headless `run-headless.sh [--skill placements]`), Claude Desktop (both bridge entries, German start prompts for relations, placements and drafting a chain) and Codex; documentation, not workspace packages, not in the image; no Agent SDK setup for now (owner decision 16, [HANDOFF.md](HANDOFF.md) §4) | checked without a model ([M3](#m3-2026-10-08)): shellcheck and dry runs of `run-headless.sh` against fakes (incl. failed batches, a reused log directory and a trailing slash in `ANALYZR_URL`), the Codex TOML parses; no setup has run a model yet |
 | M2 backend: analysis pipeline (claim/submit/release, lease, long-poll), claim input (with the M3 additions: message-flow ends, partner and process documentation, findings, and `judged`/`skip`), submissions, ad-hoc proposals, review (accept/reject/hold/correct, bulk, notes, timeline), model engine, relation provenance, answered findings hidden ([below](#analysis-pipeline-and-review-m2)); judge each pair once (`analyzr-relations@0.2.0`: the basis of agent judgements, the assignment at the claim, stored no-links, `Relation.noLinks`, `uncovered`; [below](#judge-each-pair-once)) | working over REST and MCP; real-Postgres integration tests incl. concurrent claims, lease expiry, cancellation, decision memory across re-uploads, the claim-input size and additions on both corpus landscapes, judge each pair once (`judge-once.test.ts`); MCP contract test with the SDK client; reviewed in the web UI ([Review in the web UI](#review-in-the-web-ui-m2)); end to end against the Docker stack with the simulation agent (HTTP and the bridge in the container; before 0.2.0) and in the browser (`e2e/pipeline.spec.ts`: review, re-upload, `suppressed` vs. `reopened`) |
-| `apps/cli`: `analyzr seed` (M3: `--project`, `--token-name`; M4 S4: `--value-chains`), `import` (M6 S1: the shared file rule, keys derived before sending, skipped plain XML, extractor warnings, the waiting tasks and the next agent step), `models list/requeue/delete` (M6 S1; since S5c-2 `models amend|pull`), `questions` (M6 S4; since S5a `questions [list]` and `questions answer`; since S5c-1 `questions outside|link|place` and notes without kinds; since S5c-2 `questions amend`), `amendments list|export|withdraw` (M6 S5c-2), the amendments in `import`'s output (M6 S5c-2), `import` reading the manifest `analyzr-import.json` (pinned keys, provenance, import warnings with `next:` lines) and `models external-ids` (M6 S2a), `token create/list/revoke`, `status`, `health`, and `analyzr mcp` (stdio bridge for Claude Desktop) | working; unit tests, an e2e test against a real server, and a live check against the running Docker stack |
+| `apps/cli`: `analyzr seed` (M3: `--project`, `--token-name`; M4 S4: `--value-chains`), `import` (M6 S1: the shared file rule, keys derived before sending, skipped plain XML, extractor warnings, the waiting tasks and the next agent step), `models list/requeue/delete` (M6 S1; since S5c-2 `models amend|pull`), `questions` (M6 S4; since S5a `questions [list]` and `questions answer`; since S5c-1 `questions outside|link|place` and notes without kinds; since S5c-2 `questions amend`; since UX2a `questions --group` and the groups in its summary line), `amendments list|export|withdraw` (M6 S5c-2), the amendments in `import`'s output (M6 S5c-2), `import` reading the manifest `analyzr-import.json` (pinned keys, provenance, import warnings with `next:` lines) and `models external-ids` (M6 S2a), `token create/list/revoke`, `status`, `health`, and `analyzr mcp` (stdio bridge for Claude Desktop) | working; unit tests, an e2e test against a real server, and a live check against the running Docker stack |
 | `apps/agent-sim`: `analyzr-agent-sim`, the LLM-free simulation agent (M2 item 8): works the pipeline over MCP (HTTP or the `analyzr mcp` bridge) with the deterministic policy `sim-policy-1`, since M4 S5 both task kinds (`--kinds`, the placement policy `decidePlacements`), and records claim inputs and submissions in `eval/recordings` ([below](#simulation-agent-and-evalreplay-m2)) | working; unit tests (both policies, recorder lines of both kinds, CLI, the loop against an in-memory MCP server) and an end-to-end server test on both corpus landscapes with their golden chains (every task done, provenance, nothing decided, the committed recordings reproduced byte for byte, the holdout placement recording by digest) |
-| `apps/web`: projects (create), per project the tabs Modelle (engine, revision, stage), Prüfen (M2: inbox by stage, review queue, bulk accept per tier, held list), Wertschöpfungskette (M4 S3, [below](#value-chain-in-the-web-ui-m4)), Relationen (filters, rule vs. key tier, provenance), Befunde, Offene Fragen (M6 S4: every gap as a question, filters, Markdown and CSV export; since S5a „Antworten aus CSV übernehmen“ for reviewers; since S5c-1 each item's actions with „Rückgängig“ and „Notiz hinzufügen“ instead of „Beantworten“; since S5c-2 the amend form with „Sammeln“ and the conflicts of model amendments), Hochladen (files or a folder via the import endpoint) and Agent verbinden (token, Claude Code/Desktop/generic configurations, revoke); model view with bpmn-js that highlights relation endpoints and switches to the other model (and, since M6 S4, lists the model's open questions, since S5c-1 with their actions, and offers „Verknüpfen mit …“ on a selected collapsed subprocess; since S5c-2 „Ergänzen“ at a selected element, the badge, the overlay and both BPMN downloads); review screen per relation (both models in bpmn-js, rationale, evidence, question, provenance, timeline; accept/reject/hold/correct with A/R/H/C, J/K through the queue); bulk accept that leaves generic or widely shared names, open agent questions and ambiguous call targets unchecked; Miragon design system | working; component tests (Testing Library), Playwright smoke, review and pipeline flows against a running server, the screenshots below |
+| `apps/web`: projects (create), per project four object tabs since UX1 (owner decision 26): Übersicht („Als Nächstes“, the export hub, the models table with „Modell suchen …“, the phase chips and „Offene Punkte“), Relationen (M2: review queue, bulk accept per tier, held list, no-links; the results one link away with filters, rule vs. key tier, provenance), Wertschöpfungskette (M4 S3, [below](#value-chain-in-the-web-ui-m4)), Offene Fragen (the list „Befunde“ behind a link at its foot) (M6 S4: every gap as a question, filters, Markdown and CSV export; since S5a „Antworten aus CSV übernehmen“ for reviewers; since S5c-1 each item's actions with „Rückgängig“ and „Notiz hinzufügen“ instead of „Beantworten“; since S5c-2 the amend form with „Sammeln“ and the conflicts of model amendments; since UX2b „Zu klären“ as lean cards with three filters, „Zur Information“ and „Erledigte zeigen“ closed, the export dialog for the customer, a hold answered in one dialog and decided with „Jetzt entscheiden“), the button Hochladen (files or a folder via the import endpoint) and the owners' menu „Einstellungen“ with Agent verbinden (token, Claude Code/Desktop/generic configurations, revoke) and Annahmeregeln; model view with bpmn-js that highlights relation endpoints and switches to the other model (and, since M6 S4, lists the model's open questions, since S5c-1 with their actions, since UX2b as „Fragen“ with „Zu klären“ as cards, one link to the agents' questions on its proposals and the agent's summary closed under „Zur Information“ (decision 24.8), and offers „Verknüpfen mit …“ on a selected collapsed subprocess; since S5c-2 „Ergänzen“ at a selected element, the badge, the overlay and both BPMN downloads); review screen per relation (both models in bpmn-js, rationale, evidence, question, provenance, timeline; accept/reject/hold/correct with A/R/H/C, J/K through the queue); bulk accept that leaves generic or widely shared names, open agent questions and ambiguous call targets unchecked; Miragon design system | working; component tests (Testing Library), Playwright smoke, review and pipeline flows and the UI load guard (`e2e/ui-load.spec.ts`, UX1, UX2b) against a running server, the screenshots below |
 | Open questions (M6 S4, [M6-INTEGRATION-AND-GAPS.md](M6-INTEGRATION-AND-GAPS.md) §4 and §8 "S4 as delivered"): the read model `apps/server/src/domain/open-questions/` (every source of §4.1, the gap signals of §4.3 without `extractor-loss`, ids, `askWho`, `unlocks`, filters, cursor pages, the Markdown and CSV export), `GET …/open-questions` and `…/open-questions/export` (permission `read`), the tab „Offene Fragen“ and the model view's section, `analyzr questions` | working over REST, the CLI and the web UI (no MCP until M6 S7); unit tests (every source on a synthetic landscape, the signals on `nordwind-handel` and eval:descriptive's variants, the export and its CSV round trip, the review fixes), a real-PostgreSQL test (`open-questions.test.ts`: every source after the simulation agent, holds and a probe agent; ids, filters, pages, both exports), CLI unit and e2e tests, web component tests, the bundle guard and Playwright (`e2e/open-questions.spec.ts`) against a scratch server; live-run neutral (MCP snapshots, claim inputs, procedures and recordings unchanged) |
 | Answers to open questions (M6 S5a, [M6-INTEGRATION-AND-GAPS.md](M6-INTEGRATION-AND-GAPS.md) §4.5 and §8 "S5a as delivered"): the append-only table `open_question_answer` (migrations 0011/0012), `open-questions/answers.ts` and the answer use cases (permission `review`, humans only; note answers through the note use cases), `POST …/open-questions/{q}/answers` and `POST …/open-questions/answers?dryRun=`, „Beantworten“ in the tab and the model view (since S5c-1 „Notiz hinzufügen“ and the actions, below), „Antworten aus CSV übernehmen“, `analyzr questions answer`, the zod-free `@analyzr/contracts/open-question-csv` and `…/personal-data` | working over REST, the CLI and the web UI (no MCP until M6 S7); unit tests (where the text lands, the sheet check, the latest-answer rule, normalization, the personal-data check, the sheet reader with spreadsheet row numbers), real-PostgreSQL tests (`open-question-answers.test.ts`: note answers, nothing queued, the CSV round trip, humans only, the table's triggers and checks; both placement cases in `placement-pipeline.test.ts`; the migrations on existing data; `claim-golden.test.ts` pins seeded claims by SHA-256), CLI unit and e2e tests, web component tests, the bundle guard and Playwright (`e2e/open-questions.spec.ts`) against a scratch server ([M6 S5a](#m6-s5a-2026-10-17)); live-run neutral |
 | Answering by action (M6 S5c-1, [M6-INTEGRATION-AND-GAPS.md](M6-INTEGRATION-AND-GAPS.md) §4.8 a and b and §8 "S5c-1 as delivered"): `actions` on every item (the pure `open-questions/actions.ts`: `actionsFor`, R1 and R1b, what a `link` writes or accepts), items versioned by what they ask about, `POST …/open-questions/{q}/actions` (link, place, choose copy, outside) and `POST …/open-questions/{q}/answers/{a}/withdrawal`, `open_question_answer_withdrawal` (migrations 0013/0014), `competing-call` counting manual relations from a call element, notes without kinds and the five-column CSV, the action row in the tab and the model view's section, „Verknüpfen mit …“ on a collapsed subprocess, `analyzr questions outside\|link\|place` | working over REST, the CLI and the web UI (no MCP until M6 S7); unit tests (`open-question-actions.test.ts`: every kind's actions and its single primary, R1 by direction, R1b, the suggestions and what a link accepts), real-PostgreSQL tests (`open-question-actions.test.ts`, `open-question-answers.test.ts`, `claim-golden.test.ts` after outside marks), CLI unit and e2e tests, web component tests, the bundle guard and Playwright (`e2e/open-questions.spec.ts`) against a scratch server ([M6 S5c-1](#m6-s5c-1-2026-10-17)); live-run neutral |
 | Model amendments (M6 S5c-2, [M6-INTEGRATION-AND-GAPS.md](M6-INTEGRATION-AND-GAPS.md) §4.8 c and §8 "S5c-2 as delivered"): `applyAmendments` and `readAmendable` in `@analyzr/bpmn-facts` (`src/amend.ts`, byte-preserving splices checked by extracting again; `src/xml-elements.ts`, a positioned element scan), `model_amendment` and `model_amendment_withdrawal` (migrations 0015/0016), uploaded plus amended revisions with the plan on the head, re-application at every import with the concurrency token, the open question `amendment-conflict`, withdrawals (one or all of a model, with a dry run and an optional `If-Match`), the change list (`GET …/amendments/export`) and both BPMN downloads, the routes of tag `amendments`, the form at a question with „Sammeln“ and the model view's „Ergänzen“, `analyzr models amend\|pull`, `analyzr questions amend`, `analyzr amendments list\|export\|withdraw` | working over REST, the CLI and the web UI (no MCP: agents read amended heads like any revision); bpmn-facts unit tests (`amend.test.ts`: every op on C7, C8 and engine-null fixtures, Signavio-style bytes, escaping, other declared encodings, refusals, the check, determinism, regression snapshots and the XSD child order over every corpus model), server unit and real-PostgreSQL tests (`amendments.test.ts` both), CLI unit and e2e tests, web component tests and Playwright (`e2e/amendments.spec.ts`) ([M6 S5c-2](#m6-s5c-2-2026-10-17)); live-run neutral |
 | Provenance, manifest and stable identity (M6 S2a, [M6-INTEGRATION-AND-GAPS.md](M6-INTEGRATION-AND-GAPS.md) §3.2–§3.4 and §8 "S2a as delivered"): `ImportManifest` (`analyzr-import/1`), `ImportWarning` and `ExternalIdList` in `@analyzr/contracts` (`api/import-manifest.ts`), the typed provenance on `RevisionSource`, the pure `apps/server/src/domain/provenance.ts`, the part `manifest` of `POST …/imports`, the header `Analyzr-Manifest` of `PUT …/models/by-key/{key}`, `GET …/external-ids?system=`, `model_revision.extract_warnings` (migration 0017) and the open question `extractor-loss`, `analyzr import` reading `analyzr-import.json`, `analyzr models external-ids` | working over REST and the CLI (the web parts, „Herkunft“, badges and the manifest of a dropped folder, come with the UI simplification; no MCP); server unit tests (`provenance.test.ts`), real-PostgreSQL tests (`provenance.test.ts`: the integrate plugin's golden bundle with its manifest, the key map rebuilt from `external-ids`, pinned keys, the import warnings (also `provenance-kept` after a folder move), PUT, unchanged bytes, an upload without a manifest keeping the identity, values jsonb cannot hold refused with 422, amended heads also in the change list, stored warnings, `extractor-loss`, migration 0017 on existing revisions; `corpus.test.ts`: no warning and no `extractor-loss` on the corpus), CLI unit and e2e tests; live-run neutral |
+| Open questions: groups and totals (UX2a, [UX-SIMPLIFICATION.md](UX-SIMPLIFICATION.md) §2.4, §2.5 and §7, owner decision 26): `OpenQuestion.group` (`ask`, `agent`, `proposal`, `info`) from the `Record` over the kinds `OPEN_QUESTION_GROUP_RULES` (`open-questions/model.ts`), the repeatable `group` filter, `totals` and `askByModel` on the page, the question first (`text`) with its reason apart (`detail`), pools named by where they are, one question per process extended to agents' placement questions and unsure verdicts, „Auf der Kette prüfen“ on the `proposal` items, the export for the customer (a date, „Betrifft“ in names, the contact hint without the folder, the id as an HTML comment, the CSV header `Ansprechpartner` with the old one still read, `group=ask` by default under the old file name), the API's action labels („Verknüpfen mit …“ for a primary link, „Nur verknüpfen …“ only beside a primary amendment since the first wave's review, „Ziel im Modell eintragen …“, „Vorschlag prüfen“), `analyzr questions --group`; since the first wave's review an agent's coded no-link joins the rule tier's item about the same gap (`mergeCodedNoLinks`, read model only) and the export names no folder or handle and attributes an agent's words („Laut Agent: …“, `isVerbatimSource`) | working over REST and the CLI; the web shows `detail` under the question until UX2b reworks the tab; unit tests (`open-questions.test.ts`: a kind without a group fails, the groups, totals and `askByModel`, one question per process, the export without ids on the synthetic landscape and the Signavio bundle; `open-question-actions.test.ts`: the labels and the chain action), real-PostgreSQL tests (`open-questions.test.ts`: the seeded and post-simulation counts per group and `askByModel` pinned, the default export, the id regex), contracts, CLI unit and e2e tests, web component tests; live-run neutral (MCP snapshots, claim inputs, procedures, recordings and reports unchanged) |
+| Shell and „Übersicht“ (UX1, [UX-SIMPLIFICATION.md](UX-SIMPLIFICATION.md) §2.2, §2.3, §3.1, §3.2, §3.12, §3.13 items 7 and 8, and §7, owner decision 26; [Web UI](#web-ui)): four object tabs with their open work as the badge (`src/lib/project-counts.ts` `useProjectCounts`, „Offene Fragen“ counts `totals.ask`), „Hochladen“ as a button and the owners' menu „Einstellungen“ (a light disclosure, no floating-ui in the entry), the key under the name instead of „Stand s…“, the server banner only on trouble, failed writes in German per `ProblemCode` and `reason` (`src/lib/problem-texts.ts`, the server's words behind „Technische Details“), „Als Nächstes“ (`src/lib/next-step.ts`), the popover „Agent starten“ (`components/agent-start.tsx`), the export hub (`components/export-hub.tsx`), „Modell suchen …“ (`?q=`) and the phase chips (`?stage=`), the models table „Name | Phase | Offene Punkte | Aktualisiert“ with the holder, reservation and „Nochmal versuchen“, the projects list without „Stand“ (and „Rolle“ only when it says something), „Neues Projekt“ with „Kurzname: … (ändern)“; one `$initial` code-splitting group for the entry | working in the web UI (no route, contract or server change); component tests (`overview.test.tsx`, `problem-texts.test.tsx`, `projects-page.test.tsx`, `app.test.tsx`, `demo-mode.test.tsx`, `review-inbox.test.tsx`), the bundle guard (209.2 KB), the UI load guard and every Playwright spec against a scratch stack ([UX1](#ux1-2026-10-18)); live-run neutral |
+| „Offene Fragen“ in the web (UX2b, [UX-SIMPLIFICATION.md](UX-SIMPLIFICATION.md) §2.4, §3.3 and §7, owner decision 26 Q3, Q4 and Q11; [Web UI](#web-ui)): the tab shows the open questions „Zu klären“ as lean cards (the subject a link, the question with „Warum?“ closed, whom to ask, at most three actions, no ids, event numbers or source labels; `src/lib/open-questions.ts` `questionView`, `cardActions`), the count line equal to the badge, one intro line with „So funktioniert es“, three filters („Art“, „Modell oder Ordner“, „Ansprechpartner“; „Filter (n)“ on a phone; `?source=` a chip), „Zur Information“ and „Erledigte zeigen“ closed, the agents' questions only under „Art“ („Vorschlag öffnen“), the export dialog „Für den Kunden exportieren …“ (`group=ask` by default, „Auch Fragen der Agenten (n)“), a hold answered in the note dialog from its card, the „Vorgemerkt“ row and the review screen and decided with „Jetzt entscheiden“ (the inline decision panels gone), the model view's „Fragen“ with „Zu klären“ only; the state label „Außerhalb der Landschaft“ in the contracts | working in the web UI (no route or server change; one zod-free label); component tests (`open-questions.test.tsx`, `open-question-actions.test.tsx`, `open-questions-lib.test.ts`, `held-list.test.tsx`, `review-details.test.tsx`, `overview.test.tsx`), the bundle guard (209.3 KB), the UI load guard's UX2b budgets and hold task and every Playwright spec against a scratch stack ([UX2b](#ux2b-2026-10-18)); live-run neutral |
 | `eval:candidates` | working; passes on `nordwind-handel` (dev) and `stadtwerke-auental` (holdout); report in `eval/reports/candidates.md` |
 | `eval:replay` | working; scores the relations recordings in `eval/recordings` against `expected.yaml` (precision, recall and F1 per type and tag, must_not_link hits, questions, no-links, pairs judged twice, uncovered pairs) and, since M4 S5, the placement recordings against `expected-placements.yaml` (on the golden chain only; recall@1 next to `baseline-prefix/1`, the holdout as aggregates); report in `eval/reports/replay.md` with both live gates (it reports them, `eval:live` enforces them) |
 | `eval:placements` (M4 S4): the golden value chains against the process facts (validator, coverage, every key-tier rule proposal a must or may), the rule tier and `baseline-prefix/1` with and without votes scored; the holdout as numbers only ([below](#value-chain-and-placements-m4)) | working; passes on `nordwind-handel` (dev) and `stadtwerke-auental` (holdout); report in `eval/reports/placements.md` |
@@ -75,7 +78,7 @@ end to end](#verified-end-to-end) lists exactly what was run and what was not.
 | Value chain in the web UI (M4 S3, [below](#value-chain-in-the-web-ui-m4)): the page `/projects/{key}/value-chain` (NavigatedViewer, Modeler in edit mode, lazy chunk), collision-free ids, overlays, side panel with placement review (A/R/H/C, J/K, bulk re-confirm, manual placements), save with dry run, conflict and drafts, link editing, drill-down, the step view; since S5 Import of a `.vc.json` (re-laid out) and the agent's stage and unsure list | working; component tests with a stand-in canvas, the bundle guard, the import harness and the value chain flow in Playwright (Chromium) against a throwaway stack incl. the CSS check, the screenshots `m4-*.png` |
 | The `placement` pipeline kind (M4 S5, [below](#the-placement-pipeline-and-analyzr-placements-m4-s5)): task kinds and subjects (migration 0008), judge each process once (input hashes, `placement_input`, one open task per chain, follow-ups at submit), the claim input `analyzr-claim-placement/1`, placement submissions with supersession and unsure verdicts, the chain's stage, the procedure, prompts and skill, the placement live gate | working over REST and MCP; unit and real-PostgreSQL tests (`placement-pipeline.test.ts`: every trigger and stage, supersession, the unsure memory, truncation with one follow-up, saves during a lease), the simulation agent on both landscapes, the procedure drift test, Playwright for the Import; no LLM run yet |
 | Value chain and placements over REST, MCP and CLI (M4 S2, [below](#value-chain-and-placements-m4)): `prepareRevision` (canonical bytes, analyzr rules, kinds, ranks, fingerprints, `structure_hash`), 19 routes (`If-Match`/`If-None-Match`, `dryRun`, decisions incl. bulk, unplaced processes, findings), six MCP tools, `analyzr value-chain push\|pull`, the rule tier's key proposals, placements that follow model ingest and deletion, server tiers with `baseline-prefix/1` (`@analyzr/relations`), token revocation | working over REST, MCP and the CLI (and since S3 in the web UI); unit tests (document rules, structure incl. the golden dev chain, impact, items, tiers, rules, findings, `baseline-prefix/1`), real-PostgreSQL tests (REST, placements, rule tier, the dev landscape with its golden chain through model changes, policy matrix, MCP contract), the CLI against a fake API and end to end |
-| Auto-accept rules (owner decision 19, [below](#auto-accept-rules-owner-decision-19)): the tables `auto_accept_rule` and `auto_accept_rule_revision` and the assertion marker (migrations 0009/0010), the evaluator with its safeguards in all four agent write paths, apply and revoke with dry runs, the preview and the ledger (`src/domain/auto-accept/`), seven owner-only routes and the ledger for every reviewer, `analyzr rules …`, the tab „Regeln“ with marks and filters in the review views, the „Auto-accept what-if“ of `eval:replay` | working over REST, the CLI and the web UI (no MCP by design); unit tests (evaluator, status with revocations, preview, rules, the what-if), real-PostgreSQL tests (relations and placements end to end, revocation, migration on existing data, constraints, policy matrix), CLI unit and e2e tests, web component tests and Playwright (`e2e/auto-accept.spec.ts`) against a throwaway stack; MCP snapshots and recordings unchanged |
+| Auto-accept rules (owner decision 19, [below](#auto-accept-rules-owner-decision-19)): the tables `auto_accept_rule` and `auto_accept_rule_revision` and the assertion marker (migrations 0009/0010), the evaluator with its safeguards in all four agent write paths, apply and revoke with dry runs, the preview and the ledger (`src/domain/auto-accept/`), seven owner-only routes and the ledger for every reviewer, `analyzr rules …`, the page „Annahmeregeln“ (the tab „Regeln“ until UX1, now in the owners' menu „Einstellungen“) with marks and filters in the review views, the „Auto-accept what-if“ of `eval:replay` | working over REST, the CLI and the web UI (no MCP by design); unit tests (evaluator, status with revocations, preview, rules, the what-if), real-PostgreSQL tests (relations and placements end to end, revocation, migration on existing data, constraints, policy matrix), CLI unit and e2e tests, web component tests and Playwright (`e2e/auto-accept.spec.ts`) against a throwaway stack; MCP snapshots and recordings unchanged |
 | Read-only demo on Fly.io (owner decision 20, [below](#demo-deployment-flyio)): `ANALYZR_DEMO=readonly` in the server (the read-only guard before authentication, the viewer session, `demo-readonly`, MCP off, credentials refused, the public Host/Origin guard, `Health.demo`), the read-only database role and the visitor (`demo-bootstrap.ts`), the web UI's banner and role gating, `apps/demo` (`analyzr-demo seed\|serve\|check`), `docker/Dockerfile.demo` with the seed baked in, `docker/compose.demo.yaml`, `docker/fly.demo.toml`, `.github/workflows/demo-deploy.yml` and the CI job `demo`; after the review round: the session body capped at 4 KiB, `analyzr-demo check` never writes to a non-demo, the agents' no-links in the inbox tab „Kein Zusammenhang“ (`GET …/no-links`, every role and mode); the operator's legal links (`ANALYZR_DEMO_IMPRINT_URL`, `ANALYZR_DEMO_PRIVACY_URL`, „Impressum“ and „Datenschutz“ in the banner; Miragon's pages in `fly.demo.toml`) | built and checked locally (the image, `analyzr-demo check`, the Playwright walk, restart = seed, no eval file in the image; [Read-only demo, owner decision 20](#read-only-demo-owner-decision-20-2026-10-10)); unit and real-PostgreSQL tests (every write route 403 with three credentials and none forgotten, every GET route over the read-only role, a 700 MB session body cut off at 4 KiB); deployed and checked live on 2026-10-10 under the earlier name ([Verified end to end](#verified-end-to-end)); live at https://analyzr-demo.fly.dev since 2026-10-12 (Fly organization `miragon`, idle machines stopped; smoke check 126 passed) |
 
 ## Quickstart (Docker)
@@ -163,7 +166,7 @@ and the policy: [Simulation agent](#simulation-agent-and-evalreplay-m2).
 | PostgreSQL | `postgres://analyzr:analyzr@127.0.0.1:55432/analyzr` |
 
 Screenshots with the seeded landscapes (`apps/web/e2e/screenshots.spec.ts`):
-[projects](screenshots/01-projects.png), [models](screenshots/02-models.png),
+[projects](screenshots/01-projects.png), [„Übersicht“](screenshots/02-models.png),
 [relations](screenshots/03-relations.png), [model view](screenshots/04-model-view.png),
 [findings](screenshots/05-findings.png), [connect an agent](screenshots/06-connect-agent.png),
 [Claude Desktop entry](screenshots/07-connect-claude-desktop.png). The review (M2,
@@ -460,11 +463,13 @@ Camunda engine, no LLM credential, no Fly secret.
 - **The web UI** shows the banner „Demo – nur lesen. Du kannst dir alles ansehen, aber nichts
   ändern. Die Vorschläge stammen vom Simulationsagenten (ohne LLM).“ with a link to the
   repository (it promises no nightly reset) and the operator's „Impressum“ and „Datenschutz“
-  ([below](#legal-pages)), and hides every write action: no „Neues Projekt“, no
-  tabs „Hochladen“, „Agent verbinden“, „Regeln“ (their URLs show a notice and send no request),
-  no bulk accept, „Erneut einplanen“, answer field or decision panel (A/R/H/C do nothing), no
-  value chain editing. Read views stay: models, model view, relations, findings, the inbox with
-  „Kein Zusammenhang“ and the review screen in read mode, the value chain page and the step view.
+  ([below](#legal-pages)), and hides every write action: no „Neues Projekt“, no button
+  „Hochladen“, no menu „Einstellungen“ („Agent verbinden“, „Annahmeregeln“; their URLs show a
+  notice and send no request), no „Agent starten“ or „Nochmal versuchen“, no bulk accept,
+  „Antwort geben“, „Jetzt entscheiden“ or decision panel (A/R/H/C do nothing), no value chain
+  editing. Read views stay: „Übersicht“, the model view, „Relationen“ with its results and
+  „Kein Zusammenhang“, the list „Befunde“ behind its link in „Offene Fragen“, the review screen in
+  read mode, the value chain page and the step view.
   Screenshots: [projects](screenshots/demo-01-projects.png),
   [model view](screenshots/demo-02-model-view.png), [inbox](screenshots/demo-03-inbox.png),
   [review screen](screenshots/demo-04-review.png),
@@ -739,6 +744,7 @@ Node cannot load it).
 | `pnpm --filter @analyzr/web e2e review` | Playwright review flow (M2) against a running analyzr; creates its own project `review-<time>` from `nordwind-handel` and an agent token, proposes over REST, then reviews in the browser |
 | `pnpm --filter @analyzr/web e2e pipeline` | Playwright pipeline flow (M2) against a running analyzr: its own project `pipeline-<time>` from `nordwind-handel`, worked by `analyzr-agent-sim` over MCP, reviewed in the browser, then a re-upload and the agent's second run (decision memory) |
 | `pnpm --filter @analyzr/web e2e value-chain.spec` | Playwright value chain flow (M4 S3) against a running analyzr: its own projects `vc-<time>` (nordwind-handel with its golden chain), `vc-empty-<time>` and `vc-sketch-<time>`, an agent token, placements over REST, then the page in the browser incl. the CSS check |
+| `ANALYZR_E2E_URL=http://127.0.0.1:<port> pnpm --filter @analyzr/web e2e ui-load` | the UI load guard (UX-SIMPLIFICATION.md §7) against an agent-owned stack: `nordwind-handel` seeded with its chain and worked by the simulation agent, `signavio-beispiel` from the CLI's bundle import and an empty project (made here when the stack lacks them), at 1440x900 and 390x844; the slices' load budgets, tasks, consistency of every count, no ids in visible text; `ANALYZR_UI_LOAD_REPORT=<file>` writes every screen's measurements |
 | `pnpm --filter @analyzr/web e2e value-chain-import` | the renderer's import check in Chromium on a Vite-served harness page (no analyzr server): the golden dev chain and synthetic chains import without warnings with the layouter's waypoints, analyzr's ids never repeat; `ANALYZR_E2E_VC_EXTRA=<path>` checks another chain (counts only) |
 | `ANALYZR_SCREENSHOTS_DIR=$PWD/docs/screenshots pnpm --filter @analyzr/web e2e screenshots` | retakes the M1 screenshots from a running, seeded analyzr; with `… e2e review` the `m2-*.png`, with `… e2e value-chain.spec` the `m4-01` … `m4-08`, with `… e2e value-chain-draft value-chain-agent` the `m4-12` … `m4-14` |
 | `docker compose -p analyzr-demo -f docker/compose.demo.yaml up -d --build --wait` | the read-only demo image with its seed on http://127.0.0.1:7480 ([Demo deployment](#demo-deployment-flyio)) |
@@ -1777,7 +1783,7 @@ CONCEPT §2 "Auto-accept marker", §3 review workflow step 5). Code:
 `src/domain/use-cases/auto-accept.ts`, `src/http/routes/auto-accept.ts`; contracts in
 `packages/contracts/src/api/auto-accept.ts`. In code the concept is always "auto-accept rule"
 (`auto_accept_rule`, `autoAcceptRule`, ids `aar_`), never just "rule", which stays the rule tier
-(`analyzr-rules`, decision 9); the German UI says „Annahmeregel“ in the tab „Regeln“.
+(`analyzr-rules`, decision 9); the German UI says „Annahmeregel“ on the page „Annahmeregeln“ (the tab „Regeln“ until UX1).
 
 **What a rule is.** Kind (`relation` or `placement`, never changes), tier (relations `key`,
 `lexical`, `semantic`; placements `lexical`, `semantic`: the server-computed proposal tier), an
@@ -1886,7 +1892,7 @@ behave exactly as for human acceptances (an endpoint change makes an open item f
 never re-confirms: `human-involved`); the trigger proposal is superseded like any pipeline
 proposal while the decision stays. Token revocation withdraws the token's open proposals as before
 and keeps its auto-acceptances (owner decisions); the agents page offers to revoke them too
-(HANDOFF §8), and the tab „Regeln“ revokes one agent's acceptances across rules. A manual placement
+(HANDOFF §8), and „Annahmeregeln“ revokes one agent's acceptances across rules. A manual placement
 on an auto-accepted placement now counts as confirming it. An agent's ad-hoc placement proposal
 still counts as its verdict, except that it never replaces another agent's current `unsure` row
 of the process (`placement_input` keeps one row per process): that doubt stays the safeguard
@@ -1907,7 +1913,7 @@ token), `--owner-key-file` (`ANALYZR_OWNER_KEY_FILE`).
 | `analyzr models requeue -p <key> (<key>… \| --all) [--json]` (M6 S1) | owner key, or an agent token with `analyzr:write` | `POST …/analyses/requeue` with `{modelKeys}` (≤ 1,000, checked before any request) or `{all: true}`: `queued`, `open` (a task is already queued or claimed) or `not-found` per model; exit 1 if a key has no live model |
 | `analyzr models delete <key>… -p <key> [--yes] [--json]` (M6 S1) | owner key only (an agent token is refused before any request; the server's policy lets any `write` credential delete) | resolves the keys through `GET …/models` (deleting takes the `mdl_` id); an unknown key exits 1 before anything is deleted; without `--yes` it lists the models (key, stage, open items), says that partner relations turn `missing` and that uploading a key again revives its model, and exits 1 („nothing deleted“); with `--yes` `DELETE …/models/{model}` one by one (`--json`: `{deleted, models}`; when a DELETE fails, `{deleted, models, failed: {key, error}}` with the models deleted before it, then exit 1). The deletion's impact comes with M6 S2 |
 | `analyzr models external-ids -p <key> [--system <system>] [--json]` (M6 S2a) | agent token or owner key | `GET …/external-ids`: per live model whose provenance declares a source system its key, tool id (`-` when the manifest named none) and tool folder, as the manifest declared them (an amended head followed to its uploaded revision; a head stored without a manifest falls back to the newest revision a manifest declared), the count per system, and a line per tool id several keys carry (`signavio id sid-… on 2 keys: …`, one model twice after `external-id-moved`); `--system` (a lowercase slug, checked before any request) keeps one; the JSON is the response, from which a lost workspace's `keymap.json` is rebuilt |
-| `analyzr questions [list] -p <key> [--model <key or folder>] [--kind <kind>] [--source <source>] [--ask-who <name>] [--state open\|answered] [--format text\|md\|csv\|json] [-o <file>]` (M6 S4) | agent token (`analyzr:read`) or owner key | the open questions ([M6-INTEGRATION-AND-GAPS.md](M6-INTEGRATION-AND-GAPS.md) §4.2); `list` is the default subcommand of `questions` (M6 S5a), so `analyzr questions -p …` lists: `text` (default) and `json` page through `GET …/open-questions` (questions first, then the value chain's findings, then the informational items, each by `unlocks` descending): a header, one line per question (id, unlocks, kind, the first model key with `+N` for more or `-` for steps and the chain, `subject: question` as the server returns them, line breaks folded into one space, `  [answered: outside the landscape]` after a marked item; since S5c-1 also the primary action, and under a question the suggested targets as `„Name“ (ref)` with the proposals a link to each accepts) and `<project> (<filters>): N open questions (kind n, …)` with `, N answered (outside the landscape)` when marks are recorded (`no open questions in …` when none match), or every item as one JSON array; `md` (also `markdown`) and `csv` write `GET …/open-questions/export`'s bytes verbatim (the CSV with its byte order mark and the `Antwort` column, empty or holding the item's latest note, without the informational items); every flag is checked before any request (`--ask-who`: a lane, one step owner or the folder, exactly, ≤ 200 characters); `-o` writes to a file |
+| `analyzr questions [list] -p <key> [--model <key or folder>] [--kind <kind>] [--source <source>] [--ask-who <name>] [--state open\|answered] [--group <group>…] [--format text\|md\|csv\|json] [-o <file>]` (M6 S4; `--group` since UX2a) | agent token (`analyzr:read`) or owner key | the open questions ([M6-INTEGRATION-AND-GAPS.md](M6-INTEGRATION-AND-GAPS.md) §4.2); `list` is the default subcommand of `questions` (M6 S5a), so `analyzr questions -p …` lists: `text` (default) and `json` page through `GET …/open-questions` (questions first, then the value chain's findings, then the informational items, each by `unlocks` descending): a header, one line per question (id, unlocks, kind, the first model key with `+N` for more or `-` for steps and the chain, `subject: question` as the server returns them, line breaks folded into one space, `  [answered: outside the landscape]` after a marked item; since S5c-1 also the primary action, and under a question the suggested targets as `„Name“ (ref)` with the proposals a link to each accepts) and `<project> (<filters>): N open questions (kind n, …)` with `, N answered (outside the landscape)` when marks are recorded and, since UX2a, `; groups: ask n, agent n, …` (`no open questions in …` when none match), or every item as one JSON array; `md` (also `markdown`) and `csv` write `GET …/open-questions/export`'s bytes verbatim (the CSV with its byte order mark and the `Antwort` column, empty or holding the item's latest note, without the informational items; both only the `ask` items unless `--group`, `--kind` or `--source` says otherwise); `--group` (`ask`, `agent`, `proposal`, `info`) repeats or takes a comma-separated list, and the list shows every group without it; every flag is checked before any request (`--ask-who`: a lane, one step owner or the folder, exactly, ≤ 200 characters); `-o` writes to a file |
 | `analyzr questions answer <id> -p <key> --text <text> [--json]`, `analyzr questions answer -p <key> --from <csv> [--dry-run] [--json]` (M6 S5a; notes without kinds since S5c-1) | owner key only (an agent token is refused before any request: only humans answer) | one note (`POST …/open-questions/{q}/answers`; the text normalized as the server stores it, ≤ 2,000 characters; `--kind` is refused since S5c-1 with a hint at `questions outside`; no dry run, the single route has none): what was recorded, where the text landed and what it does by the item's subject and kind (a note never ends the item; its action does, named with where to run it), the personal-data warning; or a filled-in sheet (UTF-8 only; only the rows with an `Antwort` are sent, in one call to `POST …/open-questions/answers`, `--dry-run` previews; an S5a sheet's `Antwortart` still reads, „Liegt außerhalb der Landschaft“ as the outside mark except on a relation or placement item): one line per sent row under its spreadsheet row (blank rows and the header counted), the counts, exit 1 when a filled row is (or would be) left out |
 | `analyzr questions outside <id> -p <key> [--note <text>] [--json]`, `… --undo <answer id>` (M6 S5c-1) | owner key only (an agent token is refused before any request) | the outside mark „Liegt außerhalb der Landschaft“ (`POST …/open-questions/{q}/actions` `{type: 'outside'}`; the item turns `answered`, a second mark is `unchanged`) with the line to undo it; `--undo` withdraws the mark (`POST …/answers/{a}/withdrawal`), the item is open again |
 | `analyzr questions link <id> -p <key> --to <target>… \| --pair <from> <to> [--note <text>] [--json]` (M6 S5c-1) | owner key only | links the item's anchor to each target (a ref, the key of a model with one process, or a unique process name; an ambiguous or unknown one lists the candidates and sends nothing; `--to` repeats for a dynamic call's possible targets, ≤ 10); an `unjudged` item links one of its listed pairs with `--pair`: per relation `wrote the accepted manual relation …` or `accepted the <type> proposal …`, what became of the item, and the web UI's review screen for each relation (to reject a manual one, „Rückgängig“; to change a decision) |
@@ -2028,7 +2034,7 @@ models' `modelKey=facts_hash` (at most 8 projects per server); its answer use ca
   chain findings, holds (note, question, label), agents' questions on live proposals newer than
   the latest decision in force, current `unsure` verdicts, no-links coded `call-target` or
   `collaboration` (`external-partner`), the summaries of current submissions (`summary-note`,
-  read-only, decision 24.9) and the pairs they left unjudged (`unjudged`). Since M6 S2a the
+  read-only, decision 24.8) and the pairs they left unjudged (`unjudged`). Since M6 S2a the
   head revision's stored extractor warnings (`extractor-loss`, one question per model listing
   the elements skipped on import: duplicate, illegal or missing ids and unparsable content, not
   a dropped diagram element or a vendor's element; revisions stored before S2a carry none).
@@ -2036,30 +2042,52 @@ models' `modelKey=facts_hash` (at most 8 projects per server); its answer use ca
   `undocumented-process`, `isolated-process` and `descriptive-model` (informational);
   `message-without-name` is off (it duplicates `message-partner-missing`), its kind reserved.
 - **Item:** `id` (`q-` + 16 hex of `sha256(kind|subject|source version)`, new when the source
-  changes), `kind`, `source`, `subject` (`ref`, `process`, `model`, `relation`, `placement`,
-  `step`, `value-chain`) and `subjectLabel`, `modelKeys`, `text` (from code, or verbatim for
-  human and agent texts: render as plain text), `context` and `label` (a hold's note and label),
+  changes), `kind`, `source`, `group` (UX2a: `ask` „Zu klären“, `agent` „Fragen der Agenten“,
+  `proposal` decided on the value chain, `info` „Zur Information“, from the `Record` over the
+  kinds `OPEN_QUESTION_GROUP_RULES` in `open-questions/model.ts`; a label and a filter, never a
+  sort key), `subject` (`ref`, `process`, `model`, `relation`, `placement`, `step`,
+  `value-chain`) and `subjectLabel` (a pool without a process: „Pool in „<the pool it talks
+  to>““, never its id), `modelKeys`, `text` (the question, short: from code, or verbatim for
+  human and agent texts: render as plain text), `detail` (UX2a: why it is asked, from code in
+  plain German, never the frozen findings' `detail`; an unsure verdict's and a coded no-link's
+  agent words verbatim; `null` where the question says it all), `context` and `label` (a hold's
+  note and label),
   `askWho` (`lanes`, `stepOwners`, `folder`: a hint, never an assignee), `unlocks` (open decisions
   touching the subject, 0 when none), `refs`, `raisedBy`, `state` (`answered` while an answer
   names the id, S5a) and `answers` (oldest first).
 - **REST** (tag `open-questions`, permission `read`, so viewers, agent tokens with `read` and the
   read-only demo): `GET /api/v1/projects/{p}/open-questions` with `modelKey` (a model or a folder:
   `finanzen` matches `finanzen/mahnwesen`), `kind`, `source`, `askWho` (a lane, one step owner or
-  the folder, exactly, ≤ 200 characters), `state`, `cursor` and `limit` (≤ 200, default 50):
-  `{items, nextCursor, total}`, questions first, then the value chain's findings
+  the folder, exactly, ≤ 200 characters), `state`, `group` (UX2a, repeatable: `?group=ask&group=agent`),
+  `cursor` and `limit` (≤ 200, default 50): `{items, nextCursor, total, totals, askByModel}`
+  (`totals` per group and `askByModel`, the distinct subjects of the `ask` items about neither a
+  relation nor a placement per model key, both under every filter but `group`, so the badge and
+  the count lines need one call), questions first, then the value chain's findings
   (`process-without-step`, `step-without-process`, `unresolved-link`; the owner's answer of
   2026-10-16), then the informational items (`summary-note`, `descriptive-model`), each group by
-  `unlocks` descending, then subject, kind and id (the cursor's first number is the group). `GET
+  `unlocks` descending, then subject, kind and id (the cursor's first number is the rank group;
+  one question per process: no `process-without-step` beside a held placement, an agent's
+  question on a placement of the process or an unsure verdict about it). `GET
   …/open-questions/export?format=markdown|csv` with the same filters is an attachment named
-  `offene-fragen-<project>[-<filters as an ASCII slug, ≤ 80 characters>].md|csv`: the Markdown
-  grouped by contact hint (step owners, else folder, else lanes), agent and human texts escaped so
-  they never format or link, the informational items marked „Zur Information, keine Antwort
-  nötig“; the CSV for the customer without the informational items, UTF-8 with a byte order mark,
-  `;`-separated, CRLF, every field quoted, the columns `id`, `Art`, `Frage`,
-  `Ansprechpartner-Hinweis`, `Antwort` (since S5c-1 five columns: `Antwortart` is gone; the
-  `Antwort` cell is empty, or holds the item's latest note), a cell that a spreadsheet would run
-  as a formula prefixed with `'`.
-- **Clients:** the tab „Offene Fragen“ and the model view's section ([Web UI](#web-ui)),
+  `offene-fragen-<project>[-<filters as an ASCII slug, ≤ 80 characters>].md|csv`; without
+  `group` it holds the `ask` items only (owner decision 26: the customer is asked what needs
+  clarifying), unless `kind` or `source` names what to export, and the default groups do not
+  slug into the name. Both files go to the customer in plain German (UX2a): the Markdown dated
+  by the project's latest event („Stand 17.10.2026“, German time), grouped by contact hint (step
+  owners, else folder, else lanes), per item the question, its reason, „Betrifft: „<element>“ in
+  „<pool>““, a hold's note and label, the notes and marks with their dates, „Ansprechpartner:
+  <step owners and lanes>“ (no folder), the id only as an HTML comment after the heading
+  (`<!-- q-… -->`), no refs, seqs, sources or „Kennung“; agent and human texts escaped so they
+  never format or link, the informational items marked „Zur Information, keine Antwort nötig“;
+  the CSV for the customer without the informational items, UTF-8 with a byte order mark,
+  `;`-separated, CRLF, every field quoted, the columns `id`, `Art`, `Frage`, `Ansprechpartner`,
+  `Antwort` (since S5c-1 five columns: `Antwortart` is gone; since UX2a the contact column is
+  `Ansprechpartner`, a sheet with the old header `Ansprechpartner-Hinweis` reads all the same, and
+  `Frage` holds the question, its reason and „Betrifft: …“; the `Antwort` cell is empty, or holds
+  the item's latest note), a cell that a spreadsheet would run as a formula prefixed with `'`.
+- **Clients:** the tab „Offene Fragen“ and the model view's section ([Web UI](#web-ui); since UX2b
+  both show the open `ask` items, the tab the agents' questions under „Art“, the informational and
+  marked items in closed groups; its customer export sends `group` explicitly),
   `analyzr questions` ([The `analyzr` CLI](#the-analyzr-cli)). The German labels of kinds and
   sources are the zod-free `@analyzr/contracts/open-question-labels`, shared by the export and the
   web. No MCP tool until S7 (after the live runs): claim inputs, `FindingKind`, MCP tools and
@@ -2187,19 +2215,71 @@ the server); after `pnpm build` the server serves it at http://127.0.0.1:7400.
 
 | Route | Content |
 |---|---|
-| `/` | projects (name, key, role, `s<seq>`), "Neues Projekt" (key slugified from the name) |
-| `/projects/{key}` | **Modelle**: key, name, engine (C7/C8), head revision, stage (CONCEPT §3), open items; stage filter `?stage=`; since M6 S5c-2 the mark „ergänzt“ at the head revision of a model whose head applies amendments (the title says how many and that the original stays), „· N in analyzr ergänzt“ in the count line and, once the project has amendments, „Änderungsliste herunterladen“ (Markdown or CSV, from the model view's lazy amendments module) |
-| `/projects/{key}/review` | **Prüfen** (M2, the tab counts open proposals): models per pipeline stage (a stage filters; for "Agent arbeitet" the holder and lease, for "Agent gescheitert" the error and "Erneut einplanen"), then **Vorschläge** (the review queue), **Vorgemerkt** (`?view=held`) and **Kein Zusammenhang** (`?view=no-links`: the agents' live, current no-links with their reasons, also on pairs without a relation; read-only, filtered by model and stage); filters `?stage=&tier=&model=` stay in the URL and travel to the review screen ([below](#review-in-the-web-ui-m2)) |
+| `/` | projects: the name with its key below, „Rolle“ only while a role is not „Inhaber“ (always on the demo), „Angelegt“; „Neues Projekt“ with the key derived from the name as one line „Kurzname: kunde-maschinenbau (ändern)“ (the field opens on demand or on a taken key, whose 409 says so in German); the seed hint and „Seed-Befehl kopieren“ only in the dev server (UX1) |
+| `/projects/{key}` | **Übersicht** (UX1, [UX-SIMPLIFICATION.md](UX-SIMPLIFICATION.md) §2.3, §3.2): **„Als Nächstes“** (`src/lib/next-step.ts`, first match wins: „Agent verbinden“ or the popover „Agent starten“ (owners) while models wait for an agent, „Nochmal versuchen“ when only failed analyses or expired reservations wait, „Vorschläge prüfen (n)“ at the review queue's first item, „Platzierungen prüfen (n)“ at the placement queue's first item, „Offene Fragen klären (n)“, else „Alles geprüft.“; at most two lines below: „Agent arbeitet – n Modelle offen“, „n Modelle warten auf den Agenten“ (editors, viewers), „n Analysen gescheitert · Nochmal versuchen“, „Bei n Modellen ist die Reservierung abgelaufen · Nochmal versuchen“, „Oder jetzt schon: Vorschläge prüfen (n). …“, „Noch keine Wertschöpfungskette · Anlegen oder importieren“; viewers get the text without buttons) with **„Exportieren“** at its right (`components/export-hub.tsx`, each entry only with content: the questions for the customer as Markdown or CSV (the export route's default `ask` under the old file name), the change list for the source tool (Markdown, CSV), the chain as `.vc.json` and as an SVG drawn on the chain page, `?export=svg`); then **„Modell suchen …“** (`?q=`, name and key, umlauts and case folded, `matchesName`) and the **phase chips** „Modelle nach Phase: Alle 31 · Wartet auf Prüfung 28 · …“ (`?stage=`, only stages with models, `components/review/stage-bar.tsx` `StageChips`; with a chip active and proposals open the link „n Vorschläge dieser Modelle prüfen“ to `/review?stage=`); the **models table** „Name | Phase | Offene Punkte | Aktualisiert“: the model's name as the link (its key when it has none) with the key small below and the mark „ergänzt“ (M6 S5c-2), under the phase badge the holder and reservation („agent-sim · reserviert bis 22:45“), „Reservierung abgelaufen am … · Nochmal versuchen“ or „Nach 3 Versuchen gescheitert · Nochmal versuchen“; **„Offene Punkte“** = the model's open relations (`Model.openItems`) + the open and held placements of its processes + `askByModel` (one subject once, the agents' questions add nothing), as text (no one list holds a model's relations, placements and questions; P7), its split („7 Relationen · 1 Platzierung · 1 Frage“) in a tooltip on the focusable number (`role=tooltip`, `aria-describedby`) until UX3 shows it as the model view's tabs; on a phone name and phase stack and „Aktualisiert“ hides; engine and revision live in the model view. An empty project keeps „Modelle hochladen“ and the ghost „Agent verbinden“ |
+| `/projects/{key}/review` | **Relationen** (the tab since UX1 is M2's inbox; its badge counts open proposals and accepted relations with a changed endpoint): **Vorschläge** (the review queue), **Vorgemerkt** (`?view=held`; since UX2b each row's „Antwort geben“ opens the note dialog of „Offene Fragen“ for the hold's question, instead of an open answer field) and **Kein Zusammenhang** (`?view=no-links`: the agents' live, current no-links with their reasons, also on pairs without a relation; read-only, filtered by model and stage), „Alle Relationen“ to the results; filters `?stage=&tier=&model=` stay in the URL and travel to the review screen ([below](#review-in-the-web-ui-m2)); the stages are the phase chips of „Übersicht“ since UX1, an active `?stage=` shows as the removable chip „Phase: …“; with models waiting and nothing to review, owners get „Agent starten“ (or „Agent verbinden“) |
 | `/projects/{key}/review/{relation}` | **Review screen** of one relation, also the relation detail and the `reviewUrl` of `human-decision-required` ([below](#review-in-the-web-ui-m2)) |
-| `/projects/{key}/relations` | **Relationen**: quick filters (all, accepted by rule, key-tier proposals, all proposals), filters status/tier/type/model in the URL (`?status=&tier=&type=&model=`), for owners also the preset „Automatisch angenommen“ and the filter `?auto=any|aar_…` (owner decision 19); type, from → to with element label, model key and process, tier, status, endpoint state, confidence, provenance (from `Relation.provenance`), details (refs, version, attributes); "Prüfen" opens the review screen, the crosshair the model view. |
-| `/projects/{key}/findings` | **Befunde** grouped by kind, each ref with a link into the model view |
-| `/projects/{key}/open-questions` | **Offene Fragen** (M6 S4, after „Befunde“; the tab counts `GET …/open-questions?state=open`'s `total`; every role and the read-only demo): every gap as a question ([M6-INTEGRATION-AND-GAPS.md](M6-INTEGRATION-AND-GAPS.md) §4), questions by open decisions („3 offene Entscheidungen“, „Keine offene Entscheidung“), the value chain's findings after them (the owner's answer of 2026-10-16), informational items („Zur Information“) last; filters Art, Modell oder Ordner, Ansprechpartner-Hinweis (lanes, each org unit, folder), Quelle and Status in the URL (`?kind=&model=&askWho=&source=&state=`), counted under the other filters; human and agent texts as `PlainText` with who said them; links to the review screen, the chain page (`?step=`, `?placement=`) or the model view; „Als Markdown exportieren“ and „Als CSV exportieren“ download the export route's file for the filters under the server's name (`offene-fragen-<project>[-<filters>].md\|csv`). Since M6 S5c-1, for editors and owners (permission `review`; not on the read-only demo): every item shows its primary action as a button and the others under „Weitere Aktionen“ (`decide` opens the review's decision panel inline and closes with Escape or „Abbrechen“; `link`, `place` and `choose-copy` open a picker with „Vorgeschlagen“ first that names what it will write or accept before it does; the outside mark, „Gehört zu keinem Schritt“ and „Erneut einplanen“ run in one click; „Link korrigieren“ opens the chain page at the step); a toast names what an action did, with „Rückgängig“ when it wrote manual relations or a placement (rejected in one bulk decision) or an outside mark (withdrawn), and the way to the decision when it decided existing proposals; „Notiz hinzufügen“ (instead of S5a's „Beantworten“) records a note that leaves the item open (the dialog says what ends it: its action, or for note-only kinds the next import); a marked item offers „Markierung zurücknehmen“; the Status filter calls marked items „Erledigt (außerhalb)“. „Antworten aus CSV übernehmen“ reads the filled-in CSV (a German file picker, UTF-8 only, also an S5a sheet with `Antwortart`), previews it through the dry run (stored, unchanged, unknown ids and invalid rows with their spreadsheet rows and texts, the personal-data alert), stores it with „N Antworten speichern“ and stays open listing the rows left out. Since M6 S5c-2 (model amendments, [above](#model-amendments-m6-s5c-2)): `amend` opens the amend form for the question's fields (a process picker with „Vorgeschlagen“ first for a call target, the landscape's names with their endpoints for a message name (a picked partner is accepted with it), labels elsewhere for a start or end name, documentation; the live personal-data warning, the value as it will be stored, the hint that the next import keeps it); „Speichern“ shows the dry run's summary first (before → after, „Danach: …“ with what a pair is, the warning when an agent holds the model's task; Escape goes back), „Sammeln“ keeps the amendment in the page instead: an opaque bar per model above the list („N Ergänzungen für „…“ gesammelt“) saves them with one dry run and one request against the model's current head, and leaving the page with collected amendments asks first; an `amendment-conflict` shows the source tool's value and analyzr's side by side, with „Wert aus dem Quellsystem übernehmen“ and, where offered, „Meine Ergänzung behalten“; every withdrawal asks first with its dry run's cost and sends `If-Match` with the head it showed. A lazy route chunk; the labels come from the zod-free `@analyzr/contracts/open-question-labels` and `…/amendment-labels`, the sheet reader from `…/open-question-csv` and the warning check from `…/personal-data` |
-| `/projects/{key}/upload` | **Hochladen**: drag and drop files or a whole folder, or pick them; `POST …/imports` in batches of ≤ 50 files / 25 MB; the shared file rule of `@analyzr/contracts/paths` decides (M6 S1, as `analyzr import`: `.bpmn`, `.bpmn2`, `.bpmn20.xml`, `.xml`; the picker's `accept` and the text „Erlaubt sind …“ come from `BPMN_FILE_SUFFIXES`): hidden files are dropped silently; models > 5 MB, other files, a plain `.xml` whose key a `.bpmn…` file has (a tool's sidecar, never sent, `keyTakenBy`, as `analyzr import`) and a plain `.xml` the server refuses as no BPMN are skipped and listed under „N Dateien übersprungen (kein BPMN, größer als 5,0 MB oder gleicher Modellschlüssel wie eine BPMN-Datei)“ with the reason per file („kein BPMN“, „zu groß“, „gleicher Modellschlüssel wie Prozess.bpmn“); every model key is derived before sending, in code-point order as `analyzr import` (`comparePaths`, `modelKeyOwners`: a `.bpmn…` file gets a key before a plain `.xml`), so a path without a valid key or with the key another file gets (other than such a sidecar) fails without being sent, naming that file; when every file is a plain `.xml` that is no BPMN, the warning toast „Keine BPMN-Dateien gefunden“ replaces the success toast; a dropped or picked folder is the import root, so `models/vertrieb/a.bpmn` becomes `vertrieb/a`, like `analyzr import models`; outcome per file, with the extractor's warnings as „3 Hinweise“ in a disclosure (a German label per code, the element id and the English message; an unknown code shows the code; beyond the extractor's 100, „100 Hinweise“ and its `too-many-warnings` entry „Weitere Hinweise ausgelassen“ after „… und 81 weitere“); since M6 S5c-2, for a model with live amendments, what became of them („2 Ergänzungen angewendet, 1 im Quellsystem übernommen, 1 Konflikt“), conflicts with the link „in „Offene Fragen“ entscheiden“ (the tab filtered by `amendment-conflict` and the model) |
-| `/projects/{key}/agents` | **Agent verbinden**: create an agent token (scopes, expiry), secret shown once with a copy button, then ready-to-paste configurations: Claude Code (`claude mcp add --transport http …`), Claude Desktop (`analyzr mcp` from the checkout with Node 24, or `docker exec -i … analyzr-server-1 analyzr mcp`; the Node or Docker path you enter becomes `command`), any other MCP client (URL + bearer header, `.mcp.json`); list and revoke tokens |
-| `/projects/{key}/rules` | **Regeln** (owner decision 19, owners only; the tab is hidden for other roles): the system rule, the project's auto-accept rules, the create/edit dialog with the live preview, apply, revoke, revisions ([below](#auto-accept-rules-in-the-web-ui-owner-decision-19)) |
+| `/projects/{key}/relations` | the results of **Relationen** (a tab of its own until UX1; reached with „Alle Relationen“, back with „← Zu prüfen“; UX5 makes them views of the tab): quick filters (all, accepted by rule, key-tier proposals, all proposals), filters status/tier/type/model in the URL (`?status=&tier=&type=&model=`), for owners also the preset „Automatisch angenommen“ and the filter `?auto=any|aar_…` (owner decision 19); type, from → to with element label, model key and process, tier, status, endpoint state, confidence, provenance (from `Relation.provenance`), details (refs, version, attributes); "Prüfen" opens the review screen, the crosshair the model view. |
+| `/projects/{key}/findings` | **Befunde** grouped by kind, each ref with a link into the model view; no tab since UX1 (owner decision 26, Q2): „Alle Befunde der Modelle als Liste (n)“ at the foot of „Offene Fragen“ leads here, the crumb names it |
+| `/projects/{key}/open-questions` | **Offene Fragen** (M6 S4; reworked in UX2b, [UX-SIMPLIFICATION.md](UX-SIMPLIFICATION.md) §3.3; the last of the four tabs, its badge counts „Zu klären“, `totals.ask` of `GET …/open-questions?state=open&group=ask&limit=1`, the call that also gives „Offene Punkte“ their `askByModel`; every role and the read-only demo): one intro line („Was in der Landschaft noch fehlt. Zu jeder Frage gibt es eine Aktion, mit der du sie erledigst.“, the second sentence for reviewers only) with „So funktioniert es“ closed; three filters „Art“, „Modell oder Ordner“ (folders and models) and „Ansprechpartner“ (step owners and lanes) in the URL (`?kind=&model=&askWho=`), counted under the other filters, on a phone behind „Filter (n)“; a link's `?source=` shows as the removable chip „Quelle: …“; the count line „21 zu klären“ (filtered „3 von 21 zu klären“; the badge's number); „Für den Kunden exportieren …“ opens a dialog: „Zum Lesen (Markdown)“ (default) or „Zum Ausfüllen (CSV)“ and „Auch Fragen der Agenten (n)“ (off, shown with agents' questions under the filters), downloading the export route's file for the list's filters with `group` (`ask`, so the old name `offene-fragen-<project>[-<filters>].md\|csv`; with the agents' questions `-ask-agent`) and `state=open` (the open items, as the list shows them: a marked item is not asked again; `open` adds nothing to the file name), every opening from the defaults, the focus back on the button that opened it. The cards are the open items of `group=ask` in the server's order (questions by open decisions, then the value chain's findings, the owner's answer of 2026-10-16): the kind badge, the subject as the link (the model view at the element, the review screen, the chain at `?step=` or `?placement=`) with the process an element lies in, „Betrifft N offene Entscheidungen“ from two on; the question with „Warum?“ closed (the reason, an agent's verbatim reason after „Laut Agent“, a hold's note); a hold's label; „Ansprechpartner: …“; the latest note and, with more, „Verlauf (n)“ (notes and withdrawn marks); no ids, event numbers or source labels (the id under „Kennung kopieren“ in „Weitere Aktionen“). „Art“ „Frage eines Agenten“ lists the agents' questions instead (their `decide` the link „Vorschlag öffnen“ to the proposal); the chain's `proposal` items are never listed (the chain's badge counts them). Below the cards the closed groups „Zur Information (n)“ (agents' summaries one line each with „Zusammenfassung des Agenten anzeigen“, descriptive models one line when two or more share their reason) and „Erledigte zeigen (n)“ (one line per marked item, „Außerhalb der Landschaft · <Notiz>“, with „Markierung zurücknehmen“; a link with `?state=answered` opens it), then „Alle Befunde der Modelle als Liste (n)“. For editors and owners (permission `review`; not on the read-only demo) at most three actions per card: the primary action as a button, one beside it where needed, the rest under „Weitere Aktionen“; `link`, `place` and `choose-copy` open a picker with „Vorgeschlagen“ first that names what it will write or accept before it does; the outside mark, „Gehört zu keinem Schritt“ and „Erneut einplanen“ run in one click; „Link korrigieren“ opens the chain page at the step; a hold answers with „Antwort geben“ in the note dialog (also from its „Vorgemerkt“ row and the review screen, one place to answer a hold; „Antwort“ throughout the dialog, the card's „Antwort vom …“; a hold without an open item, an end missing, answers on the relation itself) and is decided with „Jetzt entscheiden“, which leads once the hold has its answer („Antwort ergänzen“ beside it) (the review screen at `?view=held`, or the chain at the placement; owner decision 26, Q4: no inline decision panels since UX2b); a toast names what an action did, with „Rückgängig“ when it wrote manual relations or a placement (rejected in one bulk decision) or an outside mark (withdrawn), and the way to the decision when it decided existing proposals; „Notiz hinzufügen“ records a note that leaves the item open (the dialog says what ends it). „Antworten aus CSV übernehmen …“ reads the filled-in CSV (a German file picker, UTF-8 only, also an S5a sheet with `Antwortart`), previews it through the dry run (stored, unchanged, unknown ids and invalid rows with their spreadsheet rows and texts, the personal-data alert), stores it with „N Antworten speichern“ and stays open listing the rows left out. Since M6 S5c-2 (model amendments, [above](#model-amendments-m6-s5c-2)): `amend` opens the amend form for the question's fields (a process picker with „Vorgeschlagen“ first for a call target, the landscape's names with their endpoints for a message name (a picked partner is accepted with it), labels elsewhere for a start or end name, documentation; the live personal-data warning, the value as it will be stored, the hint that the next import keeps it); „Speichern“ shows the dry run's summary first (before → after, „Danach: …“ with what a pair is, the warning when an agent holds the model's task; Escape goes back), „Sammeln“ keeps the amendment in the page instead: an opaque bar per model above the list („N Ergänzungen für „…“ gesammelt“) saves them with one dry run and one request against the model's current head, and leaving the page with collected amendments asks first; an `amendment-conflict` shows the source tool's value and analyzr's side by side, with „Wert aus dem Quellsystem übernehmen“ and, where offered, „Meine Ergänzung behalten“; every withdrawal asks first with its dry run's cost and sends `If-Match` with the head it showed. A lazy route chunk; the labels come from the zod-free `@analyzr/contracts/open-question-labels` and `…/amendment-labels`, the sheet reader from `…/open-question-csv` and the warning check from `…/personal-data` |
+| `/projects/{key}/upload` | **Hochladen** (since UX1 the button pinned right of the tab row, an icon with `aria-label` on a phone; editors and owners; the crumb „<Projekt> › Hochladen“): drag and drop files or a whole folder, or pick them; `POST …/imports` in batches of ≤ 50 files / 25 MB; the shared file rule of `@analyzr/contracts/paths` decides (M6 S1, as `analyzr import`: `.bpmn`, `.bpmn2`, `.bpmn20.xml`, `.xml`; the picker's `accept` and the text „Erlaubt sind …“ come from `BPMN_FILE_SUFFIXES`): hidden files are dropped silently; models > 5 MB, other files, a plain `.xml` whose key a `.bpmn…` file has (a tool's sidecar, never sent, `keyTakenBy`, as `analyzr import`) and a plain `.xml` the server refuses as no BPMN are skipped and listed under „N Dateien übersprungen (kein BPMN, größer als 5,0 MB oder gleicher Modellschlüssel wie eine BPMN-Datei)“ with the reason per file („kein BPMN“, „zu groß“, „gleicher Modellschlüssel wie Prozess.bpmn“); every model key is derived before sending, in code-point order as `analyzr import` (`comparePaths`, `modelKeyOwners`: a `.bpmn…` file gets a key before a plain `.xml`), so a path without a valid key or with the key another file gets (other than such a sidecar) fails without being sent, naming that file; when every file is a plain `.xml` that is no BPMN, the warning toast „Keine BPMN-Dateien gefunden“ replaces the success toast; a dropped or picked folder is the import root, so `models/vertrieb/a.bpmn` becomes `vertrieb/a`, like `analyzr import models`; outcome per file, with the extractor's warnings as „3 Hinweise“ in a disclosure (a German label per code, the element id and the English message; an unknown code shows the code; beyond the extractor's 100, „100 Hinweise“ and its `too-many-warnings` entry „Weitere Hinweise ausgelassen“ after „… und 81 weitere“); since M6 S5c-2, for a model with live amendments, what became of them („2 Ergänzungen angewendet, 1 im Quellsystem übernommen, 1 Konflikt“), conflicts with the link „in „Offene Fragen“ entscheiden“ (the tab filtered by `amendment-conflict` and the model) |
+| `/projects/{key}/agents` | **Agent verbinden** (since UX1 in the owners' menu „Einstellungen“, the gear right of the tab row; the crumb names it): create an agent token (scopes, expiry), secret shown once with a copy button, then ready-to-paste configurations: Claude Code (`claude mcp add --transport http …`), Claude Desktop (`analyzr mcp` from the checkout with Node 24, or `docker exec -i … analyzr-server-1 analyzr mcp`; the Node or Docker path you enter becomes `command`), any other MCP client (URL + bearer header, `.mcp.json`); list and revoke tokens |
+| `/projects/{key}/rules` | **Annahmeregeln** (owner decision 19, owners only; the tab „Regeln“ until UX1, now in the menu „Einstellungen“, which other roles do not see; the crumb names it): the system rule, the project's auto-accept rules, the create/edit dialog with the live preview, apply, revoke, revisions ([below](#auto-accept-rules-in-the-web-ui-owner-decision-19)) |
 | `/projects/{key}/value-chain` | **Wertschöpfungskette** (M4 S3, the tab counts open placement items): the chain on a full-viewport canvas, the side panel, edit mode; `?step=` selects a step, `?placement=plc_…` (the `reviewUrl` of placement writes) a placement and its step ([below](#value-chain-in-the-web-ui-m4)) |
 | `/projects/{key}/value-chain/steps/{element-id}` | **Step view** (drill-down, in the project layout): breadcrumb, sub-steps with counts, the step's processes (own, in the sub-steps, reached by call) with links to the model view and back to the chain |
-| `/projects/{key}/models/{model-key}` | **Model view**: borderless bpmn-js `NavigatedViewer` (lazy chunk) with floating chrome; the panel lists the model's relations and findings; `?relation=rel_…` highlights its endpoints (marker plus "Von"/"Nach" label) and offers "Zu … wechseln" to the other model; `?element=` highlights one element (from findings or a click on the canvas, which also filters the list); the panel's section **Offene Fragen** (M6 S4, a lazy chunk) lists the model's questions, compact, with „Im Tab zeigen“ and, since M6 S5c-1, each item's actions for reviewers (the same row, panels and dialog as in the tab); a selected collapsed subprocess (no fact in facts v1) offers „Verknüpfen mit …“: an accepted manual relation from its process to the picked process through `POST …/relations`, with „Rückgängig“; since M6 S5c-2 (model amendments, one lazy module, never in the entry): a selected element an amendment can write (a process, a call, a message or signal endpoint, a start or end event) shows the section „Ergänzen“ with its fields („Eintragen …“ or „Ändern …“ open the amend form; a field no question names says where to change it instead) and its history (who, when, before → after, state, „Zurücknehmen“ after the cost), titled „Ergänzungen“ and shown only with a history when this user can set nothing; the header carries the badge „In analyzr ergänzt (n) · aus r<rev>“ naming the uploaded revision, „N Ergänzungen nicht mehr anwendbar“, „Herunterladen“ (BPMN, the original, the change list as Markdown or CSV) and „Revisionen“ (uploaded and amended); amended shapes get a small pen on their lower right corner; the collection's bar of the model |
+| `/projects/{key}/models/{model-key}` | **Model view**: borderless bpmn-js `NavigatedViewer` (lazy chunk) with floating chrome; the panel lists the model's relations and findings; `?relation=rel_…` highlights its endpoints (marker plus "Von"/"Nach" label) and offers "Zu … wechseln" to the other model; `?element=` highlights one element (from findings or a click on the canvas, which also filters the list); the panel's section **Fragen** (M6 S4 „Offene Fragen“, a lazy chunk; since UX2b only the open questions „Zu klären“ of the model, `group=ask&state=open`, an agent's question sits on its relation) lists them as the tab's cards, compact, with „Im Tab zeigen“ and, since M6 S5c-1, each item's actions for reviewers (the same row, pickers and dialog as in the tab); a selected collapsed subprocess (no fact in facts v1) offers „Verknüpfen mit …“: an accepted manual relation from its process to the picked process through `POST …/relations`, with „Rückgängig“; since M6 S5c-2 (model amendments, one lazy module, never in the entry): a selected element an amendment can write (a process, a call, a message or signal endpoint, a start or end event) shows the section „Ergänzen“ with its fields („Eintragen …“ or „Ändern …“ open the amend form; a field no question names says where to change it instead) and its history (who, when, before → after, state, „Zurücknehmen“ after the cost), titled „Ergänzungen“ and shown only with a history when this user can set nothing; the header carries the badge „In analyzr ergänzt (n) · aus r<rev>“ naming the uploaded revision, „N Ergänzungen nicht mehr anwendbar“, „Herunterladen“ (BPMN, the original, the change list as Markdown or CSV) and „Revisionen“ (uploaded and amended); amended shapes get a small pen on their lower right corner; the collection's bar of the model |
+
+**The project shell** (UX1, [UX-SIMPLIFICATION.md](UX-SIMPLIFICATION.md) §2.2, §3.1, owner decision
+26; `src/routes/project.tsx`, `components/page-shell.tsx`): the crumb „analyzr › <Projekt>“ (a page
+without a tab adds its own: „Hochladen“, „Agent verbinden“, „Annahmeregeln“, „Befunde“), the
+project's name with its key small below (no „Stand s…“; the seq stays in the API), then four object
+tabs „Übersicht“, „Relationen“, „Wertschöpfungskette“, „Offene Fragen“ in one row (a horizontally
+scrolling row of 35 px on a phone), each badge its object's open work and never 0, all from
+`src/lib/project-counts.ts` `useProjectCounts` (the same numbers feed „Als Nächstes“ and „Offene
+Punkte“; the three badges never count one item: „Relationen“ `isReviewItem`, „Wertschöpfungskette“
+`isOpenPlacement`, „Offene Fragen“ `totals.ask`, holds only there). Pinned right of the row,
+outside its scrolling part: the button „Hochladen“ (editors and owners) and the owners' menu
+„Einstellungen“ (a gear: „Agent verbinden“, „Annahmeregeln“). Menus and popovers in the entry chunk
+(the gear, „Exportieren“, „Agent starten“) are `components/light-popover.tsx`: a trigger with
+`aria-expanded`, an absolutely positioned panel, Escape and an outside click close it, a menu's
+items take the arrow keys; Radix's dropdown with floating-ui stays in the lazy chunks. The server's
+state shows only on trouble, as a banner with `role=alert` („Server nicht erreichbar“, „Datenbank
+nicht erreichbar“); the version is in the logo's tooltip. **Failed writes in German**:
+`errorMessage` gives one sentence per `ProblemCode` and, before it, per known `reason`
+(`src/lib/problem-texts.ts`, e.g. 412 „Inzwischen hat sich etwas geändert. Lade neu und prüf den
+neuen Stand.“), never the English title; `errorDetail` keeps title, status and the server's detail,
+which danger toasts (`toast({ …, error })`) and alerts (`components/error-text.tsx` `ErrorText`) show
+behind a closed „Technische Details“. **„Agent starten“** (`components/agent-start.tsx`, owners): one
+popover with the copyable `/analyzr:relations <p>` (and `/analyzr:placements <p>` once a chain
+exists), the commands wrapping instead of being cut off, the link to the Claude Desktop start
+prompt and „Die Vorschläge erscheinen unter „Relationen“. Entscheiden kannst nur du.“ (with a chain
+„… unter „Relationen“ und auf der „Wertschöpfungskette“.“); without an active agent token the entry
+is „Agent verbinden“; „Nochmal versuchen“ (permission `write`) requeues and then opens the popover
+for owners (a second click closes it instead of requeueing again), editors get a plain button and a
+toast. The entry chunk is one chunk since UX1 (`vite.config.ts`: a `codeSplitting`
+group with `tags: ['$initial']`): 209.8 KB gzip after the first wave (2026-10-18), from 211.0 KB in
+seven chunks before UX1.
+
+**Measured load** (the UI load guard, `e2e/ui-load.spec.ts` with `ANALYZR_UI_LOAD_REPORT`, after the
+first wave, 2026-10-18, [UI simplification first wave](#ui-simplification-first-wave-2026-10-18)):
+`nordwind-handel` seeded with its chain and worked by the simulation agent, nothing decided (the
+walkthrough's state); `signavio-beispiel` from `analyzr import` of the Signavio fixture's bundle; an
+empty project. Visible controls, words, `data-slot=badge` and the first item's top; before = the
+web before UX1 ([UX-SIMPLIFICATION.md](UX-SIMPLIFICATION.md) §7 "UX1 as delivered", "UX2b as
+delivered").
+
+| Screen | 1440x900 | 390x844 | Before (1440x900) | Budget |
+|---|---|---|---|---|
+| Tab bar | 4 tabs, 3 badges, 1 row | 1 scrolling row ≤ 48 px, „Hochladen“ in view | 9 tabs, 6 counts, 2 rows (4 rows at 390) | one row; ≤ 48 px at 390 |
+| „Übersicht“, `nordwind-handel` | 44 controls, 379 words, 31 badges, primary at 224 px | 44, 314, 31, 224 px | 43, 400, 62, no primary | „Als Nächstes“ ≤ 40 words, ≤ 5 controls; primary ≤ 260 / ≤ 300 px |
+| „Übersicht“, `signavio-beispiel` | 19, 95, 6, 224 px | 19, 80, 6, 224 px | 18, 122 | – |
+| „Übersicht“, empty project | 9, 37, 0 | 9, 36, 0 | 13, 56, 5 zero counts | – |
+| „Offene Fragen“, `nordwind-handel` | 76, 643, 21, first card at 246 px | 74, 540, 21, 362 px | 231, 3,119, 50, 575 px (1,260 at 390) | ≤ 80 controls, ≤ 1,000 words, ≤ 250 / ≤ 450 px |
+| „Offene Fragen“, `signavio-beispiel` | 34, 227, 7, 246 px | – | 45, 881, 503 px | – |
+| „Relationen“ (the inbox) | 64, 828, 48, first row at 440 px | 429 px wide (the queue scrolls sideways) | – | UX5 |
+| „Wertschöpfungskette“ | 60, 482, first open placement at 1,153 px | – | 61, 483 (UX1) | UX6 |
+| Model view `vertrieb/order-handling` | 27, 317 | – | 35, 555 | UX3 |
+| Entry chunk (gzip) | 209.8 KB in 1 chunk | | 211.0 KB in 7 | < 240 KB |
 
 How it talks to the server: only through `@analyzr/client` (generated from the contracts) with
 `baseUrl` = the page's origin. `src/lib/api.ts` wraps `fetch`: on a 401 it calls
@@ -2230,13 +2310,15 @@ loaded, so a write action never flashes up. `src/lib/server-mode.ts` reads `Heal
 read-only demo every permission is false as well (its session is a viewer anyway), the banner
 (`components/demo-banner.tsx`) marks the document (`<html data-analyzr-demo>`, the full-height
 layouts subtract `--analyzr-banner-h`), and the projects page hides „Neues Projekt“ and the seed
-hint (shown once `/health` has answered). Write tabs are hidden („Hochladen“ for editors and
-owners, „Agent verbinden“ and „Regeln“ for owners only); their URLs render
+hint (shown once `/health` has answered). Write entries are hidden (the button „Hochladen“
+for editors and owners, the menu „Einstellungen“ with „Agent verbinden“ and „Annahmeregeln“ for
+owners only; „Als Nächstes“ shows viewers its text without buttons); their URLs render
 `components/read-only-notice.tsx` without a request. Empty states follow the same gates: an
 empty project offers „Modelle hochladen“ to editors and owners and „Agent verbinden“ to owners,
-a viewer reads „Dieses Projekt hat noch keine Modelle.“; the inbox asks only owners to connect
+a viewer reads „Dieses Projekt hat noch keine Modelle.“; the inbox asks only owners to start
 an agent, and its placements callout says „deine Prüfung“ only to reviewers. `errorMessage`
-turns a 403 `demo-readonly` into „Das ist eine Demo: Hier kannst du nichts ändern.“. Local mode
+turns a 403 `demo-readonly` into „Das ist eine Demo: Hier kannst du nichts ändern.“ (one of the
+German problem texts since UX1). Local mode
 is unchanged: its single user owns every project.
 
 #### Auto-accept rules in the web UI (owner decision 19)
@@ -2246,14 +2328,15 @@ is unchanged: its single user owns every project.
 of marks and revocations; in the entry chunk), `src/lib/auto-accept-rules.ts` (labels of kinds,
 tiers and block reasons, percent input, drafts; rules page only), `src/lib/auto-accept-actions.ts`
 (`useIsOwner`, `useAutoAcceptIndex`, revocations), `src/lib/auto-accept-rule-actions.ts` and
-`src/lib/auto-accept-queries.ts` (rule writes, preview, dry runs). The tab, apply and every revoke
-need `project.role === 'owner'`; the ledger query and the marks are every reviewer's
+`src/lib/auto-accept-queries.ts` (rule writes, preview, dry runs). The page (in the menu
+„Einstellungen“ since UX1), apply and every revoke need `project.role === 'owner'`; the ledger query and the marks are every reviewer's
 (`useCanReview`: owner or editor), so a machine acceptance never passes for a human one; for
 viewers every view looks as before. Editors filter by the rules the ledger names (`ledgerRules`),
 owners by all their relation rules. German texts call the role „Inhaber“, as the project list
 does.
 
-- **Tab „Regeln“.** The card „Systemregel: Eindeutige Aufrufe“ (decision 9, „immer aktiv, nicht
+- **„Annahmeregeln“** (the tab „Regeln“ until UX1; since then in the owners' menu
+  „Einstellungen“ on every project page). The card „Systemregel: Eindeutige Aufrufe“ (decision 9, „immer aktiv, nicht
   änderbar“, the count links to the rule-accepted relations); the rules table (name and note;
   criteria „Relationen · Schlüssel · ab 95 %“ with the narrowing; status „Aktiv“/„Aus“ and
   „Urheber ist kein Inhaber mehr“ (saving the rule takes it over); „N in Kraft“ (for relation
@@ -2307,7 +2390,7 @@ does.
   token's proposals withdrawn, they become obsolete and are judged again unless another agent's
   proposal is open; checked, it runs the revocation with `agentPrincipalId` after the DELETE (dry
   run, then its count, reason „Token „…“ widerrufen“). If that fails, the toast points to
-  „Annahmen eines Agenten widerrufen“ in the tab „Regeln“.
+  „Annahmen eines Agenten widerrufen“ under „Einstellungen › Annahmeregeln“.
 - The entry chunk grew from 192.9 to 197.6 KB gzip (ceiling 200 KB): the rules page, its dialogs
   and helpers load with the route; only the marks, the revoke dialog and the ledger join are in the
   entry. Screenshots: `docs/screenshots/d19-*.png` (Playwright with `ANALYZR_SCREENSHOTS_DIR`).
@@ -2319,18 +2402,23 @@ M2-PIPELINE-REVIEW item 7 on the REST routes of [Analysis pipeline and review](#
 `src/lib/review-actions.ts` (mutations), `src/components/review/*`, `src/routes/project-review.tsx`
 and `src/routes/review.tsx`.
 
-- **Inbox** (`/projects/{key}/review`). The stage bar counts models per pipeline stage ("Phase"
-  in the UI; "Stufe" is only the tier) in pipeline order (Wartet auf Agent → Agent arbeitet →
-  Agent gescheitert → Wartet auf Prüfung → Klärung offen → Eingearbeitet). Selecting a phase lists
-  its models; a lease that expired while nobody claimed since still says "Agent arbeitet" and is
-  marked "Lease abgelaufen" with "Erneut einplanen", like a failed task; "Vorgemerkte zeigen" on
-  a model waiting for clarification opens its held items. The queue holds the open proposals and
+- **Inbox** (`/projects/{key}/review`, the tab „Relationen“ since UX1). The models per pipeline
+  stage ("Phase" in the UI; "Stufe" is only the tier) are the phase chips of „Übersicht“ since UX1
+  (in pipeline order: Wartet auf Agent → Agent arbeitet → Agent gescheitert → Wartet auf Prüfung →
+  Klärung offen → Eingearbeitet, only stages with models); a chip filters the models table, and
+  with proposals open „n Vorschläge dieser Modelle prüfen“ opens the queue with `?stage=`, shown
+  there as the removable chip „Phase: …“. A reservation that expired while nobody claimed since
+  still says "Agent arbeitet" and is marked „Reservierung abgelaufen am …“ with „Nochmal
+  versuchen“ in the model's phase cell, like a failed analysis („Nach 3 Versuchen gescheitert“);
+  a model waiting for clarification counts its held relations in its „Offene Punkte“ (text since
+  the first wave's review; the „Vorgemerkt“ view lists them). The queue holds the open proposals and
   the accepted relations whose endpoint changed or is missing ("Angenommen, Endpunkt geändert";
-  the same `review_items` that keep a model in "Wartet auf Prüfung", and the count of the
-  "Prüfen" tab), highest confidence first, then those whose decision finishes a model (its last
+  the same `review_items` that keep a model in "Wartet auf Prüfung", and the badge of
+  „Relationen“), highest confidence first, then those whose decision finishes a model (its last
   open item, "schließt 1 Modell ab"); an agent's question shows as "Frage", an agent's no-link on
   the pair as "Einwand" (tooltip "Kein Zusammenhang laut Agent", with the count when there are
-  several). "Prüfen" opens the review screen with the same filters.
+  several). "Prüfen" opens the review screen with the same filters; „Alle Relationen“ the
+  results.
 - **Review screen** (`/projects/{key}/review/{relation}`, full viewport like the model view): both
   endpoint models in bpmn-js side by side (from 1280 px; below that, and with the toggle, one at a
   time: "Von" / "Nach"; one canvas when both ends lie in one file), endpoints marked and labelled
@@ -2383,11 +2471,15 @@ and `src/routes/review.tsx`.
   with "Die Liste hat sich geändert … Es wurde nichts entschieden". Accepted relations whose
   endpoint changed are never in a bulk list; they are confirmed one by one.
 - **Held list** (`?view=held`): per held relation the hold note, question and label, the answers so
-  far (notes after the hold) and an answer field (`POST …/notes`), plus "Prüfen" to decide once the
-  answer is known.
-- **Plain text.** Rationales, questions, notes, labels, evidence and task errors render through
-  `PlainText` (React text, `white-space: pre-wrap`): no HTML, no Markdown; the review flow checks
-  that an `<img onerror>` rationale stays text under the CSP.
+  far (notes after the hold) and „Antwort geben“ (since UX2b the note dialog of „Offene Fragen“ for
+  the hold's question, `POST …/open-questions/{q}/answers`, which records a note on the relation;
+  before, an answer field with `POST …/notes`), plus "Prüfen" to decide once the answer is known.
+  The review screen shows a held relation's question, note and label in its box „Offene Frage
+  (vorgemerkt)“ with the same „Antwort geben“ (UX2b).
+- **Plain text.** Rationales, questions, notes, labels and evidence render through `PlainText`
+  (React text, `white-space: pre-wrap`): no HTML, no Markdown; the review flow checks that an
+  `<img onerror>` rationale stays text under the CSP. (Task errors are no longer shown in the web
+  since UX1 removed the stage table; `analyzr status` and the task API keep them.)
 
 #### Value chain in the web UI (M4)
 
@@ -3084,8 +3176,8 @@ agent's recordings ([Recordings](#simulation-agent-and-evalreplay-m2)).
   agent token (read, propose), then runs `analyzr-agent-sim` as a child process over MCP until no task
   is left (every task submitted at attempt 1, nothing invalid; the five pairs the flow decides are
   proposed with the token's principal and client, `analyzr-relations` and `sim-policy-1`). In the
-  browser: the stage bar equals the models' stages (none waiting for the agent, some waiting for
-  review, some incorporated), questions in the queue, the agent's provenance in the relations
+  browser: the phase chips of „Übersicht“ equal the models' stages (none waiting for the agent,
+  some waiting for review, some incorporated), questions in the queue, the agent's provenance in the relations
   table; the review screen with the agent's rationale, question and provenance; A, R twice, H with
   a question and its answer in the held list; a correction of the dynamic call
   `Call_RechnungAusgeben` to `finanzen/briefversand` (a `manual` relation accepted, the proposal
@@ -3601,6 +3693,101 @@ agent's recordings ([Recordings](#simulation-agent-and-evalreplay-m2)).
   external-ids` (the golden bundle under its pinned keys, the key map from `models external-ids`,
   unchanged bytes, a moved tool id with a checksum mismatch); integrate `test/plugin.test.ts`
   (the release hash of plugin 0.1.1).
+- UX2a "Open questions: groups and totals": server `test/unit/open-questions.test.ts` (the block
+  `groups and totals (UX2a)`: every kind has a group by a `Record` over the kinds, the filter,
+  `totals` per group under the other filters and `askByModel`, one question per process (an agent
+  question or an unsure verdict drops the chain finding), the Signavio fixture's bundle exported
+  without an id, ref or seq in its text) and `open-question-actions.test.ts` (the action labels,
+  „Auf der Kette prüfen“ on the `proposal` items), `test/integration/open-questions.test.ts` (the
+  counts per group and `askByModel` pinned on seeded `nordwind-handel` before and after the
+  simulation agent, the default export under the old file name, the id regex over the rendered
+  Markdown and CSV); contracts `test/answers.test.ts` (the block `the groups, their filter and the
+  export (UX2a)`: one or several groups, the export's default groups, every group labelled and
+  counted, the column „Ansprechpartner“ with the old header still read); CLI
+  `test/unit/questions.test.ts` (`--group` repeated or comma-separated, also in the export, an
+  unknown group refused; the summary's `; groups: …`), `questions-act.test.ts`,
+  `questions-answer.test.ts` and the e2e test (the 64 questions and the order of the owner's answer
+  of 2026-10-16 unchanged, the Markdown); web fixtures with `group`, `detail`, `totals` and
+  `askByModel`.
+- UX1 "Shell and Übersicht": web `test/overview.test.tsx` (20 tests: the priority rules of „Als
+  Nächstes“ as pure cases (no token, a token and the review as the second line, only failed or
+  expired, the agent working, editors and viewers, placements, questions, nothing, the missing
+  chain, at most two lines), the shared counts (each badge from its own list, §2.5's 6 + 1 + 1 = 8,
+  the split text), and the screen: „Agent starten“ with its popover and the block's budget
+  (≤ 40 words, ≤ 5 controls), „Agent verbinden“ with a revoked token, the review at the queue's
+  first item while the agent works, the placements, the questions, „Alles geprüft.“ without zero
+  badges, a viewer without buttons, the four columns and „Offene Punkte“ with its split and
+  target, „Modell suchen …“ with folded umlauts, the phase chips and their proposals link, the
+  export hub's entries and keys), `problem-texts.test.tsx` (every `ProblemCode` German and never its
+  title, reasons before codes, the detail behind „Technische Details“ in an alert and a toast),
+  `projects-page.test.tsx` (the list without „Stand“ and „Rolle“, „Kurzname: … (ändern)“, a taken
+  key), `app.test.tsx` (no server line, the version in the logo's tooltip, „Rolle“ only with
+  another role, the banner, the four tabs with „Relationen“ active on `/relations`, the menu
+  „Einstellungen“ for owners), `demo-mode.test.tsx` (the four tabs for every role, „Hochladen“ and
+  the menu by role, Escape, a failed model without „Nochmal versuchen“ for a viewer),
+  `review-inbox.test.tsx` (the badge „Relationen“, the held items from „Offene Punkte“, the chip
+  „Phase: …“, the requeue of an expired reservation on „Übersicht“), the list stubs of
+  `open-questions.test.tsx`, `open-question-actions.test.tsx` and `amendments.test.tsx` answer
+  `group`, `totals` and `askByModel` (`openQuestionPage` in `test/support/fixtures.ts`), the change
+  list from the export hub, the foot link to „Befunde“, `api.test.ts` and the bundle guard (209.2
+  KB, one chunk); Playwright `e2e/ui-load.spec.ts` (the UI load guard, 7 tests and 4 `fixme` for
+  later slices), `smoke.spec.ts` (no server line, „Relationen“ and „Alle Relationen“, „Befunde“
+  from „Offene Fragen“, „Agent verbinden“ from „Einstellungen“), `review.spec.ts` (the stages,
+  holder and reservation on „Übersicht“), `pipeline.spec.ts` (the phase chips equal the stages,
+  „Vorschläge prüfen (n)“), `open-questions.spec.ts` (the tab order, the badge counts „Zu klären“),
+  `auto-accept.spec.ts` („Einstellungen › Annahmeregeln“), `amendments.spec.ts` (the change list
+  from the hub), `demo.spec.ts` (the four tabs, „Als Nächstes“ without writes, „Alle Relationen“,
+  „Befunde“ from „Offene Fragen“, every menu opened by the write guard, the decide labels on
+  buttons only) and `screenshots.spec.ts` (01, 02).
+- UX2b "„Offene Fragen“ in the web": web `test/open-questions.test.tsx` (37 tests: the tab and its
+  badge, „Zu klären“ as lean cards in the server order without ids, event numbers or source
+  labels, „Betrifft …“ from two on, the agents' questions and the informational items apart, the
+  descriptive models as one line, „Warum?“ closed with an agent's words as plain text, a hold's
+  note, label and contact, the subjects' links, the three filters, „Frage eines Agenten“, the
+  source chip, the empty states, the export dialog (`group=ask` by default, the agents' questions
+  on request, the byte order mark, a failed export, a viewer), the model view's „Fragen“, „Antwort
+  geben“ on a hold, „Kennung kopieren“, notes and withdrawn marks under „Verlauf“, „Erledigte
+  zeigen“ and `?state=answered`, the CSV takeover), `open-question-actions.test.tsx` (the primary
+  actions, the done line's way back, a hold decided on the review screen, an agent's question on
+  the chain), `open-questions-lib.test.ts` (the view, the facets, the export's groups, the card's
+  actions and links, the descriptive notice), `held-list.test.tsx` and `review-details.test.tsx`
+  (a hold answered in the dialog of „Offene Fragen“), `overview.test.tsx` (the hub opens the
+  dialog), `open-question-answers-lib.test.ts` („Jetzt entscheiden“) and the bundle guard (209.3
+  KB); server `test/unit/open-questions.test.ts` (the filter line „Außerhalb der Landschaft“);
+  Playwright `e2e/ui-load.spec.ts` (the UX2b budgets at both widths, `signavio-beispiel`, a hold
+  answered from three entries on `ui-load-vormerkung`, the customer export without ids),
+  `open-questions.spec.ts` (rewritten: the cards in the API's order, the filters and the chip, the
+  export dialog, decided where the diagrams are, „Erledigte zeigen“, the model view's „Fragen“),
+  `review.spec.ts` and `pipeline.spec.ts` (the held list's „Antwort geben“), `demo.spec.ts` (the
+  export dialog, the intro without the promise of an action, the heading „Fragen“, „Antwort
+  speichern“ and `hold-answer` in the write guard).
+- First wave review round: server `test/unit/open-questions.test.ts` (the block `one item per gap:
+  coded no-links join the rule tier's items`: a `call-target` no-link joins the finding on its
+  call, a `collaboration` no-link the `black-box-partner` item, the agent's reasons as „Laut Agent:
+  …“, notes and withdrawn marks kept on the survivor, a live outside mark its own item; a hold's
+  notes exported as „Antwort“ without handles, its own note as „Notiz zur Vormerkung“; an agent's
+  verbatim reason attributed („Laut Agent: …“); the Markdown grouped by step owners, then lanes,
+  then „Ohne Ansprechpartner“) and
+  `open-question-actions.test.ts` (a primary link „Verknüpfen mit …“, „Nur verknüpfen …“ only
+  beside a primary amendment), `test/integration/open-questions.test.ts` (the pin after the probe
+  agent 28 → 26) and `open-question-actions.test.ts` (a coded no-link joins the pool it is about,
+  the pool's mark kept across a re-judgement); web `test/open-questions-lib.test.ts`
+  (`relationProcessesText`: both processes on a relation's card, equal names told apart by the
+  sending end; „Jetzt entscheiden“ leads once a hold has its answer), `overview.test.tsx`
+  („Offene Punkte“ as text with its split in a tooltip, „1 offener Punkt“, held placements
+  counted, the export hub's entries), `agent-start.test.tsx` (the commands wrap, the chain named,
+  „Nochmal versuchen“ closes on a second click, editors a plain button), `projects-page.test.tsx`
+  (a name without a key shows the field, the focus stays in the name), `held-list.test.tsx` and
+  `review-details.test.tsx` (a hold without an open item answered on the relation, the latest
+  answer and „Antwort ergänzen“ on the review screen), `open-questions.test.tsx`
+  (the export dialog sends `state=open`, the „Befunde“ link on an empty list, the model view's link
+  to the agents' questions and „Zur Information“), `upload-panel.test.tsx` (a failed batch keeps
+  the server's reason behind „Technische Details“) and the bundle guard (209.8 KB); Playwright
+  `e2e/ui-load.spec.ts` (the active tab inside the row on a phone, every entry of „Exportieren“
+  inside its menu, the hold's answer on the review screen, „Offene Punkte“ the sum of its parts,
+  the `fixme` for „Gutschrift“ on a phone with UX3's done-when) and `open-questions.spec.ts`;
+  `screenshots.spec.ts` waits for the badge „Offene Fragen“ before `02-models` (on a fresh stack
+  the open questions answer last).
 
 ## CI
 
@@ -4805,3 +4992,183 @@ client 4), `pnpm eval:candidates` and `pnpm eval:placements` (pass), `pnpm eval:
 eval:descriptive` (exit 0, written); `git diff --stat eval/reports` empty, no diff against HEAD
 under `eval/` or `apps/server/test/integration/__snapshots__/`, and `mcp-tools.json` names none of
 the new fields.
+
+### UX2a (2026-10-18)
+
+Same machine; UX2a "Open questions: groups and totals" on `feat/integration-and-gaps`
+([UX-SIMPLIFICATION.md](UX-SIMPLIFICATION.md) §7 "UX2a as delivered"), contracts, client,
+server and CLI, plus the web's rendering of the new `detail` and its test fixtures.
+
+1. Gates: `pnpm format:check`, `pnpm -r typecheck`, `pnpm -r lint` (no dependency violations,
+   144 modules, 735 dependencies), `pnpm -r test` with Testcontainers (server 1,576 in 75 files,
+   web 433 in 38, cli 249 plus 7 skipped (the live project), bpmn-facts 199, contracts 160,
+   integrate 145, eval/tools 108, relations 85, agent-sim 57, procedures 37, demo 27, notices 9,
+   client 4), `pnpm eval:candidates` and `pnpm eval:placements` (pass), `pnpm eval:replay` and
+   `pnpm eval:descriptive` (exit 0); `git status eval/` clean; the MCP snapshots and
+   `claim-golden.test.ts` unchanged; `pnpm --filter @analyzr/client generate` regenerated the
+   client for `group`, `detail`, `totals`, `askByModel` and the filter.
+2. No Docker stack of its own: the server tests and the CLI e2e tests ran against Testcontainers'
+   PostgreSQL, the e2e tests with a server started from source. No Playwright run: the UI load
+   guard comes with UX1; the specs whose labels changed (`open-questions.spec.ts`,
+   `amendments.spec.ts`, `demo.spec.ts`' write labels) were updated, not run.
+
+### UX1 (2026-10-18)
+
+Same machine; UX1 "Shell and Übersicht" on `feat/integration-and-gaps` on top of UX2a
+([UX-SIMPLIFICATION.md](UX-SIMPLIFICATION.md) §7 "UX1 as delivered"), web only.
+
+1. Gates: `pnpm format:check`, `pnpm -r typecheck`, `pnpm -r lint` (no dependency violations,
+   144 modules, 735 dependencies), `pnpm -r test` with Testcontainers (server 1,576 in 75 files,
+   web 467 in 41, cli 249 plus 7 skipped (the live project), bpmn-facts 199, contracts 160,
+   integrate 145, eval/tools 108, relations 85, agent-sim 57, procedures 37, demo 27, notices 9,
+   client 4), `pnpm eval:candidates` and `pnpm eval:placements` (pass), `pnpm eval:replay` and
+   `pnpm eval:descriptive` (exit 0); `git status eval/` clean; no contract, server, MCP snapshot,
+   procedure or recording change (the client regenerates without drift).
+2. A scratch stack of its own, compose project `analyzr-ux1` (image `analyzr-ux1:dev`, ports 7610
+   and 55610): `analyzr seed nordwind-handel --value-chains` in the container, the simulation
+   agent from the checkout with a read/propose token (32 tasks, 77 proposals, 22 questions, 150
+   no-links), `analyzr import` of `tools/integrate/test/fixtures/signavio/bundle` as
+   `signavio-beispiel` (6 created, keys pinned), the empty project `ui-load-leer` made by the
+   guard. A second service of the same project served UX2a's web build from the same database
+   on port 7611 for the before numbers.
+3. Playwright in Chromium against it (`ANALYZR_E2E_URL=http://127.0.0.1:7610`): the whole suite,
+   79 passed (amendments 5, run again after its change list moved to the hub, auto-accept 5,
+   open-questions 21, pipeline 6, review 8, smoke 4, value-chain 15, value-chain-agent 3,
+   value-chain-draft 2, value-chain-import 3 plus 1 skipped, ui-load 7 plus 4 `fixme`), no CSP
+   violation; the screenshots `m2-*` and
+   `d19-*` retaken from those runs, `01` … `07` from a freshly seeded stack of its own
+   (`analyzr-ux1s`, both landscapes, removed afterwards). The read-only demo image as
+   `analyzr-ux1d:dev` (compose project `analyzr-ux1d`, port 7680): `demo.spec.ts` 14 passed with
+   every menu opened, the screenshots `demo-01` … `demo-07` retaken.
+4. The UI load guard's numbers at 1440x900 / 390x844 (before: UX2a's build): the tab bar 9 tabs
+   in 2 rows (85 px) / 4 rows (189 px) → 4 tabs in 1 row of 35 px with 3 badges; „Als Nächstes“
+   on `nordwind-handel` 6 words and 2 controls, its primary at 224 px at both widths; „Übersicht“
+   43 controls, 400 words, 62 badges → 75 controls (with the „Offene Punkte“ links), 317 / 252
+   words, 31 badges; no id on „Übersicht“ or the projects list; „Gutschrift“ in 2 interactions at
+   390 px („found“ means opened until UX3: on a phone the model view's panel still covers its
+   canvas and header, the guard's `fixme` „Gutschrift on a phone shows its name and its
+   diagram“); every badge, „Als Nächstes“ number and „Offene Punkte“ equal to its list;
+   `einkauf/bestellanforderung` 9 open points (7 relations, 1 placement, 1 question). The entry
+   chunk: 211.0 KB in 7 chunks → 209.2 KB in 1 (the `$initial` group).
+5. The stacks and their images were removed with `down -v`; nothing of the owner's stacks was
+   touched.
+
+### UX2b (2026-10-18)
+
+Same machine; UX2b "„Offene Fragen“ in the web" on `feat/integration-and-gaps` on top of UX1
+([UX-SIMPLIFICATION.md](UX-SIMPLIFICATION.md) §7 "UX2b as delivered"), web only plus the
+zod-free state label.
+
+1. Gates: `pnpm format:check`, `pnpm -r typecheck`, `pnpm -r lint` (no dependency violations,
+   144 modules, 735 dependencies), `pnpm -r test` with Testcontainers (server 1,576 in 75 files,
+   web 477 in 41, cli 249 plus 7 skipped (the live project), bpmn-facts 199, contracts 160,
+   integrate 145, eval/tools 108, relations 85, agent-sim 57, procedures 37, demo 27, notices 9,
+   client 4), `pnpm eval:candidates` and `pnpm eval:placements` (pass), `pnpm eval:replay` and
+   `pnpm eval:descriptive` (exit 0); `git status eval/` clean; no route, server, MCP snapshot,
+   procedure or recording change (the client regenerates without drift).
+2. A scratch stack of its own, compose project `analyzr-ux2b` (ports 7620 and 55620): first
+   UX1's build as `analyzr-ux2b-before:dev`, on which the UI load guard seeded `nordwind-handel`
+   with its chain and the simulation agent, imported `signavio-beispiel` from the bundle, made
+   `ui-load-leer` and measured the before numbers; then UX2b's build as `analyzr-ux2b:dev` on the
+   same database (a server started from source on port 7622 served the iterations). The guard's
+   hold task made `ui-load-vormerkung`; `ux2b-shots` (`analyzr seed nordwind-handel --project
+   ux2b-shots --value-chains` in the container) gave the screenshot 04.
+3. Playwright in Chromium against `analyzr-ux2b:dev` (`ANALYZR_E2E_URL=http://127.0.0.1:7620`):
+   the whole suite, 83 passed (amendments 5, auto-accept 5, open-questions 21, pipeline 6,
+   review 8, smoke 4, ui-load 11 plus 2 `fixme`, value-chain 15, value-chain-agent 3,
+   value-chain-draft 2, value-chain-import 3 plus 1 skipped), no CSP violation. The read-only
+   demo image as `analyzr-ux2bd:dev` (compose project `analyzr-ux2bd`, port 7681): `demo.spec.ts`
+   14 passed with every menu opened. Screenshots retaken: `04-model-view` (the section
+   „Fragen“) and `m2-04-held` („Antwort geben“ instead of the answer field); the demo's screenshots
+   show nothing UX2b changed and stay.
+4. The UI load guard's numbers on „Offene Fragen“ of `nordwind-handel` (before: UX1's build):
+   231 → 76 controls, 3,119 → 643 words (540 at 390 px), 50 → 21 badges, the first card at
+   575 → 246 px (1,260 → 362 px at 390 px); the badge, the count line „21 zu klären“ and the 21
+   cards agree with `group=ask&state=open`; at most 2 actions and 22.6 words per card on
+   average; no id at either width or in the default export; a hold answered in 2 clicks from its
+   card, its „Vorgemerkt“ row and the review screen; `signavio-beispiel` 45 → 34 controls,
+   881 → 227 words; the model view of `vertrieb/order-handling` 35 → 26 controls, 555 → 308
+   words. The entry chunk: 209.2 → 209.3 KB.
+5. The stacks and their images were removed with `down -v`; nothing of the owner's stacks was
+   touched.
+
+### First wave review round (2026-10-18)
+
+Same machine; the review round of UX2a, UX1 and UX2b on `feat/integration-and-gaps`
+([UX-SIMPLIFICATION.md](UX-SIMPLIFICATION.md) §7 "First wave review round"): the server's read
+model (coded no-links join the rule tier's items about the same gap) and export, the action
+labels, the export route's description in the contracts (the client regenerated), the web.
+
+1. Gates: `pnpm format:check`, `pnpm -r typecheck`, `pnpm -r lint` (no dependency violations,
+   144 modules, 736 dependencies), `pnpm -r test` with Testcontainers (server 1,578 in 75 files,
+   web 488 in 42, cli 249 plus 7 skipped (the live project), bpmn-facts 199, contracts 160,
+   integrate 145, eval/tools 108, relations 85, agent-sim 57, procedures 37, demo 27, notices 9,
+   client 4), `pnpm eval:candidates` and `pnpm eval:placements` (pass), `pnpm eval:replay` and
+   `pnpm eval:descriptive` (exit 0); `git status eval/` clean; the MCP snapshots and
+   `claim-golden.test.ts` unchanged; no change to facts, the rule tier, claim inputs,
+   procedures or recordings.
+2. A scratch stack of its own, compose project `analyzr-uxr` (image `analyzr-uxr:dev`, ports 7630
+   and 55630), seeded by the UI load guard (`nordwind-handel` with its chain and the simulation
+   agent, `signavio-beispiel` from the bundle, `ui-load-leer`, `ui-load-vormerkung`).
+3. Playwright in Chromium against it (`ANALYZR_E2E_URL=http://127.0.0.1:7630`): ui-load 11 passed
+   plus 3 `fixme` (the new one: „Gutschrift“ on a phone shows its name and its diagram, UX3),
+   open-questions 21, value-chain 15, value-chain-agent 3, value-chain-draft 2,
+   value-chain-import 3 plus 1 skipped, amendments 5, auto-accept 5, pipeline 6, review 8,
+   smoke 4. Not run: `demo.spec.ts` (no demo image built; no write entry changed its gate) and
+   `screenshots.spec.ts` (the screenshots stay; „Offene Punkte“ now shows as text).
+4. The UI load guard's numbers at 1440x900 / 390x844: „Übersicht“ of `nordwind-handel` 75 → 44
+   controls (the „Offene Punkte“ numbers are text now), 379 / 314 words; `signavio-beispiel`
+   23 → 19 controls; „Offene Fragen“ unchanged (76 controls, 643 / 540 words, the first card at
+   246 / 362 px); the model view of `vertrieb/order-handling` 26 → 27 controls, 308 → 317 words
+   (the link to the agents' questions, „Zur Information“ closed). The entry chunk: 209.3 →
+   209.8 KB.
+5. The stack, its volumes and its image were removed with `down -v`; nothing of the owner's
+   stacks was touched.
+
+### UI simplification first wave (2026-10-18)
+
+Same machine; a separate pass over the whole first wave (UX2a, UX1, UX2b and the first wave's
+review round, [UX-SIMPLIFICATION.md](UX-SIMPLIFICATION.md) §7) on `feat/integration-and-gaps`
+on top of `427aaf6`, after the review round.
+
+1. Gates: `pnpm format:check`, `pnpm -r typecheck`, `pnpm -r lint` (no dependency violations,
+   144 modules, 736 dependencies), `pnpm -r test` with Testcontainers (server 1,578 in 75 files,
+   web 488 in 42, cli 249 plus 7 skipped (the live project), bpmn-facts 199, contracts 160,
+   integrate 145, eval/tools 108, relations 85, agent-sim 57, procedures 37, demo 27, notices 9,
+   client 4), `pnpm eval:candidates` and `pnpm eval:placements` (pass), `pnpm eval:replay` and
+   `pnpm eval:descriptive` (exit 0); `git diff --stat eval/reports` empty, `git status eval/`
+   clean; the MCP snapshots (`apps/server/test/integration/__snapshots__/mcp-*.json`) unchanged.
+   The bundle guard: the entry chunk 209.8 KB gzip (ceiling 240 KB), the chain-only code 37.0 KB
+   (budget 40 KB).
+2. Scratch stacks of its own: `analyzr-uxf` (image `analyzr-uxf:dev` built from the working tree,
+   ports 7640 and 55640) on a fresh database, which the UI load guard seeded itself
+   (`nordwind-handel` with its chain and the simulation agent, `signavio-beispiel` from the
+   bundle, `ui-load-leer`, `ui-load-vormerkung`); `analyzr-uxs` (the same image, ports 7641 and
+   55641, `analyzr seed --value-chains` of both landscapes) for the screenshots `01` … `07`; the
+   read-only demo image `analyzr-uxdemo:dev` (compose project `analyzr-uxdemo`, port 7682).
+3. Playwright in Chromium: against `analyzr-uxf` every spec but the screenshots, 83 passed and 18
+   skipped (amendments 5, auto-accept 5, open-questions 21, pipeline 6, review 8, smoke 4,
+   ui-load 11 plus 3 `fixme`, value-chain 15, value-chain-agent 3, value-chain-draft 2,
+   value-chain-import 3 plus 1 skipped; `demo.spec.ts`' 14 skip themselves off the demo);
+   `screenshots.spec.ts` 6 passed against `analyzr-uxs`; `demo.spec.ts` 14 passed against
+   `analyzr-uxdemo` with every menu opened, and `analyzr-demo check` passed its 147 checks.
+   Screenshots retaken: `01` … `07`, `m2-*`, `d19-*`, `m4-*` (the chain header names
+   „Relationen“ since the review round) and `demo-*`. `screenshots.spec.ts` now waits for the
+   badge „Offene Fragen“ before `02-models`: on a fresh stack the open questions answer last,
+   and the first take showed the tab without its count and „Offene Punkte“ without the
+   questions.
+4. The UI load guard at 1440x900 and 390x844 on the three projects (the table "Measured load" in
+   [Web UI](#web-ui)): „Übersicht“ of `nordwind-handel` 44 controls, 379 / 314 words, 31
+   badges, the primary at 224 px at both widths; „Offene Fragen“ 76 / 74 controls, 643 / 540
+   words, 21 badges, the first card at 246 / 362 px; `signavio-beispiel` 19 controls on
+   „Übersicht“ and 34 on „Offene Fragen“; the empty project 9 controls, no badge; the other
+   screens as measured for their slices („Relationen“ 64 controls, 828 words, the first row at
+   440 px; the chain 60 controls, 482 words; the model view of `vertrieb/order-handling` 27
+   controls, 317 words). The projects list read 12 controls and 66 words with the eleven projects
+   the earlier specs had made by then, so it is not comparable with UX1's 5 and 33.
+5. The three stacks, their volumes and their images were removed with `down -v`; nothing of the
+   owner's stacks was touched, `analyzr-local` neither (rebuild it to the branch before the
+   owner's walkthrough).
+
+Not checked: other browsers than Chromium (the phone is Chromium's mobile emulation), a real
+phone, a screen reader, CI (no e2e job), the owner's walkthrough.

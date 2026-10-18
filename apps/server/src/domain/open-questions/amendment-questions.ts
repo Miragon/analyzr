@@ -116,25 +116,28 @@ export function amendmentQuestions(ix: OpenQuestionIndex): Draft[] {
         : quoteDe(a.elementId);
       const values = `Vorher: ${shown(a.before)}, in analyzr ergänzt: ${shown(a.after)}`;
       const incoming = incomingValue(ix, modelKey, a);
+      // The question first, the values and the reason as the detail (UX2a).
       let text: string;
+      let detail: string;
       switch (entry.reason) {
         case 'value-changed':
-          text =
-            `${amendmentFieldQuestion(a.op, family)} gilt für ${acc}? Das Quellsystem hat den ` +
-            `Wert seit der Ergänzung geändert, deshalb überschreibt analyzr ihn nicht. ` +
-            `Jetzt im Quellsystem: ${shown(incoming)}, in analyzr ergänzt: ${shown(a.after)}; ` +
-            `vorher: ${shown(a.before)}.`;
+          text = `${amendmentFieldQuestion(a.op, family)} gilt für ${acc}?`;
+          detail =
+            'Das Quellsystem hat den Wert seit der Ergänzung geändert, deshalb überschreibt ' +
+            `analyzr ihn nicht. Jetzt im Quellsystem: ${shown(incoming)}, in analyzr ergänzt: ` +
+            `${shown(a.after)}; vorher: ${shown(a.before)}.`;
           break;
         case 'expression':
-          text =
-            `Die Ergänzung (${field}) an ${dat} passt nicht mehr: Im Quellsystem steht jetzt ` +
-            `der Ausdruck ${shown(incoming)}, der erst zur Laufzeit ausgewertet wird; dort ` +
-            `ergänzt analyzr nichts. ${values}.`;
+          text = `Die Ergänzung (${field}) an ${dat} passt nicht mehr.`;
+          detail =
+            `Im Quellsystem steht jetzt der Ausdruck ${shown(incoming)}, der erst beim Ausführen ` +
+            `ausgewertet wird; dort ergänzt analyzr nichts. ${values}.`;
           break;
         default:
-          text =
-            `Die Ergänzung (${field}) an ${dat} lässt sich nicht mehr anwenden: Das Element ` +
-            `fehlt im Modell aus dem Quellsystem oder ist dort nicht mehr ergänzbar. ${values}.`;
+          text = `Die Ergänzung (${field}) an ${dat} lässt sich nicht mehr anwenden.`;
+          detail =
+            'Das Element fehlt im Modell aus dem Quellsystem oder ist dort nicht mehr ' +
+            `ergänzbar. ${values}.`;
       }
       out.push({
         kind: 'amendment-conflict',
@@ -144,6 +147,7 @@ export function amendmentQuestions(ix: OpenQuestionIndex): Draft[] {
         version: `${a.id}|${m.uploadedRevisionId}`,
         modelKeys: [modelKey],
         text,
+        detail,
         refs: [...new Set([subject, anchor])],
         raisedBy: { sourceKind: 'rule', handle: null, seq: ix.headSeq([modelKey]) },
         anchors: { refs: [anchor] },

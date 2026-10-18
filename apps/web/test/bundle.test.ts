@@ -70,6 +70,27 @@ const BUDGET = 40 * 1024;
  * `amended` prop); the rest is rolldown splitting the entry again, from 5
  * chunks into 7, since the amend form and the model view's amendments module
  * share UI modules (field, textarea, permissions) with it.
+ * 211.0 KB on 2026-10-18 before UX1 (UX2a changed no entry module). 209.2 KB
+ * after UX1 (2026-10-18): the plan's „`codeSplitting` groups come first“
+ * (UX-SIMPLIFICATION.md §3.13 item 8) as one group in `vite.config.ts`
+ * (`tags: ['$initial']`) that keeps every module the entry loads statically
+ * in one chunk, so rolldown no longer splits the entry into 7 separately
+ * gzipped chunks (that alone was about 8 KB); UX1's own entry code (the
+ * shell's four tabs and „Einstellungen“, „Als Nächstes“, the „Agent starten“
+ * popover, the export hub, the light menu, the phase chips and search, the
+ * German problem texts, `useProjectCounts`) is about 6 KB of it, measured
+ * with the old splitting (217.3 KB in 7 chunks). Lazy modules stay lazy: the
+ * group only takes modules the entry already loads. 209.3 KB after UX2b
+ * (2026-10-18): the three lazy imports of the open-questions modules from
+ * entry screens (the hold's „Antwort geben“ in the „Vorgemerkt“ list and on
+ * the review screen, the customer export dialog in the export hub) and the
+ * review screen's hold box; the tab itself, its cards, the dialog and the
+ * held questions' query load with the open-questions chunks only. 209.8 KB
+ * after the first wave's review round (2026-10-18): the tab row scrolled to
+ * the active tab with its edge fade, „Offene Punkte“ as text with a tooltip
+ * (no links), the hold box's latest answer, „Nochmal versuchen“'s toggle and
+ * the key field of „Neues Projekt“; the hold's fallback answer on the
+ * relation loads with the open-questions chunks only.
  */
 const ENTRY_CEILING = 240 * 1024;
 
@@ -215,8 +236,10 @@ const isChainPageModule = (id: string) =>
  * The open-questions page, its components and libs (M6 S4; S5a: the answer
  * dialogs, `open-question-answers.ts`, `open-question-actions.ts`; S5c-1: the
  * action row, its pickers and panels, `open-question-pickers.ts`, and the
- * collapsed subprocess's „Verknüpfen mit …“ in the model view): a route
- * chunk and a lazy section.
+ * collapsed subprocess's „Verknüpfen mit …“ in the model view; UX2b: the
+ * customer export dialog and a hold's „Antwort geben“, also loaded lazily by
+ * the export hub, the „Vorgemerkt“ list and the review screen): a route
+ * chunk and lazy sections.
  */
 const isOpenQuestionsModule = (id: string) =>
   [

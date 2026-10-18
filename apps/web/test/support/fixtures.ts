@@ -6,6 +6,7 @@ import type {
   Fact,
   Model,
   OpenQuestion,
+  OpenQuestionPage,
   OpenQuestionAnswer,
   Placement,
   PlacementAssertion,
@@ -529,10 +530,12 @@ export function openQuestion(
   return {
     kind: 'call-target-unknown',
     source: 'finding',
+    group: 'ask',
     subject: { type: 'ref', id: 'a/order#Call_1' },
     subjectLabel: '„Zahlung abwickeln“',
     modelKeys: ['a/order'],
     text: 'Welchen Prozess ruft „Zahlung abwickeln“ auf? Kein Prozess hat die ID „Pay“.',
+    detail: null,
     context: null,
     label: null,
     askWho: { lanes: [], stepOwners: [], folder: 'a' },
@@ -543,5 +546,46 @@ export function openQuestion(
     answers: [],
     actions: [],
     ...overrides,
+  };
+}
+
+/**
+ * The open questions' list route as the server answers it (UX2a): `modelKey`
+ * (the model or a folder above it), `state` and the repeatable `group` filter
+ * the items; `totals` and `askByModel` count under every filter but `group`
+ * (`askByModel` only items whose subject is neither a relation nor a
+ * placement, under each model they touch); `limit` cuts the page.
+ */
+export function openQuestionPage(
+  list: readonly OpenQuestion[],
+  search: string,
+  { folders = true }: { folders?: boolean } = {},
+): OpenQuestionPage {
+  const query = new URLSearchParams(search);
+  const modelKey = query.get('modelKey');
+  const state = query.get('state');
+  const groups = query.getAll('group');
+  const base = list.filter(
+    (q) =>
+      (modelKey === null ||
+        q.modelKeys.some((k) => k === modelKey || (folders && k.startsWith(`${modelKey}/`)))) &&
+      (state === null || q.state === state),
+  );
+  const totals: OpenQuestionPage['totals'] = { ask: 0, agent: 0, proposal: 0, info: 0 };
+  const askByModel: Record<string, number> = {};
+  for (const q of base) {
+    totals[q.group] += 1;
+    if (q.group !== 'ask' || q.subject.type === 'relation' || q.subject.type === 'placement')
+      continue;
+    for (const k of q.modelKeys) askByModel[k] = (askByModel[k] ?? 0) + 1;
+  }
+  const matching = groups.length === 0 ? base : base.filter((q) => groups.includes(q.group));
+  const limit = Number(query.get('limit') ?? '50');
+  return {
+    items: matching.slice(0, limit),
+    nextCursor: null,
+    total: matching.length,
+    totals,
+    askByModel,
   };
 }

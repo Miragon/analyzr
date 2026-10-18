@@ -2,11 +2,12 @@ import { useQuery } from '@tanstack/react-query';
 import { Link, createRoute } from '@tanstack/react-router';
 import { LocateIcon } from 'lucide-react';
 
+import { ErrorText } from '@/components/error-text';
 import { FindingsView } from '@/components/findings-view';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { errorMessage } from '@/lib/api';
+
 import { landscapeQuery, modelsQuery } from '@/lib/queries';
 import { splitRef } from '@/lib/refs';
 import { useProjectFacts } from '@/lib/use-project-facts';
@@ -30,7 +31,9 @@ function FindingsTab() {
     return (
       <Alert variant="destructive">
         <AlertTitle>Befunde konnten nicht geladen werden</AlertTitle>
-        <AlertDescription>{errorMessage(landscape.error)}</AlertDescription>
+        <AlertDescription>
+          <ErrorText error={landscape.error} />
+        </AlertDescription>
       </Alert>
     );
 

@@ -1,4 +1,4 @@
-import type { OpenQuestion } from '@analyzr/client';
+import type { OpenQuestion, OpenQuestionAnswerTarget } from '@analyzr/client';
 import { PERSONAL_DATA_HINT, personalDataWarnings } from '@analyzr/contracts/personal-data';
 import { cn } from 'cn';
 import { InfoIcon, MessageSquarePlusIcon, NotebookPenIcon, TriangleAlertIcon } from 'lucide-react';
@@ -22,7 +22,9 @@ import { ApiError, errorMessage } from '@/lib/api';
 import { MAX_ANSWER_CHARS } from '@/lib/limits';
 import { useAddQuestionNote } from '@/lib/open-question-actions';
 import {
+  ANSWER_PERMANENT,
   ANSWER_TARGET_LABELS,
+  HOLD_STAYS,
   NOTE_PERMANENT,
   answerTargetOf,
   charCountText,
@@ -36,12 +38,22 @@ import { toast } from '@/lib/toast';
 
 import type { NoteDialogState } from './use-note-dialog';
 
+/** Where a hold's answer is stored, in the dialog's own term („Antwort“, not „Notiz“). */
+const HOLD_ANSWER_STORED: Readonly<Record<OpenQuestionAnswerTarget, string>> = {
+  'relation-note': 'an der Relation',
+  'placement-note': 'an der Platzierung',
+  answer: 'bei der Frage',
+};
+
 const isUnknownQuestion = (error: unknown) =>
   error instanceof ApiError && error.status === 404 && error.problem.code === 'not-found';
 
 /**
  * „Notiz hinzufügen“ (M6 §4.8 b, S5c-1; S5a's „Beantworten“ without the
- * answer kinds): the reviewer adds a note to one open question (≤ 2,000
+ * answer kinds), for a hold „Antwort geben“ (UX2b: the one place to answer
+ * a hold, from its card in „Offene Fragen“, the „Vorgemerkt“ row and the
+ * review screen; UX-SIMPLIFICATION.md §2.4): the reviewer adds a note to one
+ * open question (≤ 2,000
  * characters, no personal data). The dialog says that a stored note cannot
  * be changed or deleted, and where it goes (`noteEffectText`, by the item's
  * subject and kind): on the item's relation (the agents take it into
@@ -99,14 +111,26 @@ export function NoteDialog({
                       result.result === 'recorded'
                         ? {
                             tone: 'success',
-                            title: 'Notiz gespeichert',
-                            description: `Gespeichert ${ANSWER_TARGET_LABELS[result.answer.target]}.${result.question.state === 'open' ? ` ${noteKeepsOpen(result.question)}` : ''}`,
+                            title:
+                              question.kind === 'held'
+                                ? 'Antwort gespeichert'
+                                : 'Notiz gespeichert',
+                            description:
+                              question.kind === 'held'
+                                ? `Gespeichert ${HOLD_ANSWER_STORED[result.answer.target]}. ${HOLD_STAYS}`
+                                : `Gespeichert ${ANSWER_TARGET_LABELS[result.answer.target]}.${
+                                    result.question.state === 'open'
+                                      ? ` ${noteKeepsOpen(result.question)}`
+                                      : ''
+                                  }`,
                           }
                         : {
                             tone: 'info',
-                            title: 'Notiz schon gespeichert',
-                            description:
-                              'Dieselbe Notiz steht schon an der Frage; nichts geändert.',
+                            title:
+                              question.kind === 'held'
+                                ? 'Antwort schon gespeichert'
+                                : 'Notiz schon gespeichert',
+                            description: 'Derselbe Text steht schon an der Frage; nichts geändert.',
                           },
                     );
                   },
@@ -151,7 +175,13 @@ function NoteForm({
   const hint = personalDataHint(warnings);
   const findings = personalDataFindings(text, warnings);
   const target = answerTargetOf(question.subject);
-  const before = notesBeforeText(question.answers.filter((a) => a.role === 'note').length);
+  // A hold is answered (its answer is a note on the relation or placement, M6 §4.5).
+  const answer = question.kind === 'held';
+  const before = notesBeforeText(
+    question.answers.filter((a) => a.role === 'note').length,
+    'Deine',
+    answer,
+  );
   const empty = text.trim() === '';
 
   function submit(event: FormEvent) {
@@ -175,7 +205,7 @@ function NoteForm({
       data-target={target}
     >
       <DialogHeader>
-        <DialogTitle>Notiz hinzufügen</DialogTitle>
+        <DialogTitle>{answer ? 'Antwort geben' : 'Notiz hinzufügen'}</DialogTitle>
         <DialogDescription asChild>
           <div className="flex min-w-0 flex-col gap-1" data-testid="note-question">
             <span className="font-medium break-words text-foreground">{question.subjectLabel}</span>
@@ -195,7 +225,7 @@ function NoteForm({
       ) : null}
 
       <Field>
-        <FieldLabel htmlFor={`${id}-text`}>Deine Notiz</FieldLabel>
+        <FieldLabel htmlFor={`${id}-text`}>{answer ? 'Deine Antwort' : 'Deine Notiz'}</FieldLabel>
         <Textarea
           id={`${id}-text`}
           value={text}
@@ -204,7 +234,7 @@ function NoteForm({
           required
           autoFocus
           aria-describedby={`${id}-hint ${id}-permanent ${id}-count ${id}-personal`}
-          placeholder="Was weißt du dazu?"
+          placeholder={answer ? 'Was hat die Klärung ergeben?' : 'Was weißt du dazu?'}
           className="min-h-28"
           data-testid="note-text"
         />
@@ -217,7 +247,7 @@ function NoteForm({
           </FieldDescription>
         </div>
         <FieldDescription id={`${id}-permanent`} data-testid="note-permanent">
-          {NOTE_PERMANENT}
+          {answer ? ANSWER_PERMANENT : NOTE_PERMANENT}
         </FieldDescription>
         {/*
           The personal-data warning, a warning only: saving stays possible. The
@@ -265,7 +295,9 @@ function NoteForm({
 
       {error ? (
         <Alert variant="destructive" data-testid="note-error">
-          <AlertTitle>Notiz nicht gespeichert</AlertTitle>
+          <AlertTitle>
+            {answer ? 'Antwort nicht gespeichert' : 'Notiz nicht gespeichert'}
+          </AlertTitle>
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       ) : null}
@@ -280,7 +312,7 @@ function NoteForm({
           ) : (
             <MessageSquarePlusIcon data-icon="inline-start" />
           )}
-          Notiz speichern
+          {answer ? 'Antwort speichern' : 'Notiz speichern'}
         </Button>
       </DialogFooter>
     </form>

@@ -123,6 +123,7 @@ function AnswerForm({ project, placementId }: { project: string; placementId: st
             tone: 'danger',
             title: 'Antwort nicht gespeichert',
             description: errorMessage(error),
+            error,
           }),
       },
     );

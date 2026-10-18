@@ -76,6 +76,7 @@ export function ManualPlacementForm({
             tone: 'danger',
             title: 'Nicht platziert',
             description: errorMessage(error),
+            error,
           }),
       },
     );

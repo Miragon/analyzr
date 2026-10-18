@@ -1,7 +1,7 @@
 import { getMe, listProjects } from '@analyzr/client';
 import { describe, expect, it, vi } from 'vitest';
 
-import { ApiError, api, errorMessage, unwrap } from '../src/lib/api';
+import { ApiError, api, errorMessage, errorDetail, unwrap } from '../src/lib/api';
 import { json, stubApi } from './support/render';
 
 const ME = {
@@ -66,7 +66,9 @@ describe('owner session (local mode)', () => {
     const error = await unwrap(listProjects({ client: api })).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(ApiError);
     expect((error as ApiError).status).toBe(403);
-    expect(errorMessage(error)).toBe('Forbidden: foreign Origin');
+    // German for the user (UX1), the server's words behind „Technische Details“.
+    expect(errorMessage(error)).toBe('Das darfst du in diesem Projekt nicht.');
+    expect(errorDetail(error)).toBe('Forbidden (403): foreign Origin');
   });
 
   it('reports an unreachable server in German', async () => {

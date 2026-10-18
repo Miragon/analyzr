@@ -14,6 +14,7 @@ import {
 import { lazy, Suspense, useCallback, useMemo, useState } from 'react';
 
 import { EngineBadge, StageBadge, StatusBadge, TierBadge, TYPE_ICONS } from '@/components/badges';
+import { ErrorText } from '@/components/error-text';
 import { MiragonMark } from '@/components/page-shell';
 import { toast } from '@/lib/toast';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -22,7 +23,7 @@ import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Spinner } from '@/components/ui/spinner';
-import { errorMessage } from '@/lib/api';
+
 import type { CanvasHighlight } from '@/lib/bpmn-elements';
 import { FINDING_KINDS, RELATION_TYPES, formatConfidence } from '@/lib/labels';
 import { contentQuery, landscapeQuery, modelsQuery } from '@/lib/queries';
@@ -33,7 +34,7 @@ import { useProjectFacts } from '@/lib/use-project-facts';
 import { rootRoute } from './root';
 
 const BpmnCanvas = lazy(() => import('@/components/bpmn-canvas'));
-/** The section „Offene Fragen“ (M6 S4), loaded with the panel, never with the entry. */
+/** The section „Fragen“ (M6 S4; UX2b: „Zu klären“ only), loaded with the panel, never with the entry. */
 const ModelQuestions = lazy(() => import('@/components/open-questions/model-questions'));
 /**
  * „Verknüpfen mit …“ on a selected collapsed subprocess (M6 S5c-1), from the
@@ -529,7 +530,9 @@ function ModelView() {
         <div className="absolute inset-x-0 top-1/3 z-40 mx-auto w-[min(480px,calc(100vw-32px))]">
           <Alert variant="destructive" className="shadow-md">
             <AlertTitle>Modell konnte nicht geladen werden</AlertTitle>
-            <AlertDescription>{errorMessage(loadError)}</AlertDescription>
+            <AlertDescription>
+              <ErrorText error={loadError} />
+            </AlertDescription>
           </Alert>
         </div>
       ) : models.data && !model ? (

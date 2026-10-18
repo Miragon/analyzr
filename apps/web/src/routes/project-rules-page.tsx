@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { PlusIcon, WandSparklesIcon } from 'lucide-react';
 import { useState } from 'react';
 
+import { ErrorText } from '@/components/error-text';
 import { AgentRevoke } from '@/components/rules/agent-revoke';
 import { ApplyDialog } from '@/components/rules/apply-dialog';
 import { PreviewDialog } from '@/components/rules/preview-dialog';
@@ -33,7 +34,7 @@ import {
   EmptyTitle,
 } from '@/components/ui/empty';
 import { Skeleton } from '@/components/ui/skeleton';
-import { errorMessage } from '@/lib/api';
+
 import { useAutoAcceptIndex } from '@/lib/auto-accept-actions';
 import { useProjectPermissions } from '@/lib/permissions';
 import { agentTokensQuery, autoAcceptRulesQuery, keys, projectQuery } from '@/lib/queries';
@@ -101,7 +102,9 @@ export function RulesPage() {
     return (
       <Alert variant="destructive">
         <AlertTitle>Regeln konnten nicht geladen werden</AlertTitle>
-        <AlertDescription>{errorMessage(rules.error)}</AlertDescription>
+        <AlertDescription>
+          <ErrorText error={rules.error} />
+        </AlertDescription>
       </Alert>
     );
   }

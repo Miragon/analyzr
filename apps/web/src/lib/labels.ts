@@ -58,7 +58,7 @@ export const STAGES: Record<ModelStage, Presentation> = {
   incorporated: {
     label: 'Eingearbeitet',
     tone: 'success',
-    hint: 'Analyse fertig, nichts mehr offen.',
+    hint: 'Relationen fertig geprüft.',
   },
 };
 
@@ -355,6 +355,24 @@ export function formatDateTime(iso: string): string {
 
 export function formatDate(iso: string): string {
   return dayFormat.format(new Date(iso));
+}
+
+const shortDay = new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: '2-digit' });
+const timeFormat = new Intl.DateTimeFormat('de-DE', { hour: '2-digit', minute: '2-digit' });
+
+/** `17.10., 22:32` in the current year, else `17.10.2025, 22:32` (the models table). */
+export function formatShortDateTime(iso: string, now: Date = new Date()): string {
+  const at = new Date(iso);
+  if (at.getFullYear() !== now.getFullYear()) return dateFormat.format(at);
+  return `${shortDay.format(at)}, ${timeFormat.format(at)}`;
+}
+
+/** `22:45` today, else `17.10., 22:45` (a reservation's end). */
+export function formatTimeOrDay(iso: string, now: Date = new Date()): string {
+  const at = new Date(iso);
+  return at.toDateString() === now.toDateString()
+    ? timeFormat.format(at)
+    : formatShortDateTime(iso, now);
 }
 
 export function formatBytes(bytes: number): string {

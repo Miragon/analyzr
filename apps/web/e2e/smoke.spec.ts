@@ -78,18 +78,30 @@ test.beforeAll(async ({ request }) => {
 test('projects → relations → model view', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'Projekte' })).toBeVisible();
-  await expect(page.getByTestId('server-status')).toContainText('Server verbunden');
+  // UX1: no server line while all is well; the version is in the logo's tooltip.
+  await expect(page.getByTestId('server-status')).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'analyzr', exact: true })).toHaveAttribute(
+    'title',
+    /^analyzr \S+/,
+  );
   await page.getByRole('link', { name: `E2E ${PROJECT}` }).click();
 
-  // models tab: three models, engines read from the XML
+  // „Übersicht“: three models by name with their keys; the next step waits for an agent
   await expect(page.getByTestId('model-row')).toHaveCount(3);
-  await expect(page.getByTestId('model-row').filter({ hasText: CALL_FROM })).toContainText('C7');
+  await expect(page.getByTestId('model-row').filter({ hasText: CALL_FROM })).toBeVisible();
   await expect(
     page.getByTestId('model-row').filter({ hasText: 'finanzen/rechnungsstellung' }),
-  ).toContainText('C8');
+  ).toBeVisible();
+  await expect(page.getByTestId('next-step')).toContainText('Als Nächstes');
 
-  // relations tab: the unambiguous call is accepted by the rule, names are key-tier proposals
-  await page.getByRole('link', { name: /Relationen/ }).click();
+  // „Relationen“: the inbox, the results one link away (UX5 makes them views of the tab)
+  await page
+    .getByRole('navigation', { name: 'Projektbereiche' })
+    .getByRole('link', { name: /^Relationen/ })
+    .click();
+  await expect(page).toHaveURL(new RegExp(`/projects/${PROJECT}/review$`));
+  await page.getByTestId('all-relations').click();
+  await expect(page).toHaveURL(new RegExp(`/projects/${PROJECT}/relations$`));
   const accepted = page.locator('[data-testid=relation-row][data-status=accepted][data-tier=rule]');
   await expect(accepted).toHaveCount(1);
   await expect(accepted).toContainText('Zahlung abwickeln');
@@ -164,12 +176,21 @@ test('upload: extractor warnings per file in a disclosure, a plain XML skipped (
   await expect(page.getByTestId('toast').filter({ hasText: '1 Dateien importiert' })).toBeVisible();
 });
 
-test('findings and the connect page render for the project', async ({ page }) => {
-  await page.goto(`/projects/${PROJECT}/findings`);
+test('findings behind „Offene Fragen“ and the connect page behind „Einstellungen“', async ({
+  page,
+}) => {
+  // Q2: no tab „Befunde“; the list stays one link away at the foot of „Offene Fragen“.
+  await page.goto(`/projects/${PROJECT}/open-questions`);
+  await page.getByTestId('findings-link').click();
+  await expect(page).toHaveURL(new RegExp(`/projects/${PROJECT}/findings$`));
+  await expect(page.getByRole('navigation', { name: 'Brotkrumen' })).toContainText('Befunde');
   await expect(page.getByRole('heading', { name: /Dynamischer Aufruf/ })).toBeVisible();
   await expect(page.getByRole('heading', { name: /Aufruf ohne Ziel/ })).toBeVisible();
 
-  await page.goto(`/projects/${PROJECT}/agents`);
+  // Q1: „Agent verbinden“ in the owner's menu „Einstellungen“.
+  await page.getByRole('button', { name: 'Einstellungen' }).click();
+  await page.getByRole('menuitem', { name: 'Agent verbinden' }).click();
+  await expect(page).toHaveURL(new RegExp(`/projects/${PROJECT}/agents$`));
   await page.getByRole('button', { name: 'Token erstellen' }).click();
   const secret = page.getByTestId('created-secret');
   await expect(secret).toContainText('analyzr_at_');

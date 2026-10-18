@@ -220,12 +220,12 @@ test('sets a call target at its question: the dry run’s summary first, then th
   const order = await modelOf(ORDER_KEY);
   expect(order.headRev).toBe(1);
   const call = await questionOf('call-target-unknown');
-  expect(call.actions.find((a) => a.primary)?.label).toBe('Aufrufziel eintragen …');
+  expect(call.actions.find((a) => a.primary)?.label).toBe('Ziel im Modell eintragen …');
   const sent = amendRequests(page);
 
   await page.goto(`/projects/${PROJECT}/open-questions?kind=call-target-unknown`);
   const row = item(page, call.id);
-  await expect(primaryOf(row)).toHaveText('Aufrufziel eintragen …');
+  await expect(primaryOf(row)).toHaveText('Ziel im Modell eintragen …');
   await primaryOf(row).click();
   const form = row.getByTestId('amend-form');
   await expect(form.getByLabel('Aufgerufenen Prozess suchen')).toBeFocused();
@@ -440,7 +440,9 @@ test('the model view: „Ergänzen“ with the history, the overlay, the badge, 
   expect((await questions({ kind: 'call-target-unknown' })).length).toBe(1);
 });
 
-test('the models table marks the amended model and offers the change list', async ({ page }) => {
+test('the models table marks the amended model; „Exportieren“ offers the change list', async ({
+  page,
+}) => {
   await page.goto(`/projects/${PROJECT}`);
   const rows = page.getByTestId('model-row');
   await expect(rows).toHaveCount(2);
@@ -448,10 +450,14 @@ test('the models table marks the amended model and offers the change list', asyn
     'ergänzt',
   );
   await expect(rows.filter({ hasText: BILLING_KEY }).getByTestId('model-amended')).toHaveCount(0);
-  await page.getByTestId('change-list-export').click();
+  // UX1: the change list is an entry of the export hub on „Übersicht“.
+  await page.getByTestId('export-hub').click();
   const [download] = await Promise.all([
     page.waitForEvent('download'),
-    page.getByRole('menuitem', { name: 'Als CSV' }).click(),
+    page
+      .getByRole('group', { name: 'Änderungsliste fürs Quellsystem' })
+      .getByRole('menuitem', { name: 'CSV' })
+      .click(),
   ]);
   expect(download.suggestedFilename()).toBe(`ergaenzungen-${PROJECT}.csv`);
 });

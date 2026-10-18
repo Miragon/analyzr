@@ -49,7 +49,7 @@ import { quoteDe } from '@analyzr/relations';
 import type { RelationRecord } from '../ports.ts';
 import { incomingValue } from './amendment-questions.ts';
 import { openQuestionId, type AmendmentInfo, type OpenQuestionIndex } from './model.ts';
-import { openUncoveredPairs } from './sources.ts';
+import { openUncoveredPairs, proposedPlacementsOf } from './sources.ts';
 
 const byCodePoint = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
 const sorted = (values: Iterable<string>): string[] => [...new Set(values)].sort(byCodePoint);
@@ -348,29 +348,28 @@ function decisionItem(
 }
 
 /**
- * The proposed placements a `decide` on a chain finding decides: of the
- * process (`process-without-step`) or on the step (`step-without-process`),
- * on a live step generation and with a live process.
+ * „Auf der Kette prüfen“ (UX2a): the `decide` of a `proposal` item, which
+ * decides the chain's proposed placements (of the process, or on the step
+ * and below it) and opens the chain at `step` (the first proposal's step,
+ * or the step itself).
  */
-function proposedPlacements(
+function reviewOnChain(
   ix: OpenQuestionIndex,
-  match: { process?: string; step?: string },
-): OpenQuestionDecisionItem[] {
-  const chain = ix.input.chain;
-  if (!chain) return [];
-  return chain.placements
-    .filter(
-      (p) =>
-        p.status === 'proposed' &&
-        p.endpointState !== 'missing' &&
-        chain.live.get(p.elementId) === p.generation &&
-        (match.process === undefined || p.processRef === match.process) &&
-        (match.step === undefined || p.elementId === match.step),
-    )
-    .sort(
-      (a, b) => byCodePoint(a.elementId, b.elementId) || byCodePoint(a.processRef, b.processRef),
-    )
-    .map((p) => ({ type: 'placement' as const, id: p.id, version: p.version }));
+  match: { process: string } | { step: string },
+): OpenQuestionAction | undefined {
+  const proposed =
+    'process' in match
+      ? proposedPlacementsOf(ix, { process: match.process })
+      : proposedPlacementsOf(ix, { step: match.step, below: true });
+  const [first] = proposed;
+  if (first === undefined) return undefined;
+  return {
+    type: 'decide',
+    primary: true,
+    label: LABEL.reviewOnChain,
+    decides: proposed.map((p) => ({ type: 'placement' as const, id: p.id, version: p.version })),
+    step: 'step' in match ? match.step : first.elementId,
+  };
 }
 
 const outside = (primary: boolean): OpenQuestionAction => ({
@@ -484,10 +483,12 @@ function replacing(
 
 /**
  * The actions of a `call-target-unknown` item (§4.8 a): without a
- * `calledElement`, `amend` „Aufrufziel eintragen …“ first and `link` „Nur
- * verknüpfen …“; with a target naming no process (or a no-link coded
- * `call-target`), `link` first and `amend` „Aufrufziel im Modell ändern …“;
- * never `amend` over an expression in either dialect.
+ * `calledElement`, `amend` „Ziel im Modell eintragen …“ first and `link`
+ * „Nur verknüpfen …“ second; with a target naming no process (or a no-link
+ * coded `call-target`), `link` „Verknüpfen mit …“ first and `amend` second;
+ * never `amend` over an expression in either dialect. „Nur …“ only where
+ * the link is the second action beside a primary amendment (the primary
+ * verb never reads as the lesser option).
  */
 function callTargetActions(ix: OpenQuestionIndex, item: OpenQuestion): OpenQuestionAction[] {
   const call = ix.factsAt(item.subject.id).find((f) => f.kind === 'call');
@@ -506,25 +507,28 @@ function callTargetActions(ix: OpenQuestionIndex, item: OpenQuestion): OpenQuest
       outside(false),
     ];
   }
-  return [
-    linkAction(ix, item, { primary: true, label: LABEL.link, pick: 'process' }),
-    ...(amendable && target
+  const amend =
+    amendable && target
       ? amendAction(
           ix,
           call.ref,
-          { primary: false, label: LABEL.amendCallTargetChange, ...replacing(live, call.keyRaw) },
+          { primary: false, label: LABEL.amendCallTarget, ...replacing(live, call.keyRaw) },
           [target],
         )
-      : []),
+      : [];
+  return [
+    linkAction(ix, item, { primary: true, label: LABEL.link, pick: 'process' }),
+    ...amend,
     outside(false),
   ];
 }
 
 /**
  * The actions of a partner question at a message or signal endpoint
- * (§4.8 a): nameless, `amend` „Nachrichtennamen eintragen …“ first; named,
- * `link` first and `amend` „Nachrichtennamen ändern …“ („Signalnamen …“ for
- * a signal); never `amend` over an expression.
+ * (§4.8 a): nameless, `amend` „Nachrichtennamen im Modell eintragen …“
+ * first and `link` „Nur verknüpfen …“ second; named, `link` „Verknüpfen
+ * mit …“ first and `amend` second („Signalnamen …“ for a signal); never
+ * `amend` over an expression.
  */
 function endpointActions(ix: OpenQuestionIndex, item: OpenQuestion): OpenQuestionAction[] {
   const facts = ix.factsAt(item.subject.id);
@@ -541,20 +545,19 @@ function endpointActions(ix: OpenQuestionIndex, item: OpenQuestion): OpenQuestio
           amendTarget(ix, ep, 'message-name', 'endpoint'),
         ])
       : [];
-  const link = (primary: boolean) =>
-    linkAction(ix, item, { primary, label: LABEL.link, pick: 'endpoint' });
+  const label = signal ? LABEL.amendSignalName : LABEL.amendMessageName;
+  // „Nur verknüpfen …“ only as the second action beside a primary amendment.
+  const link = (primary: boolean, beside: boolean) =>
+    linkAction(ix, item, {
+      primary,
+      label: beside ? LABEL.linkOnly : LABEL.link,
+      pick: 'endpoint',
+    });
   if (amendable && name === undefined) {
-    return [
-      ...amend(true, signal ? LABEL.amendSignalName : LABEL.amendMessageName),
-      link(false),
-      outside(false),
-    ];
+    const first = amend(true, label);
+    return [...first, link(false, first.length > 0), outside(false)];
   }
-  return [
-    link(true),
-    ...amend(false, signal ? LABEL.amendSignalNameChange : LABEL.amendMessageNameChange),
-    outside(false),
-  ];
+  return [link(true, false), ...amend(false, label), outside(false)];
 }
 
 /**
@@ -700,31 +703,26 @@ function kindActions(item: OpenQuestion, ix: OpenQuestionIndex): OpenQuestionAct
     }
     case 'placement-unsure':
       return [{ type: 'place', primary: true, label: LABEL.place, pick: 'step' }, placeOnOutside()];
+    // The `proposal` items (UX2a): „Auf der Kette prüfen“ while the chain has a proposal.
     case 'process-without-step': {
-      const proposed = proposedPlacements(ix, { process: subject.id });
-      return proposed.length > 0
+      const review = reviewOnChain(ix, { process: subject.id });
+      return review
         ? [
-            { type: 'decide', primary: true, label: LABEL.decideProposal, decides: proposed },
+            review,
             { type: 'place', primary: false, label: LABEL.placeOther, pick: 'step' },
             placeOnOutside(),
           ]
         : [{ type: 'place', primary: true, label: LABEL.place, pick: 'step' }, placeOnOutside()];
     }
     case 'step-without-process': {
-      const proposed = proposedPlacements(ix, { step: subject.id });
+      const review = reviewOnChain(ix, { step: subject.id });
       const place = (primary: boolean): OpenQuestionAction => ({
         type: 'place',
         primary,
         label: LABEL.placeProcess,
         pick: 'process',
       });
-      return proposed.length > 0
-        ? [
-            { type: 'decide', primary: true, label: LABEL.decideProposal, decides: proposed },
-            place(false),
-            outside(false),
-          ]
-        : [place(true), outside(false)];
+      return review ? [review, place(false), outside(false)] : [place(true), outside(false)];
     }
     case 'unresolved-link':
       return [{ type: 'fix-link', primary: true, label: LABEL.fixLink }];
@@ -946,11 +944,12 @@ function excerpt(text: string, max: number): string {
 
 /**
  * The rationale of a relation or placement an action writes or accepts
- * (German, from code): „Aus „Offene Fragen“: <Art> – <Frage, gekürzt>“, then
- * the note.
+ * (German, from code): „Aus „Offene Fragen“: <Art> – <Frage und Grund,
+ * gekürzt>“, then the note.
  */
 export function actionRationale(item: OpenQuestion, note: string | null): string {
-  const base = `Aus „Offene Fragen“: ${OPEN_QUESTION_KIND_LABELS[item.kind]} – ${excerpt(item.text, RATIONALE_QUESTION_CHARS)}`;
+  const asked = item.detail === null ? item.text : `${item.text} ${item.detail}`;
+  const base = `Aus „Offene Fragen“: ${OPEN_QUESTION_KIND_LABELS[item.kind]} – ${excerpt(asked, RATIONALE_QUESTION_CHARS)}`;
   return note === null ? base : `${base}\n\n${note}`;
 }
 

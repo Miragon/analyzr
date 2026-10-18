@@ -35,8 +35,7 @@ export interface DecisionPanelProps {
   facts: readonly Fact[];
   /**
    * Single-key shortcuts A, R, H, C, shown on the buttons (off while another
-   * view owns the keyboard, and in the inline panels of „Offene Fragen“,
-   * where many items share the page).
+   * view owns the keyboard, or where many items share the page).
    */
   shortcuts?: boolean;
   onDecided?: (outcome: DecisionOutcome, result: DecisionResult) => void;
@@ -90,7 +89,7 @@ function Panel({
     if (busy) return;
     setConflict(null);
     // `mutateAsync`, not `mutate`'s callbacks: those are dropped when the panel unmounts
-    // first (in „Offene Fragen“ the decided item leaves the list with the refetch).
+    // first (a decided item may leave its list with the refetch).
     decide.mutateAsync({ relationId: relation.id, body }).then(
       (result) => {
         setForm(null);
@@ -115,6 +114,7 @@ function Panel({
             tone: 'danger',
             title: 'Entscheidung nicht gespeichert',
             description: errorMessage(error),
+            error,
           });
         }
       },

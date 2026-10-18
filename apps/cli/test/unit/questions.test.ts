@@ -15,6 +15,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import {
   formatQuestions,
+  parseFilter,
   parseFormat,
   primaryAction,
   summarizeQuestions,
@@ -54,10 +55,12 @@ function question(n: number, extra: Partial<OpenQuestion> = {}): OpenQuestion {
     id: `q-${String(n).padStart(16, '0')}`,
     kind: 'call-target-unknown',
     source: 'finding',
+    group: 'ask',
     subject: { type: 'ref', id: 'finanzen/gutschrift#Call_Brief' },
     subjectLabel: '„Brief versenden“',
     modelKeys: ['finanzen/gutschrift'],
     text: 'Welchen Prozess ruft „Brief versenden“ auf?',
+    detail: null,
     context: null,
     label: null,
     askWho: { lanes: [], stepOwners: [], folder: 'finanzen' },
@@ -109,9 +112,10 @@ function pagedQuestions(all: readonly OpenQuestion[], seen: URL[] = []) {
 }
 
 const CSV =
-  '\uFEFF"id";"Art";"Frage";"Ansprechpartner-Hinweis";"Antwort"\r\n' +
-  '"q-0000000000000001";"Aufrufziel unbekannt";"Welchen Prozess ruft „Brief versenden“ auf?";"Ordner: finanzen";""\r\n';
-const MARKDOWN = '# Offene Fragen: P\n\nProjekt `p`, Stand Ereignis 3: eine offene Frage.\n';
+  '\uFEFF"id";"Art";"Frage";"Ansprechpartner";"Antwort"\r\n' +
+  '"q-0000000000000001";"Aufrufziel unbekannt";"Welchen Prozess ruft „Brief versenden“ auf?\n\nBetrifft: „Brief versenden“ in „Gutschrift“";"";""\r\n';
+const MARKDOWN =
+  '# Offene Fragen: P\n\nStand 17.10.2026: eine offene Frage, nach Ansprechpartner gruppiert.\n';
 
 function exporting(seen: URL[] = []) {
   return fakeApi({
@@ -146,7 +150,7 @@ describe('analyzr questions (table and JSON)', () => {
         '  q-0000000000000001       12  call-target-unknown   finanzen/gutschrift     -       „Brief versenden“: Welchen Prozess ruft „Brief versenden“ auf?',
         '  q-0000000000000002        3  held                  finanzen/gutschrift +1  -       „A“ → „B“: Wer verschickt die Mahnung?',
         '  q-0000000000000003        1  step-without-process  -                       -       Versand: Welcher Prozess leistet den Schritt „Versand“?',
-        'p: 3 open questions (call-target-unknown 1, held 1, step-without-process 1)',
+        'p: 3 open questions (call-target-unknown 1, held 1, step-without-process 1); groups: ask 3',
         '',
       ].join('\n'),
     );
@@ -220,11 +224,46 @@ describe('analyzr questions (table and JSON)', () => {
   it('counts by kind, most first', () => {
     const items = [question(1), question(2, { kind: 'held' }), question(3, { kind: 'held' })];
     expect(summarizeQuestions('p', items)).toBe(
-      'p: 3 open questions (held 2, call-target-unknown 1)',
+      'p: 3 open questions (held 2, call-target-unknown 1); groups: ask 3',
     );
     expect(summarizeQuestions('p', [question(1)])).toBe(
-      'p: 1 open question (call-target-unknown 1)',
+      'p: 1 open question (call-target-unknown 1); groups: ask 1',
     );
+    // The groups in their order, only those with items (UX2a).
+    expect(
+      summarizeQuestions('p', [
+        question(1, { group: 'info', kind: 'summary-note' }),
+        question(2, { group: 'agent', kind: 'agent-question' }),
+        question(3),
+      ]),
+    ).toBe(
+      'p: 3 open questions (agent-question 1, call-target-unknown 1, summary-note 1); groups: ask 1, agent 1, info 1',
+    );
+  });
+
+  it('filters by group, repeated or comma-separated, also in the export; refuses an unknown one', async () => {
+    const seen: URL[] = [];
+    const t = owner(fakeApi({ [LIST]: pagedQuestions(ALL, seen) }).fetch);
+    expect(
+      await runCli(
+        ['questions', '-p', 'p', '--group', 'ask', '--group', 'agent,ask', '--format', 'json'],
+        t.io,
+      ),
+    ).toBe(0);
+    expect(seen[0]?.searchParams.getAll('group')).toEqual(['ask', 'agent']);
+    const exported: URL[] = [];
+    const e = owner(exporting(exported).fetch);
+    expect(
+      await runCli(['questions', '-p', 'p', '--group', 'agent', '--format', 'csv'], e.io),
+    ).toBe(0);
+    expect(exported[0]?.searchParams.getAll('group')).toEqual(['agent']);
+    // Without --group the server's default holds what needs clarifying: nothing is sent.
+    expect(await runCli(['questions', '-p', 'p', '--format', 'md'], e.io)).toBe(0);
+    expect(exported[1]?.searchParams.has('group')).toBe(false);
+    expect(() => parseFilter({ group: ['fragen'] })).toThrow(
+      'unknown group "fragen"; one of ask, agent, proposal, info',
+    );
+    expect(parseFilter({ group: [' info , proposal'] })).toEqual({ group: ['info', 'proposal'] });
   });
 });
 
@@ -308,7 +347,7 @@ describe('analyzr questions (actions in the table)', () => {
         `      suggested for link: „Briefversand über Druckdienstleister“ (${BRIEF}), ${DRUCK}`,
         '  q-0000000000000002        1  black-box-partner     finanzen/gutschrift  Liegt außerhalb der Landschaft (outside)  „Bank“ in „finanzen/gutschrift“: Ist „Bank“ ein externer Partner?  [answered: outside the landscape]',
         '  q-0000000000000003        1  undocumented-process  finanzen/gutschrift  Notiz hinzufügen (note)                   „Gutschrift“: Was leistet der Prozess „Gutschrift“?',
-        'p: 3 open questions (black-box-partner 1, call-target-unknown 1, undocumented-process 1), 1 answered (outside the landscape)',
+        'p: 3 open questions (black-box-partner 1, call-target-unknown 1, undocumented-process 1), 1 answered (outside the landscape); groups: ask 3',
         '',
       ].join('\n'),
     );

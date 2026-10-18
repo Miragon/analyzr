@@ -1,4 +1,4 @@
-# analyzr – Handoff (status as of 2026-10-17)
+# analyzr – Handoff (status as of 2026-10-18)
 
 This file lets another person or AI agent continue analyzr without the original
 conversation. It records **where we stand, what the owner decided, what is open and what comes
@@ -113,10 +113,46 @@ and code are in English.
   warnings, and the integrate plugin 0.1.1 (skill text only: the CLI reads the manifest, the web
   not yet). Its web parts („Herkunft“, badges, the manifest of a dropped folder) wait for the UI
   simplification the owner asked for on 2026-10-17; the skill's key-map rebuild comes with the
-  plugin's next version. One owner question: M6 §10.10. **Next:** the UI simplification the
-  owner asked for after S2a (`docs/UX-SIMPLIFICATION.md`, written by a separate run), with S2a's
-  web parts; then S2b (`importImpact`, dry runs), the trust rule S2c, S3c and S6; after the
-  owner's live runs S5b, S7 and facts v2 as recommended (§7 "M6"; M6 §8 "After S2a").
+  plugin's next version. One owner question: M6 §10.10. **UX2a "Open questions: groups and
+  totals"** (done 2026-10-18 on the branch, every gate green; UX-SIMPLIFICATION.md §7 "UX2a as
+  delivered"): `group` on every open question (`ask` „Zu klären“, `agent`, `proposal`, `info`),
+  the repeatable filter, `totals` and `askByModel`, the question first with its reason apart, the
+  customer export in plain German with `ask` by default, `analyzr questions --group`; seeded
+  `nordwind-handel` after the simulation agent: 21 to clarify; live-run neutral. **UX1 "Shell
+  and Übersicht"** (done 2026-10-18 on the branch, every gate green, the UI load guard and every
+  Playwright spec against a scratch stack; UX-SIMPLIFICATION.md §7 "UX1 as delivered"): four
+  object tabs with their open work as the badge (Relationen 48, Wertschöpfungskette 29, Offene
+  Fragen 21 on the walkthrough's state), „Hochladen“ a button, „Agent verbinden“ and
+  „Annahmeregeln“ in the owners' menu „Einstellungen“, the tab „Befunde“ gone (its list behind a
+  link), „Übersicht“ with „Als Nächstes“, „Agent starten“, the export hub, „Modell suchen …“, the
+  phase chips and „Offene Punkte“, failed writes in German; web only, live-run neutral; the entry
+  chunk 211.0 → 209.2 KB. **UX2b "Offene Fragen" in the web** (done 2026-10-18 on the branch,
+  every gate green, the UI load guard and every Playwright spec against a scratch stack;
+  UX-SIMPLIFICATION.md §7 "UX2b as delivered"): the tab shows „Zu klären“ as lean cards (21 on
+  the walkthrough's state, the badge's number; 231 → 76 controls, 3,119 → 643 words, the first
+  card at 575 → 246 px), one intro line with „So funktioniert es“, three filters, „Zur
+  Information“ and „Erledigte zeigen“ closed, the agents' questions on their proposals (under
+  „Art“ too), the export dialog for the customer („Zu klären“ by default, „Auch Fragen der
+  Agenten“ on request), a hold answered in one dialog from its card, its „Vorgemerkt“ row and
+  the review screen and decided with „Jetzt entscheiden“, the model view's „Fragen“ with „Zu
+  klären“ only; web only plus one zod-free label, live-run neutral; the entry chunk 209.3 KB.
+  **First wave review round** (2026-10-18, on the branch; UX-SIMPLIFICATION.md §7 "First wave
+  review round"): an agent's coded no-link joins the rule tier's item about the same gap (one
+  item per gap, read model only), a primary link always reads „Verknüpfen mit …“, the customer
+  export holds the open items only and names no folder, handle or unattributed agent text, an
+  answered hold leads with „Jetzt entscheiden“ and its answer shows on the review screen,
+  „Offene Punkte“ is text with its split in a tooltip and counts held placements, the model view
+  keeps the agent's summary closed (decision 24.8); the agents' no-links stay the view „Kein
+  Zusammenhang“ until UX5 builds the decided foot link (Q12). **The first wave of the UI
+  simplification is done** (2026-10-18, on the branch: UX2a, UX1, UX2b and the review round;
+  every gate green, the UI load guard and the whole Playwright suite against a scratch stack, the
+  demo walk against a scratch demo image, the screenshots retaken; DEVELOPMENT.md "UI
+  simplification first wave (2026-10-18)"). **Next:** the owner's walkthrough of five tasks on
+  `analyzr-local` (`docs/UX-SIMPLIFICATION.md` §7; the stack rebuilt to the branch first): what
+  is next on `nordwind-handel`, decide the first relation, answer a hold, find „Gutschrift“ on a
+  phone, export the questions for the customer. Then, per its outcome, UX7 → UX8 → S2b → UX3 →
+  UX4 → UX5 → UX6 → UX9, alongside S2c (the trust rule) and S3c; S6 after them; after the owner's
+  live runs S5b, S7 and facts v2 as recommended (§7 "M6"; M6 §8 "After S2a").
 
 ## 2. Read in this order
 
@@ -131,6 +167,7 @@ and code are in English.
 | 6 | `eval/README.md`, `eval/tools/SPEC.md`, `eval/value-chains/README.md` | Test landscapes, trap catalog, generator/validator, golden value chains |
 | 7 | `examples/agents/README.md` | The reference agent setups (Claude Code, Claude Desktop, Codex) |
 | 8 | `docs/M6-INTEGRATION-AND-GAPS.md` | M6, in progress: integration toolkit, gap analysis, interviews (concept, decisions 24 and 25, answering by action and model amendments in §4.8, slices with what each delivered, the `eval:descriptive` results in §3.11, the `get_landscape` limit in §6, open questions) |
+| 9 | `docs/UX-SIMPLIFICATION.md` | The UI simplification (owner decision 26): user, jobs and principles, the target information architecture, the changes per screen, the glossary, the slices with what each delivered (first wave UX2a, UX1, UX2b done 2026-10-18) and the UI load guard |
 
 ## 3. Repository state
 
@@ -309,7 +346,7 @@ and code are in English.
     and an amendment. (4) **Order** („Erste Welle, dann Walkthrough“): UX2a → UX1 → UX2b (about 8
     agent days), then the owner walks five tasks and decides the rest of UX3–UX9; the upload and
     provenance slices UX7/UX8 (S2a's web parts) come before S2b and S2c. It amends decision 19's
-    tab name „Regeln“ (now „Annahmeregeln“ in the owner menu), decision 24.9's place of the
+    tab name „Regeln“ (now „Annahmeregeln“ in the owner menu), decision 24.8's place of the
     summaries (still shown read-only, in a closed group), decision 25's inline „decide“ panel, and
     CONCEPT §3's inbox as a tab of its own; agents, facts, procedures, claim inputs and MCP are
     untouched (live-run neutral).
@@ -439,9 +476,9 @@ overall, the holdout aggregate only with „< 5“ and a secondary suppression o
 | `plugins/analyzr-integrate` | the second Claude Code plugin (M6 S3b, 0.1.1 since S2a) for interactive, non-pipeline skills: `/analyzr-integrate:integrate-landscape <export> [--workspace <dir>]` turns a customer's BPMN 2.0 export into an import bundle `analyzr-import/1` and a German report in the consultant's workspace (keys pinned in `keymap.json`), never imports (the consultant does); reference notes per tool (unverified), the bundled scripts `inspect.mjs` and `normalize-bpmn.mjs` (generated) and their notices; a sha256 per plugin release in `tools/integrate/test/plugin.test.ts`; never loaded in live runs |
 | `tools/integrate` | `@analyzr/integrate` (M6 S3b, decision 24.8): the sources and tests of the integrate plugin's scripts (`inspect`, `normalize-bpmn` with `file`, `plan`, `bundle`, `inventory`), bundled by `pnpm --filter @analyzr/integrate generate` with a drift test; a synthetic Signavio-style export and its golden bundle, which the CLI and web tests import; imported by nothing in `apps/` or `packages/` |
 | `examples/agents` | reference setups: Claude Code (interactive and `run-headless.sh [--skill placements]`), Claude Desktop (configs + German start prompts for relations, placements and drafting a chain), Codex; documentation, not in the image |
-| `apps/server` | Hono server: domain (pure, dependency-cruiser enforced), Drizzle/PostgreSQL, REST `/api/v1`, MCP `/mcp` (stateless Streamable HTTP), local mode, agent tokens, pipeline, review; since M4 S1/S2 the value chain and placements (`src/domain/value-chain/`: storage, lifecycle, `prepareRevision`, rule proposals, findings; REST under `/value-chains`, six MCP tools; the web page since S3); since decision 19 the owner's auto-accept rules (`src/domain/auto-accept/`, seven owner-only routes and the ledger for every reviewer, no MCP); since M6 S4 the open questions (`src/domain/open-questions/`: one read model over findings, chain findings, holds, agents' questions, unsure verdicts, coded no-links, summaries and unjudged pairs plus the gap signals, computed on read; `GET …/open-questions` and `…/open-questions/export?format=markdown\|csv`, permission `read`; no MCP until S7); since M6 S5a the answers (the append-only `open_question_answer`, migrations 0011/0012; `POST …/open-questions/{q}/answers` and `…/open-questions/answers?dryRun=`, permission `review`, humans only; on a relation or placement a human note through the note use cases); since M6 S5c-1 the actions (`open-questions/actions.ts`, pure: each item's actions, R1 and R1b, what a link writes or accepts; `POST …/open-questions/{q}/actions` for link, place, choose copy and the outside mark, `…/answers/{a}/withdrawal`, permission `review`, humans only; the append-only `open_question_answer_withdrawal`, migrations 0013/0014; items versioned by what they ask about; the safeguard `competing-call` also counts a human's manual link from the call element to another target); since M6 S5c-2 the model amendments (`src/domain/amendments/`, pure: planning against the uploaded revision, the fields a human may set, derivation, effect and cost, the change list; the append-only `model_amendment` and `model_amendment_withdrawal`, migrations 0015/0016; uploaded plus amended revisions with the plan on the head; the routes of tag `amendments`, `review` and `write`, humans only; the open question `amendment-conflict`); since M6 S2a provenance and stable identity (`src/domain/provenance.ts`, pure: the manifest checked, the uploaded revision's declared `source`, the import warnings, the `external-ids` list; readers follow an amended head's `source.upstream`, or the newest revision a manifest declared; `model_revision.extract_warnings`, migration 0017; the open question `extractor-loss`) |
-| `apps/cli` | `analyzr health / status / import (reads analyzr-import.json since M6 S2a) / seed [--project --issue-tokens --token-name --value-chains] / models list\|requeue\|delete\|external-ids [--system] / questions [list] [--model --kind --source --ask-who --state --format text\|md\|csv\|json -o] / questions answer <id> --text \| --from <csv> [--dry-run] (notes; `--kind` refused since M6 S5c-1) / questions outside <id> [--note] [--undo <answer>] / questions link <id> --to <target>… \| --pair <from> <to> [--note] / questions place <id> --step <id>\|@outside \| --process <target> [--note] / questions amend <id> / models amend <key> --element <id> … \| pull <key> [--original] / amendments list\|export\|withdraw [--rev] / token create\|list\|revoke / value-chain push\|pull / rules list\|show\|add\|edit\|enable\|disable\|preview\|apply\|revoke / mcp` (stdio bridge) |
-| `apps/web` | projects, models, relations, findings, bpmn-js model view, upload, connect-an-agent, inbox, review screen; since M4 S3 the value chain page (`/projects/{key}/value-chain`: renderer viewer/modeler in a lazy chunk, placement review, save with dry run and conflict, drafts, link editing) and the step view; since decision 19 the tab „Regeln“ (auto-accept rules with live preview, apply, revoke) and the marks and filters of auto-accepted items in the review views; since M6 S4 the tab „Offene Fragen“ (every gap as a question, filters, Markdown and CSV export) and the model view's section of the same name, since M6 S5a with „Antworten aus CSV übernehmen“ (a preview first) for reviewers, since M6 S5c-1 with an action on every question (pickers, inline decisions, the outside mark, „Rückgängig“) and „Notiz hinzufügen“ instead of S5a's „Beantworten“, and „Verknüpfen mit …“ on a collapsed subprocess in the model view; since M6 S5c-2 the amend form at a question with „Sammeln“ and its bar, the conflicts with both values side by side, „Ergänzen“ in the model view with history, overlay, badge and both BPMN downloads, every withdrawal after its cost, and the change list in the models tab; since M6 S2a the open-question kind „Elemente beim Import verloren“ (S2a's „Herkunft“, badges and the manifest of a dropped folder come with the UI simplification) |
+| `apps/server` | Hono server: domain (pure, dependency-cruiser enforced), Drizzle/PostgreSQL, REST `/api/v1`, MCP `/mcp` (stateless Streamable HTTP), local mode, agent tokens, pipeline, review; since M4 S1/S2 the value chain and placements (`src/domain/value-chain/`: storage, lifecycle, `prepareRevision`, rule proposals, findings; REST under `/value-chains`, six MCP tools; the web page since S3); since decision 19 the owner's auto-accept rules (`src/domain/auto-accept/`, seven owner-only routes and the ledger for every reviewer, no MCP); since M6 S4 the open questions (`src/domain/open-questions/`: one read model over findings, chain findings, holds, agents' questions, unsure verdicts, coded no-links, summaries and unjudged pairs plus the gap signals, computed on read; `GET …/open-questions` and `…/open-questions/export?format=markdown\|csv`, permission `read`; no MCP until S7); since M6 S5a the answers (the append-only `open_question_answer`, migrations 0011/0012; `POST …/open-questions/{q}/answers` and `…/open-questions/answers?dryRun=`, permission `review`, humans only; on a relation or placement a human note through the note use cases); since M6 S5c-1 the actions (`open-questions/actions.ts`, pure: each item's actions, R1 and R1b, what a link writes or accepts; `POST …/open-questions/{q}/actions` for link, place, choose copy and the outside mark, `…/answers/{a}/withdrawal`, permission `review`, humans only; the append-only `open_question_answer_withdrawal`, migrations 0013/0014; items versioned by what they ask about; the safeguard `competing-call` also counts a human's manual link from the call element to another target); since M6 S5c-2 the model amendments (`src/domain/amendments/`, pure: planning against the uploaded revision, the fields a human may set, derivation, effect and cost, the change list; the append-only `model_amendment` and `model_amendment_withdrawal`, migrations 0015/0016; uploaded plus amended revisions with the plan on the head; the routes of tag `amendments`, `review` and `write`, humans only; the open question `amendment-conflict`); since M6 S2a provenance and stable identity (`src/domain/provenance.ts`, pure: the manifest checked, the uploaded revision's declared `source`, the import warnings, the `external-ids` list; readers follow an amended head's `source.upstream`, or the newest revision a manifest declared; `model_revision.extract_warnings`, migration 0017; the open question `extractor-loss`); since UX2a (decision 26) the open questions' groups (`group` on every item from a `Record` over the kinds: `ask` „Zu klären“, `agent`, `proposal`, `info`; the repeatable `group` filter; `totals` and `askByModel` on every page), the question first with its reason apart (`text`, `detail`), the customer export in plain German (dated, „Betrifft“, no folder, the id only in HTML comments, the CSV column `Ansprechpartner`, `ask` by default under the old file name); since the first wave's review an agent's coded no-link joins the rule tier's item about the same gap (read model only) and a primary link reads „Verknüpfen mit …“ |
+| `apps/cli` | `analyzr health / status / import (reads analyzr-import.json since M6 S2a) / seed [--project --issue-tokens --token-name --value-chains] / models list\|requeue\|delete\|external-ids [--system] / questions [list] [--model --kind --source --ask-who --state --group (since UX2a) --format text\|md\|csv\|json -o] / questions answer <id> --text \| --from <csv> [--dry-run] (notes; `--kind` refused since M6 S5c-1) / questions outside <id> [--note] [--undo <answer>] / questions link <id> --to <target>… \| --pair <from> <to> [--note] / questions place <id> --step <id>\|@outside \| --process <target> [--note] / questions amend <id> / models amend <key> --element <id> … \| pull <key> [--original] / amendments list\|export\|withdraw [--rev] / token create\|list\|revoke / value-chain push\|pull / rules list\|show\|add\|edit\|enable\|disable\|preview\|apply\|revoke / mcp` (stdio bridge) |
+| `apps/web` | projects, models, relations, findings, bpmn-js model view, upload, connect-an-agent, inbox, review screen; since M4 S3 the value chain page (`/projects/{key}/value-chain`: renderer viewer/modeler in a lazy chunk, placement review, save with dry run and conflict, drafts, link editing) and the step view; since decision 19 the tab „Regeln“ (auto-accept rules with live preview, apply, revoke) and the marks and filters of auto-accepted items in the review views; since M6 S4 the tab „Offene Fragen“ (every gap as a question, filters, Markdown and CSV export) and the model view's section of the same name, since M6 S5a with „Antworten aus CSV übernehmen“ (a preview first) for reviewers, since M6 S5c-1 with an action on every question (pickers, inline decisions, the outside mark, „Rückgängig“) and „Notiz hinzufügen“ instead of S5a's „Beantworten“, and „Verknüpfen mit …“ on a collapsed subprocess in the model view; since M6 S5c-2 the amend form at a question with „Sammeln“ and its bar, the conflicts with both values side by side, „Ergänzen“ in the model view with history, overlay, badge and both BPMN downloads, every withdrawal after its cost, and the change list in the models tab; since M6 S2a the open-question kind „Elemente beim Import verloren“ (S2a's „Herkunft“, badges and the manifest of a dropped folder come with the UI simplification); since UX1 (decision 26) the shell of four object tabs („Übersicht“, „Relationen“, „Wertschöpfungskette“, „Offene Fragen“, badges from one hook), „Hochladen“ as a button, the owners' menu „Einstellungen“ („Agent verbinden“, „Annahmeregeln“, the former tab „Regeln“), the list „Befunde“ behind a link in „Offene Fragen“, „Übersicht“ with „Als Nächstes“, the popover „Agent starten“, the export hub, search, phase chips and „Offene Punkte“, failed writes in German, the server banner only on trouble; since UX2b „Offene Fragen“ as lean cards „Zu klären“ (the badge's number) with one intro line, three filters, „Zur Information“ and „Erledigte zeigen“ closed, the agents' questions on their proposals, the dialog „Für den Kunden exportieren …“ and a hold answered in one dialog from its card, its „Vorgemerkt“ row and the review screen and decided with „Jetzt entscheiden“ (the inline decision panels gone), the model view's „Fragen“ with „Zu klären“ only; since the first wave's review „Offene Punkte“ as text with its split in a tooltip, the customer export of the open items only, the agent's summary closed in the model view; the UI load guard `e2e/ui-load.spec.ts` |
 | `apps/agent-sim` | LLM-free reference agent that works the pipeline over MCP, both task kinds since M4 S5 |
 | `apps/demo` | `analyzr-demo seed\|serve\|check` (owner decision 20): seeds the read-only demo while its image is built, supervises PostgreSQL and the server in the container, checks a running demo from outside |
 | `eval/corpus` | test landscapes `nordwind-handel` (dev, 31 models, 17 C7/14 C8) and `stadtwerke-auental` (holdout, 26 models, 10 C7/16 C8) + `_sample`; every model deploys on Camunda 7.24.0 and 8.9.22 |
@@ -903,14 +940,25 @@ bundle imported first through „Hochladen“ records no identity, and the same 
 cannot add it; a folder move in the tool keeps the old folder in `external-ids`. Its web parts
 wait for the UI simplification the owner asked for (2026-10-17: „die UI etwas zu vereinfachen …
 Wirkt alles inzwischen etwas überladen“); the skill's key-map rebuild and the pre-approved `--dry-run` come with the plugin's
-next version, after S2b. **Next**: the UI simplification the owner asked for after S2a
-(2026-10-17: „Denke aus User Need Sicht. Wirkt alles inzwischen etwas überladen“;
-`docs/UX-SIMPLIFICATION.md`, written by a separate run), with S2a's web parts („Herkunft“, the
-badges, the manifest of a dropped folder); then, per M6 §8's order, S2b (`importImpact`, the dry
-runs, the deletion impact, absent keys within `source.scope`) and S2c, the trust rule of decision
-24.2, then S3c (renderer and spec YAML, the ad-hoc converter path, the
-bundled CLI) and S6 (interviews); after the owner's live runs S5b, S7 and facts v2 as recommended
-(M6 §3.11 and §6: the reindex with judgement carry-over first). The owner's review of S1–S2a, ideally on a sandbox or anonymized export
+next version, after S2b. **The UI simplification's first wave is done** (the owner asked for it
+after S2a, 2026-10-17: „Denke aus User Need Sicht. Wirkt alles inzwischen etwas überladen“;
+`docs/UX-SIMPLIFICATION.md`, decided as owner decision 26): UX2a (the open questions' groups and
+totals in server, contracts and CLI), UX1 (the shell and „Übersicht“ in the web), UX2b („Offene
+Fragen“ in the web) and the first wave's review round, done 2026-10-18 on the branch with every
+gate green, the UI load guard and the whole Playwright suite against a scratch stack, the demo
+walk against a scratch demo image and the screenshots retaken (UX-SIMPLIFICATION.md §7 "… as
+delivered", "First wave review round"; DEVELOPMENT.md "UI simplification first wave
+(2026-10-18)"). **Next**: the owner's walkthrough of five tasks on `analyzr-local` (rebuilt to
+the branch first; UX-SIMPLIFICATION.md §7): what is next on `nordwind-handel`, decide the first
+relation, answer a hold, find „Gutschrift“ on a phone, export the questions for the customer. Its
+outcome decides the rest; proposed (Q10): UX7 („Hochladen“, „Agent verbinden“) → UX8 (S2a's web
+parts: „Herkunft“, the badges, the manifest of a dropped folder) → S2b (`importImpact`, the dry
+runs, the deletion impact, absent keys within `source.scope`) → UX3 (model view) → UX4 (question
+actions) → UX5 („Relationen“ and the review screen) → UX6 (value chain) → UX9 (result views,
+„Annahmeregeln“, the projects summary), alongside S2c (the trust rule of decision 24.2) and S3c
+(renderer and spec YAML, the ad-hoc converter path, the bundled CLI); then S6 (interviews); after
+the owner's live runs S5b, S7 and facts v2 as recommended (M6 §3.11 and §6: the reindex with
+judgement carry-over first). The owner's review of S1–S2a, ideally on a sandbox or anonymized export
 (M6 §10.4), can run alongside. Nothing of M6 changes released procedures, claim inputs or the
 MCP surface before the owner's live runs.
 

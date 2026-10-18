@@ -16,6 +16,7 @@ import {
 import { useRef, useState, type DragEvent, type ReactNode } from 'react';
 
 import { ToneBadge } from '@/components/badges';
+import { TechnicalDetails } from '@/components/error-text';
 import { toast } from '@/lib/toast';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
@@ -27,7 +28,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { api, errorMessage, unwrap } from '@/lib/api';
+import { api, errorDetail, errorMessage, unwrap } from '@/lib/api';
 import type { Tone } from '@/lib/labels';
 import { MAX_IMPORT_FILES, MAX_MODEL_BYTES } from '@/lib/limits';
 import { formatBytes } from '@/lib/labels';
@@ -60,14 +61,20 @@ const OUTCOMES: Record<
   failed: { label: 'Fehler', tone: 'danger', icon: CircleXIcon },
 };
 
+/**
+ * A file's outcome as its row shows it; a file of a batch that failed as a
+ * whole carries the server's own words for „Technische Details“.
+ */
+type RowOutcome = ImportFileOutcome & { technical?: string | undefined };
+
 interface UploadRun {
-  outcomes: ImportFileOutcome[];
+  outcomes: RowOutcome[];
   skipped: SkippedFile[];
   done: boolean;
 }
 
 interface ImportProgress {
-  outcomes: ImportFileOutcome[];
+  outcomes: RowOutcome[];
   skipped: SkippedFile[];
 }
 
@@ -81,7 +88,7 @@ async function runImport(
   plan: UploadPlan,
   onProgress: (progress: ImportProgress) => void,
 ): Promise<ImportProgress> {
-  const outcomes: ImportFileOutcome[] = [...plan.failed];
+  const outcomes: RowOutcome[] = [...plan.failed];
   const skipped: SkippedFile[] = [...plan.skipped];
   for (const batch of plan.batches) {
     try {
@@ -93,9 +100,12 @@ async function runImport(
         else outcomes.push(file);
       }
     } catch (error) {
+      // The German sentence in the row, the server's reason (which file, which path) behind
+      // „Technische Details“.
       const detail = errorMessage(error);
+      const technical = errorDetail(error);
       outcomes.push(
-        ...batch.map((entry): ImportFileOutcome => ({
+        ...batch.map((entry): RowOutcome => ({
           path: entry.path,
           modelKey: null,
           outcome: 'failed',
@@ -105,6 +115,7 @@ async function runImport(
             status: 0,
             code: 'internal',
           },
+          technical,
         })),
       );
     }
@@ -223,6 +234,7 @@ export function UploadPanel({
           tone: 'danger',
           title: 'Ablegen fehlgeschlagen',
           description: errorMessage(error),
+          error,
         }),
       );
   }
@@ -339,6 +351,7 @@ export function UploadPanel({
                         </TableCell>
                         <TableCell className="whitespace-normal text-muted-foreground">
                           {o.problem ? (o.problem.detail ?? o.problem.title) : null}
+                          <TechnicalDetails detail={o.technical} />
                           {amendmentCountsText(o.amendments) ? (
                             <span
                               className={cn(

@@ -10,8 +10,10 @@ import { describe, expect, it } from 'vitest';
 
 import {
   AGENTS_SENTENCE,
+  AGENTS_SENTENCE_ANSWER,
   ANSWER_ROLE_LABELS,
   ANSWER_TARGET_LABELS,
+  HOLD_STAYS,
   NOTE_KEEPS_OPEN,
   NOTE_UNTIL_IMPORT,
   SHEET_KIND_LABELS,
@@ -72,8 +74,9 @@ describe('where an answer lands', () => {
         expect(text).toContain('Fehlt ein Modell, importiere es.');
       }
     }
+    // „mögliche Relation“, never „Paar“ (glossary): the relation the note is on.
     expect(AGENTS_SENTENCE).toBe(
-      'Die Agenten berücksichtigen die Notiz, sobald das Paar neu bewertet wird.',
+      'Die Agenten berücksichtigen die Notiz, sobald sie diese Relation neu bewerten.',
     );
   });
 
@@ -103,12 +106,23 @@ describe('where an answer lands', () => {
     const held = noteEffectText({ kind: 'held', subject: { type: 'placement' } });
     expect(held).not.toContain('fällig');
     expect(held).not.toContain('Platzierungsagent');
-    expect(held).toContain(
-      'Die Platzierung bleibt vorgemerkt; solange bekommt kein Agent den Prozess. Entscheide sie mit „Entscheiden“.',
+    // A hold's note is its answer: „Antwort“ throughout, and the decision named without a
+    // control (the card, the „Vorgemerkt“ row and the review screen each have their own).
+    expect(held).toBe(
+      'Die Antwort wird an der Platzierung gespeichert. Die Platzierung bleibt vorgemerkt, bis du ' +
+        'sie entscheidest; solange bekommt kein Agent den Prozess.',
     );
-    expect(noteEffectText({ kind: 'held', subject: { type: 'relation' } })).toContain(
-      'Die Vormerkung bleibt; die Entscheidung triffst du mit „Entscheiden“.',
+    const heldRelation = noteEffectText({ kind: 'held', subject: { type: 'relation' } });
+    expect(heldRelation).toBe(
+      `Die Antwort wird an der Relation gespeichert. ${AGENTS_SENTENCE_ANSWER} ${HOLD_STAYS}`,
     );
+    expect(AGENTS_SENTENCE_ANSWER).toBe(
+      'Die Agenten berücksichtigen die Antwort, sobald sie diese Relation neu bewerten.',
+    );
+    expect(HOLD_STAYS).toBe('Die Vormerkung bleibt, bis du sie entscheidest.');
+    for (const text of [held, heldRelation]) {
+      expect(text).not.toMatch(/Notiz|Paar|Jetzt entscheiden/);
+    }
     expect(noteEffectText({ kind: 'agent-question', subject: { type: 'relation' } })).not.toContain(
       'Vormerkung',
     );
@@ -156,6 +170,14 @@ describe('where an answer lands', () => {
     expect(notesBeforeText(1)).toBe(
       'Schon eine Notiz. Deine kommt hinzu; die bisherige bleibt stehen.',
     );
+    // A hold's notes are its answers.
+    expect(notesBeforeText(1, 'Deine', true)).toBe(
+      'Schon eine Antwort. Deine kommt hinzu; die bisherige bleibt stehen.',
+    );
+    expect(notesBeforeText(2, 'Deine', true)).toBe(
+      'Schon 2 Antworten. Deine kommt hinzu; die bisherigen bleiben stehen.',
+    );
+    expect(answersSummaryText([{ role: 'note', withdrawal: null }], true)).toBe('1 Antwort');
     expect(notesBeforeText(3, 'Diese')).toBe(
       'Schon 3 Notizen. Diese kommt hinzu; die bisherigen bleiben stehen.',
     );

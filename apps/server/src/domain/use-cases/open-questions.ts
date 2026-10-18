@@ -17,6 +17,7 @@ import {
   MAX_ANSWER_CHARS,
   OUTSIDE_STEP,
   VALUE_CHAIN_KEY,
+  exportGroups,
   newId,
   normalizeAnswerText,
   openQuestionsPath,
@@ -81,7 +82,7 @@ import {
 import {
   buildOpenQuestions,
   filterOpenQuestions,
-  pageOpenQuestions,
+  openQuestionPage,
 } from '../open-questions/read-model.ts';
 import { policy, type ProjectAccess } from '../policy.ts';
 import type {
@@ -780,35 +781,49 @@ export function openQuestionUseCases(deps: UseCaseDeps) {
       const after = query.cursor ? decodeCursor(query.cursor, POSITION_SHAPE) : undefined;
       return deps.store.read(async (tx) => {
         const { items } = await all(tx, actor, projectRef);
-        return pageOpenQuestions(filterOpenQuestions(items, query), query.limit, after);
+        const { cursor: _cursor, limit, ...filter } = query;
+        return openQuestionPage(items, filter, limit, after);
       });
     },
 
-    /** Every open question matching the filters, as Markdown or CSV (M6 §4.4). */
+    /**
+     * Every open question matching the filters, as Markdown or CSV (M6 §4.4):
+     * without `group` only the `ask` items unless `kind` or `source` names
+     * what to export (`exportGroups`, UX2a); dated by the project's latest
+     * event, each item's „Betrifft“ in names.
+     */
     async exportOpenQuestions(
       actor: Actor,
       projectRef: string,
       query: OpenQuestionExportQuery,
     ): Promise<OpenQuestionExport> {
       return deps.store.read(async (tx) => {
-        const { project, items } = await all(tx, actor, projectRef);
-        const { format, ...filter } = query;
+        const { project } = await policy.require(tx, actor, 'read', projectRef);
+        const { index, items } = await built(tx, project.id);
+        const { format, ...given } = query;
+        const groups = exportGroups(given);
+        const filter = groups === undefined ? given : { ...given, group: [...groups] };
         const matching = filterOpenQuestions(items, filter);
+        const concerns = new Map(matching.map((q) => [q.id, index.concerns(q)]));
         if (format === 'csv') {
           return {
             filename: exportFilename(project.key, filter, format),
             contentType: 'text/csv; charset=utf-8',
-            body: renderOpenQuestionsCsv(matching),
+            body: renderOpenQuestionsCsv(matching, concerns),
           };
         }
+        const [latest] = await tx.events.list(project.id, {
+          afterSeq: Math.max(0, project.lastSeq - 1),
+          limit: 1,
+        });
         return {
           filename: exportFilename(project.key, filter, format),
           contentType: 'text/markdown; charset=utf-8',
           body: renderOpenQuestionsMarkdown(matching, {
             projectName: project.name,
-            projectKey: project.key,
-            seq: project.lastSeq,
+            asOf: latest?.at ?? project.createdAt,
             filter,
+            concerns,
           }),
         };
       });

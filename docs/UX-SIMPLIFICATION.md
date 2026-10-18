@@ -2,8 +2,8 @@
 
 Status: **decided** (owner decision 26, 2026-10-18: every "Ask now" question of §5.4 answered with
 the recommended option; HANDOFF §4); proposal of 2026-10-17, revised the same day after a UX and a
-feasibility critique · Branch: `feat/integration-and-gaps` (this document
-only) · Source: four user-need audits of the web UI on the agent-created scratch stack
+feasibility critique · Branch: `feat/integration-and-gaps` (the first wave UX2a, UX1 and UX2b
+delivered on it on 2026-10-18, §7; next the owner's walkthrough) · Source: four user-need audits of the web UI on the agent-created scratch stack
 `analyzr-uxaudit` (seeded `nordwind-handel` with its chain and a simulation agent run,
 `signavio-beispiel` from the CLI bundle import, two projects made from the raw synthetic Signavio
 export; 1440x900 and 390x844), torn down after the audit · Relates to: HANDOFF §4 decisions 8, 10,
@@ -315,14 +315,17 @@ klären“.
 **„Offene Punkte“ per model** counts distinct subjects: today's `openItems` (relations touching the
 model that are proposed, held, or accepted with a changed endpoint; `model_pipeline`), plus the open
 placements of the model's processes (from the chain query the badge already loads, by the
-placement's process ref), plus `askByModel`. Agent questions add nothing: they sit on proposals
-already counted. `einkauf/bestellanforderung`: 6 relations (the held call to
-`bestellfreigabe-2019` and the proposed call to `bestellfreigabe` with the agent's question among
-them, each once) + 1 open placement + 1 pool question = 8; the first draft's formula gave 9. Pinned
-in a unit test. The number links to the model's work (`/review?model=<key>`, or the „Vorgemerkt“
-view for a model in „Klärung offen“, today's „Vorgemerkte zeigen“); its split by where to act
-(„6 Relationen · 1 Platzierung · 1 Frage“) shows in the model view's panel tabs and is repeated in a
-focusable tooltip.
+placement's process ref; held placements too, since the first wave's review: their question's
+subject is the placement, so `askByModel` does not name the model), plus `askByModel`. Agent
+questions add nothing: they sit on proposals already counted. `einkauf/bestellanforderung`: 6
+relations (the held call to `bestellfreigabe-2019` and the proposed call to `bestellfreigabe` with
+the agent's question among them, each once) + 1 open placement + 1 pool question = 8; the first
+draft's formula gave 9. Pinned in a unit test. **Decided in the first wave's review (P7 over the
+link):** the number is text, not a link, since no one list holds a model's relations, placements
+and questions together (UX1 linked it to `/review?model=`, which lists the relations only, so „9“
+opened 7 rows); the model's name leads to the model. Its split by where to act („6 Relationen · 1
+Platzierung · 1 Frage“) is repeated in a tooltip on the focusable number and shows in the model
+view's panel tabs with UX3.
 
 ### 2.6 „Agent starten“
 
@@ -583,7 +586,8 @@ Appendix A.
 4. **Views** of the tab „Relationen“: „Zu prüfen 42“, „Vorgemerkt“ (no number; holds count in
    „Offene Fragen“), „Gilt“, „Abgelehnt“, „Automatisch angenommen“ (only above 0; §3.10). „Kein
    Zusammenhang 144“ → a foot link „Kein Zusammenhang laut Agent (144)“ (`?view=no-links` stays,
-   grouped by model, collapsed), if the owner agrees (Q12); until then the view stays. (R10)
+   grouped by model, collapsed) (Q12, decided with decision 26), built in UX5; until then the view
+   stays. (R10)
 5. **Bulk accept** (`bulk-accept-dialog.tsx`): the primary blue „Schlüssel: 29 annehmen…“
    promised 29 and selected 8 (R6). It becomes the outline „8 unauffällige annehmen …“, the count
    equal to the default selection. The dialog lists the 8 (selected) and a closed „Genauer ansehen
@@ -1043,8 +1047,8 @@ recommendation.
   view, or add example disagreements). Proposal: a foot link „Kein Zusammenhang laut Agent (144)“
   in „Relationen“ (`?view=no-links` stays, grouped by model, collapsed); the other option is a
   section per model in the model view's „Relationen“ tab; example disagreements stay out (they
-  conflict with decision 17). *Recommendation: the foot link; until the owner answers, UX5 keeps
-  the view.*
+  conflict with decision 17). *Recommendation: the foot link.* **Answered 2026-10-18 (decision
+  26): the foot link, built in UX5; until then the view „Kein Zusammenhang“ stays.**
 
 **Ask at the slice:**
 
@@ -1161,7 +1165,7 @@ the owner uses next), and an empty project. It checks:
 | UX2a | open-questions server and CLI: `group` (a `Record` over the kinds), the repeatable `group` filter, `totals` and `askByModel`, the extended one-question-per-process rule, `text`/`detail`, the pool label, the `proposal` items' chain action, the export (date, „Betrifft“, contact hint, HTML-comment id, CSV header alias, default `ask`), the API action labels, `analyzr questions --group` | 2 d |
 | UX1 | shell and „Übersicht“: four tabs (Q1), „Hochladen“, „Einstellungen“, badges, header, error banner, German error texts, „Als Nächstes“, the „Agent starten“ popover, search and phase chips, the models table with „Offene Punkte“ and the agent lines, the „Exportieren“ hub, `useProjectCounts`, the projects list's removals and the „Rolle“ rule, „Neues Projekt“, the UI load guard | 3 d |
 | UX2b | „Offene Fragen“ in the web: the default view, count line, intro, filters, the export dialog, cards, holds' one answer place, pools, informational and answered items | 3 d |
-| – | **owner walkthrough** on a scratch stack: what's next on `nordwind-handel`, decide the first relation, answer a hold, find „Gutschrift“ on a phone, export the questions for the customer; decides UX3–UX9 and their order | – |
+| – | **owner walkthrough** on a scratch stack (the agent-created `analyzr-local`, rebuilt to the branch): what's next on `nordwind-handel`, decide the first relation, answer a hold, find „Gutschrift“ on a phone, export the questions for the customer; decides UX3–UX9 and their order | – |
 | UX3 | model view: canvas panel (API for all three pages) and canvas header, „Fragen“/„Relationen“ tabs, element filter, relation cards, „Mehr“, legend, view-first phone, watermark | 3 d |
 | UX4 | question actions: one entry that chooses, ranked pickers, „Sammeln“ removed, inline dry run, „+ Notiz“, choose-copy, ghost button, note dialog; the tab side of Q4 | 2.5 d |
 | UX5 | „Relationen“ (views) and the review screen: start button, queue rows by model names, „Hinweise“, the bulk dialog and its rule offer, labels (`TIERS`), „Vorgemerkt“ rows, panel „Verlauf“, held answer through the dialog, return to „Offene Fragen“, stacked panes, keyboard hints, hold form, auto-accept badge, view-first phone; Q6, Q7 | 4 d |
@@ -1192,6 +1196,72 @@ order still passes); the default export holds `ask` only under the old file name
 a date, „Betrifft“, no folder, no refs and the id only in comments; the CSV header reads
 „Ansprechpartner“ and the importer takes both headers; the id regex finds nothing in the rendered
 export; `mcp-tools.json` and the claim inputs are unchanged.
+
+**UX2a as delivered** (2026-10-18, on the branch, every gate green; DEVELOPMENT.md "UX2a").
+Contracts first (`packages/contracts/src/api/open-questions.ts`: `OpenQuestionGroup`,
+`OpenQuestion.group` and `detail`, the repeatable `group` filter, `OpenQuestionTotals`,
+`OpenQuestionPage.totals` and `askByModel`, `DEFAULT_EXPORT_GROUPS` and `exportGroups`, the CSV
+column `Ansprechpartner`; `open-question-csv.ts` `CONTACT_COLUMNS`; `open-question-labels.ts`
+`OPEN_QUESTION_GROUP_LABELS`, the action and kind labels), the client regenerated, the server's
+read model and export, `analyzr questions --group`. Pinned on seeded `nordwind-handel` with its
+chain (`apps/server/test/integration/open-questions.test.ts`, `state=open`):
+
+| State | `ask` „Zu klären“ | `agent` | `proposal` | `info` |
+|---|---|---|---|---|
+| as seeded, no agent yet | 58 (14 findings, 6 pools, 28 processes and 10 steps without a placement) | 0 | 6 (the rule tier's placement proposals: 4 processes, 2 steps) | 0 |
+| after the simulation agent (the walkthrough's state) | **21**: 8 findings (2 unknown and 2 dynamic call targets, 1 duplicated id, 3 message partners), 6 pools, 3 unsure verdicts, 4 empty steps | 22 | 27 (19 processes, the 8 top-level steps whose sub-steps carry proposals) | 32 (31 model summaries, 1 chain summary) |
+| after two holds, a model change and a probe agent | 26 (28 before the first wave's review: the probe's two coded no-links now join the fraud check's finding and the customer's pool) | 19 | 26 | 32 |
+
+`askByModel` after the simulation agent gives `einkauf/bestellanforderung` 1 (its pool), so its
+„Offene Punkte“ of §2.5 add up to 8 once UX1 adds the relations and the placement; the whole map
+is pinned. The id regex of the UI load guard finds nothing in the rendered Markdown (without its
+comments) and the CSV (without its `id` column) of that state and of the Signavio fixture's
+bundle (`tools/integrate/test/fixtures/signavio/bundle`); the order is unchanged (the CLI e2e
+order and the 64 questions of `vc-seed` pass); `mcp-tools.json` and the claim inputs are
+unchanged. Where the plan left room:
+
+- `totals` and `askByModel` count under every filter but `group`, so one call with `group=ask`
+  gives the cards and every count line; `total` stays the count under all filters.
+- `askByModel` counts distinct subjects (the finding and the coded no-link about one call are one
+  point), an item under each model it touches (the `modelKey` filter's rule).
+- The export holds `ask` without `group` unless `kind` or `source` names what to export (else
+  `kind=agent-question` would be empty, and today's tab exports with its filters); the default
+  keeps the old file name, other groups slug into it (`-ask-agent`).
+- The `proposal` items' chain action is a `decide` labelled „Auf der Kette prüfen“ with the new
+  meaning of `step` (the proposed step, or the step itself) and the proposals in `decides`: no new
+  action type, so the web and the CLI need no new case; their secondary actions stay.
+- „Nur verknüpfen …“ only where the link is the second action beside a primary `amend` (a call
+  without a target, a nameless endpoint); a primary link always reads „Verknüpfen mit …“ (the
+  first wave's review: „Nur …“ as the main verb read as the lesser option). The amend labels no
+  longer tell the empty from the named case. The glossary's kind labels „Ziel
+  wird erst beim Ausführen bestimmt“ and „Partner der Nachricht fehlt“ and „Prozess platzieren …“
+  changed with them, since the export and the CLI show them; „Erledigt (außerhalb)“ waits for
+  UX2b's done card.
+- `detail` is the read model's own plain German, never the frozen findings' `detail` (it names
+  `calledElement`, refs and step ids). Coded no-links follow the unsure verdicts: a question from
+  code, the agents' reasons verbatim as `detail`. The actions' rationale quotes question and
+  reason.
+- The pool label is „Pool in „<the pool or process it talks to>““ (facts v1 name the partner's
+  pool, not the box), the model's name when it talks to several, and „(Nachrichten mit „…“)“
+  when one model has several such pools.
+- „Stand“ is the date of the project's latest event in German time, so the same state exports
+  the same file; notes and marks carry their own dates. „Betrifft“ follows every CSV question,
+  since the questions no longer name the process. The contact hint lists step owners, then lanes;
+  the Markdown groups by step owners, then lanes, then „Ohne Ansprechpartner“ (since the first
+  wave's review no heading names a folder, so the done-when's „no folder“ holds for the headings
+  too).
+- `analyzr questions` lists every group without `--group` (the API list stays complete) and ends
+  its summary with `; groups: ask 21, agent 22, …`.
+- The web shows `detail` muted under the question, and for an unsure verdict or a coded no-link
+  the question first and the agent's words in the attributed box, until UX2b puts the reason
+  behind „Warum?“; the web's fixtures carry the new fields, and the Playwright specs whose labels
+  changed were updated, not run (no spec runs in the gates; UX1 adds the load guard).
+
+Verified: every gate (DEVELOPMENT.md "UX2a"); the counts per group and `askByModel` on real
+PostgreSQL; the CLI e2e order and its 64 questions; the id regex over the rendered export of both
+fixtures. The Playwright specs it changed ran green with UX1, UX2b and the first wave's final pass.
+Not verified: the export opened in a spreadsheet program or read by a customer (the CSV's byte
+order mark and header are checked as bytes); the `ask` total on a real customer landscape.
 
 **UX1 "Shell and Übersicht".** Files: `apps/web/src/routes/project.tsx`, `project-models.tsx`,
 `index.tsx`, `router.tsx` (no route removed, no new lazy route), `components/page-shell.tsx`,
@@ -1227,6 +1297,107 @@ one of its items; write items are hidden for viewers. Each slice names its demo.
 heading; UX5 the queue row's link and the no-links (`agent:` moves out of the visible text); UX6
 `chain-stage` (shown only when actionable) and the collapsed step tree (`step-tree-item`).
 
+**UX1 as delivered** (2026-10-18, on the branch, every gate green; DEVELOPMENT.md "UX1"). Web
+only: no route, contract, server, MCP, procedure or recording change. The shell
+(`routes/project.tsx`: four object tabs, „Hochladen“ as a button, the owners' menu
+„Einstellungen“ in `components/light-popover.tsx`, the key under the name, the crumb of pages
+without a tab), `components/page-shell.tsx` (the server banner only on trouble, the version in
+the logo's tooltip), the German problem texts (`lib/problem-texts.ts`, `errorMessage`,
+`errorDetail`, `components/error-text.tsx`, the toast's „Technische Details“), „Übersicht“
+(`routes/project-models.tsx`, `components/next-step-block.tsx` and `lib/next-step.ts`,
+`components/agent-start.tsx`, `components/export-hub.tsx`, `components/models-table.tsx`, the
+chips in `components/review/stage-bar.tsx`), `lib/project-counts.ts` `useProjectCounts`, the
+projects list and „Neues Projekt“ (`routes/index.tsx`), the inbox without stage bar and stage
+table (`routes/project-review.tsx`), the stage hint „Relationen fertig geprüft.“, the foot link
+„Alle Befunde der Modelle als Liste (n)“; the UI load guard `e2e/ui-load.spec.ts` and the demo
+write guard. Measured with the guard and the same counting on the scratch stack `analyzr-ux1`
+(`nordwind-handel` seeded with its chain and worked by the simulation agent, nothing decided:
+the walkthrough's state; `signavio-beispiel` from `analyzr import` of the Signavio fixture's
+bundle; an empty project), before = UX2a's web build served from the same database:
+
+| Budget (done when) | Before (UX2a) | After (UX1) |
+|---|---|---|
+| Tab bar at 1440 px | 9 tabs, 6 counts, 2 rows (85 px) | 4 tabs, 3 badges (Relationen 48, Wertschöpfungskette 29, Offene Fragen 21), 1 row (35 px) |
+| Tab bar at 390 px | 4 rows, 189 px | 1 scrolling row, 35 px (≤ 48), „Hochladen“ and the gear in view |
+| Block above the table, `nordwind-handel` | none (a „Phase“ select and „Änderungsliste herunterladen“) | „Als Nächstes“: 6 words, 2 controls (≤ 40, ≤ 5); freshly seeded without an agent (the screenshot 02) 27 words, 4 controls |
+| Primary button's top | none | 224 px at 1440x900 (≤ 260) and at 390x844 (≤ 300); `signavio-beispiel` 224 px |
+| „Übersicht“ `nordwind-handel`, whole page at 1440 / 390 px | 43 / 43 controls, 400 / 400 words, 62 / 62 badges | 75 / 75 controls (the plan's „Offene Punkte“ links, one per model with open work), 317 / 252 words, 31 / 31 badges |
+| „Übersicht“ `signavio-beispiel`, 1440 px | 18 controls, 122 words, „Offen“ 0 on every row | 23 controls, 87 words, „Offene Punkte“ 1–3 on 4 of 6 rows |
+| Empty project, 1440 px | 13 controls, 56 words, 5 zero counts | 9 controls, 37 words, no badge |
+| Projects list, 1440 px | 5 controls, 49 words, 3 badges | 5 controls, 33 words, no badge (no „Rolle“ in local mode) |
+| „Gutschrift“ at 390x844 | – | 2 interactions (type, open) |
+| First relation decision from „Übersicht“ | 2 clicks (tab, „Prüfen“) | 1 click („Vorschläge prüfen (48)“) |
+| Ids on „Übersicht“ and the projects list (§7 regex) | „Stand s…“ | none, all three projects, both widths |
+| Entry chunk (gzip) | 211.0 KB in 7 chunks | 209.2 KB in 1 chunk |
+
+The guard's consistency test passes: every badge equals its list (48 queue rows, 29 open
+placements on the chain page, 21 items of `group=ask`), „Vorschläge prüfen (48)“ equals the
+badge, the three badge lists share no item (holds only in „Offene Fragen“), every model's
+„Offene Punkte“ equals its open relations (the lists `/review?model=` opens, queue and held) plus
+its open placements plus `askByModel`. The other screens are measured for their slices
+(`ANALYZR_UI_LOAD_REPORT`): „Relationen“ 64 controls, 828 words, first row at 440 px (and 429 px
+wide at 390, the queue's sideways scroll, UX5); „Offene Fragen“ 231 controls, 3,119 words, first
+card at 575 px (1,260 px at 390, UX2b); the chain 61 controls, 483 words, first open placement at
+1,153 px (UX6); the model view of `vertrieb/order-handling` 35 controls, 555 words (UX3). Where
+the plan left room:
+
+- „Offene Punkte“ of `einkauf/bestellanforderung` is **9** in the walkthrough's state, not 8:
+  its open relations are 7 (both copies of the called process, four messages, one trigger), plus
+  1 open placement and 1 pool question; the plan's 8 came from the audit stack, where one of those
+  relations had been decided. The formula is §2.5's (distinct subjects, the agent's questions add
+  nothing); the guard pins 9 with the split „7 Relationen · 1 Platzierung · 1 Frage“, a unit test
+  pins §2.5's example 6 + 1 + 1 = 8.
+- The badge „Offene Fragen“ counts `totals.ask` from UX1 on (Q3, `openQuestionSummaryQuery`: one
+  call with `group=ask`, `limit=1`, whose page also carries `askByModel`), while the tab lists
+  every group until UX2b; the guard compares the badge with the API's `group=ask` list.
+- „Als Nächstes“ for owners with a token when only failed analyses or expired reservations wait
+  and no model waits: „Nochmal versuchen“ is the primary (a requeue alone runs nothing, so it
+  requeues and opens „Agent starten“); editors and viewers see the agent rows as lines
+  („n Modelle warten auf den Agenten“), editors with „Nochmal versuchen“, viewers as text; a
+  navigation primary is a plain link for viewers. A tab badge never shows 0.
+- The number in „Offene Punkte“ opened where the work is (`/review?model=`, else the chain, else
+  `/open-questions?model=`), so a „9“ opened 7 rows; since the first wave's review it is text
+  with its split in a focusable tooltip (§2.5). „–“ for none.
+- „Exportieren“ offers the questions as two direct downloads („Zum Lesen (Markdown)“, „Zum
+  Ausfüllen (CSV)“, the export route's `ask` default under the old file name) until UX2b's dialog;
+  „Bild (SVG)“ opens the chain page with `?export=svg`, which downloads the drawing once it is
+  shown (an SVG needs the renderer, which only the chain chunk carries); the downloads come from
+  the modules that already own them (the open-questions page, the amendments module), loaded on
+  first use; the model list's „Änderungsliste herunterladen“ went into the hub (no second place).
+- „Relationen“ opens `/review` and is also the active tab on `/relations`; until UX5 builds the
+  views, a link „Alle Relationen“ beside the inbox's tabs leads to the results and „← Zu prüfen“
+  back. An active `?stage=` shows as the removable chip „Phase: …“ in the inbox's filters. The
+  placements callout and the presets stay until UX5, and so does the view „Kein Zusammenhang“:
+  the agents' no-links move behind the foot link „Kein Zusammenhang laut Agent (n)“ only with UX5
+  (Q12 answered by decision 26).
+- Failed writes: one sentence per `ProblemCode` and eight `reason`s (`rationale-required`,
+  `unknown-step`, `unknown-process`, `unknown-ref`, `same-step`, `same-process`,
+  `invalid-manifest`, `amendment-not-applicable`); toasts carry the error (`toast({ …, error })`)
+  and alerts render `ErrorText`, both with a closed „Technische Details“; inline form errors (note,
+  answer sheet, pickers) show the German sentence alone; a taken key in „Neues Projekt“ says „Den
+  Kurznamen „…“ gibt es schon. Wähl einen anderen.“ and opens the field.
+- The crumb „Projekte“ went (the logo leads there); the upload, agents, rules and findings pages
+  name themselves in the crumb. The holder shows without `agent:` („agent-sim · reserviert bis
+  22:45“, a time today, else `17.10., 22:45`); the attempts only for a failed analysis.
+- The projects list keeps „Angelegt“ until UX9 brings „Zuletzt geändert“ with the summary route;
+  the key moved under the name.
+- The demo write guard checks the decide labels „Vorschlag prüfen“ and „Auf der Kette prüfen“ on
+  buttons and menu items only: the viewer's read link to a placement on the chain has been called
+  „Auf der Kette prüfen“ since S4, so UX2a's text check (not run then) failed on the demo.
+- The entry chunk is one chunk: a `codeSplitting` group with `tags: ['$initial']` in
+  `vite.config.ts` (§3.13 item 8's „groups come first“). UX1's own entry code is about 6 KB gzip
+  (217.3 KB with the old splitting); the merge saves about 8 KB.
+- Not in UX1: the provenance subtitle of §3.1 item 3 (needs `Model.source`, UX8), the watermark
+  check and the model view (UX3), the phone's „Filter (n)“ and the tab's own rework (UX2b). The
+  start prompt link points at the repository on GitHub, which answers 404 for others while the
+  repository is private (HANDOFF §8 "Going public").
+
+Verified: every gate, the UI load guard at both widths on the three projects and every Playwright
+spec against `analyzr-ux1`, `demo.spec.ts` with every menu opened against the demo image
+`analyzr-ux1d:dev`, the screenshots retaken (DEVELOPMENT.md "UX1"). Not verified: other browsers
+than Chromium (the phone is Chromium's mobile emulation, not Safari on iOS), a screen reader on the
+light menus and the tooltip, the owner's walkthrough.
+
 **UX2b "Offene Fragen" (web).** Files: `apps/web/src/routes/project-open-questions-page.tsx`,
 `components/open-questions/question-item.tsx`, `model-questions.tsx`, `note-dialog.tsx` (the one
 answer place for holds), `lib/open-questions.ts`, `lib/queries.ts` (`openQuestionCountQuery` reads
@@ -1237,6 +1408,184 @@ controls 232 → at most 80, words 3,120 → at most 1,000, the first card at mo
 (450 px at 390 px); a card has at most 3 actions (disclosures not counted) and on average at most 35
 words; no process has two items; a hold is answered in at most 3 clicks through the same dialog
 from the card, the „Vorgemerkt“ row and the review screen.
+
+**UX2b as delivered** (2026-10-18, on the branch, every gate green; DEVELOPMENT.md "UX2b"). Web
+only, plus one zod-free label in the contracts (`OPEN_QUESTION_STATE_LABELS.answered` reads
+„Außerhalb der Landschaft“, the glossary's, which UX2a left for the done card; the export's filter
+line follows); no route, server, MCP, procedure or recording change, the client regenerates
+without drift. The tab (`routes/project-open-questions-page.tsx`): one intro line with „So
+funktioniert es“ closed, the three filters „Art“, „Modell oder Ordner“ and „Ansprechpartner“
+(`?kind=&model=&askWho=`; on a phone behind „Filter (n)“; `?source=` a removable chip „Quelle: …“,
+`?state=answered` opens „Erledigte zeigen“), the count line „21 zu klären“, „Für den Kunden
+exportieren …“ (`components/open-questions/customer-export-dialog.tsx`) and „Antworten aus CSV
+übernehmen …“; the cards „Zu klären“ (`question-item.tsx`, `question-actions.tsx`; the view, the
+facets, the card's actions and links in `lib/open-questions.ts`), the closed groups „Zur
+Information“ and „Erledigte zeigen“, the „Befunde“ link. A hold answers in the note dialog from its
+card, its „Vorgemerkt“ row and the review screen (`components/open-questions/hold-answer.tsx`,
+loaded lazily by `components/review/held-list.tsx` and `review-details.tsx`) and is decided with
+„Jetzt entscheiden“; an agent's question opens its proposal („Vorschlag öffnen“); the inline
+decision panels went (`action-panels.tsx`). „Exportieren“ on „Übersicht“ opens the same dialog
+(„Fragen für den Kunden (Markdown, CSV) …“). The model view's section is „Fragen (n)“ with
+`group=ask`, `state=open`. Measured with the UI load guard on the scratch stack `analyzr-ux2b`
+(`nordwind-handel` seeded with its chain and worked by the simulation agent, nothing decided;
+`signavio-beispiel` from the bundle import), before = UX1's build served from the same database:
+
+| Budget (done when) | Before (UX1) | After (UX2b) |
+|---|---|---|
+| Badge „Offene Fragen“ = `totals.ask` | 21, the tab listing 102 items of every group | 21 = the count line „21 zu klären“ = the 21 cards, in the API's order |
+| Controls, 1440 px | 231 | 76 (≤ 80): the shell 7, three filters, two buttons, the „Befunde“ link, per card the subject, the primary and „Weitere Aktionen“ |
+| Words, 1440 / 390 px | 3,119 / 3,118 | 643 / 540 (≤ 1,000) |
+| First card's top, 1440 / 390 px | 575 / 1,260 px | 246 / 362 px (≤ 250 / ≤ 450) |
+| Badges (`data-slot=badge`) | 50 | 21 (one kind badge per card) |
+| Actions per card | up to four buttons and links plus the refs' locators | at most 2 on `nordwind-handel` (≤ 3; a hold: „Antwort geben“, „Jetzt entscheiden“; an amendment conflict 3) |
+| Words per card | – | 22.6 on average, 16 to 32 (≤ 35) |
+| No process twice | – | the 21 subjects are distinct |
+| A hold answered | a text area in „Vorgemerkt“, nothing on the review screen, „Notiz hinzufügen“ in the tab's menu | 2 clicks from each of the three entries, one dialog (≤ 3; the guard's task on `ui-load-vormerkung`) |
+| Ids (§7 regex) | `q-…` and `s252` on every card | none at both widths; none in the default Markdown (without its comments) and CSV (without `id`) |
+| `signavio-beispiel`, 1440 px | 45 controls, 881 words, first card at 503 px | 34, 227, 246 px (7 to clarify; 6 descriptive models one line in „Zur Information“) |
+| Model view `vertrieb/order-handling`, 1440 px | 35 controls, 555 words | 26, 308 („Fragen“ lists „Zu klären“ only) |
+| Customer export | `group=ask` by default (UX2a), two buttons | the dialog: 21 rows by default under `offene-fragen-<p>.csv`, 43 with „Auch Fragen der Agenten (22)“ |
+| Entry chunk (gzip) | 209.2 KB | 209.3 KB (three lazy imports: the hold's answer twice, the dialog in the hub) |
+
+Where the plan left room:
+
+- „Warum?“, „So funktioniert es“, „Verlauf“ and the two closed groups are native `<details>`; the
+  closed groups render their content only when open. Disclosures are not actions (the plan's card
+  rule), and the guard counts nothing inside a closed one.
+- The subject is the card's link (the model view at the element, the review screen, the chain at
+  the step or placement); the separate „Im Modell zeigen“, „Prüfen“ and „Zur Wertschöpfungskette“
+  buttons and the refs list went; in the model view a link to the model itself stays text. A card
+  names the process an element lies in („in „Forderungsmanagement““), since UX2a's questions no
+  longer name it; no model key on a card.
+- „Kennung kopieren“ is the last entry of „Weitere Aktionen“, only where that menu exists anyway
+  (no menu for the id alone; viewers have none; the id stays in the export and `analyzr
+  questions`).
+- A hold's card: „Antwort geben“ (the API's `note`, relabelled) and „Jetzt entscheiden“ (a link to
+  the review screen at `?view=held`, so J/K walk the held list, or to the chain at `?placement=`;
+  the return to the tab comes with UX5 and UX6). For a hold the dialog says „Antwort geben“,
+  „Deine Antwort“, „Antwort speichern“, elsewhere „Notiz hinzufügen“; the note effect text says
+  „Jetzt entscheiden“. `hold-answer.tsx` finds the hold's item with `kind=held&state=open`, so a
+  note from the row, the review screen, the card and the customer's CSV land on the same item. The
+  review screen's hold box shows for every held relation with the question, the hold's note and
+  the label (R9); „Antwort ergänzen“ in the decision grid stays UX5, the chain's held card keeps
+  its own field until UX6, the held row's „Prüfen“ until UX5.
+- „Art“ lists the kinds of the open „Zu klären“ items and, last, „Frage eines Agenten“, which
+  switches the cards to `group=agent` („22 Fragen der Agenten“, the primary „Vorschlag öffnen“) and
+  the export to the agents' questions. The other filters count the cards the list shows.
+- The export dialog starts from its defaults on every opening (Markdown, the server's default and
+  the first option; the agents' questions off), shows „Auch Fragen der Agenten (n)“ only when
+  there are any under the filters, and sends the list's filters with `group` explicitly (`ask`,
+  `ask` and `agent`, or `agent`) and, since the first wave's review, `state=open`: the file holds
+  what the list shows, and a marked item is not asked again (the server's file name leaves `open`
+  out, since it says „offene“ already); `group=ask` keeps the old file name, the agents'
+  questions add the server's `-ask-agent`.
+- „Erledigte zeigen (n)“ counts the marked items of the card group under the filters; a link with
+  `?state=answered` opens it, `?state=open` is the default.
+- „Betrifft auch“ is not shown: on both stacks every ref beyond the subject is named by the
+  question or its reason already (a pool's flow ends, the other copy, a relation's ends); the
+  export and the API keep the refs.
+- Two or more descriptive models with one reason are one line inside „Zur Information“ („6 von 6
+  Modellen sind beschreibend (ohne Engine). …“), not above the list, so the first view stays
+  short; summaries are one line with „Zusammenfassung des Agenten anzeigen“ closed.
+- The latest note shows on the card („Notiz vom 18.10.2026: …“, a hold's „Antwort vom …“);
+  „Verlauf (n)“ with every note and withdrawn mark only when there is more than that note.
+- Two rows above the cards at 1440 px (the intro line of 20 px, then filters, count and both
+  buttons in one row of 28 px), the page 10 px below the tab bar instead of the shell's 24 px
+  (`-mt-3.5`): the first card at 246 px. On a phone the buttons wrap below „Filter (n)“.
+- The guard's hold task runs on a fourth project, `ui-load-vormerkung` (the corpus without an agent
+  and one held key-tier proposal), so `nordwind-handel` stays undecided for the other pins; it
+  answers from the card, the „Vorgemerkt“ row and the review screen and checks the three notes on
+  the one item.
+
+Verified: every gate, the guard's UX2b budgets and hold task and every Playwright spec against
+`analyzr-ux2b`, `demo.spec.ts` against `analyzr-ux2bd:dev` (DEVELOPMENT.md "UX2b"). Not verified:
+a customer's round trip of the exported CSV through a spreadsheet program and back through
+„Antworten aus CSV übernehmen …“ (only with sheets the tests write), other browsers than Chromium,
+the owner's walkthrough.
+
+**First wave review round** (2026-10-18, on the branch; DEVELOPMENT.md "First wave review
+round"). A user-need, a correctness and a live-run-neutrality review of UX2a, UX1 and UX2b; each
+finding verified, then fixed with the least UI that holds, or recorded here. Live-run neutral as
+before: no change to facts, the rule tier, claim inputs, procedures, MCP or recordings.
+
+- **One item per gap** (server read model, `mergeCodedNoLinks` in `read-model.ts`): an agent's
+  coded no-link joins the rule tier's item that asks the same (a `call-target` no-link the
+  finding on its call, a `collaboration` no-link the `black-box-partner` item whose flows end at
+  its endpoint), its reasons attributed in the survivor's `detail` („Laut Agent: …“), the notes
+  and withdrawn marks recorded under it shown among the survivor's answers; a no-link item with a
+  live outside mark stays its own (answered) item. The badge no longer counts one gap twice
+  (the integration pin after the probe agent: 28 → 26).
+- **API labels:** a primary link always reads „Verknüpfen mit …“; „Nur verknüpfen …“ only beside a
+  primary amendment.
+- **The customer export:** the dialog sends `state=open` (the file holds what the list shows);
+  the Markdown's headline counts open and settled items apart, its groups name step owners, then
+  lanes, never the folder, answers carry dates without handles (a hold's notes as „Antwort“, its
+  own note as „Notiz zur Vormerkung“), and an agent's verbatim reason is attributed („Laut Agent:
+  …“, the contracts' `isVerbatimSource`, also in the CSV's „Frage“); the dialog's description
+  lost „in einfachem Deutsch und ohne Kennungen“ and the Markdown hint.
+- **Holds:** once a hold has its answer, „Jetzt entscheiden“ leads and „Antwort ergänzen“ sits
+  beside it (the button keeps the focus the dialog gives back); the review screen's hold box
+  shows the latest answer („Antwort vom …“); the dialog, the toast, the card and „Verlauf“ say
+  „Antwort“ throughout, „mögliche Relation“ never „Paar“, and name the decision without a control
+  („Die Vormerkung bleibt, bis du sie entscheidest.“); a held relation without an open item (an
+  end missing) is answered on the relation itself; a hold card names both processes of its
+  relation („in „Bestellanforderung“ → „Lieferantenanlage““).
+- **„Offene Punkte“** is text with a tooltip (§2.5), counts held placements, and says „1 offener
+  Punkt“; „Übersicht“ of `nordwind-handel` drops from 75 to 44 controls (379 / 314 words at 1440
+  / 390 px), `signavio-beispiel` from 23 to 19.
+- **The model view** loads `ask`, `agent` and `info` for the model: the cards stay „Zu klären“,
+  one link „Fragen der Agenten zu Vorschlägen (n)“ leads to their list until UX3 shows them on the
+  relation cards, the agent's summary sits closed under „Zur Information“ (decision 24.8); on
+  `vertrieb/order-handling` 26 → 27 controls, 308 → 317 words.
+- **Smaller fixes:** the phone's tab row scrolls the active tab into view and fades at its edge
+  while more lies to the right; the light menus are as wide as their widest entry; the „Agent
+  starten“ popover wraps its commands and names the chain when there is one; „Nochmal versuchen“
+  closes its popover on a second click instead of requeueing again, and editors get a plain
+  button; „Neues Projekt“ shows the key field when the name derives no key; both openings of the
+  customer export give the focus back; a failed import batch keeps the server's reason behind
+  „Technische Details“; „Alle Befunde der Modelle als Liste (n)“ also on an empty list; the amend
+  summary and the chain header name „Relationen“ (the chain header's duplicate „Modelle“ went;
+  UX6 folds the rest into the shared canvas header).
+- **The guard** checks that the active tab lies inside the row on a phone, that every entry of
+  „Exportieren“ fits its menu, the hold's answer on the review screen, and „Offene Punkte“ as the
+  sum of its parts; „Gutschrift“ on a phone counts as opened, not found, until UX3 (a `fixme` with
+  UX3's done-when: the model name answers `elementFromPoint`, the canvas covers ≥ 55 %).
+- **Docs:** M3-LIVE-RUNS says to ignore „Als Nächstes“ in a run project (steps 4 and 6a); CONCEPT
+  §5's row for the open questions names `group`, `totals`, `askByModel` and the export's default;
+  M6 §1.1 steps 8 and 9 follow decision 26; DEVELOPMENT.md's demo, inbox, pipeline and plain-text
+  passages follow UX1; HANDOFF's decision 26 amends 24.8 (not 24.9).
+
+**First wave, final pass** (2026-10-18, on the branch; DEVELOPMENT.md "UI simplification first
+wave (2026-10-18)"). A separate pass over the whole first wave after the review round: every gate
+green, `git diff --stat eval/reports` empty, the MCP snapshots unchanged; the UI load guard (both
+widths, the three projects, the hold task on `ui-load-vormerkung`) and every other spec against a
+fresh scratch stack `analyzr-uxf` (83 passed; ui-load 11 plus 3 `fixme`), `screenshots.spec.ts`
+against a freshly seeded `analyzr-uxs`, `demo.spec.ts` (14 passed, every menu opened) and
+`analyzr-demo check` against the demo image `analyzr-uxdemo:dev`; every screenshot of §7's list
+retaken (`01` … `07`, `m2-*`, `d19-*`, `m4-*`, `demo-*`). One fix: `screenshots.spec.ts` waits for
+the badge „Offene Fragen“ before `02-models` (on a fresh stack the open questions answer last).
+The first wave in numbers, before = the web before UX1:
+
+| Screen, 1440x900 (390x844) | Before | After the first wave |
+|---|---|---|
+| Tab bar | 9 tabs, 6 counts, 2 rows (4 rows, 189 px) | 4 tabs, 3 badges, 1 row (1 scrolling row ≤ 48 px) |
+| „Übersicht“ `nordwind-handel` | 43 controls, 400 words, 62 badges, no next step | 44 controls, 379 (314) words, 31 badges, the primary at 224 (224) px |
+| „Übersicht“ `signavio-beispiel` | 18 controls, 122 words | 19 controls, 95 (80) words |
+| „Übersicht“, empty project | 13 controls, 56 words, 5 zero counts | 9 controls, 37 words, no badge |
+| „Offene Fragen“ `nordwind-handel` | 231 controls, 3,119 words, 50 badges, first card at 575 (1,260) px | 76 (74) controls, 643 (540) words, 21 badges, first card at 246 (362) px |
+| „Offene Fragen“ `signavio-beispiel` | 45 controls, 881 words, first card at 503 px | 34 controls, 227 words, 246 px |
+| Model view `vertrieb/order-handling` | 35 controls, 555 words | 27 controls, 317 words (UX3 next) |
+| Chain | 61 controls, 483 words (UX1's build) | 60 controls, 482 words (UX6 next) |
+| First relation decision from the project | 2 clicks | 1 click |
+| A hold answered | no place on the review screen | 2 clicks from each of three entries, one dialog |
+| Entry chunk (gzip) | 211.0 KB in 7 chunks | 209.8 KB in 1 |
+
+Not verified: other browsers than Chromium and a real phone, a screen reader, the export in a
+spreadsheet program, CI (no e2e job), and the owner's walkthrough, which comes next: five tasks
+on `analyzr-local` (rebuilt to the branch first): what is next on `nordwind-handel`, decide the
+first relation, answer a hold, find „Gutschrift“ on a phone, export the questions for the
+customer; then, per its outcome, UX7 → UX8 → S2b → UX3 → UX4 → UX5 → UX6 → UX9 alongside S2c and
+S3c.
 
 **UX3 "Model view".** Files: new `components/canvas-panel.tsx`, `canvas-header.tsx`;
 `routes/model-view.tsx`, `components/open-questions/model-questions.tsx`, `subprocess-link.tsx`,

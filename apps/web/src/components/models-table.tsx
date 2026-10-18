@@ -2,7 +2,7 @@ import type { Model } from '@analyzr/client';
 import { PenLineIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
 
-import { EngineBadge, StageBadge, ToneBadge } from '@/components/badges';
+import { StageBadge, ToneBadge } from '@/components/badges';
 import {
   Table,
   TableBody,
@@ -11,21 +11,31 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { formatDateTime } from '@/lib/labels';
+import { formatShortDateTime } from '@/lib/labels';
 
 /**
- * Models of a project: key, engine, head revision (marked „ergänzt“ when
- * amendments from analyzr wrote the head, M6 S5c-2), pipeline stage, open
- * items.
+ * Models of a project on „Übersicht“ (UX-SIMPLIFICATION.md §3.2 item 4):
+ * „Name | Phase | Offene Punkte | Aktualisiert“. The name is the model's name
+ * (its key when it has none) with the key small below and the mark „ergänzt“
+ * when amendments from analyzr wrote the head (M6 S5c-2); while an agent holds
+ * or failed a model, the phase cell says so in a muted line. On a phone name
+ * and phase stack, „Aktualisiert“ hides. Engine and revision live in the
+ * model view.
  */
 export function ModelsTable({
   models,
-  renderKey,
+  renderName,
+  renderOpenPoints,
+  renderStageNote,
   amended,
 }: {
   models: readonly Model[];
-  /** The key cell, e.g. a link into the model view. */
-  renderKey?: (model: Model) => ReactNode;
+  /** The name cell's link, e.g. into the model view. */
+  renderName: (model: Model) => ReactNode;
+  /** The „Offene Punkte“ cell. */
+  renderOpenPoints: (model: Model) => ReactNode;
+  /** A muted line under the phase (holder and reservation, a failure), if any. */
+  renderStageNote?: (model: Model) => ReactNode;
   /** Applied amendments per model id (only models with at least one). */
   amended?: ReadonlyMap<string, number>;
 }) {
@@ -33,54 +43,56 @@ export function ModelsTable({
     <Table aria-label="Modelle">
       <TableHeader>
         <TableRow>
-          <TableHead>Modell</TableHead>
-          <TableHead>Engine</TableHead>
-          <TableHead className="text-right">Revision</TableHead>
-          <TableHead>Phase</TableHead>
-          <TableHead className="text-right">Offen</TableHead>
-          <TableHead>Aktualisiert</TableHead>
+          <TableHead>Name</TableHead>
+          <TableHead className="hidden sm:table-cell">Phase</TableHead>
+          <TableHead className="text-right">Offene Punkte</TableHead>
+          <TableHead className="hidden sm:table-cell">Aktualisiert</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
-        {models.map((m) => (
-          <TableRow key={m.id} data-testid="model-row">
-            <TableCell className="whitespace-normal">
-              <div className="flex min-w-0 flex-col">
-                <span className="font-mono text-[13px]">{renderKey?.(m) ?? m.key}</span>
-                {m.name ? <span className="text-xs text-muted-foreground">{m.name}</span> : null}
-              </div>
-            </TableCell>
-            <TableCell>
-              <EngineBadge engine={m.engine} />
-            </TableCell>
-            <TableCell className="text-right tabular-nums">
-              <span className="inline-flex items-center justify-end gap-1.5">
-                {amended?.get(m.id) ? (
-                  <span data-testid="model-amended">
-                    <ToneBadge
-                      tone="info"
-                      icon={PenLineIcon}
-                      title={`${amended.get(m.id) === 1 ? 'Eine Ergänzung' : `${amended.get(m.id)} Ergänzungen`} aus analyzr im Kopf; das Original aus dem Quellsystem bleibt erhalten`}
-                    >
-                      ergänzt
-                    </ToneBadge>
+        {models.map((m) => {
+          const note = renderStageNote?.(m);
+          const count = amended?.get(m.id) ?? 0;
+          return (
+            <TableRow key={m.id} data-testid="model-row" data-model-key={m.key}>
+              <TableCell className="whitespace-normal">
+                <div className="flex min-w-0 flex-col items-start gap-0.5">
+                  <span className="font-medium">{renderName(m)}</span>
+                  <span className="flex flex-wrap items-center gap-1.5">
+                    {m.name ? (
+                      <span className="font-mono text-xs text-muted-foreground">{m.key}</span>
+                    ) : null}
+                    {count > 0 ? (
+                      <span data-testid="model-amended">
+                        <ToneBadge
+                          tone="info"
+                          icon={PenLineIcon}
+                          title={`${count === 1 ? 'Eine Ergänzung' : `${count} Ergänzungen`} aus analyzr im Kopf; das Original aus dem Quellsystem bleibt erhalten`}
+                        >
+                          ergänzt
+                        </ToneBadge>
+                      </span>
+                    ) : null}
                   </span>
-                ) : null}
-                r{m.headRev}
-              </span>
-            </TableCell>
-            <TableCell>
-              <StageBadge stage={m.stage} />
-            </TableCell>
-            <TableCell
-              className="text-right tabular-nums"
-              title="Relationen, die vorgeschlagen, vorgemerkt oder mit geändertem Endpunkt angenommen sind"
-            >
-              {m.openItems}
-            </TableCell>
-            <TableCell className="text-muted-foreground">{formatDateTime(m.updatedAt)}</TableCell>
-          </TableRow>
-        ))}
+                  <span className="mt-1 flex flex-col gap-0.5 sm:hidden">
+                    <StageBadge stage={m.stage} />
+                    {note}
+                  </span>
+                </div>
+              </TableCell>
+              <TableCell className="hidden whitespace-normal sm:table-cell">
+                <div className="flex flex-col items-start gap-0.5">
+                  <StageBadge stage={m.stage} />
+                  {note}
+                </div>
+              </TableCell>
+              <TableCell className="text-right tabular-nums">{renderOpenPoints(m)}</TableCell>
+              <TableCell className="hidden text-muted-foreground sm:table-cell">
+                {formatShortDateTime(m.updatedAt)}
+              </TableCell>
+            </TableRow>
+          );
+        })}
       </TableBody>
     </Table>
   );

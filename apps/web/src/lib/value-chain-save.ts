@@ -158,7 +158,12 @@ export function useChainSave({ project, base, exportCanonical, onSaved }: ChainS
     if (next) set(next);
     else {
       set({ phase: 'idle' });
-      toast({ tone: 'danger', title: 'Nicht gespeichert', description: errorMessage(error) });
+      toast({
+        tone: 'danger',
+        title: 'Nicht gespeichert',
+        description: errorMessage(error),
+        error,
+      });
     }
   }
 

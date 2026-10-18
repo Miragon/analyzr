@@ -85,6 +85,7 @@ export function BulkReconfirmDialog({
               tone: 'danger',
               title: 'Nicht bestätigt',
               description: errorMessage(error),
+              error,
             });
         },
       },

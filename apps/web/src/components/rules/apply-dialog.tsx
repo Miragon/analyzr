@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { CheckCheckIcon } from 'lucide-react';
 import { useState } from 'react';
 
+import { ErrorText } from '@/components/error-text';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import {
@@ -14,7 +15,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ApiError, errorMessage } from '@/lib/api';
+import { ApiError } from '@/lib/api';
 import { formatDecimal } from '@/lib/auto-accept';
 import { AUTO_ACCEPT_BLOCK_LABELS } from '@/lib/auto-accept-rules';
 import { useApplyRule } from '@/lib/auto-accept-rule-actions';
@@ -118,7 +119,9 @@ function ApplyBody({ project, rule, onOpenChange }: Omit<ApplyDialogProps, 'open
       {dry.isError ? (
         <Alert variant="destructive">
           <AlertTitle>Vorschau fehlgeschlagen</AlertTitle>
-          <AlertDescription>{errorMessage(dry.error)}</AlertDescription>
+          <AlertDescription>
+            <ErrorText error={dry.error} />
+          </AlertDescription>
         </Alert>
       ) : !result ? (
         <Skeleton className="h-16 w-full" />
@@ -155,7 +158,9 @@ function ApplyBody({ project, rule, onOpenChange }: Omit<ApplyDialogProps, 'open
       {failed ? (
         <Alert variant="destructive">
           <AlertTitle>Anwenden fehlgeschlagen</AlertTitle>
-          <AlertDescription>{errorMessage(real.error)}</AlertDescription>
+          <AlertDescription>
+            <ErrorText error={real.error} />
+          </AlertDescription>
         </Alert>
       ) : null}
       <DialogFooter>

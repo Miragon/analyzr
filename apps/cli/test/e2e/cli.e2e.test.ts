@@ -293,6 +293,7 @@ describe('analyzr questions (M6 S4)', () => {
       id: string;
       kind: string;
       source: string;
+      group: string;
       unlocks: number;
       modelKeys: string[];
       actions: {
@@ -318,8 +319,18 @@ describe('analyzr questions (M6 S4)', () => {
 
     const table = await analyzr(['questions', '-p', 'vc-seed'], reader);
     expect(table.code).toBe(0);
+    // UX2a: the groups; the rule tier's placement proposals wait on the chain.
     expect(table.out).toContain(
-      'vc-seed: 64 open questions (process-without-step 32, step-without-process 12, message-partner-missing 9, black-box-partner 6, call-target-dynamic 2, call-target-unknown 2, duplicate-process-id 1)\n',
+      'vc-seed: 64 open questions (process-without-step 32, step-without-process 12, message-partner-missing 9, black-box-partner 6, call-target-dynamic 2, call-target-unknown 2, duplicate-process-id 1); groups: ask 58, proposal 6\n',
+    );
+    const ask = items.filter((q) => q.group === 'ask');
+    expect(ask).toHaveLength(58);
+    const onlyAsk = await analyzr(
+      ['questions', '-p', 'vc-seed', '--group', 'ask', '--format', 'json'],
+      reader,
+    );
+    expect((JSON.parse(onlyAsk.out) as { id: string }[]).map((q) => q.id)).toEqual(
+      ask.map((q) => q.id),
     );
     // One line per question, under it one per action with suggested targets and one per
     // proposal a link to them accepts (M6 S5c-1).
@@ -346,7 +357,8 @@ describe('analyzr questions (M6 S4)', () => {
       expect(q.modelKeys.some((k) => k.startsWith('finanzen/'))).toBe(true);
     }
 
-    // The CSV export, verbatim: byte order mark, the header, one row per question.
+    // The CSV export, verbatim: byte order mark, the header, one row per question to
+    // clarify (UX2a: the export's default group `ask`), under the old file name.
     const csvFile = path.join(dir, 'offene-fragen.csv');
     const csv = await analyzr(
       ['questions', '-p', 'vc-seed', '--format', 'csv', '-o', csvFile],
@@ -358,9 +370,10 @@ describe('analyzr questions (M6 S4)', () => {
     const bytes = await readFile(csvFile);
     expect([...bytes.subarray(0, 3)]).toEqual([0xef, 0xbb, 0xbf]);
     const text = bytes.toString('utf8');
-    expect(text).toMatch(/^\uFEFF"id";"Art";"Frage";"Ansprechpartner-Hinweis";"Antwort"\r\n/);
-    expect(text.match(/\r\n"q-[0-9a-f]{16}";/g)).toHaveLength(64);
-    for (const q of items) expect(text).toContain(`"${q.id}";`);
+    expect(text).toMatch(/^\uFEFF"id";"Art";"Frage";"Ansprechpartner";"Antwort"\r\n/);
+    expect([...text.matchAll(/\r\n"(q-[0-9a-f]{16})";/g)].map((m) => m[1])).toEqual(
+      ask.map((q) => q.id),
+    );
 
     // One sheet per contact hint: the folder `finanzen`, exactly.
     const forFinanzen = await analyzr(
@@ -378,10 +391,10 @@ describe('analyzr questions (M6 S4)', () => {
             reader,
           )
         ).out,
-      ) as { id: string; askWho: { folder: string | null } }[]
-    ).map((q) => {
+      ) as { id: string; group: string; askWho: { folder: string | null } }[]
+    ).flatMap((q) => {
       expect(q.askWho.folder).toBe('finanzen');
-      return q.id;
+      return q.group === 'ask' ? [q.id] : [];
     });
     expect(expectedIds.length).toBeGreaterThan(0);
     expect(askedIds).toEqual(expectedIds);
@@ -394,7 +407,11 @@ describe('analyzr questions (M6 S4)', () => {
     expect(md.code).toBe(0);
     expect(md.out).toMatch(/^# Offene Fragen: /);
     expect(md.out).toContain('Filter: Art „Pool ohne Prozess“.');
-    expect(md.out.match(/^### \d+\. Pool ohne Prozess: /gm)).toHaveLength(6);
+    expect(md.out.match(/^### \d+\. Pool ohne Prozess: Pool in „/gm)).toHaveLength(6);
+    // For the customer: a date, the id only as an HTML comment.
+    expect(md.out).toMatch(/\nStand \d{2}\.\d{2}\.\d{4}: 6 offene Fragen/);
+    expect(md.out.match(/^<!-- q-[0-9a-f]{16} -->$/gm)).toHaveLength(6);
+    expect(md.out).not.toMatch(/Kennung|Ereignis \d|Participant_/);
   });
 });
 
@@ -642,7 +659,9 @@ describe('analyzr questions answer (M6 S5a)', () => {
     expect(roundTrip.out).toContain(': 0 to record, 4 unchanged, 0 unknown, 0 invalid, ');
     const table = await analyzr(['questions', '-p', P, '--state', 'answered']);
     expect(table.out.match(/ {2}\[answered: outside the landscape\]\n/g)).toHaveLength(1);
-    expect(table.out).toMatch(/: 1 open question \(.*\), 1 answered \(outside the landscape\)\n$/);
+    expect(table.out).toMatch(
+      /: 1 open question \(.*\), 1 answered \(outside the landscape\); groups: ask 1\n$/,
+    );
   });
 });
 

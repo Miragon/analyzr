@@ -5,6 +5,7 @@ import { KeyRoundIcon, ShieldAlertIcon } from 'lucide-react';
 import { useId, useState, type FormEvent } from 'react';
 
 import { CodeBlock, CopyButton } from '@/components/copy-button';
+import { ErrorText } from '@/components/error-text';
 import { toast } from '@/lib/toast';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import {
@@ -123,7 +124,12 @@ function CreateTokenForm({
       void queryClient.invalidateQueries({ queryKey: keys.agentTokens(project) });
     },
     onError: (error) =>
-      toast({ tone: 'danger', title: 'Token nicht erstellt', description: errorMessage(error) }),
+      toast({
+        tone: 'danger',
+        title: 'Token nicht erstellt',
+        description: errorMessage(error),
+        error,
+      }),
   });
 
   function submit(event: FormEvent) {
@@ -414,13 +420,19 @@ function RevokeButton({
           toast({
             tone: 'danger',
             title: 'Automatische Annahmen nicht widerrufen',
-            description: `${errorMessage(error)} Widerrufe sie im Tab „Regeln“ unter „Annahmen eines Agenten widerrufen“.`,
+            description: `${errorMessage(error)} Widerrufe sie unter „Einstellungen › Annahmeregeln“ bei „Annahmen eines Agenten widerrufen“.`,
+            error,
           }),
         );
       }
     },
     onError: (error) =>
-      toast({ tone: 'danger', title: 'Widerruf fehlgeschlagen', description: errorMessage(error) }),
+      toast({
+        tone: 'danger',
+        title: 'Widerruf fehlgeschlagen',
+        description: errorMessage(error),
+        error,
+      }),
   });
   return (
     <AlertDialog onOpenChange={(open) => (open ? setAlsoAuto(false) : undefined)}>
@@ -481,7 +493,9 @@ function TokenList({ project, autoIndex }: { project: string; autoIndex?: AutoAc
     return (
       <Alert variant="destructive">
         <AlertTitle>Tokens konnten nicht geladen werden</AlertTitle>
-        <AlertDescription>{errorMessage(tokens.error)}</AlertDescription>
+        <AlertDescription>
+          <ErrorText error={tokens.error} />
+        </AlertDescription>
       </Alert>
     );
   if (tokens.data.length === 0)

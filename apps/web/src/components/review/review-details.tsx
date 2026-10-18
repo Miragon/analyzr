@@ -1,22 +1,29 @@
 import type { AutoAcceptLedgerEntry, Relation, RelationAssertion } from '@analyzr/client';
 import { Link } from '@tanstack/react-router';
 import { CircleHelpIcon, CrosshairIcon, ExternalLinkIcon, UnlinkIcon } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { lazy, Suspense, type ReactNode } from 'react';
 
 import { EndpointStateBadge, StatusBadge, TierBadge, TypeLabel } from '@/components/badges';
 import { AutoAcceptProvenance } from '@/components/rules/auto-accept-provenance';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
-import { formatConfidence, formatDateTime, provenanceOf } from '@/lib/labels';
+import { formatConfidence, formatDate, formatDateTime, provenanceOf } from '@/lib/labels';
 import type { TimelineMark } from '@/lib/auto-accept';
 import type { RefResolver } from '@/lib/refs';
-import { currentProposal, evidenceItems, type EvidenceItem } from '@/lib/review';
+import { answersSinceHold, currentProposal, evidenceItems, type EvidenceItem } from '@/lib/review';
 
 import { Endpoint } from '../relation-table';
 import { PlainText } from './plain-text';
 import { Principal, ProvenanceList } from './provenance';
 import { AssertionTimeline, RelationLink } from './timeline';
+
+/**
+ * „Antwort geben“ on a held relation (UX2b): the note dialog of „Offene
+ * Fragen“, one place to answer a hold, loaded with the open-questions
+ * modules on first render, never with the entry.
+ */
+const HoldAnswer = lazy(() => import('@/components/open-questions/hold-answer'));
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -55,6 +62,8 @@ export interface ReviewDetailsProps {
     marks: ReadonlyMap<string, TimelineMark>;
     canRevoke: boolean;
   };
+  /** Offer „Antwort geben“ on a held relation (reviewers; UX2b). */
+  canAnswerHold?: boolean;
 }
 
 /**
@@ -72,15 +81,17 @@ export function ReviewDetails({
   paneModels,
   onEvidence,
   autoAccept,
+  canAnswerHold = false,
 }: ReviewDetailsProps) {
   const proposal = assertions ? currentProposal(relation, assertions) : null;
   const evidence = proposal ? evidenceItems(proposal.evidence, modelKeys) : [];
   const fallback = provenanceOf(relation);
   const question = proposal?.question ?? null;
-  const holdQuestion =
-    relation.status === 'held' && relation.provenance?.question
-      ? relation.provenance.question
-      : null;
+  const held = relation.status === 'held';
+  const holdQuestion = held && relation.provenance?.question ? relation.provenance.question : null;
+  const holdNote = held && relation.provenance?.rationale ? relation.provenance.rationale : null;
+  // The latest answer to the hold, where the decision is made (§3.7 item 3), read-only.
+  const holdAnswer = held && assertions ? answersSinceHold(relation, assertions).at(-1) : undefined;
 
   return (
     <div className="flex flex-col gap-5" data-testid="review-details">
@@ -155,16 +166,46 @@ export function ReviewDetails({
           </div>
         </div>
       ) : null}
-      {holdQuestion && holdQuestion !== question ? (
-        <div className="flex gap-2 rounded-lg border border-warning/40 bg-warning-soft px-3 py-2 text-sm">
+      {held ? (
+        <div
+          className="flex gap-2 rounded-lg border border-warning/40 bg-warning-soft px-3 py-2 text-sm"
+          data-testid="hold-box"
+        >
           <CircleHelpIcon className="mt-0.5 size-4 shrink-0 text-warning" aria-hidden />
-          <div className="min-w-0">
-            <p className="font-medium">Offene Frage (vorgemerkt)</p>
-            <PlainText text={holdQuestion} />
+          <div className="flex min-w-0 flex-1 flex-col gap-1">
+            <p className="font-medium">
+              {holdQuestion && holdQuestion !== question
+                ? 'Offene Frage (vorgemerkt)'
+                : 'Vorgemerkt'}
+            </p>
+            {holdQuestion && holdQuestion !== question ? <PlainText text={holdQuestion} /> : null}
+            {holdNote ? (
+              <p className="text-muted-foreground">
+                <span className="text-xs">Notiz zur Vormerkung: </span>
+                <PlainText as="span" text={holdNote} />
+              </p>
+            ) : null}
             {relation.provenance?.label ? (
-              <Badge variant="outline" className="mt-1 bg-card">
+              <Badge variant="outline" className="bg-card">
                 <PlainText as="span" text={relation.provenance.label} />
               </Badge>
+            ) : null}
+            {holdAnswer?.rationale ? (
+              <p className="border-l-2 border-success pl-2" data-testid="hold-answer-latest">
+                <span className="text-xs text-muted-foreground">
+                  Antwort vom {formatDate(holdAnswer.at)}:{' '}
+                </span>
+                <PlainText as="span" text={holdAnswer.rationale} />
+              </p>
+            ) : null}
+            {canAnswerHold ? (
+              <Suspense fallback={null}>
+                <HoldAnswer
+                  project={project}
+                  subject={{ type: 'relation', id: relation.id }}
+                  className="mt-1 self-start bg-card"
+                />
+              </Suspense>
             ) : null}
           </div>
         </div>

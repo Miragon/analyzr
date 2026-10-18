@@ -12,6 +12,7 @@ import { cn } from 'cn';
 import { InboxIcon, InfoIcon, SaveIcon, TriangleAlertIcon } from 'lucide-react';
 import { useEffect, useId, useMemo, useState, type FormEvent, type KeyboardEvent } from 'react';
 
+import { ErrorText } from '@/components/error-text';
 import { PickerList } from '@/components/picker-list';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -37,7 +38,7 @@ import {
   valueText,
   type PendingAmendment,
 } from '@/lib/amendments';
-import { errorMessage } from '@/lib/api';
+
 import { nameWords } from '@/lib/generic-names';
 import type { RefResolver } from '@/lib/refs';
 import { toast } from '@/lib/toast';
@@ -663,7 +664,9 @@ export function AmendForm({
       ) : failed ? (
         <Alert variant="destructive">
           <AlertTitle>Felder konnten nicht geladen werden</AlertTitle>
-          <AlertDescription>{errorMessage(failed.error)}</AlertDescription>
+          <AlertDescription>
+            <ErrorText error={failed.error} />
+          </AlertDescription>
         </Alert>
       ) : (
         rows.map(({ t, field, value, built }) => {

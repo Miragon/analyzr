@@ -434,7 +434,7 @@ describe('notes and outside marks on nordwind-handel', () => {
       await csvRes.arrayBuffer(),
     );
     expect(csvText.replace(/^\uFEFF/, '').split('\r\n')[0]).toBe(
-      '"id";"Art";"Frage";"Ansprechpartner-Hinweis";"Antwort"',
+      '"id";"Art";"Frage";"Ansprechpartner";"Antwort"',
     );
     const sheet = readAnswerSheet(csvText).map(({ id, text, kind }) => ({ id, text, kind }));
     // The held relation comes with its note, the rest is empty.
@@ -550,6 +550,7 @@ describe('notes and outside marks on nordwind-handel', () => {
     ]);
   }, 60_000);
 
+  // The sheet of S5a, with the contact column's header before UX2a: it reads all the same.
   it("reads an S5a sheet's Antwortart: outside marks, a note on a relation", async () => {
     const items = await listAll('&state=open');
     const pool = items.find((q) => q.kind === 'black-box-partner');

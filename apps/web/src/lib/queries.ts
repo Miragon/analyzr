@@ -38,6 +38,7 @@ import type {
   ModelAmendment,
   NoLink,
   OpenQuestion,
+  OpenQuestionTotals,
   Placement,
   PlacementAssertion,
   Project,
@@ -94,10 +95,12 @@ export const keys = {
   autoAcceptRevokeDryRun: (project: string, selection: AutoAcceptRevocationBody) =>
     ['project', project, 'auto-accept', 'revoke-dry-run', selection] as const,
   // Open questions (M6 S4): computed on read by the server, so under the project as well.
-  openQuestionCount: (project: string) => ['project', project, 'open-questions', 'count'] as const,
+  openQuestionSummary: (project: string) =>
+    ['project', project, 'open-questions', 'summary'] as const,
   openQuestions: (project: string) => ['project', project, 'open-questions', 'all'] as const,
   modelOpenQuestions: (project: string, modelKey: string) =>
     ['project', project, 'open-questions', 'model', modelKey] as const,
+  heldOpenQuestions: (project: string) => ['project', project, 'open-questions', 'held'] as const,
   // Model amendments (M6 S5c-2): the models table's mark.
   amendments: (project: string) => ['project', project, 'amendments'] as const,
   // Revisions are immutable: keyed by revision id, cached for good.
@@ -118,7 +121,7 @@ export const healthQuery = queryOptions({
 });
 
 /** Follows `nextCursor` until the list is complete (M1 projects stay small). */
-async function allPages<T>(
+export async function allPages<T>(
   page: (cursor: string | undefined) => Promise<{ items: T[]; nextCursor: string | null }>,
 ): Promise<T[]> {
   const items: T[] = [];
@@ -394,16 +397,32 @@ export const autoAcceptRevokeDryRunQuery = (project: string, selection: AutoAcce
 
 // ------------------------------------------------------------ open questions (M6 S4)
 
-/** How many questions are open (the tab's count): one item, the page's `total`. */
-export const openQuestionCountQuery = (project: string) =>
+/** The open questions' counts the shell needs (UX2a): `totals` per group and `askByModel`. */
+export interface OpenQuestionSummary {
+  totals: OpenQuestionTotals;
+  /** „Zu klären“ per model whose subject is neither a relation nor a placement („Offene Punkte“). */
+  askByModel: Readonly<Record<string, number>>;
+}
+
+/**
+ * The counts of the open questions in one call (UX-SIMPLIFICATION.md §2.4,
+ * §2.5): the first item of `group=ask` with `state=open`, whose page carries
+ * `totals` (every group, under every filter but `group`) and `askByModel`;
+ * the badge „Offene Fragen“ is `totals.ask`.
+ */
+export const openQuestionSummaryQuery = (project: string) =>
   queryOptions({
-    queryKey: keys.openQuestionCount(project),
-    queryFn: async (): Promise<number> =>
-      (
-        await unwrap(
-          listOpenQuestions({ client: api, path: { project }, query: { state: 'open', limit: 1 } }),
-        )
-      ).total,
+    queryKey: keys.openQuestionSummary(project),
+    queryFn: async (): Promise<OpenQuestionSummary> => {
+      const page = await unwrap(
+        listOpenQuestions({
+          client: api,
+          path: { project },
+          query: { state: 'open', group: ['ask'], limit: 1 },
+        }),
+      );
+      return { totals: page.totals, askByModel: page.askByModel };
+    },
   });
 
 /**
@@ -428,8 +447,12 @@ export const openQuestionsQuery = (project: string) =>
   });
 
 /**
- * The questions touching a model or a model below it as a folder (the
- * server's `modelKey` filter); the model view keeps those of the model itself.
+ * The open questions touching a model or a model below it as a folder (the
+ * server's `modelKey` filter, `state=open`): „Zu klären“ as the model view's
+ * cards (UX2b), the agents' questions for its one link to them (they sit on
+ * their proposals) and the informational items for its closed „Zur
+ * Information“ (decision 24.8: summaries read-only in the model view too);
+ * the model view keeps those of the model itself.
  */
 export const modelOpenQuestionsQuery = (project: string, modelKey: string) =>
   queryOptions({
@@ -440,7 +463,13 @@ export const modelOpenQuestionsQuery = (project: string, modelKey: string) =>
           listOpenQuestions({
             client: api,
             path: { project },
-            query: { modelKey, limit: MAX_PAGE_LIMIT, cursor },
+            query: {
+              modelKey,
+              state: 'open',
+              group: ['ask', 'agent', 'info'],
+              limit: MAX_PAGE_LIMIT,
+              cursor,
+            },
           }),
         ),
       ),
