@@ -1,5 +1,10 @@
 import { importModels } from '@analyzr/client';
-import type { ExtractWarning, ImportFileOutcome, ImportWarning } from '@analyzr/client';
+import type {
+  ExtractWarning,
+  ImportFileOutcome,
+  ImportImpact,
+  ImportWarning,
+} from '@analyzr/client';
 import { bpmnSuffixOf, isHiddenPath, modelKeyFromPath } from '@analyzr/contracts/paths';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
@@ -9,6 +14,7 @@ import {
   CircleCheckIcon,
   CircleDashedIcon,
   CircleXIcon,
+  EyeIcon,
   FilePlusIcon,
   FileUpIcon,
   FolderUpIcon,
@@ -50,9 +56,13 @@ import {
   filesOf,
   groupWarnings,
   importHeadline,
+  impactLines,
   isSkippedXml,
+  mergeImpacts,
   planUpload,
+  previewHeadline,
   problemDetail,
+  sharedTopFolder,
   skippedGroupText,
   skippedReasonText,
   skippedText,
@@ -86,6 +96,14 @@ const OUTCOMES: Record<
   failed: { label: 'Fehler', tone: 'danger', icon: CircleXIcon },
 };
 
+/** The outcome column of a preview (M6 S2b): what the file would become. */
+const PREVIEW_OUTCOMES: typeof OUTCOMES = {
+  created: { label: 'Wird neu', tone: 'success', icon: FilePlusIcon },
+  revised: { label: 'Neue Revision', tone: 'info', icon: RefreshCwIcon },
+  unchanged: { label: 'Unverändert', tone: 'neutral', icon: CircleDashedIcon },
+  failed: { label: 'Fehler', tone: 'danger', icon: CircleXIcon },
+};
+
 /**
  * A file's outcome as its row shows it; a file of a batch that failed as a
  * whole carries the server's own words for „Technische Details“.
@@ -100,6 +118,17 @@ interface UploadRun {
   total: number;
   /** The recognized bundle (UX8), `null` for plain files. */
   bundle: BundleSummary | null;
+  /** M6 S2b: the dry run before „Importieren“ (with its impact once done), or the import. */
+  mode: 'preview' | 'import';
+  impact?: ImportImpact | null;
+}
+
+/** A previewed drop, waiting for „Importieren“: what to send, as the preview sent it. */
+interface Pending {
+  plan: UploadPlan;
+  manifest: LoadedManifest | null;
+  bundle: BundleSummary | null;
+  total: number;
 }
 
 interface ImportProgress {
@@ -117,23 +146,29 @@ async function runImport(
   plan: UploadPlan,
   onProgress: (progress: ImportProgress) => void,
   manifest: LoadedManifest | null,
-): Promise<ImportProgress> {
+  dryRun = false,
+): Promise<ImportProgress & { impact: ImportImpact | null }> {
   const outcomes: RowOutcome[] = [...plan.failed];
   const skipped: SkippedFile[] = [...plan.skipped];
+  const impacts: ImportImpact[] = [];
   for (const batch of plan.batches) {
-    // With a bundle each batch sends its subset of the manifest, as `analyzr import` does.
+    // With a bundle each batch sends its subset of the manifest, as `analyzr import` does; a
+    // preview sends the whole manifest, so every batch knows which keys the bundle names.
     const subset =
       manifest === null
         ? null
-        : manifestSubset(
-            manifest,
-            batch.map((e) => e.path),
-          );
+        : dryRun
+          ? manifest.manifest
+          : manifestSubset(
+              manifest,
+              batch.map((e) => e.path),
+            );
     try {
       const result = await unwrap(
         importModels({
           client: api,
           path: { project },
+          ...(dryRun ? { query: { dryRun: 'true' as const } } : {}),
           body: {
             files: filesOf(batch),
             ...(subset !== null && subset.files.length > 0
@@ -146,6 +181,7 @@ async function runImport(
         if (isSkippedXml(file)) skipped.push({ path: file.path, reason: 'not-bpmn' });
         else outcomes.push(file);
       }
+      if (result.impact) impacts.push(result.impact);
     } catch (error) {
       // The German sentence in the row, the server's reason (which file, which path) behind
       // „Technische Details“.
@@ -168,7 +204,7 @@ async function runImport(
     }
     onProgress({ outcomes: [...outcomes], skipped: [...skipped] });
   }
-  return { outcomes, skipped };
+  return { outcomes, skipped, impact: dryRun ? mergeImpacts(impacts) : null };
 }
 
 /** One entry of a file's warnings: a group of skipped elements, or a single warning. */
@@ -362,6 +398,142 @@ function NextSteps({
   );
 }
 
+/** `a#Call_X → b#Process_Y`. */
+const arrow = (r: { from: string; to: string }) => `${r.from} → ${r.to}`;
+
+/** One capped list of „Was ändert sich?“, with its count. */
+function ImpactList({ title, list }: { title: string; list: { count: number; items: string[] } }) {
+  if (list.count === 0) return null;
+  return (
+    <div data-testid="preview-list">
+      <p className="text-muted-foreground">
+        {title} ({list.count})
+      </p>
+      <ul className="mt-0.5 flex flex-col gap-0.5 font-mono text-xs break-all">
+        {list.items.map((item, i) => (
+          <li key={i}>{item}</li>
+        ))}
+        {list.count > list.items.length ? (
+          <li>… und {list.count - list.items.length} weitere</li>
+        ) : null}
+      </ul>
+    </div>
+  );
+}
+
+/**
+ * The preview's box (UX-SIMPLIFICATION.md §6, M6 S2b): at most three lines of
+ * what the import would change, the capped lists behind „Was ändert sich?“,
+ * the hint when every key starts with one folder (keys are fixed for good),
+ * the note for a preview of several batches, then „Importieren“ and
+ * „Abbrechen“.
+ */
+function PreviewBox({
+  run,
+  batches,
+  canImport,
+  onImport,
+  onCancel,
+}: {
+  run: UploadRun;
+  batches: number;
+  canImport: boolean;
+  onImport: () => void;
+  onCancel: () => void;
+}) {
+  const impact = run.impact;
+  const lines = impact ? impactLines(impact) : [];
+  const keys = run.outcomes.flatMap((o) =>
+    o.outcome !== 'failed' && o.modelKey ? [o.modelKey] : [],
+  );
+  const folder = sharedTopFolder(keys);
+  return (
+    <section
+      aria-label="Vorschau des Imports"
+      className="flex flex-col items-start gap-2 rounded-xl border bg-card px-4 py-3 text-sm"
+      data-testid="upload-preview"
+    >
+      {impact ? (
+        lines.length > 0 ? (
+          <p data-testid="preview-impact">Danach: {lines.join(' · ')}</p>
+        ) : (
+          <p data-testid="preview-impact">Danach: keine Änderung an Relationen und Befunden.</p>
+        )
+      ) : null}
+      {folder ? (
+        <p className="text-warning" data-testid="preview-folder">
+          Alle Kurznamen beginnen mit „{folder}/“ – leg den Unterordner ab, wenn das nicht Teil der
+          Namen sein soll.
+        </p>
+      ) : null}
+      {batches > 1 ? (
+        <p className="text-muted-foreground" data-testid="preview-batches">
+          Vorschau je 50 Dateien; Aufrufe zwischen den Teilen erscheinen hier als unaufgelöst.
+        </p>
+      ) : null}
+      {impact && lines.length > 0 ? (
+        <details className="w-full" data-testid="preview-details">
+          <summary className="cursor-pointer text-muted-foreground">Was ändert sich?</summary>
+          <div className="mt-2 flex flex-col gap-2">
+            <ImpactList
+              title="Automatisch verknüpfte Aufrufe"
+              list={{
+                count: impact.acceptedCalls.count,
+                items: impact.acceptedCalls.items.map(arrow),
+              }}
+            />
+            <ImpactList
+              title="Angenommene Relationen mit geändertem oder fehlendem Endpunkt"
+              list={{
+                count: impact.endpointsChanged.count,
+                items: impact.endpointsChanged.items.map(
+                  (r) => `${arrow(r)} (${r.endpointState === 'missing' ? 'fehlt' : 'geändert'})`,
+                ),
+              }}
+            />
+            <ImpactList
+              title="Neue Vorschläge der Regeln"
+              list={{
+                count: impact.proposalsAdded.count,
+                items: impact.proposalsAdded.items.map(arrow),
+              }}
+            />
+            <ImpactList
+              title="Zurückgezogene Vorschläge der Regeln"
+              list={{
+                count: impact.proposalsWithdrawn.count,
+                items: impact.proposalsWithdrawn.items.map(arrow),
+              }}
+            />
+            <ImpactList
+              title="Modelle des Quellsystems, die nicht im Bundle sind (bleiben erhalten)"
+              list={impact.absentKeys}
+            />
+            <ImpactList
+              title="Neue Befunde"
+              list={{
+                count: impact.findingsAdded.count,
+                items: impact.findingsAdded.items.map((f) => f.detail),
+              }}
+            />
+          </div>
+        </details>
+      ) : null}
+      <div className="flex flex-wrap gap-2">
+        {canImport ? (
+          <Button onClick={onImport} data-testid="preview-import">
+            <FileUpIcon data-icon="inline-start" />
+            Importieren
+          </Button>
+        ) : null}
+        <Button variant="outline" onClick={onCancel} data-testid="preview-cancel">
+          {canImport ? 'Abbrechen' : 'Schließen'}
+        </Button>
+      </div>
+    </section>
+  );
+}
+
 /** The skipped files in one line, all of them behind „und N weitere“. */
 function SkippedLine({ skipped }: { skipped: readonly SkippedFile[] }) {
   const { text, more } = skippedText(skipped);
@@ -408,6 +580,8 @@ export function UploadPanel({
   const [run, setRun] = useState<UploadRun | null>(null);
   /** The project's queries have refreshed after the import („Als Nächstes“ counts). */
   const [fresh, setFresh] = useState(false);
+  /** The previewed drop „Importieren“ sends (M6 S2b); `null` while nothing waits. */
+  const [pending, setPending] = useState<Pending | null>(null);
   /** A bundle whose manifest stopped the upload before anything was sent. */
   const [refused, setRefused] = useState<Extract<ManifestRead, { kind: 'refused' }> | null>(null);
   const busy = run !== null && !run.done;
@@ -444,23 +618,66 @@ export function UploadPanel({
         )
       : null;
     const total = plan.batches.reduce((n, b) => n + b.length, 0) + plan.failed.length;
+    setPending(null);
     if (total === 0) {
       toast({
         tone: 'warning',
         title: 'Keine BPMN-Dateien gefunden',
         description: `Erlaubt sind ${BPMN_SUFFIX_TEXT}, je höchstens 5 MB.`,
       });
-      setRun({ outcomes: [], skipped: plan.skipped, done: true, total, bundle });
+      setRun({ outcomes: [], skipped: plan.skipped, done: true, total, bundle, mode: 'import' });
       return;
     }
-    setRun({ outcomes: plan.failed, skipped: plan.skipped, done: false, total, bundle });
+    // M6 S2b: the dry run first, in the result's own layout; „Importieren“ sends the same.
+    const base = { total, bundle, mode: 'preview' as const };
+    setRun({ outcomes: plan.failed, skipped: plan.skipped, done: false, ...base });
+    const preview = await runImport(
+      project,
+      plan,
+      (partial) => setRun({ ...partial, done: false, ...base }),
+      manifest,
+      true,
+    );
+    setRun({
+      outcomes: preview.outcomes,
+      skipped: preview.skipped,
+      done: true,
+      impact: preview.impact,
+      ...base,
+    });
+    if (preview.outcomes.some((o) => o.outcome === 'created' || o.outcome === 'revised'))
+      setPending({ plan, manifest, bundle, total });
+    else if (preview.outcomes.length === 0) {
+      // Every file was a plain .xml that the server found to be no BPMN: nothing to import.
+      toast({
+        tone: 'warning',
+        title: 'Keine BPMN-Dateien gefunden',
+        description:
+          'Die XML-Dateien enthalten kein BPMN-Modell; sie stehen unten als übersprungen.',
+      });
+    }
+  }
+
+  /** „Importieren“: the previewed drop, for real. */
+  async function confirm() {
+    if (!pending) return;
+    const { plan, manifest, bundle, total } = pending;
+    setPending(null);
+    setRun({
+      outcomes: plan.failed,
+      skipped: plan.skipped,
+      done: false,
+      total,
+      bundle,
+      mode: 'import',
+    });
     const { outcomes, skipped } = await runImport(
       project,
       plan,
-      (partial) => setRun({ ...partial, done: false, total, bundle }),
+      (partial) => setRun({ ...partial, done: false, total, bundle, mode: 'import' }),
       manifest,
     );
-    setRun({ outcomes, skipped, done: true, total, bundle });
+    setRun({ outcomes, skipped, done: true, total, bundle, mode: 'import' });
     // Models, landscape, chain and questions refresh; „Als Nächstes“ waits for them.
     void Promise.all([
       queryClient.invalidateQueries({ queryKey: keys.project(project) }),
@@ -617,18 +834,36 @@ export function UploadPanel({
             aria-live="polite"
             data-testid="import-headline"
           >
-            {run.done ? (
-              <CircleCheckIcon className="size-4 text-success" aria-hidden />
-            ) : (
+            {!run.done ? (
               <Spinner />
+            ) : run.mode === 'preview' ? (
+              <EyeIcon className="size-4 text-muted-foreground" aria-hidden />
+            ) : (
+              <CircleCheckIcon className="size-4 text-success" aria-hidden />
             )}
-            {importHeadline(
-              run.outcomes,
-              run.skipped.length,
-              run.done ? undefined : { total: run.total },
-            )}
+            {run.mode === 'preview'
+              ? run.done
+                ? previewHeadline(run.outcomes, run.skipped.length)
+                : `Vorschau … ${run.outcomes.length} von ${run.total} ${run.total === 1 ? 'Datei' : 'Dateien'}`
+              : importHeadline(
+                  run.outcomes,
+                  run.skipped.length,
+                  run.done ? undefined : { total: run.total },
+                )}
           </h2>
-          {run.done && run.outcomes.length > 0 ? (
+          {run.mode === 'preview' && run.done ? (
+            <PreviewBox
+              run={run}
+              batches={pending?.plan.batches.length ?? 1}
+              canImport={pending !== null}
+              onImport={() => void confirm()}
+              onCancel={() => {
+                setPending(null);
+                setRun(null);
+              }}
+            />
+          ) : null}
+          {run.mode === 'import' && run.done && run.outcomes.length > 0 ? (
             <NextSteps
               project={project}
               fresh={fresh}
@@ -647,7 +882,7 @@ export function UploadPanel({
                 </TableHeader>
                 <TableBody>
                   {run.outcomes.map((o) => {
-                    const p = OUTCOMES[o.outcome];
+                    const p = (run.mode === 'preview' ? PREVIEW_OUTCOMES : OUTCOMES)[o.outcome];
                     return (
                       <TableRow key={o.path} data-testid="import-outcome" data-outcome={o.outcome}>
                         <TableCell className="align-top">

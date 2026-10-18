@@ -2122,6 +2122,15 @@ run, the deletion impact equal to the deletion, absent keys within a scope), uni
 pure parts and the CLI. Left: the web's „Vorschau“ before „Importieren“ (UX-SIMPLIFICATION.md §6)
 and the follow-up (judgements, tasks, placements).
 
+**S2b step 3 as delivered** (2026-10-18, on the branch, every gate green): the web's „Vorschau“ before
+„Importieren“ (UX-SIMPLIFICATION.md §6): a drop runs the dry run with the plan the import will send
+(each batch with the whole manifest) and shows it in the result's layout with at most three lines
+of impact, the capped lists behind „Was ändert sich?“, the shared-top-folder hint and the batch
+note; „Importieren“ sends the same plan, „Abbrechen“ sends nothing. One click more, no new screen.
+Left: the follow-up (judgements made non-current, tasks queued or cancelled, the placement task
+due, placements changed or missing), and the plugin's next version with the pre-approved
+`--dry-run`.
+
 Left for S2b: `importImpact`, the dry runs (`POST …/imports?dryRun=true`, `PUT …?dryRun=true`,
 `analyzr import --dry-run`), the deletion impact in `models delete`, and the absent keys of
 §3.5, which respect `source.scope` (stored on each revision since S2a). Left for the plugin's

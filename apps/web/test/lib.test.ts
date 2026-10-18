@@ -28,8 +28,12 @@ import {
   filesOf,
   groupWarnings,
   importHeadline,
+  impactLines,
   isSkippedXml,
+  mergeImpacts,
   planUpload,
+  previewHeadline,
+  sharedTopFolder,
   skippedReasonText,
   stripRoot,
   waitingText,
@@ -371,6 +375,46 @@ describe('upload result (UX7)', () => {
     expect(fileProblemText(problem('conflict'))).toBe(
       'Das passt nicht mehr zum aktuellen Stand. Lade neu und prüf den neuen Stand.',
     );
+  });
+
+  it('heads a preview, says at most three of its changes, and spots a shared top folder (M6 S2b)', () => {
+    const o = (outcome: 'created' | 'revised' | 'unchanged' | 'failed') => ({ outcome });
+    expect(previewHeadline([o('created'), o('created'), o('revised'), o('failed')], 1)).toBe(
+      'Vorschau: 2 Modelle neu · 1 neue Revision · 1 Fehler · 1 übersprungen',
+    );
+    expect(previewHeadline([], 0)).toBe('Vorschau: nichts zu importieren');
+    const list = (count: number) => ({ count, items: [] });
+    const impact = {
+      files: [],
+      acceptedCalls: list(1),
+      proposalsAdded: list(4),
+      proposalsWithdrawn: list(2),
+      endpointsChanged: list(0),
+      findingsAdded: list(1),
+      findingsResolved: list(0),
+      absentKeys: list(0),
+    };
+    expect(impactLines(impact)).toEqual([
+      '1 Aufruf automatisch verknüpft',
+      '4 neue Vorschläge der Regeln zu prüfen',
+      '2 Vorschläge der Regeln zurückgezogen',
+    ]);
+    expect(
+      impactLines({
+        ...impact,
+        acceptedCalls: list(0),
+        proposalsAdded: list(0),
+        proposalsWithdrawn: list(0),
+        findingsAdded: list(0),
+      }),
+    ).toEqual([]);
+    const merged = mergeImpacts([impact, { ...impact, absentKeys: { count: 1, items: ['x'] } }]);
+    expect(merged.proposalsAdded.count).toBe(8);
+    expect(merged.absentKeys.count).toBe(0);
+    expect(sharedTopFolder(['gemeinsam/a', 'gemeinsam/b/c'])).toBe('gemeinsam');
+    expect(sharedTopFolder(['gemeinsam/a', 'anders/b'])).toBeNull();
+    expect(sharedTopFolder(['a', 'b'])).toBeNull();
+    expect(sharedTopFolder(['gemeinsam/a'])).toBeNull();
   });
 
   it('says what waits for the agent as `analyzr import` does', () => {

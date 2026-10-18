@@ -13,7 +13,20 @@ const IMPORT_PATH = '/api/v1/projects/demo/imports';
 
 /** The import requests only (the next-step box reads models, chain and questions too). */
 const imports = (calls: readonly Call[]) =>
-  calls.filter((c) => c.method === 'POST' && c.path === IMPORT_PATH);
+  calls.filter(
+    (c) => c.method === 'POST' && c.path === IMPORT_PATH && !c.search.includes('dryRun'),
+  );
+/** The preview's requests (M6 S2b: `?dryRun=true` before „Importieren“). */
+const previews = (calls: readonly Call[]) =>
+  calls.filter((c) => c.method === 'POST' && c.path === IMPORT_PATH && c.search === '?dryRun=true');
+
+/** Waits for the preview and clicks „Importieren“. */
+async function importNow() {
+  fireEvent.click(await screen.findByTestId('preview-import'));
+  await waitFor(() =>
+    expect(screen.getByTestId('import-headline').textContent).not.toMatch(/^Vorschau/),
+  );
+}
 
 const render = () => renderWithRouter(<UploadPanel project="demo" />);
 
@@ -80,14 +93,18 @@ describe('UploadPanel', () => {
       },
     });
 
+    // M6 S2b: a preview first, then „Importieren“ sends the same
+    await importNow();
     const table = await screen.findByRole('table', { name: 'Import je Datei' });
     await waitFor(() => expect(within(table).getAllByTestId('import-outcome')).toHaveLength(3));
+    expect(previews(calls)).toHaveLength(1);
     expect(imports(calls)).toHaveLength(1);
     expect(imports(calls)[0]!.body).toEqual([
       'finanzen/rechnung.bpmn',
       'kaputt.bpmn',
       'vertrieb/auftrag.bpmn',
     ]);
+    expect(previews(calls)[0]!.body).toEqual(imports(calls)[0]!.body);
     const outcomes = within(table).getAllByTestId('import-outcome');
     expect(outcomes.map((row) => row.dataset['outcome'])).toEqual([
       'unchanged',
@@ -155,6 +172,8 @@ describe('UploadPanel', () => {
         'Validation failed (422): files[1].path: not a model key',
       );
     }
+    // the preview failed as a whole: nothing to import
+    expect(screen.queryByTestId('preview-import')).toBeNull();
   });
 
   it('says so when nothing is a BPMN file, naming the suffixes of the file rule', async () => {
@@ -243,6 +262,7 @@ describe('UploadPanel', () => {
     expect(within(second!).getByTestId('import-warning').textContent).toContain(
       '1 Element übersprungen, weil seine ID schon vergeben ist: Aufgabe „sid-6A1F0E52-7B3C-4D8E-9F01-A2B3C4D5E681“.Es fehlt im Diagramm',
     );
+    await importNow();
     expect(await findToast('2 Dateien importiert')).toBeTruthy();
   });
 
@@ -281,9 +301,9 @@ describe('UploadPanel', () => {
       'Die Datei ist nicht UTF-8-kodiert (oft ISO-8859-1 oder Windows-1252); analyzr liest nur UTF-8. Speichere sie als UTF-8 oder wandle den Export mit /analyzr-integrate:integrate-landscape um.',
       'Die Datei ist UTF-16-kodiert; analyzr liest nur UTF-8. Speichere sie als UTF-8 oder wandle den Export mit /analyzr-integrate:integrate-landscape um.',
     ]);
-    expect(screen.getByTestId('import-headline').textContent).toBe(
-      'Kein Modell importiert · 2 Fehler',
-    );
+    // a preview where nothing can be imported: no „Importieren“
+    expect(screen.getByTestId('import-headline').textContent).toBe('Vorschau: 2 Fehler');
+    expect(screen.queryByTestId('preview-import')).toBeNull();
   });
 
   it('says what comes next: the models waiting for the agent and the questions there are already', async () => {
@@ -328,6 +348,7 @@ describe('UploadPanel', () => {
     fireEvent.change(screen.getByTestId('file-input'), {
       target: { files: [new File(['<x/>'], 'a.bpmn'), new File(['<x/>'], 'b.bpmn')] },
     });
+    await importNow();
     const next = await screen.findByTestId('upload-next');
     await waitFor(() => expect(within(next).queryByTestId('upload-next-loading')).toBeNull());
     // „Agent verbinden“ once the owner's tokens are known
@@ -384,6 +405,7 @@ describe('UploadPanel', () => {
         ],
       },
     });
+    await importNow();
     const table = await screen.findByRole('table', { name: 'Import je Datei' });
     await waitFor(() =>
       expect(screen.getByTestId('import-headline').textContent).toBe(
@@ -435,13 +457,13 @@ describe('UploadPanel', () => {
     // Toasts of earlier tests stay up, so look for this one by its description.
     const toast = await findToast('Die XML-Dateien enthalten kein BPMN-Modell');
     expect(toast.textContent).toContain('Keine BPMN-Dateien gefunden');
-    expect(imports(calls)).toHaveLength(1);
+    // the preview only: nothing to import
+    expect(previews(calls)).toHaveLength(1);
+    expect(imports(calls)).toHaveLength(0);
     expect(screen.getByTestId('import-skipped').textContent).toBe(
       '1 Datei übersprungen: pom.xml (kein BPMN)',
     );
-    expect(screen.getByTestId('import-headline').textContent).toBe(
-      'Kein Modell importiert · 1 übersprungen',
-    );
+    expect(screen.getByTestId('import-headline').textContent).toBe('Vorschau: 1 übersprungen');
   });
 
   it("lists the extractor's too-many-warnings entry after the unlisted warnings", async () => {
@@ -534,6 +556,7 @@ describe('UploadPanel', () => {
         ),
       },
     });
+    await importNow();
     const table = await screen.findByRole('table', { name: 'Import je Datei' });
     await waitFor(() => expect(within(table).getAllByTestId('import-outcome')).toHaveLength(2));
     // one request with the BPMN files and the manifest's subset for them, as `analyzr import`
@@ -579,6 +602,71 @@ describe('UploadPanel', () => {
     );
     expect(imports(calls)).toHaveLength(0);
     expect(screen.queryByRole('table', { name: 'Import je Datei' })).toBeNull();
+  });
+
+  it('previews before importing: what would change, the shared folder, „Abbrechen“ imports nothing (M6 S2b)', async () => {
+    const list = <T,>(count: number, items: T[] = []) => ({ count, items });
+    const calls = stubApi({
+      [`POST ${IMPORT_PATH}`]: (call) =>
+        json({
+          files: (call.body as string[]).map((path) => ({
+            path,
+            modelKey: `gemeinsam/${path.replace(/\.bpmn$/, '')}`,
+            outcome: 'created',
+            problem: null,
+          })),
+          ...(call.search === '?dryRun=true'
+            ? {
+                impact: {
+                  files: [],
+                  acceptedCalls: list(2, [
+                    { type: 'call', from: 'gemeinsam/a#Call_B', to: 'gemeinsam/b#Process_B' },
+                    { type: 'call', from: 'gemeinsam/b#Call_A', to: 'gemeinsam/a#Process_A' },
+                  ]),
+                  proposalsAdded: list(0),
+                  proposalsWithdrawn: list(0),
+                  endpointsChanged: list(1, [
+                    {
+                      type: 'call',
+                      from: 'alt/x#Call_A',
+                      to: 'gemeinsam/a#Process_A',
+                      endpointState: 'changed',
+                    },
+                  ]),
+                  findingsAdded: list(0),
+                  findingsResolved: list(0),
+                  absentKeys: list(3, ['alt/x', 'alt/y', 'alt/z']),
+                },
+              }
+            : {}),
+        }),
+    });
+    await render();
+    fireEvent.change(screen.getByTestId('file-input'), {
+      target: { files: [new File(['<x/>'], 'a.bpmn'), new File(['<x/>'], 'b.bpmn')] },
+    });
+    const preview = await screen.findByTestId('upload-preview');
+    expect(screen.getByTestId('import-headline').textContent).toBe('Vorschau: 2 Modelle neu');
+    expect(within(preview).getByTestId('preview-impact').textContent).toBe(
+      'Danach: 2 Aufrufe automatisch verknüpft · 1 angenommene Relation mit geändertem oder fehlendem Endpunkt · 3 Modelle des Quellsystems nicht im Bundle (bleiben erhalten)',
+    );
+    // keys are fixed for good: a dropped parent folder in every name is worth a hint
+    expect(within(preview).getByTestId('preview-folder').textContent).toContain(
+      'Alle Kurznamen beginnen mit „gemeinsam/“',
+    );
+    const details = within(preview).getByTestId('preview-details');
+    expect(details.hasAttribute('open')).toBe(false);
+    expect(details.textContent).toContain('gemeinsam/a#Call_B → gemeinsam/b#Process_B');
+    expect(details.textContent).toContain('alt/x#Call_A → gemeinsam/a#Process_A (geändert)');
+    // the outcome column says what each file would become
+    expect(
+      within(screen.getByRole('table', { name: 'Import je Datei' })).getAllByText('Wird neu'),
+    ).toHaveLength(2);
+    expect(previews(calls)).toHaveLength(1);
+    // „Abbrechen“: nothing sent, the result gone
+    fireEvent.click(within(preview).getByTestId('preview-cancel'));
+    expect(screen.queryByTestId('upload-preview')).toBeNull();
+    expect(imports(calls)).toHaveLength(0);
   });
 
   it('marks the drop zone while files are dragged over it', async () => {

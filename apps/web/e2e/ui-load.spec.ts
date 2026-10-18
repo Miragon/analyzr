@@ -894,6 +894,13 @@ test('UX7: „Hochladen“ in at most 45 words; the raw Signavio export says wha
   await measure(page, key, 'Hochladen', '[data-testid=dropzone]');
 
   await page.getByTestId('folder-input').setInputFiles(RAW_SIGNAVIO);
+  // M6 S2b: the preview first, in the result's layout, then „Importieren“
+  await expect(page.getByTestId('import-headline')).toHaveText(
+    'Vorschau: 5 Modelle neu · 1 Fehler · 1 übersprungen',
+    { timeout: 30_000 },
+  );
+  await measure(page, key, 'Vorschau', '[data-testid=upload-preview]');
+  await page.getByTestId('preview-import').click();
   await expect(page.getByTestId('import-headline')).toHaveText(
     '5 Modelle importiert · 1 Fehler · 1 übersprungen',
     { timeout: 30_000 },

@@ -135,16 +135,15 @@ test('projects → relations → model view', async ({ page }) => {
 test('upload: a folder keeps its paths, so re-importing it changes nothing', async ({ page }) => {
   await page.goto(`/projects/${PROJECT}/upload`);
   await page.getByTestId('folder-input').setInputFiles(SAMPLE);
+  // M6 S2b: the preview says so before anything is sent; nothing to import, no „Importieren“
   await expect(page.getByTestId('import-outcome')).toHaveCount(3);
   await expect(page.locator('[data-testid=import-outcome][data-outcome=unchanged]')).toHaveCount(3);
-  await expect(page.getByTestId('import-headline')).toHaveText(
-    'Kein Modell importiert · 3 unverändert',
+  await expect(page.getByTestId('import-headline')).toHaveText('Vorschau: 3 unverändert');
+  await expect(page.getByTestId('preview-impact')).toHaveText(
+    'Danach: keine Änderung an Relationen und Befunden.',
   );
+  await expect(page.getByTestId('preview-import')).toHaveCount(0);
   await expect(page.getByRole('link', { name: CALL_FROM })).toBeVisible();
-  // what comes next, and the way back to „Übersicht“
-  await expect(page.getByTestId('upload-next')).toBeVisible();
-  await expect(page.getByTestId('upload-overview')).toHaveAttribute('href', `/projects/${PROJECT}`);
-  await expect(page.getByTestId('toast').filter({ hasText: '3 Dateien importiert' })).toBeVisible();
 });
 
 test('upload: extractor warnings per file in a disclosure, a plain XML skipped (M6 S1)', async ({
@@ -166,6 +165,10 @@ test('upload: extractor warnings per file in a disclosure, a plain XML skipped (
     { name: 'doppelt.bpmn', mimeType: 'application/xml', buffer: Buffer.from(duplicate) },
     { name: 'meta.xml', mimeType: 'application/xml', buffer: Buffer.from('<meta/>') },
   ]);
+  await expect(page.getByTestId('import-headline')).toHaveText(
+    'Vorschau: 1 Modell neu · 1 übersprungen',
+  );
+  await page.getByTestId('preview-import').click();
   const row = page.locator('[data-testid=import-outcome][data-outcome=created]');
   await expect(row).toHaveCount(1);
   await expect(row).toContainText('doppelt');
@@ -214,6 +217,9 @@ test('upload: a bundle folder with its manifest imports as `analyzr import` does
   );
   await page.goto(`/projects/${key}/upload`);
   await page.getByTestId('folder-input').setInputFiles(bundle);
+  // M6 S2b: the preview names the new models first; „Importieren“ sends the same
+  await expect(page.getByTestId('import-headline')).toHaveText('Vorschau: 6 Modelle neu');
+  await page.getByTestId('preview-import').click();
   await expect(page.getByTestId('import-headline')).toHaveText('6 Modelle importiert');
   await expect(page.getByTestId('upload-bundle')).toHaveText(
     'Bundle erkannt: Signavio, exportiert am 14.10.2026 · 6 von 6 Dateien gelistet · Kurznamen aus dem Bundle',

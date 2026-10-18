@@ -1,4 +1,9 @@
-import type { AmendmentCounts, ExtractWarning, ImportFileOutcome } from '@analyzr/client';
+import type {
+  AmendmentCounts,
+  ExtractWarning,
+  ImportFileOutcome,
+  ImportImpact,
+} from '@analyzr/client';
 // The shared file rule and key derivation (M6 S1): zod-free, the one runtime import from the contracts.
 import {
   BPMN_FILE_SUFFIXES,
@@ -664,4 +669,110 @@ export function askNowText(ask: number): string | null {
   return ask === 1
     ? '1 offene Frage gibt es schon jetzt'
     : `${ask} offene Fragen gibt es schon jetzt`;
+}
+
+// ------------------------------------------------------------- the preview (M6 S2b)
+
+/** The capped lists of an impact. */
+type ImpactListKey =
+  | 'acceptedCalls'
+  | 'proposalsAdded'
+  | 'proposalsWithdrawn'
+  | 'endpointsChanged'
+  | 'findingsAdded'
+  | 'findingsResolved';
+
+/** One list of several impacts: counts added up, items concatenated up to the server's cap. */
+function mergeList<K extends ImpactListKey>(
+  impacts: readonly ImportImpact[],
+  key: K,
+): ImportImpact[K] {
+  const lists = impacts.map((i) => i[key]);
+  return {
+    count: lists.reduce((n, l) => n + l.count, 0),
+    items: lists.flatMap((l) => l.items as unknown[]).slice(0, 100),
+  } as ImportImpact[K];
+}
+
+/**
+ * The impacts of a preview's batches as one, as `analyzr import --dry-run`
+ * merges them: files and counts added up, items concatenated up to the
+ * server's cap of 100; the absent keys are the first batch's (each batch
+ * sends the whole manifest).
+ */
+export function mergeImpacts(impacts: readonly ImportImpact[]): ImportImpact {
+  return {
+    files: impacts.flatMap((i) => i.files),
+    acceptedCalls: mergeList(impacts, 'acceptedCalls'),
+    proposalsAdded: mergeList(impacts, 'proposalsAdded'),
+    proposalsWithdrawn: mergeList(impacts, 'proposalsWithdrawn'),
+    endpointsChanged: mergeList(impacts, 'endpointsChanged'),
+    findingsAdded: mergeList(impacts, 'findingsAdded'),
+    findingsResolved: mergeList(impacts, 'findingsResolved'),
+    absentKeys: impacts[0]?.absentKeys ?? { count: 0, items: [] },
+  };
+}
+
+/**
+ * The preview's headline (UX-SIMPLIFICATION.md §6): „Vorschau: 5 Modelle neu
+ * · 1 neue Revision · 1 Fehler · 1 übersprungen“, the non-zero parts.
+ */
+export function previewHeadline(
+  outcomes: readonly Pick<ImportFileOutcome, 'outcome'>[],
+  skipped: number,
+): string {
+  const count = (o: ImportFileOutcome['outcome']) => outcomes.filter((x) => x.outcome === o).length;
+  const created = count('created');
+  const revised = count('revised');
+  const parts = [
+    created > 0 ? `${created === 1 ? '1 Modell' : `${created} Modelle`} neu` : null,
+    revised > 0 ? `${revised === 1 ? '1 neue Revision' : `${revised} neue Revisionen`}` : null,
+    count('unchanged') > 0 ? `${count('unchanged')} unverändert` : null,
+    count('failed') > 0 ? `${count('failed')} Fehler` : null,
+    skipped > 0 ? `${skipped} übersprungen` : null,
+  ].filter((p) => p !== null);
+  return `Vorschau: ${parts.length === 0 ? 'nichts zu importieren' : parts.join(' · ')}`;
+}
+
+/**
+ * At most three lines of what the import would change, the weightiest
+ * first: calls the rule tier would link, accepted relations whose end
+ * changes or goes missing, rule proposals added, stances withdrawn, models
+ * of the system the bundle no longer names (kept), findings added.
+ */
+export function impactLines(impact: ImportImpact): string[] {
+  const n = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
+  const lines = [
+    impact.acceptedCalls.count > 0
+      ? `${n(impact.acceptedCalls.count, 'Aufruf', 'Aufrufe')} automatisch verknüpft`
+      : null,
+    impact.endpointsChanged.count > 0
+      ? `${n(impact.endpointsChanged.count, 'angenommene Relation', 'angenommene Relationen')} mit geändertem oder fehlendem Endpunkt`
+      : null,
+    impact.proposalsAdded.count > 0
+      ? `${n(impact.proposalsAdded.count, 'neuer Vorschlag', 'neue Vorschläge')} der Regeln zu prüfen`
+      : null,
+    impact.proposalsWithdrawn.count > 0
+      ? `${n(impact.proposalsWithdrawn.count, 'Vorschlag', 'Vorschläge')} der Regeln zurückgezogen`
+      : null,
+    impact.absentKeys.count > 0
+      ? `${n(impact.absentKeys.count, 'Modell', 'Modelle')} des Quellsystems nicht im Bundle (bleiben erhalten)`
+      : null,
+    impact.findingsAdded.count > 0
+      ? `${n(impact.findingsAdded.count, 'neuer Befund', 'neue Befunde')}`
+      : null,
+  ];
+  return lines.filter((l) => l !== null).slice(0, 3);
+}
+
+/**
+ * The folder every key starts with (two keys or more), for the hint „Alle
+ * Kurznamen beginnen mit „x/““: keys are fixed for good (M6 §3.4), so a
+ * dropped parent folder should not become part of every name.
+ */
+export function sharedTopFolder(keys: readonly string[]): string | null {
+  if (keys.length < 2) return null;
+  const firsts = new Set(keys.map((k) => (k.includes('/') ? k.slice(0, k.indexOf('/')) : null)));
+  const [only] = [...firsts];
+  return firsts.size === 1 && only != null ? only : null;
 }

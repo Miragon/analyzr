@@ -164,9 +164,15 @@ and code are in English.
   (pinned keys, the subset per batch, the identity warnings in German, an invalid manifest stops
   before sending), `Model.source` (REST only) gives the models table's chip and the project's
   subtitle („Aus Signavio · exportiert am 14.10.2026“), the model view shows „Herkunft“, the
-  derived chip and „Beim Import übersprungen: 2 Elemente“; live-run neutral. **Next:** S2b → UX3
-  → UX4 → UX5 → UX6 → UX9 (the owner: „Sonst kannst du weitermachen“), alongside S2c (the trust
-  rule) and S3c; S6 after them; after the owner's
+  derived chip and „Beim Import übersprungen: 2 Elemente“; live-run neutral. **M6 S2b** (done
+  2026-10-18 on the branch in three steps, every gate green; M6 §8 "S2b step 1–3 as delivered"):
+  the recompute split into the pure `planRecompute` and its writer (pinned by a golden digest),
+  the pure `importImpact` with the dry runs `POST …/imports?dryRun=true` and `PUT …?dryRun=true`
+  (permission `read`) and `GET …/models/{m}/deletion-impact`, `analyzr import --dry-run` and the
+  deletion impact in `analyzr models delete`, and the web's „Vorschau“ before „Importieren“; the
+  follow-up (judgements, tasks, placements) still open; live-run neutral. **Next:** UX3 → UX4 →
+  UX5 → UX6 → UX9 (the owner: „Sonst kannst du weitermachen“), alongside S2c (the trust rule),
+  S2b's follow-up and S3c; S6 after them; after the owner's
   live runs S5b, S7 and facts v2 as recommended (§7 "M6"; M6 §8 "After S2a").
 
 ## 2. Read in this order

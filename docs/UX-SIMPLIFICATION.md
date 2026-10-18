@@ -4,7 +4,7 @@ Status: **decided** (owner decision 26, 2026-10-18: every "Ask now" question of 
 the recommended option; HANDOFF §4); proposal of 2026-10-17, revised the same day after a UX and a
 feasibility critique · Branch: `feat/integration-and-gaps` (the first wave UX2a, UX1 and UX2b
 delivered on it on 2026-10-18, §7; the owner's walkthrough the same day, §7 "Owner
-walkthrough"; UX7 and UX8 delivered the same day; next S2b) · Source: four user-need audits of the web UI on the agent-created scratch stack
+walkthrough"; UX7, UX8 and S2b's „Vorschau“ delivered the same day; next UX3) · Source: four user-need audits of the web UI on the agent-created scratch stack
 `analyzr-uxaudit` (seeded `nordwind-handel` with its chain and a simulation agent run,
 `signavio-beispiel` from the CLI bundle import, two projects made from the raw synthetic Signavio
 export; 1440x900 and 390x844), torn down after the audit · Relates to: HANDOFF §4 decisions 8, 10,
@@ -1759,6 +1759,14 @@ the losses of a conversion, „In Signavio öffnen“ for an http(s) link; an am
 Details“ from the model's open `extractor-loss` question, whose „Details“ shows its card. Until
 UX3 builds the header's „Mehr“, „Herkunft“ is a ghost button next to the chips and „In Signavio
 öffnen“ sits inside it. Not verified: a real phone, a screen reader.
+
+**S2b's „Vorschau“ as delivered** (2026-10-18, on the branch; M6 §8 "S2b step 3"): §6's last
+bullet but one. A drop shows the dry run first in the result's layout: the headline „Vorschau: 5
+Modelle neu · 1 Fehler · 1 übersprungen“, the outcome column „Wird neu“, „Neue Revision“,
+„Unverändert“, „Fehler“, at most three impact lines („Danach: …“; the pairs to re-judge wait for
+S2b's follow-up), „Was ändert sich?“ closed, the shared-top-folder hint, the batch note, „Importieren“
+and „Abbrechen“; after importing the same panel is the result with „Als Nächstes“ (UX7). The
+deletion impact stays in the CLI (the web has no model deletion).
 
 **UX9 "Relationen results, Annahmeregeln, projects summary".** Files: `components/relation-table.tsx`,
 `lib/relation-filters.ts`; `routes/project-rules-page.tsx`, `components/rules/` `rule-table.tsx`,
