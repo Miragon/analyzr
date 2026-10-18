@@ -177,7 +177,7 @@ function OverviewTab() {
     <div className="flex flex-col gap-6">
       <NextStepBlock
         project={project}
-        step={step}
+        step={counts.ready ? step : null}
         canReview={can.canReview}
         canWrite={can.canWrite}
         hasChain={hasChain}
@@ -321,8 +321,12 @@ function OverviewTab() {
  * tooltip on a focusable trigger (§3.13 item 6), until UX3 shows it in the
  * model view's tabs. „–“ for none.
  */
-function OpenPointsCell({ points }: { points: OpenPoints }) {
+function OpenPointsCell({ points }: { points: OpenPoints | null }) {
   const id = useId();
+  if (points === null)
+    return (
+      <Skeleton className="h-4 w-6" aria-label="Wird geladen" data-testid="open-points-loading" />
+    );
   if (points.total === 0) return <span className="text-muted-foreground">–</span>;
   return (
     <span className="group/points relative inline-flex">

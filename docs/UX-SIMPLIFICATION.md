@@ -1564,6 +1564,11 @@ against a freshly seeded `analyzr-uxs`, `demo.spec.ts` (14 passed, every menu op
 `analyzr-demo check` against the demo image `analyzr-uxdemo:dev`; every screenshot of §7's list
 retaken (`01` … `07`, `m2-*`, `d19-*`, `m4-*`, `demo-*`). One fix: `screenshots.spec.ts` waits for
 the badge „Offene Fragen“ before `02-models` (on a fresh stack the open questions answer last).
+After the pass, the lead agent added a loading state: until relations, chain and open questions
+have settled (also with an error, whose part then counts as 0), „Als Nächstes“ shows a placeholder
+and „Offene Punkte“ a skeleton instead of lower numbers that jump (`ProjectWork.ready`,
+`lib/project-counts.ts`; `overview.test.tsx`); the UI load guard passed again on a scratch stack
+(15 passed, 3 `fixme`).
 The first wave in numbers, before = the web before UX1:
 
 | Screen, 1440x900 (390x844) | Before | After the first wave |

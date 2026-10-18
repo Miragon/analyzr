@@ -165,11 +165,30 @@ describe('the counts every screen shares', () => {
     ).toMatchObject({ reviewItems: undefined, openPlacements: undefined, ask: undefined });
   });
 
+  it('is not ready, and gives no open points, until relations, chain and questions loaded', () => {
+    const loading = [
+      projectWork({ relations: undefined, chain, summary }),
+      projectWork({ relations: [], chain: undefined, summary }),
+      projectWork({ relations: [], chain, summary: undefined }),
+    ];
+    for (const work of loading) {
+      expect(work.ready).toBe(false);
+      expect(work.openPoints({ key: 'einkauf/bestellanforderung', openItems: 6 })).toBeNull();
+    }
+    expect(projectWork({ relations: [], chain: null, summary }).ready).toBe(true);
+    // A failed query settles too: its part counts as 0 instead of a placeholder forever.
+    const failed = projectWork({ relations: [], chain, summary: undefined, settled: true });
+    expect(failed.ready).toBe(true);
+    expect(failed.openPoints({ key: 'einkauf/bestellanforderung', openItems: 6 })?.questions).toBe(
+      0,
+    );
+  });
+
   it('adds relations, the open placements and the questions of a model: 6 + 1 + 1 = 8', () => {
     const work = projectWork({ relations: [], chain, summary });
     const points = work.openPoints({ key: 'einkauf/bestellanforderung', openItems: 6 });
     expect(points).toEqual({ total: 8, relations: 6, placements: 1, questions: 1 });
-    expect(openPointsText(points)).toBe('6 Relationen · 1 Platzierung · 1 Frage');
+    expect(points && openPointsText(points)).toBe('6 Relationen · 1 Platzierung · 1 Frage');
     // A held placement is open work of its model too (its question names no model in
     // `askByModel`), though no badge of the chain counts it.
     expect(work.openPoints({ key: 'einkauf/x', openItems: 0 })).toEqual({
@@ -178,7 +197,7 @@ describe('the counts every screen shares', () => {
       placements: 1,
       questions: 0,
     });
-    expect(work.openPoints({ key: 'vertrieb/z', openItems: 0 }).total).toBe(0);
+    expect(work.openPoints({ key: 'vertrieb/z', openItems: 0 })?.total).toBe(0);
   });
 });
 
@@ -402,11 +421,10 @@ describe('„Übersicht“', () => {
       ],
       relations: [proposal('rel_01P', 'b/review', 'a/wait')],
     });
-    const block = await screen.findByTestId('next-step');
+    const primary = await screen.findByTestId('next-step-primary');
+    const block = screen.getByTestId('next-step');
     expect(within(block).queryByRole('button')).toBeNull();
-    expect(within(block).getByTestId('next-step-primary').textContent).toBe(
-      'Vorschläge prüfen (1)',
-    );
+    expect(primary.textContent).toBe('Vorschläge prüfen (1)');
     expect(block.textContent).toContain('1 Modell wartet auf den Agenten');
   });
 

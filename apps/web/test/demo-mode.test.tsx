@@ -377,9 +377,11 @@ describe('the review inbox for a viewer', () => {
     );
     expect(row?.textContent).toContain('Agent gescheitert');
     expect(screen.queryByRole('button', { name: /Nochmal versuchen/ })).toBeNull();
-    // „Als Nächstes“ names the failure as text, with nothing to click.
+    // „Als Nächstes“ names the failure as text, with nothing to click (once every count loaded).
+    await waitFor(() =>
+      expect(screen.getByTestId('next-step').textContent).toContain('1 Analyse gescheitert'),
+    );
     const next = screen.getByTestId('next-step');
-    expect(next.textContent).toContain('1 Analyse gescheitert');
     expect(within(next).queryByRole('button')).toBeNull();
     expect(writes(calls)).toEqual([]);
   });

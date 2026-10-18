@@ -134,7 +134,7 @@ describe('review inbox', () => {
     );
     if (!row) throw new Error('no row for a/held');
     // Text, not a link (no one list holds all of a model's points, P7); the split in a tooltip.
-    const points = within(row).getByTestId('open-points');
+    const points = await within(row).findByTestId('open-points');
     expect(points.textContent).toBe('1');
     expect(points.closest('a')).toBeNull();
     expect(points.parentElement?.textContent).toBe('1 offener Punkt');
@@ -167,9 +167,11 @@ describe('review inbox', () => {
     expect((await within(row).findAllByTestId('lease-expired'))[0]?.textContent).toContain(
       'Reservierung abgelaufen am',
     );
-    // „Als Nächstes“ says it too.
-    expect(screen.getByTestId('next-step').textContent).toContain(
-      'Bei 1 Modell ist die Reservierung abgelaufen',
+    // „Als Nächstes“ says it too (once every count loaded).
+    await waitFor(() =>
+      expect(screen.getByTestId('next-step').textContent).toContain(
+        'Bei 1 Modell ist die Reservierung abgelaufen',
+      ),
     );
     const [retry] = within(row).getAllByRole('button', { name: /Nochmal versuchen/ });
     if (!retry) throw new Error('no retry');

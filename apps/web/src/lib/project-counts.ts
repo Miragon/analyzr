@@ -44,8 +44,17 @@ export interface ProjectWork {
   ask: number | undefined;
   /** The agents' open questions (`totals.agent`; no badge, the export's option); `undefined` while loading. */
   agent: number | undefined;
-  /** The open points of one model (from `Model.openItems`, the chain and `askByModel`). */
-  openPoints: (model: Pick<Model, 'key' | 'openItems'>) => OpenPoints;
+  /**
+   * Every count has loaded (relations, chain, open questions). Until then
+   * „Als Nächstes“ and „Offene Punkte“ show a placeholder instead of numbers
+   * that would jump once the rest arrives.
+   */
+  ready: boolean;
+  /**
+   * The open points of one model (from `Model.openItems`, the chain and
+   * `askByModel`); `null` until {@link ProjectWork.ready}.
+   */
+  openPoints: (model: Pick<Model, 'key' | 'openItems'>) => OpenPoints | null;
 }
 
 export interface WorkInput {
@@ -53,6 +62,11 @@ export interface WorkInput {
   /** `null`: the project has no chain (404). */
   chain: Pick<ValueChainDetail, 'placements'> | null | undefined;
   summary: OpenQuestionSummary | undefined;
+  /**
+   * Every query behind the counts has settled, also with an error (then its
+   * part counts as 0). Without it, ready means every input is present.
+   */
+  settled?: boolean;
 }
 
 /**
@@ -83,8 +97,10 @@ export function openPlacementsByModel(
 }
 
 /** The counts from what the shell loads anyway (pure; {@link useProjectCounts} feeds it). */
-export function projectWork({ relations, chain, summary }: WorkInput): ProjectWork {
+export function projectWork({ relations, chain, summary, settled }: WorkInput): ProjectWork {
   const byModel = openPlacementsByModel(chain);
+  const ready =
+    settled ?? (relations !== undefined && chain !== undefined && summary !== undefined);
   return {
     reviewItems: relations?.filter(isReviewItem).length,
     openPlacements:
@@ -95,7 +111,9 @@ export function projectWork({ relations, chain, summary }: WorkInput): ProjectWo
           : chain.placements.filter(isOpenPlacement).length,
     ask: summary?.totals.ask,
     agent: summary?.totals.agent,
+    ready,
     openPoints: (model) => {
+      if (!ready) return null;
       const placements = byModel.get(model.key) ?? 0;
       const questions = summary?.askByModel[model.key] ?? 0;
       return {
@@ -136,14 +154,16 @@ export function useProjectCounts(project: string): ProjectWork & {
   const chain = useQuery(valueChainQuery(project));
   const summary = useQuery(openQuestionSummaryQuery(project));
   const chainState = chain.data ?? (isNotFound(chain.error) ? null : undefined);
+  const settled = !landscape.isPending && !chain.isPending && !summary.isPending;
   const work = useMemo(
     () =>
       projectWork({
         relations: landscape.data?.relations,
         chain: chainState,
         summary: summary.data,
+        settled,
       }),
-    [landscape.data, chainState, summary.data],
+    [landscape.data, chainState, summary.data, settled],
   );
   return { ...work, models: models.data, chain: chainState };
 }

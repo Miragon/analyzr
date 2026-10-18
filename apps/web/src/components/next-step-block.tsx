@@ -4,6 +4,7 @@ import type { ReactNode } from 'react';
 
 import { AgentStart, RetryAgent } from '@/components/agent-start';
 import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
 import { modelCount, type NextLine, type NextPrimary, type NextStep } from '@/lib/next-step';
 
 /**
@@ -11,7 +12,8 @@ import { modelCount, type NextLine, type NextPrimary, type NextStep } from '@/li
  * {@link nextStep} and at most two lines below it; „Exportieren“ sits at the
  * block's right. Reviewers get buttons; viewers (and the read-only demo) the
  * same text as plain links or text, never a write. Nothing repeats the tab
- * badges.
+ * badges. `step` is `null` while the counts load: a placeholder instead of a
+ * step computed from partial numbers.
  */
 export function NextStepBlock({
   project,
@@ -22,7 +24,7 @@ export function NextStepBlock({
   aside,
 }: {
   project: string;
-  step: NextStep;
+  step: NextStep | null;
   canReview: boolean;
   /** „Nochmal versuchen“ (permission `write`). */
   canWrite: boolean;
@@ -30,6 +32,23 @@ export function NextStepBlock({
   /** At the block's right: the export hub. */
   aside?: ReactNode;
 }) {
+  if (step === null)
+    return (
+      <section
+        aria-labelledby="next-step-title"
+        aria-busy="true"
+        data-testid="next-step"
+        className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2"
+      >
+        <div className="flex min-w-0 flex-col items-start gap-2">
+          <h2 id="next-step-title" className="text-sm font-semibold text-muted-foreground">
+            Als Nächstes
+          </h2>
+          <Skeleton className="h-9 w-56" data-testid="next-step-loading" />
+        </div>
+        {aside}
+      </section>
+    );
   const status = step.lines.some((l) =>
     ['working', 'waiting', 'failed', 'expired'].includes(l.kind),
   );
