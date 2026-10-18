@@ -6,6 +6,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { serverOrigin } from '@/lib/agent-config';
 import { useAutoAcceptIndex } from '@/lib/auto-accept-actions';
 import { useProjectPermissions } from '@/lib/permissions';
+import { useProjectCounts } from '@/lib/project-counts';
 
 import { projectRoute } from './project';
 
@@ -19,6 +20,7 @@ function AgentsTab() {
   const { project } = projectAgentsRoute.useParams();
   const can = useProjectPermissions(project);
   const autoIndex = useAutoAcceptIndex(project);
+  const { chain } = useProjectCounts(project);
   if (!can.known) return <Skeleton className="h-40 w-full" />;
   // Agent tokens are the owners' (CONCEPT §6); nobody connects an agent to the demo.
   if (!can.isOwner) {
@@ -36,6 +38,7 @@ function AgentsTab() {
       project={project}
       origin={serverOrigin(window.location, import.meta.env.DEV)}
       autoIndex={autoIndex}
+      hasChain={chain != null}
     />
   );
 }

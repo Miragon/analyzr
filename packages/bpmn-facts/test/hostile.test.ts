@@ -197,11 +197,19 @@ describe('malformed input', () => {
     ]);
     const err = await expectRejected(latin1, 'not-xml');
     expect(err.message).toContain('UTF-8');
+    // the cause, structured, so a caller can name the remedy (UX-SIMPLIFICATION.md §3.9 item 5)
+    expect(err.encoding).toBe('not-utf-8');
   });
 
-  it('rejects UTF-16', async () => {
-    await expectRejected(Uint8Array.from([0xff, 0xfe, 0x3c, 0x00]), 'not-xml');
-    await expectRejected(Uint8Array.from([0xfe, 0xff, 0x00, 0x3c]), 'not-xml');
+  it('rejects UTF-16, naming the encoding as the cause', async () => {
+    const le = await expectRejected(Uint8Array.from([0xff, 0xfe, 0x3c, 0x00]), 'not-xml');
+    const be = await expectRejected(Uint8Array.from([0xfe, 0xff, 0x00, 0x3c]), 'not-xml');
+    expect([le.encoding, be.encoding]).toEqual(['utf-16', 'utf-16']);
+  });
+
+  it('names no encoding where the markup is the cause', async () => {
+    const err = await expectRejected(`<bpmn:definitions xmlns:bpmn="${BPMN_NS}">`, 'not-xml');
+    expect(err.encoding).toBeUndefined();
   });
 });
 

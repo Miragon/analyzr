@@ -35,7 +35,8 @@ import { userPath } from './user-path';
  * `scrollWidth`), the numbers DEVELOPMENT.md "Web UI" records per slice.
  *
  * Checked: the load budgets of the slices done so far (UX1 „Übersicht“, UX2b
- * „Offene Fragen“), the tasks (clicks to the first decision, „Gutschrift“ on
+ * „Offene Fragen“, UX7 „Hochladen“ and the token form; UX7 imports the raw
+ * Signavio export into a project of its own per run), the tasks (clicks to the first decision, „Gutschrift“ on
  * a phone, a hold answered from each of its three entries in one dialog, on
  * a fourth project `ui-load-vormerkung` (…_HOLDS) made from the corpus with
  * one held proposal, so `nordwind-handel` stays undecided), consistency
@@ -869,5 +870,84 @@ test('UX2b: a hold answered in at most 3 clicks, in one dialog from each entry',
   // all three on the same item, as notes on the relation
   expect(await notesBefore()).toBe(before + 3);
 });
+// ------------------------------------------------------------------ „Hochladen“ and „Agent verbinden“ (UX7)
+
+/** The synthetic raw Signavio export (M6 S3b): 6 BPMN files, one UTF-16, one with illegal ids, a PDF. */
+const RAW_SIGNAVIO = join(ROOT, 'tools/integrate/test/fixtures/signavio/2026-10-14-signavio');
+/** UX7's budgets (§7 "UX7", done when). */
+const UPLOAD_BUDGET = { wordsBefore: 45, tokenFormControls: 2 } as const;
+
+const wordsOf = (el: Element) =>
+  (el as HTMLElement).innerText.split(/\s+/).filter((w) => /[\p{L}\p{N}]/u.test(w)).length;
+
+test('UX7: „Hochladen“ in at most 45 words; the raw Signavio export says what happened in German', async ({
+  page,
+}) => {
+  // A project of its own per run: keys are fixed for good, a second run would find every model unchanged.
+  const key = `ui-load-hochladen-${Date.now().toString(36)}`;
+  await create(key, 'Hochladen');
+  await settle(page, `/projects/${key}/upload`, '[data-testid=dropzone]');
+  expect(
+    await page.getByTestId('dropzone').evaluate(wordsOf),
+    'words before an import',
+  ).toBeLessThanOrEqual(UPLOAD_BUDGET.wordsBefore);
+  await measure(page, key, 'Hochladen', '[data-testid=dropzone]');
+
+  await page.getByTestId('folder-input').setInputFiles(RAW_SIGNAVIO);
+  await expect(page.getByTestId('import-headline')).toHaveText(
+    '5 Modelle importiert · 1 Fehler · 1 übersprungen',
+    { timeout: 30_000 },
+  );
+  // „Bonitätsprüfung.bpmn“: one entry naming its 2 elements (9 lines of bpmn-moddle before)
+  const bonitaet = page.locator('[data-testid=import-outcome]', {
+    hasText: 'Bonitätsprüfung.bpmn',
+  });
+  await expect(bonitaet.getByTestId('import-warnings').locator(':scope > summary')).toHaveText(
+    '2 Hinweise',
+  );
+  await expect(bonitaet.getByTestId('import-warning')).toHaveCount(1);
+  await expect(bonitaet.getByTestId('import-warning')).toHaveAttribute('data-code', 'invalid-id');
+  await expect(bonitaet.getByTestId('import-warning')).toContainText(
+    '2 Elemente übersprungen, weil ihre ID ungültig ist: Aufgabe „Aufgabe_Bonität_prüfen“, Datenspeicher „4711“.',
+  );
+  // the UTF-16 file: German, with its remedy
+  const utf16 = page.locator('[data-testid=import-outcome][data-outcome=failed]');
+  await expect(utf16).toHaveCount(1);
+  await expect(utf16.getByTestId('import-problem')).toHaveText(
+    'Die Datei ist UTF-16-kodiert; analyzr liest nur UTF-8. Speichere sie als UTF-8 oder wandle den Export mit /analyzr-integrate:integrate-landscape um.',
+  );
+  await expect(page.getByTestId('import-skipped')).toHaveText(
+    '1 Datei übersprungen: Prozesslandkarte.pdf (kein BPMN)',
+  );
+  // „Als Nächstes“ names the waiting tasks `analyzr import` names (`formatNextSteps`)
+  const queued = await allPages<{ id: string }>(
+    `/api/v1/projects/${key}/analyses?state=queued&kind=relations`,
+  );
+  expect(queued).toHaveLength(5);
+  await expect(page.getByTestId('upload-next-agent')).toContainText(
+    '5 Modelle warten auf den Agenten',
+  );
+  await expect(
+    page.getByTestId('upload-next').getByRole('link', { name: 'Agent verbinden' }),
+  ).toBeVisible();
+  expect(await visibleText(page)).not.toMatch(/sid-|rel_|q-[0-9a-f]{16}/);
+});
+
+test('UX7: the token form shows its name and its button only; step 3 starts the agent', async ({
+  page,
+}) => {
+  await settle(page, `/projects/${EMPTY}/agents`, 'form[aria-label="Agent-Token erstellen"]');
+  const controls = await page.locator('form[aria-label="Agent-Token erstellen"]').evaluate(
+    (form) =>
+      // `checkVisibility`: a closed <details> keeps its content's boxes in Chromium
+      [...form.querySelectorAll('button, input, select, [role=checkbox]')].filter((el) =>
+        el.checkVisibility(),
+      ).length,
+  );
+  expect(controls, 'visible controls of the token form').toBe(UPLOAD_BUDGET.tokenFormControls);
+  await expect(page.getByTestId('connect-start')).toContainText(`/analyzr:relations ${EMPTY}`);
+  await measure(page, EMPTY, 'Agent verbinden', null);
+});
+
 test.fixme('UX4: after an amendment save „Agent starten“ is visible without navigating', () => {});
 test.fixme('UX3/UX5: the bpmn.io watermark answers elementFromPoint at 390, 800 and 1024 px', () => {});

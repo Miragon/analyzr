@@ -44,6 +44,7 @@ import { touchNoLinkRelations } from './no-links.ts';
 import { policy } from './policy.ts';
 import type {
   AnalysisPort,
+  ExtractFailure,
   ExtractOutcome,
   Extracted,
   ModelRecord,
@@ -100,11 +101,20 @@ export function contentHash(bytes: Uint8Array): string {
   return createHash('sha256').update(bytes).digest('hex');
 }
 
-/** Problem for a rejected file: 413 for oversize input, 422 `bpmn-invalid` otherwise. */
-export function extractError(code: string, message: string): DomainError {
+/**
+ * Problem for a rejected file: 413 for oversize input, 422 `bpmn-invalid`
+ * otherwise, with the rejection's code as `reason` and, where the cause is
+ * the encoding, `encoding` (`utf-16`, `not-utf-8`; UX-SIMPLIFICATION.md §3.9
+ * item 5: the web names the remedy).
+ */
+export function extractError(failure: ExtractFailure): DomainError {
+  const { code, message, encoding } = failure;
   return code === 'too-large'
     ? new DomainError('payload-too-large', message)
-    : new DomainError('bpmn-invalid', message, { reason: code });
+    : new DomainError('bpmn-invalid', message, {
+        reason: code,
+        ...(encoding === undefined ? {} : { encoding }),
+      });
 }
 
 /** Model name: the first process's participant (pool) name, else its name. */
@@ -422,7 +432,7 @@ async function storeFile(
     return {
       result: {
         outcome: 'failed',
-        error: extractError(extracted.error.code, extracted.error.message),
+        error: extractError(extracted.error),
       },
       previousFactsHash,
     };

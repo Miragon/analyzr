@@ -116,6 +116,48 @@ describe('real @analyzr/bpmn-facts and @analyzr/relations on eval/corpus/_sample
     expect(await res.json()).toMatchObject({ code: 'bpmn-invalid' });
   });
 
+  it('names the encoding when it is why a file is no XML (UX7: the web names the remedy)', async () => {
+    const utf16 = Uint8Array.from([
+      0xff,
+      0xfe,
+      ...[...'<x/>'].flatMap((c) => [c.charCodeAt(0), 0]),
+    ]);
+    const latin1 = Uint8Array.from([
+      ...new TextEncoder().encode('<x name="'),
+      0xe4,
+      0x22,
+      0x2f,
+      0x3e,
+    ]);
+    // well-formedness, not the encoding: an unclosed root
+    const broken = new TextEncoder().encode(
+      '<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL">',
+    );
+    const res = await t.asOwner('/api/v1/projects/sample/imports', {
+      method: 'POST',
+      body: importForm([
+        { path: 'enc/utf16.bpmn', bytes: utf16 },
+        { path: 'enc/latin1.bpmn', bytes: latin1 },
+        { path: 'enc/broken.bpmn', bytes: broken },
+      ]),
+    });
+    expect(res.status).toBe(200);
+    const { files: outcomes } = (await res.json()) as ImportResult;
+    expect(
+      outcomes.map((o) => [o.path, o.outcome, o.problem?.['reason'], o.problem?.['encoding']]),
+    ).toEqual([
+      ['enc/utf16.bpmn', 'failed', 'not-xml', 'utf-16'],
+      ['enc/latin1.bpmn', 'failed', 'not-xml', 'not-utf-8'],
+      ['enc/broken.bpmn', 'failed', 'not-xml', undefined],
+    ]);
+    expect(outcomes[2]?.problem).not.toHaveProperty('encoding');
+    expect(outcomes.map((o) => o.problem?.code)).toEqual([
+      'bpmn-invalid',
+      'bpmn-invalid',
+      'bpmn-invalid',
+    ]);
+  });
+
   it('re-importing identical files changes nothing', async () => {
     const before = await relations();
     const res = await t.asOwner('/api/v1/projects/sample/imports', {

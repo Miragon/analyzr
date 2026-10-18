@@ -6,9 +6,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { BPMN_FILE_SUFFIXES } from '@analyzr/contracts/paths';
 
 import { UploadPanel } from '../src/components/upload-panel';
-import { findToast, json, renderWithQuery, stubApi } from './support/render';
+import { model } from './support/fixtures';
+import { findToast, json, renderWithRouter, stubApi, type Call } from './support/render';
 
 const IMPORT_PATH = '/api/v1/projects/demo/imports';
+
+/** The import requests only (the next-step box reads models, chain and questions too). */
+const imports = (calls: readonly Call[]) =>
+  calls.filter((c) => c.method === 'POST' && c.path === IMPORT_PATH);
+
+const render = () => renderWithRouter(<UploadPanel project="demo" />);
 
 function withRelativePath(name: string, path: string, size = 20): File {
   const file = new File(['<bpmn/>'.padEnd(size, ' ')], name, { type: 'application/xml' });
@@ -43,10 +50,11 @@ describe('UploadPanel', () => {
                   outcome: 'failed',
                   problem: {
                     type: 'urn:analyzr:problem:bpmn-invalid',
-                    title: 'Invalid BPMN',
+                    title: 'BPMN invalid',
                     status: 422,
                     code: 'bpmn-invalid',
-                    detail: 'DOCTYPE is not allowed',
+                    detail: 'DOCTYPE declarations are not allowed in BPMN',
+                    reason: 'doctype-forbidden',
                   },
                 }
               : {
@@ -58,7 +66,7 @@ describe('UploadPanel', () => {
           ),
         }),
     });
-    renderWithQuery(<UploadPanel project="demo" />);
+    await render();
 
     const input = screen.getByTestId('file-input');
     fireEvent.change(input, {
@@ -74,8 +82,8 @@ describe('UploadPanel', () => {
 
     const table = await screen.findByRole('table', { name: 'Import je Datei' });
     await waitFor(() => expect(within(table).getAllByTestId('import-outcome')).toHaveLength(3));
-    expect(calls).toHaveLength(1);
-    expect(calls[0]!.body).toEqual([
+    expect(imports(calls)).toHaveLength(1);
+    expect(imports(calls)[0]!.body).toEqual([
       'finanzen/rechnung.bpmn',
       'kaputt.bpmn',
       'vertrieb/auftrag.bpmn',
@@ -86,9 +94,29 @@ describe('UploadPanel', () => {
       'failed',
       'created',
     ]);
-    expect(within(outcomes[1]!).getByText('DOCTYPE is not allowed')).toBeTruthy();
+    // the headline counts what happened (UX7)
+    await waitFor(() =>
+      expect(screen.getByTestId('import-headline').textContent).toBe(
+        '1 Modell importiert · 1 unverändert · 1 Fehler · 1 übersprungen',
+      ),
+    );
+    // one column: the model, its file below; a failed file only its path
+    expect(within(outcomes[2]!).getAllByText('vertrieb/auftrag')).toHaveLength(1);
+    expect(within(outcomes[2]!).getByTestId('import-path').textContent).toBe(
+      'vertrieb/auftrag.bpmn',
+    );
+    expect(within(outcomes[1]!).queryByText('kaputt')).toBeNull();
+    // the reason in German with what to do, the server's words one level down
+    expect(within(outcomes[1]!).getByTestId('import-problem').textContent).toBe(
+      'Die Datei enthält eine DOCTYPE- oder ENTITY-Angabe; solche Dateien liest analyzr aus Sicherheitsgründen nicht. Entferne die Angabe und lade die Datei erneut hoch.',
+    );
+    expect(within(outcomes[1]!).getByTestId('technical-details').textContent).toContain(
+      'BPMN invalid (422): DOCTYPE declarations are not allowed in BPMN',
+    );
     expect(within(outcomes[2]!).getByText('Neu')).toBeTruthy();
-    expect(screen.getByText(/1 Dateien übersprungen/)).toBeTruthy();
+    expect(screen.getByTestId('import-skipped').textContent).toBe(
+      '1 Datei übersprungen: README.md (kein BPMN)',
+    );
     expect(await findToast('1 von 3 Dateien nicht importiert')).toBeTruthy();
   });
 
@@ -106,7 +134,7 @@ describe('UploadPanel', () => {
           422,
         ),
     });
-    renderWithQuery(<UploadPanel project="demo" />);
+    await render();
     fireEvent.change(screen.getByTestId('file-input'), {
       target: {
         files: [
@@ -131,7 +159,7 @@ describe('UploadPanel', () => {
 
   it('says so when nothing is a BPMN file, naming the suffixes of the file rule', async () => {
     const calls = stubApi({});
-    renderWithQuery(<UploadPanel project="demo" />);
+    await render();
     // The picker offers exactly the suffixes of BPMN_FILE_SUFFIXES.
     const accept = screen.getByTestId('file-input').getAttribute('accept') ?? '';
     expect(accept.split(',').sort()).toEqual([...BPMN_FILE_SUFFIXES].sort());
@@ -145,50 +173,180 @@ describe('UploadPanel', () => {
     expect(calls).toHaveLength(0);
   });
 
-  it('shows the warnings per file in a disclosure, with German labels and the English message', async () => {
+  it('groups the skipped elements of a file by cause, with what it means and the fix (UX7)', async () => {
+    // The raw Signavio export's „Bonitätsprüfung.bpmn“ (tools/integrate/test/fixtures/signavio/
+    // 2026-10-14-signavio), as the extractor words it: 9 lines about 2 elements.
+    const bonitaet = [
+      'unparsable content <task> detected line: 11 column: 6 nested error: illegal ID <Aufgabe_Bonität_prüfen>',
+      'unparsable content <dataStoreReference> detected line: 29 column: 6 nested error: illegal ID <4711>',
+      'unparsable content <bpmndi:BPMNShape> detected line: 44 column: 9 nested error: illegal ID <Aufgabe_Bonität_prüfen_gui>',
+      'unparsable content <bpmndi:BPMNShape> detected line: 56 column: 9 nested error: illegal ID <4711_gui>',
+    ].map((message) => ({ code: 'parse-warning', message }));
+    const references = [
+      ['sid-1A2B3C4D-5E6F-407A-8C8D-9E0F1A2B3C46', 'Aufgabe_Bonität_prüfen'],
+      ['sid-2B3C4D5E-6F7A-418B-9D9E-0F1A2B3C4D47', 'Aufgabe_Bonität_prüfen'],
+      ['sid-6F7A8B9C-ADBE-45CF-9B3C-4D5E6F7A8B51', '4711'],
+      ['Aufgabe_Bonität_prüfen_gui', 'Aufgabe_Bonität_prüfen'],
+      ['4711_gui', '4711'],
+    ].map(([elementId, id]) => ({
+      code: 'parse-warning',
+      message: `unresolved reference <${id}>`,
+      elementId,
+    }));
+    const versand = [
+      'unparsable content <task> detected line: 18 column: 6 nested error: duplicate ID <sid-6A1F0E52-7B3C-4D8E-9F01-A2B3C4D5E681>',
+      'unparsable content <bpmndi:BPMNShape> detected line: 45 column: 9 nested error: duplicate ID <sid-6A1F0E52-7B3C-4D8E-9F01-A2B3C4D5E681_gui>',
+    ].map((message) => ({ code: 'parse-warning', message }));
+    stubApi({
+      [`POST ${IMPORT_PATH}`]: (call) =>
+        json({
+          files: (call.body as string[]).map((path) => {
+            const warnings =
+              path === 'bonitaet.bpmn'
+                ? [...bonitaet, ...references, { code: 'brand-new-code', message: 'something new' }]
+                : versand;
+            return {
+              path,
+              modelKey: path.replace(/\.bpmn$/, ''),
+              outcome: 'created',
+              problem: null,
+              warnings,
+              warningCount: warnings.length,
+            };
+          }),
+        }),
+    });
+    await render();
+    fireEvent.change(screen.getByTestId('file-input'), {
+      target: { files: [new File(['<x/>'], 'bonitaet.bpmn'), new File(['<x/>'], 'versand.bpmn')] },
+    });
+    const table = await screen.findByRole('table', { name: 'Import je Datei' });
+    await waitFor(() => expect(within(table).getAllByTestId('import-warnings')).toHaveLength(2));
+    const [first, second] = within(table).getAllByTestId('import-warnings');
+    // „Hinweise“ stays the word (the integrate skill's report says „N Hinweise“ in the web)
+    expect(first!.querySelector('summary')?.textContent).toBe('3 Hinweise');
+    const entries = within(first!).getAllByTestId('import-warning');
+    expect(entries.map((e) => e.dataset['code'])).toEqual(['invalid-id', 'brand-new-code']);
+    expect(entries[0]!.textContent).toContain(
+      '2 Elemente übersprungen, weil ihre ID ungültig ist: Aufgabe „Aufgabe_Bonität_prüfen“, Datenspeicher „4711“.',
+    );
+    expect(entries[0]!.textContent).toContain(
+      'Sie fehlen im Diagramm und in den Verbindungen. Mit /analyzr-integrate:integrate-landscape bereinigen und erneut hochladen.',
+    );
+    // the nine English lines behind „Technische Details“, closed
+    const technical = within(entries[0]!).getByTestId('technical-details');
+    expect(technical.hasAttribute('open')).toBe(false);
+    expect(technical.querySelector('p')?.textContent?.split('\n')).toHaveLength(9);
+    // an unknown code shows the code
+    expect(entries[1]!.textContent).toContain('brand-new-code');
+    expect(second!.querySelector('summary')?.textContent).toBe('1 Hinweis');
+    expect(within(second!).getByTestId('import-warning').textContent).toContain(
+      '1 Element übersprungen, weil seine ID schon vergeben ist: Aufgabe „sid-6A1F0E52-7B3C-4D8E-9F01-A2B3C4D5E681“.Es fehlt im Diagramm',
+    );
+    expect(await findToast('2 Dateien importiert')).toBeTruthy();
+  });
+
+  it('says a UTF-16 or Latin-1 file in German, with the remedy (UX7)', async () => {
+    const problem = (encoding: string) => ({
+      type: 'urn:analyzr:problem:bpmn-invalid',
+      title: 'BPMN invalid',
+      status: 422,
+      code: 'bpmn-invalid',
+      detail: 'BPMN must be UTF-8 encoded',
+      reason: 'not-xml',
+      encoding,
+    });
     stubApi({
       [`POST ${IMPORT_PATH}`]: (call) =>
         json({
           files: (call.body as string[]).map((path) => ({
             path,
             modelKey: path.replace(/\.bpmn$/, ''),
-            outcome: 'revised',
-            problem: null,
-            ...(path === 'warn.bpmn'
-              ? {
-                  warnings: [
-                    {
-                      code: 'parse-warning',
-                      message: 'unparsable content <bpmn:task> detected; duplicate ID <Task_A>',
-                      elementId: 'Task_A',
-                    },
-                    { code: 'brand-new-code', message: 'something new' },
-                  ],
-                  warningCount: 3,
-                }
-              : {}),
+            outcome: 'failed',
+            problem: problem(path === 'utf16.bpmn' ? 'utf-16' : 'not-utf-8'),
           })),
         }),
     });
-    renderWithQuery(<UploadPanel project="demo" />);
+    await render();
     fireEvent.change(screen.getByTestId('file-input'), {
-      target: { files: [new File(['<x/>'], 'warn.bpmn'), new File(['<x/>'], 'clean.bpmn')] },
+      target: { files: [new File(['x'], 'utf16.bpmn'), new File(['x'], 'latin.bpmn')] },
     });
     const table = await screen.findByRole('table', { name: 'Import je Datei' });
-    await waitFor(() => expect(within(table).getAllByTestId('import-outcome')).toHaveLength(2));
-    const disclosures = within(table).getAllByTestId('import-warnings');
-    expect(disclosures).toHaveLength(1);
-    const disclosure = disclosures[0]!;
-    expect(within(disclosure).getByText('3 Hinweise')).toBeTruthy();
-    const entries = within(disclosure).getAllByTestId('import-warning');
-    expect(entries.map((e) => e.dataset['code'])).toEqual(['parse-warning', 'brand-new-code']);
-    expect(entries[0]!.textContent).toContain('Unbekannter oder fehlerhafter Inhalt');
-    expect(entries[0]!.textContent).toContain('Task_A');
-    expect(entries[0]!.textContent).toContain('duplicate ID <Task_A>');
-    // An unknown code shows the code.
-    expect(entries[1]!.textContent).toContain('brand-new-code');
-    expect(within(disclosure).getByText('… und 1 weitere')).toBeTruthy();
-    expect(await findToast('2 Dateien importiert')).toBeTruthy();
+    await waitFor(() => expect(within(table).getAllByTestId('import-problem')).toHaveLength(2));
+    expect(
+      within(table)
+        .getAllByTestId('import-problem')
+        .map((p) => p.textContent),
+    ).toEqual([
+      'Die Datei ist nicht UTF-8-kodiert (oft ISO-8859-1 oder Windows-1252); analyzr liest nur UTF-8. Speichere sie als UTF-8 oder wandle den Export mit /analyzr-integrate:integrate-landscape um.',
+      'Die Datei ist UTF-16-kodiert; analyzr liest nur UTF-8. Speichere sie als UTF-8 oder wandle den Export mit /analyzr-integrate:integrate-landscape um.',
+    ]);
+    expect(screen.getByTestId('import-headline').textContent).toBe(
+      'Kein Modell importiert · 2 Fehler',
+    );
+  });
+
+  it('says what comes next: the models waiting for the agent and the questions there are already', async () => {
+    stubApi({
+      [`POST ${IMPORT_PATH}`]: (call) =>
+        json({
+          files: (call.body as string[]).map((path) => ({
+            path,
+            modelKey: path.replace(/\.bpmn$/, ''),
+            outcome: 'created',
+            problem: null,
+          })),
+        }),
+      'GET /api/v1/projects/demo': () =>
+        json({
+          id: 'prj_01DEMO',
+          key: 'demo',
+          name: 'Demo',
+          role: 'owner',
+          lastSeq: 3,
+          createdAt: '2026-10-07T09:00:00.000Z',
+        }),
+      'GET /api/v1/projects/demo/agent-tokens': () => json({ items: [] }),
+      'GET /api/v1/projects/demo/models': () =>
+        json({
+          items: [
+            model({ key: 'a', stage: 'waiting_for_agent' }),
+            model({ key: 'b', stage: 'waiting_for_agent' }),
+            model({ key: 'c', stage: 'waiting_for_review' }),
+          ],
+          nextCursor: null,
+        }),
+      'GET /api/v1/projects/demo/open-questions': () =>
+        json({
+          items: [],
+          nextCursor: null,
+          totals: { ask: 9, agent: 0, proposal: 0, info: 0 },
+          askByModel: {},
+        }),
+    });
+    await render();
+    fireEvent.change(screen.getByTestId('file-input'), {
+      target: { files: [new File(['<x/>'], 'a.bpmn'), new File(['<x/>'], 'b.bpmn')] },
+    });
+    const next = await screen.findByTestId('upload-next');
+    await waitFor(() => expect(within(next).queryByTestId('upload-next-loading')).toBeNull());
+    // „Agent verbinden“ once the owner's tokens are known
+    await waitFor(() =>
+      expect(within(next).getByTestId('upload-next-agent').textContent).toBe(
+        '2 Modelle warten auf den AgentenAgent verbinden',
+      ),
+    );
+    // without an active token the owner connects one first
+    expect(within(next).getByRole('link', { name: 'Agent verbinden' }).getAttribute('href')).toBe(
+      '/projects/demo/agents',
+    );
+    expect(within(next).getByTestId('upload-next-questions').textContent).toBe(
+      '9 offene Fragen gibt es schon jetzt·Offene Fragen ansehen',
+    );
+    expect(
+      within(next).getByRole('link', { name: 'Offene Fragen ansehen' }).getAttribute('href'),
+    ).toBe('/projects/demo/open-questions');
+    expect(within(next).getByTestId('upload-overview').getAttribute('href')).toBe('/projects/demo');
   });
 
   it('fails a duplicate key before sending, skips a sidecar .xml and lists a plain .xml that is no BPMN as skipped', async () => {
@@ -214,7 +372,7 @@ describe('UploadPanel', () => {
           ),
         }),
     });
-    renderWithQuery(<UploadPanel project="demo" />);
+    await render();
     fireEvent.change(screen.getByTestId('file-input'), {
       target: {
         files: [
@@ -227,28 +385,27 @@ describe('UploadPanel', () => {
       },
     });
     const table = await screen.findByRole('table', { name: 'Import je Datei' });
-    await waitFor(() => expect(screen.getByText(/Import abgeschlossen/)).toBeTruthy());
+    await waitFor(() =>
+      expect(screen.getByTestId('import-headline').textContent).toBe(
+        '1 Modell importiert · 1 Fehler · 2 übersprungen',
+      ),
+    );
     // The hidden file is dropped silently; the duplicate key and the sidecar are never sent.
-    expect(calls).toHaveLength(1);
-    expect(calls[0]!.body).toEqual(['export/meta.xml', 'vertrieb/auftrag.bpmn']);
+    expect(imports(calls)).toHaveLength(1);
+    expect(imports(calls)[0]!.body).toEqual(['export/meta.xml', 'vertrieb/auftrag.bpmn']);
     const rows = within(table).getAllByTestId('import-outcome');
     expect(rows.map((r) => r.dataset['outcome'])).toEqual(['failed', 'created']);
     expect(rows[0]!.textContent).toContain('vertrieb/auftrag.bpmn2');
-    expect(
-      within(rows[0]!).getByText(
-        'another file of this import has model key vertrieb/auftrag (vertrieb/auftrag.bpmn)',
-      ),
-    ).toBeTruthy();
-    // The heading covers every reason; each file names its own.
-    expect(
-      screen.getByText(
-        '2 Dateien übersprungen (kein BPMN, größer als 5,0 MB oder gleicher Modellschlüssel wie eine BPMN-Datei)',
-      ),
-    ).toBeTruthy();
-    expect(
-      screen.getByText('vertrieb/Auftrag.xml – gleicher Modellschlüssel wie vertrieb/auftrag.bpmn'),
-    ).toBeTruthy();
-    expect(screen.getByText('export/meta.xml – kein BPMN')).toBeTruthy();
+    expect(within(rows[0]!).getByTestId('import-problem').textContent).toBe(
+      'Eine andere Datei dieses Imports bekommt denselben Kurznamen: vertrieb/auftrag.bpmn.',
+    );
+    expect(within(rows[0]!).getByTestId('technical-details').textContent).toContain(
+      'another file of this import has model key vertrieb/auftrag (vertrieb/auftrag.bpmn)',
+    );
+    // Up to three skipped files in one line, each with its reason.
+    expect(screen.getByTestId('import-skipped').textContent).toBe(
+      '2 Dateien übersprungen: vertrieb/Auftrag.xml (gleicher Kurzname wie vertrieb/auftrag.bpmn), export/meta.xml (kein BPMN)',
+    );
     expect(await findToast('1 von 2 Dateien nicht importiert')).toBeTruthy();
   });
 
@@ -271,16 +428,20 @@ describe('UploadPanel', () => {
           })),
         }),
     });
-    renderWithQuery(<UploadPanel project="demo" />);
+    await render();
     fireEvent.change(screen.getByTestId('file-input'), {
       target: { files: [new File(['<project/>'], 'pom.xml')] },
     });
     // Toasts of earlier tests stay up, so look for this one by its description.
     const toast = await findToast('Die XML-Dateien enthalten kein BPMN-Modell');
     expect(toast.textContent).toContain('Keine BPMN-Dateien gefunden');
-    expect(calls).toHaveLength(1);
-    expect(screen.getByText('pom.xml – kein BPMN')).toBeTruthy();
-    expect(screen.queryByText('0 Dateien importiert')).toBeNull();
+    expect(imports(calls)).toHaveLength(1);
+    expect(screen.getByTestId('import-skipped').textContent).toBe(
+      '1 Datei übersprungen: pom.xml (kein BPMN)',
+    );
+    expect(screen.getByTestId('import-headline').textContent).toBe(
+      'Kein Modell importiert · 1 übersprungen',
+    );
   });
 
   it("lists the extractor's too-many-warnings entry after the unlisted warnings", async () => {
@@ -303,7 +464,7 @@ describe('UploadPanel', () => {
           })),
         }),
     });
-    renderWithQuery(<UploadPanel project="demo" />);
+    await render();
     fireEvent.change(screen.getByTestId('file-input'), {
       target: { files: [new File(['<x/>'], 'viel.bpmn')] },
     });
@@ -317,13 +478,34 @@ describe('UploadPanel', () => {
     expect(items[20]!.textContent).toContain('150 more warnings omitted');
   });
 
-  it('marks the drop zone while files are dragged over it', () => {
+  it('marks the drop zone while files are dragged over it', async () => {
     stubApi({});
-    renderWithQuery(<UploadPanel project="demo" />);
+    await render();
     const zone = screen.getByTestId('dropzone');
     fireEvent.dragOver(zone, { dataTransfer: { dropEffect: 'none' } });
     expect(screen.getByText('Dateien hier ablegen')).toBeTruthy();
     fireEvent.dragLeave(zone);
-    expect(screen.getByText('BPMN-Dateien oder einen Ordner hierher ziehen')).toBeTruthy();
+    expect(screen.getByText('BPMN-Dateien oder einen Ordner hierher ziehen.')).toBeTruthy();
+    // the converter for tool exports, copyable; the limits only in a skip or an error
+    expect(screen.getByTestId('dropzone-convert').textContent).toContain(
+      'Export aus Signavio, ARIS oder Visio? Wandle ihn zuerst mit/analyzr-integrate:integrate-landscape',
+    );
+    expect(screen.getByTestId('dropzone').textContent).not.toMatch(/MB|50 Dateien/);
+  });
+
+  it('names more than three skipped files by count, all of them behind a disclosure', async () => {
+    const calls = stubApi({});
+    await render();
+    fireEvent.change(screen.getByTestId('file-input'), {
+      target: {
+        files: ['a.pdf', 'b.txt', 'c.md', 'd.yaml', 'e.png'].map((n) => new File(['x'], n)),
+      },
+    });
+    const line = await screen.findByTestId('import-skipped');
+    expect(line.querySelector('p')?.textContent).toBe(
+      '5 Dateien übersprungen: a.pdf (kein BPMN), b.txt (kein BPMN), c.md (kein BPMN) und 2 weitere',
+    );
+    expect(within(line).getAllByRole('listitem', { hidden: true })).toHaveLength(5);
+    expect(imports(calls)).toHaveLength(0);
   });
 });

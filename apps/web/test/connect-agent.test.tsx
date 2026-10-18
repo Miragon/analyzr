@@ -1,5 +1,5 @@
 import type { AgentToken, CreatedAgentToken } from '@analyzr/client';
-import { screen, waitFor, within } from '@testing-library/react';
+import { cleanup, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 
@@ -79,6 +79,10 @@ describe('ConnectAgent', () => {
     const name = screen.getByLabelText('Name');
     await user.clear(name);
     await user.type(name, 'Claude Code (Laptop)');
+    // name and button only; rights and validity under „Erweitert“ with today's defaults (UX7)
+    const advanced = screen.getByTestId('token-advanced');
+    expect(advanced.hasAttribute('open')).toBe(false);
+    await user.click(within(advanced).getByText('Erweitert: Rechte und Gültigkeit'));
     await user.click(screen.getByRole('checkbox', { name: /Schreiben/ }));
     await user.selectOptions(screen.getByLabelText('Gültigkeit'), '30');
     await user.click(screen.getByRole('button', { name: 'Token erstellen' }));
@@ -104,6 +108,22 @@ describe('ConnectAgent', () => {
     // the list is refreshed and shows the new token
     const table = await screen.findByRole('table', { name: 'Agent-Tokens' });
     expect(within(table).getByText('Claude Code (Laptop)')).toBeTruthy();
+  });
+
+  it('says how to start the agent as step 3, the placements once there is a chain', () => {
+    setup();
+    const step = screen.getByTestId('connect-start');
+    expect(within(step).getByText('3. Agent starten')).toBeTruthy();
+    expect(within(step).getByText('/analyzr:relations demo')).toBeTruthy();
+    expect(within(step).queryByText('/analyzr:placements demo')).toBeNull();
+    expect(step.textContent).toContain('Entscheiden kannst nur du.');
+    // the principle once on the page, in step 1's description
+    expect(screen.queryByText(/Entscheiden dürfen Agent-Tokens nie/)).toBeNull();
+    cleanup();
+    renderWithQuery(<ConnectAgent project="demo" origin={ORIGIN} hasChain />);
+    expect(
+      within(screen.getByTestId('connect-start')).getByText('/analyzr:placements demo'),
+    ).toBeTruthy();
   });
 
   it('offers Claude Desktop configurations for the repo checkout and for Docker', async () => {
@@ -170,12 +190,15 @@ describe('ConnectAgent', () => {
 
     const dialog = await screen.findByRole('alertdialog');
     expect(within(dialog).getByText('Token „Claude Desktop“ widerrufen?')).toBeTruthy();
-    // The 0.2.0 consequences: no-links withdrawn, judged models queued again, decisions stay.
-    const consequences = within(dialog).getByText(/Einwände/).textContent;
-    expect(consequences).toContain('Vorschläge und Einwände');
-    expect(consequences).toContain('alle Modelle, deren Paare er beurteilt hat');
-    expect(consequences).toContain('Entscheidungen bleiben');
-    expect(consequences).toContain('lass den Token stattdessen ablaufen');
+    // Two sentences: what stops at once, that decisions stay (UX7); the 0.2.0 consequences
+    // (judged models queued again, expire instead) under „Was passiert genau?“.
+    expect(within(dialog).getByText(/Einwände/).textContent).toBe(
+      'Clients mit diesem Token verlieren sofort den Zugriff, und seine offenen Vorschläge und Einwände werden zurückgezogen. Entscheidungen bleiben.',
+    );
+    const details = within(dialog).getByTestId('revoke-details');
+    expect(details.hasAttribute('open')).toBe(false);
+    expect(details.textContent).toContain('alle Modelle, deren Paare er beurteilt hat');
+    expect(details.textContent).toContain('lass den Token stattdessen ablaufen');
     expect(calls.some((c) => c.method === 'DELETE')).toBe(false);
     await user.click(within(dialog).getByRole('button', { name: 'Widerrufen' }));
 

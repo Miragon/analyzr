@@ -137,7 +137,13 @@ test('upload: a folder keeps its paths, so re-importing it changes nothing', asy
   await page.getByTestId('folder-input').setInputFiles(SAMPLE);
   await expect(page.getByTestId('import-outcome')).toHaveCount(3);
   await expect(page.locator('[data-testid=import-outcome][data-outcome=unchanged]')).toHaveCount(3);
+  await expect(page.getByTestId('import-headline')).toHaveText(
+    'Kein Modell importiert · 3 unverändert',
+  );
   await expect(page.getByRole('link', { name: CALL_FROM })).toBeVisible();
+  // what comes next, and the way back to „Übersicht“
+  await expect(page.getByTestId('upload-next')).toBeVisible();
+  await expect(page.getByTestId('upload-overview')).toHaveAttribute('href', `/projects/${PROJECT}`);
   await expect(page.getByTestId('toast').filter({ hasText: '3 Dateien importiert' })).toBeVisible();
 });
 
@@ -164,15 +170,25 @@ test('upload: extractor warnings per file in a disclosure, a plain XML skipped (
   await expect(row).toHaveCount(1);
   await expect(row).toContainText('doppelt');
   const warnings = row.getByTestId('import-warnings');
-  await expect(warnings.locator('summary')).toHaveText('1 Hinweis');
+  await expect(warnings.locator(':scope > summary')).toHaveText('1 Hinweis');
   await expect(warnings.getByTestId('import-warning')).toBeHidden();
-  await warnings.locator('summary').click();
+  await warnings.locator(':scope > summary').click();
   const warning = warnings.getByTestId('import-warning');
   await expect(warning).toBeVisible();
-  await expect(warning).toContainText('Unbekannter oder fehlerhafter Inhalt');
-  await expect(warning).toContainText('duplicate ID <Task_A>');
+  // UX7: in German, what it means and the fix; bpmn-moddle's English behind „Technische Details“
+  await expect(warning).toContainText(
+    '1 Element übersprungen, weil seine ID schon vergeben ist: Aufgabe „Task_A“.',
+  );
+  await expect(warning).toContainText('Es fehlt im Diagramm und in den Verbindungen.');
+  await warning.getByTestId('technical-details').locator('summary').click();
+  await expect(warning.getByTestId('technical-details')).toContainText('duplicate ID <Task_A>');
   // The plain XML is no model: listed with the skipped files, not as a failure.
-  await expect(page.getByText('1 Dateien übersprungen', { exact: false })).toBeVisible();
+  await expect(page.getByTestId('import-skipped')).toHaveText(
+    '1 Datei übersprungen: meta.xml (kein BPMN)',
+  );
+  await expect(page.getByTestId('import-headline')).toHaveText(
+    '1 Modell importiert · 1 übersprungen',
+  );
   await expect(page.getByTestId('toast').filter({ hasText: '1 Dateien importiert' })).toBeVisible();
 });
 

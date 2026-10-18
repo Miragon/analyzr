@@ -22,14 +22,20 @@ import { BPMN_FILE_SUFFIXES } from '@analyzr/contracts/paths';
 import {
   BPMN_ACCEPT,
   BPMN_SUFFIX_TEXT,
+  elementTypeLabel,
   entriesFromFileList,
+  fileProblemText,
   filesOf,
+  groupWarnings,
+  importHeadline,
   isSkippedXml,
   planUpload,
   skippedReasonText,
   stripRoot,
+  waitingText,
   warningCountText,
   warningDisplay,
+  warningGroupCount,
   warningLabel,
 } from '../src/lib/upload';
 import { relation, sampleRelations } from './support/fixtures';
@@ -112,6 +118,7 @@ describe('upload planning', () => {
           status: 422,
           code: 'validation-failed',
           detail: 'the path gives no valid model key',
+          reason: 'no-model-key',
         },
       },
       {
@@ -125,6 +132,8 @@ describe('upload planning', () => {
           code: 'validation-failed',
           detail:
             'another file of this import has model key vertrieb/auftrag (vertrieb/Auftrag.bpmn)',
+          reason: 'duplicate-key',
+          owner: 'vertrieb/Auftrag.bpmn',
         },
       },
     ]);
@@ -157,8 +166,8 @@ describe('upload planning', () => {
       ['order.xml', 'another file of this import has model key order (Order.xml)'],
     ]);
     expect(plan.skipped.map(skippedReasonText)).toEqual([
-      'gleicher Modellschlüssel wie Prozess.bpmn',
-      'zu groß',
+      'gleicher Kurzname wie Prozess.bpmn',
+      'größer als 5,0 MB',
     ]);
     expect(skippedReasonText({ path: 'a.yaml', reason: 'not-bpmn' })).toBe('kein BPMN');
   });
@@ -263,6 +272,112 @@ describe('upload planning', () => {
     const [part] = filesOf([{ path: 'vertrieb/auftrag.bpmn', file: file('auftrag.bpmn') }]);
     expect(part!.name).toBe('vertrieb/auftrag.bpmn');
     expect(part!.size).toBe(10);
+  });
+});
+
+describe('upload result (UX7)', () => {
+  const pw = (message: string, elementId?: string) => ({
+    code: 'parse-warning',
+    message,
+    ...(elementId ? { elementId } : {}),
+  });
+
+  it('groups skipped elements by cause and folds their shapes and references in', () => {
+    const groups = groupWarnings([
+      pw('unresolved reference <T1>', 'Flow_1'),
+      pw(
+        'unparsable content <bpmn:userTask> detected line: 3 column: 4 nested error: illegal ID <T1>',
+      ),
+      pw(
+        'unparsable content <bpmn:task> detected line: 5 column: 4 nested error: duplicate ID <T2>',
+      ),
+      pw(
+        'unparsable content <bpmndi:BPMNShape> detected line: 9 column: 4 nested error: illegal ID <T1_di>',
+      ),
+      // the extractor's own checks read the same
+      { code: 'invalid-id', message: '<bpmn:Task> id "a b" is not a valid element id; skipped' },
+      { code: 'duplicate-id', message: 'a second task with id T3 skipped', elementId: 'T3' },
+      // a reference to an element that was not skipped, a cut message: on their own
+      pw('unresolved reference <Elsewhere>'),
+      pw(
+        'unparsable content <bpmn:task> detected line: 7 column: 4 nested error: illegal ID <aaaa…',
+      ),
+    ]);
+    expect(groups.map((g) => (g.kind === 'skipped' ? g.cause : g.warning.message))).toEqual([
+      'invalid-id',
+      'duplicate-id',
+      'unresolved reference <Elsewhere>',
+      'unparsable content <bpmn:task> detected line: 7 column: 4 nested error: illegal ID <aaaa…',
+    ]);
+    const [invalid, duplicate] = groups;
+    expect(invalid).toMatchObject({
+      elements: [
+        { type: 'Benutzeraufgabe', id: 'T1' },
+        { type: 'Aufgabe', id: 'a b' },
+      ],
+    });
+    expect(invalid?.kind === 'skipped' && invalid.raw).toHaveLength(4);
+    expect(duplicate).toMatchObject({
+      elements: [
+        { type: 'Aufgabe', id: 'T2' },
+        { type: 'Element', id: 'T3' },
+      ],
+    });
+    // „N Hinweise“: one per skipped element, one per other entry, the unlisted too
+    expect(warningGroupCount(groups, 5)).toBe(4 + 2 + 5);
+  });
+
+  it('keeps a diagram line whose cause no element shares as an entry of its own', () => {
+    const groups = groupWarnings([
+      pw(
+        'unparsable content <sbpmndi:BPMNEdge> detected line: 4 column: 73 nested error: duplicate ID <E>',
+      ),
+    ]);
+    expect(groups).toEqual([
+      { kind: 'single', warning: expect.objectContaining({ code: 'parse-warning' }) as unknown },
+    ]);
+    expect(elementTypeLabel('bpmn:dataStoreReference')).toBe('Datenspeicher');
+    expect(elementTypeLabel('foo:bar')).toBe('Element');
+  });
+
+  it('heads the result with what happened, and says the progress while it runs', () => {
+    const o = (outcome: 'created' | 'revised' | 'unchanged' | 'failed') => ({ outcome });
+    expect(importHeadline([o('created'), o('revised'), o('failed')], 1)).toBe(
+      '2 Modelle importiert · 1 Fehler · 1 übersprungen',
+    );
+    expect(importHeadline([o('unchanged')], 0)).toBe('Kein Modell importiert · 1 unverändert');
+    expect(importHeadline([o('created')], 0, { total: 6 })).toBe('Importiere … 1 von 6 Dateien');
+  });
+
+  it('says why a file failed in German, by code, reason and encoding', () => {
+    const problem = (code: string, extra: Record<string, unknown> = {}) => ({
+      type: `urn:analyzr:problem:${code}`,
+      title: 'x',
+      status: 422,
+      code: code as 'bpmn-invalid',
+      ...extra,
+    });
+    expect(fileProblemText(problem('bpmn-invalid', { reason: 'not-bpmn' }))).toBe(
+      'Die Datei enthält kein BPMN-2.0-Modell.',
+    );
+    expect(fileProblemText(problem('bpmn-invalid', { reason: 'not-xml' }))).toMatch(
+      /^Die Datei ist kein vollständiges XML/,
+    );
+    expect(fileProblemText(problem('payload-too-large'))).toBe('Die Datei ist größer als 5,0 MB.');
+    expect(fileProblemText(problem('validation-failed', { reason: 'no-model-key' }))).toBe(
+      'Aus dem Pfad ergibt sich kein gültiger Kurzname.',
+    );
+    // any other problem: the shell's sentence for its code
+    expect(fileProblemText(problem('conflict'))).toBe(
+      'Das passt nicht mehr zum aktuellen Stand. Lade neu und prüf den neuen Stand.',
+    );
+  });
+
+  it('says what waits for the agent as `analyzr import` does', () => {
+    expect(waitingText(0, false)).toBeNull();
+    expect(waitingText(1, false)).toBe('1 Modell wartet auf den Agenten');
+    expect(waitingText(5, true)).toBe('5 Modelle und die Platzierungen warten auf den Agenten');
+    expect(waitingText(0, true)).toBe('Die Platzierungen warten auf den Agenten');
   });
 });
 

@@ -4,7 +4,7 @@ Status: **decided** (owner decision 26, 2026-10-18: every "Ask now" question of 
 the recommended option; HANDOFF §4); proposal of 2026-10-17, revised the same day after a UX and a
 feasibility critique · Branch: `feat/integration-and-gaps` (the first wave UX2a, UX1 and UX2b
 delivered on it on 2026-10-18, §7; the owner's walkthrough the same day, §7 "Owner
-walkthrough"; next UX7) · Source: four user-need audits of the web UI on the agent-created scratch stack
+walkthrough"; UX7 delivered the same day; next UX8) · Source: four user-need audits of the web UI on the agent-created scratch stack
 `analyzr-uxaudit` (seeded `nordwind-handel` with its chain and a simulation agent run,
 `signavio-beispiel` from the CLI bundle import, two projects made from the raw synthetic Signavio
 export; 1440x900 and 390x844), torn down after the audit · Relates to: HANDOFF §4 decisions 8, 10,
@@ -1679,6 +1679,47 @@ Signavio fixture (`tools/integrate/test/fixtures/signavio/2026-10-14-signavio`) 
 naming 2 elements (9 lines today), the UTF-16 error is German with its remedy, and the next-step box
 names the same waiting tasks as `formatNextSteps`; upload words before an import 71 → at most 45;
 the token form shows name and button only.
+
+**UX7 as delivered** (2026-10-18, on the branch, every gate green; DEVELOPMENT.md "UX7"). One
+structured cause below the web, the rest web only: `@analyzr/bpmn-facts`' `BpmnInputError` carries
+`encoding` (`utf-16`, `not-utf-8`) on a `not-xml` whose cause is the encoding (facts and
+`facts_hash` unchanged), the server puts it into the 422 `bpmn-invalid` problem next to `reason`
+(`extractError`), and `ImportFileOutcome.problem`'s doc in the contracts names both members (no
+schema change, the client regenerates without drift). „Hochladen“ (`components/upload-panel.tsx`,
+`lib/upload.ts`): the dropzone in 38 words („BPMN-Dateien oder einen Ordner hierher ziehen.“, on
+touch „… auswählen.“, „Der Ordnerpfad wird zum Kurznamen, z. B. finanzen/mahnwesen.“, the converter
+with a copy button; the limits only in a skip or an error); the headline counts what happened
+(`importHeadline`); „Als Nächstes“ below it names what waits for the agent as `formatNextSteps`
+does (the models in `waiting_for_agent`, the chain's queued placement task) with „Agent starten“
+or „Agent verbinden“, the questions there are already, and „Zur Übersicht“, a placeholder until
+the project's queries have refreshed; one column „Modell“ with the file's path below; a failed
+file in German by code, `reason` and `encoding` (`fileProblemText`; the local refusals carry their
+own `reason`, `no-model-key` and `duplicate-key`), the server's words behind „Technische Details“;
+the warnings grouped (`groupWarnings`: elements skipped for an invalid or a used id in one entry
+per cause, typed in German, their shapes and the references to them folded in, „Sie fehlen im
+Diagramm und in den Verbindungen. Mit /analyzr-integrate:integrate-landscape bereinigen und erneut
+hochladen.“; every skipped element one „Hinweis“, so the integrate skill's „N Hinweise“ stays
+true); the skipped files in one line, up to three with their reason („gleicher Kurzname wie …“,
+„größer als 5,0 MB“). „Agent verbinden“ (`components/connect-agent.tsx`): the token form shows
+the name and „Token erstellen“, „Erweitert: Rechte und Gültigkeit“ closed with today's defaults,
+the principle once in step 1's description; step 3 „Agent starten“ inline (`StartCommands`, the
+popover's content, `components/agent-start.tsx`); the token's prefix below its name instead of a
+column; revoking says two sentences, the rest under „Was passiert genau?“. Measured with the UI
+load guard on the scratch stack `analyzr-ux7` (the raw Signavio export imported into a project of
+its own per run):
+
+| Done when | Before | After (UX7) |
+|---|---|---|
+| Headline for the raw Signavio export | „Import abgeschlossen: 6 Dateien“ | „5 Modelle importiert · 1 Fehler · 1 übersprungen“ |
+| „Bonitätsprüfung.bpmn“ | „9 Hinweise“, each „Unbekannter oder fehlerhafter Inhalt“ with bpmn-moddle's English | „2 Hinweise“, one entry: „2 Elemente übersprungen, weil ihre ID ungültig ist: Aufgabe „Aufgabe_Bonität_prüfen“, Datenspeicher „4711“.“, what it means and the fix |
+| The UTF-16 file | „BPMN must be UTF-8 encoded; UTF-16 is not supported“ | „Die Datei ist UTF-16-kodiert; analyzr liest nur UTF-8. Speichere sie als UTF-8 oder wandle den Export mit /analyzr-integrate:integrate-landscape um.“ |
+| Next step after the import | none | „5 Modelle warten auf den Agenten · Agent verbinden“ = the 5 queued relations tasks `analyzr import` names; „6 offene Fragen gibt es schon jetzt · Offene Fragen ansehen“ |
+| Words before an import | 71 | 38 in the dropzone (≤ 45), 49 on the whole page, 13 controls |
+| Token form | name, three rights, validity, button (6 controls, 2 hints) | name and button (2 visible controls) |
+
+The walkthrough's question cards, measured on the same stack: „Offene Fragen“ 76 controls as
+before, 710 words at 1440 px (643 before the button; ≤ 1,000). Not verified: other browsers than
+Chromium, a real phone (the touch text is `pointer-coarse`), a screen reader.
 
 **UX8 "S2a's web parts".** §6 without the „Vorschau“: `packages/contracts/src/api/models.ts`
 (`Model.source`), the server's model read and a server test, the client; `components/upload-panel.tsx`,

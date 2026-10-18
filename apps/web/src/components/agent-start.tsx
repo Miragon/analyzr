@@ -36,6 +36,41 @@ function Command({ text, label }: { text: string; label: string }) {
   );
 }
 
+/**
+ * How to start the agent: the skill commands to copy, the Claude Desktop
+ * start prompt, and that only humans decide. The popover's content, and step
+ * 3 of „Agent verbinden“ inline.
+ */
+export function StartCommands({ project, hasChain }: { project: string; hasChain: boolean }) {
+  return (
+    <>
+      <p className="text-muted-foreground">In Claude Code mit dem analyzr-Plugin:</p>
+      <Command text={`/analyzr:relations ${project}`} label="Befehl für die Relationen kopieren" />
+      {hasChain ? (
+        <Command
+          text={`/analyzr:placements ${project}`}
+          label="Befehl für die Platzierungen kopieren"
+        />
+      ) : null}
+      <a
+        href={DESKTOP_PROMPT_URL}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="inline-flex items-center gap-1 self-start text-link hover:underline"
+      >
+        Startprompt für Claude Desktop
+        <ExternalLinkIcon className="size-3.5" aria-hidden />
+      </a>
+      <p className="text-muted-foreground">
+        {hasChain
+          ? 'Die Vorschläge erscheinen unter „Relationen“ und auf der „Wertschöpfungskette“.'
+          : 'Die Vorschläge erscheinen unter „Relationen“.'}{' '}
+        Entscheiden kannst nur du.
+      </p>
+    </>
+  );
+}
+
 /** The popover's content: the commands, or the way to a token first. */
 export function AgentStartPanel({
   project,
@@ -60,31 +95,9 @@ export function AgentStartPanel({
     );
   }
   return (
-    <div className="flex w-[22rem] flex-col gap-2 p-2" data-testid="agent-start">
+    <div className="flex w-[22rem] max-w-full flex-col gap-2 p-2" data-testid="agent-start">
       <p className="font-semibold">Agent starten</p>
-      <p className="text-muted-foreground">In Claude Code mit dem analyzr-Plugin:</p>
-      <Command text={`/analyzr:relations ${project}`} label="Befehl für die Relationen kopieren" />
-      {hasChain ? (
-        <Command
-          text={`/analyzr:placements ${project}`}
-          label="Befehl für die Platzierungen kopieren"
-        />
-      ) : null}
-      <a
-        href={DESKTOP_PROMPT_URL}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="inline-flex items-center gap-1 self-start text-link hover:underline"
-      >
-        Startprompt für Claude Desktop
-        <ExternalLinkIcon className="size-3.5" aria-hidden />
-      </a>
-      <p className="text-muted-foreground">
-        {hasChain
-          ? 'Die Vorschläge erscheinen unter „Relationen“ und auf der „Wertschöpfungskette“.'
-          : 'Die Vorschläge erscheinen unter „Relationen“.'}{' '}
-        Entscheiden kannst nur du.
-      </p>
+      <StartCommands project={project} hasChain={hasChain} />
     </div>
   );
 }

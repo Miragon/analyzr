@@ -49,6 +49,7 @@ function startsWith(bytes: Uint8Array, prefix: readonly number[]): boolean {
  *
  * @returns the decoded XML text, without a byte order mark
  * @throws {BpmnInputError} `too-large`, `doctype-forbidden`, `entity-forbidden` or `not-xml`
+ *   (with `encoding` for UTF-16 and for bytes that are not UTF-8)
  */
 export function assertSafeXml(xml: string | Uint8Array, limits?: Partial<ParseLimits>): string {
   const { maxBytes } = resolveLimits(limits);
@@ -61,7 +62,11 @@ export function assertSafeXml(xml: string | Uint8Array, limits?: Partial<ParseLi
   } else {
     if (xml.byteLength > maxBytes) throw tooLarge(xml.byteLength, maxBytes);
     if (startsWith(xml, [0xfe, 0xff]) || startsWith(xml, [0xff, 0xfe])) {
-      throw new BpmnInputError('not-xml', 'BPMN must be UTF-8 encoded; UTF-16 is not supported');
+      throw new BpmnInputError(
+        'not-xml',
+        'BPMN must be UTF-8 encoded; UTF-16 is not supported',
+        'utf-16',
+      );
     }
     try {
       text = UTF8.decode(xml); // strips a UTF-8 BOM
@@ -69,6 +74,7 @@ export function assertSafeXml(xml: string | Uint8Array, limits?: Partial<ParseLi
       throw new BpmnInputError(
         'not-xml',
         'BPMN must be UTF-8 encoded; the bytes are not valid UTF-8',
+        'not-utf-8',
       );
     }
   }

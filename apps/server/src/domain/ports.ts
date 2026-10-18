@@ -1366,8 +1366,12 @@ export interface Extracted {
   warnings: ExtractWarning[];
 }
 
-/** Why a file was rejected (BpmnInputError codes of `@analyzr/bpmn-facts`). */
-export type ExtractFailure = { code: string; message: string };
+/**
+ * Why a file was rejected (BpmnInputError codes of `@analyzr/bpmn-facts`);
+ * `encoding` where a `not-xml` rejection's cause is the encoding (`utf-16`,
+ * `not-utf-8`).
+ */
+export type ExtractFailure = { code: string; message: string; encoding?: string };
 
 export type ExtractOutcome = { ok: true; value: Extracted } | { ok: false; error: ExtractFailure };
 

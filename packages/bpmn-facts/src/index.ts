@@ -34,7 +34,7 @@ export type {
   NormalizedAmendmentValue,
 } from './amend.ts';
 export { BpmnInputError } from './errors.ts';
-export type { BpmnInputErrorCode } from './errors.ts';
+export type { BpmnInputEncoding, BpmnInputErrorCode } from './errors.ts';
 export { DEFAULT_PARSE_LIMITS, assertSafeXml } from './input.ts';
 export type { ParseLimits } from './input.ts';
 export { BPMN_MODEL_NAMESPACE, MAX_WARNINGS, extractFacts } from './extract.ts';

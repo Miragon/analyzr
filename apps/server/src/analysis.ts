@@ -32,7 +32,14 @@ function toExtracted(result: ExtractResult): Extracted {
 /** A `BpmnInputError` as a value; anything else is a bug and propagates. */
 function rejected(err: unknown): { ok: false; error: ExtractFailure } {
   if (err instanceof BpmnInputError) {
-    return { ok: false, error: { code: err.code, message: err.message } };
+    return {
+      ok: false,
+      error: {
+        code: err.code,
+        message: err.message,
+        ...(err.encoding === undefined ? {} : { encoding: err.encoding }),
+      },
+    };
   }
   throw err;
 }

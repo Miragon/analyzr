@@ -264,7 +264,15 @@ export const ImportFileOutcome = z
      */
     modelKey: orNull(ModelKey),
     outcome: z.enum(['created', 'revised', 'unchanged', 'failed']),
-    /** Set when `outcome` is `failed`. */
+    /**
+     * Set when `outcome` is `failed`. A file `@analyzr/bpmn-facts` rejects is
+     * 422 `bpmn-invalid` with the rejection's code as `reason` (`not-xml`,
+     * `not-bpmn`, `doctype-forbidden`, `entity-forbidden`,
+     * `too-many-elements`, `invalid-model-key`) and, for a `not-xml` whose
+     * cause is the encoding, `encoding` (`utf-16`, `not-utf-8`); a file above
+     * 5 MB is 413 `payload-too-large`. `PUT …/models/by-key/{key}` answers
+     * the same problem.
+     */
     problem: orNull(ApiProblem),
     ...resultWarnings,
     ...resultAmendments,

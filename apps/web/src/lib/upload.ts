@@ -10,7 +10,9 @@ import {
   modelKeyOwners,
 } from '@analyzr/contracts/paths';
 
+import { formatBytes } from './labels';
 import { MAX_IMPORT_BYTES, MAX_IMPORT_FILES, MAX_MODEL_BYTES, PROBLEM_TYPE_BASE } from './limits';
+import { problemText } from './problem-texts';
 
 /** A file picked or dropped for import, with its path below the import root. */
 export interface UploadEntry {
@@ -100,15 +102,15 @@ export type SkippedFile =
   | { path: string; reason: 'not-bpmn' | 'too-large' }
   | { path: string; reason: 'key-taken'; takenBy: string };
 
-/** Why a file was skipped, in German: „kein BPMN“, „zu groß“, „gleicher Modellschlüssel wie Prozess.bpmn“. */
+/** Why a file was skipped, in German: „kein BPMN“, „größer als 5,0 MB“, „gleicher Kurzname wie Prozess.bpmn“. */
 export function skippedReasonText(skipped: SkippedFile): string {
   switch (skipped.reason) {
     case 'not-bpmn':
       return 'kein BPMN';
     case 'too-large':
-      return 'zu groß';
+      return `größer als ${formatBytes(MAX_MODEL_BYTES)}`;
     case 'key-taken':
-      return `gleicher Modellschlüssel wie ${skipped.takenBy}`;
+      return `gleicher Kurzname wie ${skipped.takenBy}`;
   }
 }
 
@@ -125,8 +127,17 @@ export interface UploadPlan {
   failed: ImportFileOutcome[];
 }
 
-/** A `validation-failed` outcome decided before sending, worded as the server words it. */
-function failedLocally(path: string, modelKey: string | null, detail: string): ImportFileOutcome {
+/**
+ * A `validation-failed` outcome decided before sending, worded as the server
+ * words it, with its `reason` for the German text ({@link fileProblemText}):
+ * `no-model-key`, or `duplicate-key` with the file that gets the key (`owner`).
+ */
+function failedLocally(
+  path: string,
+  modelKey: string | null,
+  detail: string,
+  why: { reason: 'no-model-key' } | { reason: 'duplicate-key'; owner: string },
+): ImportFileOutcome {
   return {
     path,
     modelKey,
@@ -137,6 +148,7 @@ function failedLocally(path: string, modelKey: string | null, detail: string): I
       status: 422,
       code: 'validation-failed',
       detail,
+      ...why,
     },
   };
 }
@@ -183,7 +195,11 @@ export function planUpload(
     }
     const key = modelKeyFromPath(entry.path);
     if (key === null) {
-      failed.push(failedLocally(entry.path, null, 'the path gives no valid model key'));
+      failed.push(
+        failedLocally(entry.path, null, 'the path gives no valid model key', {
+          reason: 'no-model-key',
+        }),
+      );
       continue;
     }
     const takenBy = keyTakenBy(entry.path, owners);
@@ -198,6 +214,7 @@ export function planUpload(
           entry.path,
           key,
           `another file of this import has model key ${key} (${owner})`,
+          { reason: 'duplicate-key', owner },
         ),
       );
       continue;
@@ -251,6 +268,236 @@ const WARNING_LABELS: Readonly<Record<string, string>> = {
 /** The German label of a warning code; an unknown code shows the code itself. */
 export function warningLabel(code: string): string {
   return Object.hasOwn(WARNING_LABELS, code) ? (WARNING_LABELS[code] ?? code) : code;
+}
+
+/** The converter skill that cleans up an export (M6 S3), named in remedies. */
+export const INTEGRATE_SKILL = '/analyzr-integrate:integrate-landscape';
+
+/** BPMN element types in German, by their local name; others read „Element“. */
+const ELEMENT_TYPES: Readonly<Record<string, string>> = {
+  task: 'Aufgabe',
+  userTask: 'Benutzeraufgabe',
+  serviceTask: 'Serviceaufgabe',
+  sendTask: 'Sendeaufgabe',
+  receiveTask: 'Empfangsaufgabe',
+  manualTask: 'Manuelle Aufgabe',
+  scriptTask: 'Skriptaufgabe',
+  businessRuleTask: 'Geschäftsregelaufgabe',
+  callActivity: 'Aufrufaktivität',
+  subProcess: 'Teilprozess',
+  transaction: 'Transaktion',
+  startEvent: 'Startereignis',
+  endEvent: 'Endereignis',
+  intermediateThrowEvent: 'Zwischenereignis',
+  intermediateCatchEvent: 'Zwischenereignis',
+  boundaryEvent: 'Randereignis',
+  exclusiveGateway: 'Gateway',
+  inclusiveGateway: 'Gateway',
+  parallelGateway: 'Gateway',
+  eventBasedGateway: 'Gateway',
+  complexGateway: 'Gateway',
+  sequenceFlow: 'Sequenzfluss',
+  messageFlow: 'Nachrichtenfluss',
+  dataStoreReference: 'Datenspeicher',
+  dataObjectReference: 'Datenobjekt',
+  dataObject: 'Datenobjekt',
+  participant: 'Pool',
+  lane: 'Lane',
+  process: 'Prozess',
+  textAnnotation: 'Textanmerkung',
+  association: 'Assoziation',
+  message: 'Nachricht',
+  signal: 'Signal',
+};
+
+/** `bpmn:dataStoreReference` (an XML tag) or `bpmn:DataStoreReference` (a moddle type) → „Datenspeicher“. */
+export function elementTypeLabel(type: string): string {
+  const name = type.slice(type.indexOf(':') + 1);
+  const local = name.charAt(0).toLowerCase() + name.slice(1);
+  return Object.hasOwn(ELEMENT_TYPES, local) ? (ELEMENT_TYPES[local] ?? 'Element') : 'Element';
+}
+
+/** An element the parser skipped, as its warning names it. */
+export interface SkippedElement {
+  /** The German type („Aufgabe“), „Element“ where the message names none. */
+  type: string;
+  id: string;
+}
+
+/** Why elements were skipped: an id that is not a valid XML or element id, or a second use of one. */
+export type SkipCause = 'invalid-id' | 'duplicate-id';
+
+/**
+ * A file's warnings as the result lists them (UX-SIMPLIFICATION.md §3.9 item
+ * 3): the elements skipped for the same cause in one entry, the lines about
+ * their diagram shapes and the references to them folded into it (`raw`
+ * keeps every message for „Technische Details“); every other warning one
+ * entry of its own.
+ */
+export type WarningGroup =
+  | { kind: 'skipped'; cause: SkipCause; elements: SkippedElement[]; raw: ExtractWarning[] }
+  | { kind: 'single'; warning: ExtractWarning };
+
+/** bpmn-moddle's message for an element it could not read: its type, and the id's fault. */
+const UNPARSABLE =
+  /^unparsable content <([^>]+)> detected\b.*\bnested error: (illegal|duplicate) ID <([^>]*)>/;
+const UNRESOLVED = /^unresolved reference <([^>]*)>/;
+/** The extractor's own: `<bpmn:Task> id "x y" is not a valid element id; skipped`. */
+const INVALID_ID = /^<([^>]+)> id (".*") is not a valid element id; skipped$/;
+
+/** A shape, edge or other diagram element (`bpmndi:BPMNShape`, Signavio's `sbpmndi:…`). */
+const isDiagramType = (type: string) => /(^|:)BPMN[A-Z]\w*$/.test(type) || /^\w*di:/i.test(type);
+
+function parseJsonString(text: string): string | null {
+  try {
+    const value: unknown = JSON.parse(text);
+    return typeof value === 'string' ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The element a warning says was skipped, with its cause; `null` for any other warning. */
+function skippedOf(w: ExtractWarning): { cause: SkipCause; type: string; id: string } | null {
+  if (w.code === 'parse-warning') {
+    const m = UNPARSABLE.exec(w.message);
+    if (!m) return null;
+    const [, type = '', fault, id = ''] = m;
+    return { cause: fault === 'illegal' ? 'invalid-id' : 'duplicate-id', type, id };
+  }
+  if (w.code === 'invalid-id') {
+    const m = INVALID_ID.exec(w.message);
+    const id = m?.[2] === undefined ? null : parseJsonString(m[2]);
+    return id === null ? null : { cause: 'invalid-id', type: m?.[1] ?? '', id };
+  }
+  if (w.code === 'duplicate-id' && w.elementId)
+    return { cause: 'duplicate-id', type: '', id: w.elementId };
+  return null;
+}
+
+/**
+ * Groups a file's listed warnings ({@link warningDisplay}`.listed`) for
+ * display: skipped elements by cause, in the order their first element
+ * appears; a diagram shape of the same cause and an unresolved reference to
+ * a skipped element fold into that entry. A diagram line without a skipped
+ * element of its cause, and every other warning, stays an entry of its own.
+ */
+export function groupWarnings(listed: readonly ExtractWarning[]): WarningGroup[] {
+  type Skipped = Extract<WarningGroup, { kind: 'skipped' }>;
+  const parsed = listed.map(skippedOf);
+  const byCause = new Map<SkipCause, Skipped>();
+  const byElement = new Map<string, Skipped>();
+  // The elements first, so a shape or a reference listed before its element still folds in.
+  for (const s of parsed) {
+    if (s === null || isDiagramType(s.type)) continue;
+    let group = byCause.get(s.cause);
+    if (!group) {
+      group = { kind: 'skipped', cause: s.cause, elements: [], raw: [] };
+      byCause.set(s.cause, group);
+    }
+    if (!byElement.has(s.id)) {
+      group.elements.push({ type: s.type === '' ? 'Element' : elementTypeLabel(s.type), id: s.id });
+      byElement.set(s.id, group);
+    }
+  }
+  const out: WarningGroup[] = [];
+  const placed = new Set<Skipped>();
+  for (const [i, w] of listed.entries()) {
+    const s = parsed[i];
+    const reference = w.code === 'parse-warning' ? UNRESOLVED.exec(w.message)?.[1] : undefined;
+    const group = s
+      ? byCause.get(s.cause)
+      : reference === undefined
+        ? undefined
+        : byElement.get(reference);
+    if (group === undefined) {
+      out.push({ kind: 'single', warning: w });
+      continue;
+    }
+    group.raw.push(w);
+    if (!placed.has(group)) {
+      placed.add(group);
+      out.push(group);
+    }
+  }
+  return out;
+}
+
+/** „Aufgabe „X“, Datenspeicher „4711““. */
+function elementsText(elements: readonly SkippedElement[]): string {
+  return elements.map((e) => `${e.type} „${e.id}“`).join(', ');
+}
+
+/**
+ * The sentence of a skipped group: „2 Elemente übersprungen, weil ihre ID
+ * ungültig ist: Aufgabe „Aufgabe_Bonität_prüfen“, Datenspeicher „4711“.“ and
+ * what that means, „Sie fehlen im Diagramm und in den Verbindungen.“
+ */
+export function skippedGroupText(group: Extract<WarningGroup, { kind: 'skipped' }>): {
+  what: string;
+  effect: string;
+} {
+  const one = group.elements.length === 1;
+  const count = one ? '1 Element' : `${group.elements.length} Elemente`;
+  const why =
+    group.cause === 'invalid-id'
+      ? `weil ${one ? 'seine' : 'ihre'} ID ungültig ist`
+      : `weil ${one ? 'seine' : 'ihre'} ID schon vergeben ist`;
+  return {
+    what: `${count} übersprungen, ${why}: ${elementsText(group.elements)}.`,
+    effect: `${one ? 'Es fehlt' : 'Sie fehlen'} im Diagramm und in den Verbindungen.`,
+  };
+}
+
+/**
+ * „N Hinweise“ of a file: every skipped element counts once, every other
+ * entry once, and the warnings the server did not list (`unlisted`) too.
+ */
+export function warningGroupCount(groups: readonly WarningGroup[], unlisted: number): number {
+  return groups.reduce((n, g) => n + (g.kind === 'skipped' ? g.elements.length : 1), 0) + unlisted;
+}
+
+/** What the server said about a file, for „Technische Details“: `Validation failed (422): …`. */
+export function problemDetail(problem: NonNullable<ImportFileOutcome['problem']>): string {
+  return `${problem.title} (${problem.status})${problem.detail ? `: ${problem.detail}` : ''}`;
+}
+
+/**
+ * Why a file was not imported, in German (UX-SIMPLIFICATION.md §3.9 item 5),
+ * by the problem's code, `reason` and `encoding` (M6 contracts:
+ * `ImportFileOutcome.problem`), with the remedy where there is one; the
+ * server's English words are {@link problemDetail}.
+ */
+export function fileProblemText(problem: NonNullable<ImportFileOutcome['problem']>): string {
+  const reason = problem['reason'];
+  const remedy = `Speichere sie als UTF-8 oder wandle den Export mit ${INTEGRATE_SKILL} um.`;
+  if (problem.code === 'bpmn-invalid') {
+    switch (reason) {
+      case 'not-xml':
+        if (problem['encoding'] === 'utf-16')
+          return `Die Datei ist UTF-16-kodiert; analyzr liest nur UTF-8. ${remedy}`;
+        if (problem['encoding'] === 'not-utf-8')
+          return `Die Datei ist nicht UTF-8-kodiert (oft ISO-8859-1 oder Windows-1252); analyzr liest nur UTF-8. ${remedy}`;
+        return 'Die Datei ist kein vollständiges XML, zum Beispiel fehlt ein schließendes Element. Exportier das Modell erneut.';
+      case 'not-bpmn':
+        return 'Die Datei enthält kein BPMN-2.0-Modell.';
+      case 'doctype-forbidden':
+      case 'entity-forbidden':
+        return 'Die Datei enthält eine DOCTYPE- oder ENTITY-Angabe; solche Dateien liest analyzr aus Sicherheitsgründen nicht. Entferne die Angabe und lade die Datei erneut hoch.';
+      case 'too-many-elements':
+        return 'Das Modell hat mehr als 50.000 XML-Elemente; teile es auf mehrere Dateien auf.';
+      case 'invalid-model-key':
+        return 'Aus dem Pfad ergibt sich kein gültiger Kurzname.';
+    }
+  }
+  if (problem.code === 'payload-too-large')
+    return `Die Datei ist größer als ${formatBytes(MAX_MODEL_BYTES)}.`;
+  if (problem.code === 'validation-failed') {
+    if (reason === 'no-model-key') return 'Aus dem Pfad ergibt sich kein gültiger Kurzname.';
+    if (reason === 'duplicate-key' && typeof problem['owner'] === 'string')
+      return `Eine andere Datei dieses Imports bekommt denselben Kurznamen: ${problem['owner']}.`;
+  }
+  return problemText(problem.code, reason);
 }
 
 /** A file's warnings as the result lists them, split for display. */
@@ -326,4 +573,78 @@ export function filesOf(batch: readonly UploadEntry[]): File[] {
         lastModified: file.lastModified,
       }),
   );
+}
+
+/** `1 Datei`, `3 Dateien`. */
+function fileCount(n: number): string {
+  return n === 1 ? '1 Datei' : `${n} Dateien`;
+}
+
+/**
+ * The result's headline (UX-SIMPLIFICATION.md §3.9 item 1): „5 Modelle
+ * importiert · 1 Fehler · 1 übersprungen“, only the non-zero parts besides
+ * the imported (created or revised) models; while it runs „Importiere … 3
+ * von 6 Dateien“.
+ */
+export function importHeadline(
+  outcomes: readonly Pick<ImportFileOutcome, 'outcome'>[],
+  skipped: number,
+  progress?: { total: number },
+): string {
+  if (progress) return `Importiere … ${outcomes.length} von ${fileCount(progress.total)}`;
+  const count = (o: ImportFileOutcome['outcome']) => outcomes.filter((x) => x.outcome === o).length;
+  const imported = count('created') + count('revised');
+  const parts = [
+    imported === 0
+      ? 'Kein Modell importiert'
+      : `${imported === 1 ? '1 Modell' : `${imported} Modelle`} importiert`,
+    count('unchanged') > 0 ? `${count('unchanged')} unverändert` : null,
+    count('failed') > 0 ? `${count('failed')} Fehler` : null,
+    skipped > 0 ? `${skipped} übersprungen` : null,
+  ];
+  return parts.filter((p) => p !== null).join(' · ');
+}
+
+/** Skipped files the result names inline; the rest under „und N weitere“. */
+export const SKIPPED_INLINE = 3;
+
+/**
+ * The skipped files in one line (§3.9 item 5): „1 Datei übersprungen:
+ * Prozesslandkarte.pdf (kein BPMN)“, at most {@link SKIPPED_INLINE} named,
+ * the rest counted („und 2 weitere“).
+ */
+export function skippedText(skipped: readonly SkippedFile[]): { text: string; more: number } {
+  const named = skipped
+    .slice(0, SKIPPED_INLINE)
+    .map((s) => `${s.path} (${skippedReasonText(s)})`)
+    .join(', ');
+  const more = Math.max(0, skipped.length - SKIPPED_INLINE);
+  return {
+    text: `${fileCount(skipped.length)} übersprungen: ${named}${more > 0 ? ` und ${more} weitere` : ''}`,
+    more,
+  };
+}
+
+/**
+ * What waits for an agent after an import, as `analyzr import` says it
+ * (`formatNextSteps`): the models whose relations task is queued (their
+ * stage `waiting_for_agent`) and the chain's placement task when it is
+ * queued; `null` when nothing waits.
+ */
+export function waitingText(waitingModels: number, placementQueued: boolean): string | null {
+  if (waitingModels === 0 && !placementQueued) return null;
+  if (waitingModels === 0) return 'Die Platzierungen warten auf den Agenten';
+  const models = waitingModels === 1 ? '1 Modell' : `${waitingModels} Modelle`;
+  if (placementQueued) return `${models} und die Platzierungen warten auf den Agenten`;
+  return waitingModels === 1
+    ? '1 Modell wartet auf den Agenten'
+    : `${models} warten auf den Agenten`;
+}
+
+/** „9 offene Fragen gibt es schon jetzt“; `null` for none. */
+export function askNowText(ask: number): string | null {
+  if (ask === 0) return null;
+  return ask === 1
+    ? '1 offene Frage gibt es schon jetzt'
+    : `${ask} offene Fragen gibt es schon jetzt`;
 }

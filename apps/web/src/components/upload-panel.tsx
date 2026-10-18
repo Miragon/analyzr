@@ -1,9 +1,10 @@
 import { importModels } from '@analyzr/client';
 import type { ExtractWarning, ImportFileOutcome } from '@analyzr/client';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { cn } from 'cn';
 import {
+  ArrowRightIcon,
   CircleCheckIcon,
   CircleDashedIcon,
   CircleXIcon,
@@ -15,10 +16,13 @@ import {
 } from 'lucide-react';
 import { useRef, useState, type DragEvent, type ReactNode } from 'react';
 
+import { AgentStart } from '@/components/agent-start';
 import { ToneBadge } from '@/components/badges';
+import { CopyButton } from '@/components/copy-button';
 import { TechnicalDetails } from '@/components/error-text';
 import { toast } from '@/lib/toast';
 import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Spinner } from '@/components/ui/spinner';
 import {
   Table,
@@ -30,25 +34,34 @@ import {
 } from '@/components/ui/table';
 import { api, errorDetail, errorMessage, unwrap } from '@/lib/api';
 import type { Tone } from '@/lib/labels';
-import { MAX_IMPORT_FILES, MAX_MODEL_BYTES } from '@/lib/limits';
-import { formatBytes } from '@/lib/labels';
-import { keys } from '@/lib/queries';
+import { keys, modelsQuery, openQuestionSummaryQuery, valueChainQuery } from '@/lib/queries';
 import {
   BPMN_ACCEPT,
   BPMN_SUFFIX_TEXT,
+  INTEGRATE_SKILL,
   amendmentCountsText,
+  askNowText,
   entriesFromDataTransfer,
   entriesFromFileList,
+  fileProblemText,
   filesOf,
+  groupWarnings,
+  importHeadline,
   isSkippedXml,
   planUpload,
+  problemDetail,
+  skippedGroupText,
   skippedReasonText,
+  skippedText,
+  waitingText,
   warningCountText,
   warningDisplay,
+  warningGroupCount,
   warningLabel,
   type SkippedFile,
   type UploadEntry,
   type UploadPlan,
+  type WarningGroup,
 } from '@/lib/upload';
 
 const OUTCOMES: Record<
@@ -71,6 +84,8 @@ interface UploadRun {
   outcomes: RowOutcome[];
   skipped: SkippedFile[];
   done: boolean;
+  /** The files that are sent or failed before sending (the progress' whole). */
+  total: number;
 }
 
 interface ImportProgress {
@@ -124,9 +139,44 @@ async function runImport(
   return { outcomes, skipped };
 }
 
+/** One entry of a file's warnings: a group of skipped elements, or a single warning. */
+function WarningEntry({ group }: { group: WarningGroup }) {
+  if (group.kind === 'skipped') {
+    const { what, effect } = skippedGroupText(group);
+    return (
+      <li data-testid="import-warning" data-code={group.cause} className="flex flex-col gap-0.5">
+        <span className="font-medium text-foreground">{what}</span>
+        <span>
+          {effect} Mit <code className="font-mono">{INTEGRATE_SKILL}</code> bereinigen und erneut
+          hochladen.
+        </span>
+        <TechnicalDetails detail={group.raw.map((w) => w.message).join('\n')} />
+      </li>
+    );
+  }
+  const w = group.warning;
+  return (
+    <li data-testid="import-warning" data-code={w.code} className="flex flex-col gap-0.5">
+      <span>
+        <span className="font-medium text-foreground">{warningLabel(w.code)}</span>
+        {w.elementId ? (
+          <>
+            {' '}
+            <code className="font-mono">{w.elementId}</code>
+          </>
+        ) : null}
+      </span>
+      <TechnicalDetails detail={w.message} />
+    </li>
+  );
+}
+
 /**
- * The extractor's warnings of one file: „3 Hinweise“, the entries in a disclosure (M6 S1).
- * Beyond the extractor's 100, its own entry („Weitere Hinweise ausgelassen“) comes last.
+ * The extractor's warnings of one file (M6 S1; grouped in UX7,
+ * UX-SIMPLIFICATION.md §3.9 item 3): „2 Hinweise“, the entries in a
+ * disclosure, skipped elements by cause in one entry with what that means and
+ * the fix, bpmn-moddle's English behind „Technische Details“. Beyond the
+ * extractor's 100, its own entry („Weitere Hinweise ausgelassen“) comes last.
  */
 function WarningsDisclosure({
   warnings,
@@ -136,37 +186,141 @@ function WarningsDisclosure({
   count: number;
 }) {
   const shown = warningDisplay(warnings, count);
-  const entry = (w: ExtractWarning, key: number) => (
-    <li key={key} data-testid="import-warning" data-code={w.code}>
-      <span className="font-medium text-foreground">{warningLabel(w.code)}</span>
-      {w.elementId ? (
-        <>
-          {' '}
-          <code className="font-mono">{w.elementId}</code>
-        </>
-      ) : null}
-      <span lang="en" className="block break-words">
-        {w.message}
-      </span>
-    </li>
-  );
+  const groups = groupWarnings(shown.listed);
   return (
     <details data-testid="import-warnings" className="text-sm">
-      <summary className="cursor-pointer text-warning">{warningCountText(shown.count)}</summary>
+      <summary className="cursor-pointer text-warning">
+        {warningCountText(warningGroupCount(groups, shown.unlisted))}
+      </summary>
       <ul className="mt-2 flex flex-col gap-2 text-xs">
-        {shown.listed.map(entry)}
+        {groups.map((g, i) => (
+          <WarningEntry key={i} group={g} />
+        ))}
         {shown.unlisted > 0 ? <li>… und {shown.unlisted} weitere</li> : null}
-        {shown.omitted ? entry(shown.omitted, shown.listed.length) : null}
+        {shown.omitted ? <WarningEntry group={{ kind: 'single', warning: shown.omitted }} /> : null}
       </ul>
     </details>
+  );
+}
+
+/** Why a file failed, in German, the server's words behind „Technische Details“. */
+function FailedText({ outcome }: { outcome: RowOutcome }) {
+  if (!outcome.problem) return null;
+  // A file of a batch that failed as a whole: the German sentence is the problem's title.
+  if (outcome.technical !== undefined)
+    return (
+      <>
+        <span className="block">{outcome.problem.title}</span>
+        <TechnicalDetails detail={outcome.technical} />
+      </>
+    );
+  return (
+    <>
+      <span className="block" data-testid="import-problem">
+        {fileProblemText(outcome.problem)}
+      </span>
+      <TechnicalDetails detail={problemDetail(outcome.problem)} />
+    </>
+  );
+}
+
+/**
+ * What comes after an import (§3.9 item 2, the web twin of `analyzr
+ * import`'s `formatNextSteps`): what waits for the agent with „Agent
+ * starten“ (owners; „Agent verbinden“ without a token), the questions there
+ * are already, and „Zur Übersicht“. The counts are the shell's queries,
+ * fresh once the import's refresh is done (`fresh`).
+ */
+function NextSteps({ project, fresh }: { project: string; fresh: boolean }) {
+  const models = useQuery(modelsQuery(project));
+  const chain = useQuery(valueChainQuery(project));
+  const summary = useQuery(openQuestionSummaryQuery(project));
+  const waiting = waitingText(
+    models.data?.filter((m) => m.stage === 'waiting_for_agent').length ?? 0,
+    chain.data?.pipeline.task?.state === 'queued',
+  );
+  const ask = askNowText(summary.data?.totals.ask ?? 0);
+  return (
+    <section
+      aria-labelledby="upload-next-title"
+      aria-busy={!fresh || undefined}
+      className="flex flex-col items-start gap-2 rounded-xl border bg-card px-4 py-3"
+      data-testid="upload-next"
+    >
+      <h3 id="upload-next-title" className="text-sm font-semibold text-muted-foreground">
+        Als Nächstes
+      </h3>
+      {!fresh ? (
+        <Skeleton className="h-8 w-72" data-testid="upload-next-loading" />
+      ) : (
+        <ul className="flex flex-col gap-2 text-sm">
+          {waiting ? (
+            <li
+              className="flex flex-wrap items-center gap-x-2 gap-y-1"
+              data-testid="upload-next-agent"
+            >
+              <span>{waiting}</span>
+              <AgentStart project={project} hasChain={chain.data != null} size="sm" />
+            </li>
+          ) : null}
+          {ask ? (
+            <li
+              className="flex flex-wrap items-center gap-x-2 gap-y-1"
+              data-testid="upload-next-questions"
+            >
+              <span>{ask}</span>
+              <span aria-hidden>·</span>
+              <Link
+                to="/projects/$project/open-questions"
+                params={{ project }}
+                className="text-link underline-offset-4 hover:underline"
+              >
+                Offene Fragen ansehen
+              </Link>
+            </li>
+          ) : null}
+        </ul>
+      )}
+      <Button asChild variant="outline" size="sm">
+        <Link to="/projects/$project" params={{ project }} data-testid="upload-overview">
+          Zur Übersicht
+          <ArrowRightIcon data-icon="inline-end" />
+        </Link>
+      </Button>
+    </section>
+  );
+}
+
+/** The skipped files in one line, all of them behind „und N weitere“. */
+function SkippedLine({ skipped }: { skipped: readonly SkippedFile[] }) {
+  const { text, more } = skippedText(skipped);
+  return (
+    <div className="text-sm text-muted-foreground" data-testid="import-skipped">
+      <p>{text}</p>
+      {more > 0 ? (
+        <details className="mt-1">
+          <summary className="cursor-pointer text-xs">Alle übersprungenen Dateien</summary>
+          <ul className="mt-1 flex flex-col gap-1 font-mono text-xs">
+            {skipped.map((s) => (
+              <li key={s.path}>
+                {s.path} – {skippedReasonText(s)}
+              </li>
+            ))}
+          </ul>
+        </details>
+      ) : null}
+    </div>
   );
 }
 
 /**
  * Drag & drop or pick `.bpmn` files or a whole folder; uploads through
  * `POST …/imports` (≤ 50 files, ≤ 25 MB per request) and shows the outcome
- * per file. A dropped folder is the import root, so `models/vertrieb/a.bpmn`
- * becomes the model key `vertrieb/a`.
+ * per file (UX-SIMPLIFICATION.md §3.9): the headline, one row per model
+ * with its file below, the German reason of a failure, the grouped
+ * warnings, the skipped files in one line, and what comes next. A dropped
+ * folder is the import root, so `models/vertrieb/a.bpmn` becomes the model
+ * key `vertrieb/a`.
  */
 export function UploadPanel({
   project,
@@ -181,29 +335,34 @@ export function UploadPanel({
   const folderInput = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
   const [run, setRun] = useState<UploadRun | null>(null);
+  /** The project's queries have refreshed after the import („Als Nächstes“ counts). */
+  const [fresh, setFresh] = useState(false);
   const busy = run !== null && !run.done;
 
   async function upload(entries: UploadEntry[]) {
     if (busy) return;
     const plan = planUpload(entries);
     const total = plan.batches.reduce((n, b) => n + b.length, 0) + plan.failed.length;
+    setFresh(false);
     if (total === 0) {
       toast({
         tone: 'warning',
         title: 'Keine BPMN-Dateien gefunden',
         description: `Erlaubt sind ${BPMN_SUFFIX_TEXT}, je höchstens 5 MB.`,
       });
-      setRun({ outcomes: [], skipped: plan.skipped, done: true });
+      setRun({ outcomes: [], skipped: plan.skipped, done: true, total });
       return;
     }
-    setRun({ outcomes: plan.failed, skipped: plan.skipped, done: false });
+    setRun({ outcomes: plan.failed, skipped: plan.skipped, done: false, total });
     const { outcomes, skipped } = await runImport(project, plan, (partial) =>
-      setRun({ ...partial, done: false }),
+      setRun({ ...partial, done: false, total }),
     );
-    setRun({ outcomes, skipped, done: true });
-    // Models, landscape and the project list refresh in the background.
-    void queryClient.invalidateQueries({ queryKey: keys.project(project) });
-    void queryClient.invalidateQueries({ queryKey: keys.projects });
+    setRun({ outcomes, skipped, done: true, total });
+    // Models, landscape, chain and questions refresh; „Als Nächstes“ waits for them.
+    void Promise.all([
+      queryClient.invalidateQueries({ queryKey: keys.project(project) }),
+      queryClient.invalidateQueries({ queryKey: keys.projects }),
+    ]).finally(() => setFresh(true));
     const failed = outcomes.filter((o) => o.outcome === 'failed').length;
     if (outcomes.length === 0) {
       // Every file was a plain .xml that the server found to be no BPMN: nothing was imported.
@@ -239,8 +398,6 @@ export function UploadPanel({
       );
   }
 
-  const processed = run?.outcomes.length ?? 0;
-
   return (
     <div className="flex flex-col gap-6">
       <div
@@ -253,21 +410,29 @@ export function UploadPanel({
         onDragLeave={() => setDragging(false)}
         onDrop={onDrop}
         className={cn(
-          'flex flex-col items-center justify-center gap-4 rounded-xl border-2 border-dashed bg-card px-6 py-12 text-center transition-colors',
+          'flex flex-col items-center justify-center gap-4 rounded-xl border-2 border-dashed bg-card px-6 py-10 text-center transition-colors',
           dragging ? 'border-primary bg-accent' : 'border-contour',
         )}
       >
         <FileUpIcon className="size-6 text-muted-foreground" aria-hidden />
         <div className="flex flex-col gap-1">
           <p className="text-base font-semibold">
-            {dragging ? 'Dateien hier ablegen' : 'BPMN-Dateien oder einen Ordner hierher ziehen'}
+            {dragging ? (
+              'Dateien hier ablegen'
+            ) : (
+              <>
+                <span className="pointer-coarse:hidden">
+                  BPMN-Dateien oder einen Ordner hierher ziehen.
+                </span>
+                <span className="hidden pointer-coarse:inline">
+                  BPMN-Dateien oder einen Ordner auswählen.
+                </span>
+              </>
+            )}
           </p>
           <p className="max-w-2xl text-muted-foreground">
-            Der Pfad im Ordner wird zum Modellschlüssel:{' '}
-            <code className="font-mono">vertrieb/Auftrag.bpmn</code> →{' '}
-            <code className="font-mono">vertrieb/auftrag</code>. Bis {MAX_IMPORT_FILES} Dateien pro
-            Anfrage, je höchstens {formatBytes(MAX_MODEL_BYTES)}; größere Mengen teilt analyzr
-            selbst auf.
+            Der Ordnerpfad wird zum Kurznamen, z. B.{' '}
+            <code className="font-mono">finanzen/mahnwesen</code>.
           </p>
         </div>
         <div className="flex flex-wrap justify-center gap-2">
@@ -280,6 +445,20 @@ export function UploadPanel({
             Ordner auswählen
           </Button>
         </div>
+        <p
+          className="flex max-w-2xl flex-wrap items-center justify-center gap-x-1 gap-y-1 text-sm text-muted-foreground"
+          data-testid="dropzone-convert"
+        >
+          <span>Export aus Signavio, ARIS oder Visio? Wandle ihn zuerst mit</span>
+          <code className="font-mono text-foreground">{INTEGRATE_SKILL}</code>
+          <CopyButton
+            value={INTEGRATE_SKILL}
+            label="Kopieren"
+            aria-label="Befehl zum Umwandeln kopieren"
+            copiedMessage="Befehl kopiert"
+          />
+          <span>um und leg dann den Bundle-Ordner hier ab.</span>
+        </p>
         <input
           ref={fileInput}
           type="file"
@@ -314,22 +493,30 @@ export function UploadPanel({
 
       {run ? (
         <section aria-label="Ergebnis des Imports" className="flex flex-col gap-3">
-          <h2 className="flex items-center gap-2 text-base font-semibold" aria-live="polite">
+          <h2
+            className="flex items-center gap-2 text-base font-semibold"
+            aria-live="polite"
+            data-testid="import-headline"
+          >
             {run.done ? (
               <CircleCheckIcon className="size-4 text-success" aria-hidden />
             ) : (
               <Spinner />
             )}
-            {run.done
-              ? `Import abgeschlossen: ${processed} Dateien`
-              : `Importiere … ${processed} Dateien fertig`}
+            {importHeadline(
+              run.outcomes,
+              run.skipped.length,
+              run.done ? undefined : { total: run.total },
+            )}
           </h2>
+          {run.done && run.outcomes.length > 0 ? (
+            <NextSteps project={project} fresh={fresh} />
+          ) : null}
           {run.outcomes.length > 0 ? (
             <div className="rounded-xl border bg-card">
               <Table aria-label="Import je Datei">
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Datei</TableHead>
                     <TableHead>Modell</TableHead>
                     <TableHead>Ergebnis</TableHead>
                     <TableHead>Hinweis</TableHead>
@@ -340,18 +527,28 @@ export function UploadPanel({
                     const p = OUTCOMES[o.outcome];
                     return (
                       <TableRow key={o.path} data-testid="import-outcome" data-outcome={o.outcome}>
-                        <TableCell className="font-mono text-xs">{o.path}</TableCell>
-                        <TableCell className="font-mono text-xs">
-                          {o.modelKey ? (renderModelLink?.(o.modelKey) ?? o.modelKey) : '–'}
+                        <TableCell className="align-top">
+                          <span className="flex flex-col gap-0.5">
+                            {o.modelKey && o.outcome !== 'failed' ? (
+                              <span className="font-mono text-xs">
+                                {renderModelLink?.(o.modelKey) ?? o.modelKey}
+                              </span>
+                            ) : null}
+                            <span
+                              className="font-mono text-xs break-all text-muted-foreground"
+                              data-testid="import-path"
+                            >
+                              {o.path}
+                            </span>
+                          </span>
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="align-top">
                           <ToneBadge tone={p.tone} icon={p.icon}>
                             {p.label}
                           </ToneBadge>
                         </TableCell>
-                        <TableCell className="whitespace-normal text-muted-foreground">
-                          {o.problem ? (o.problem.detail ?? o.problem.title) : null}
-                          <TechnicalDetails detail={o.technical} />
+                        <TableCell className="align-top whitespace-normal text-muted-foreground">
+                          <FailedText outcome={o} />
                           {amendmentCountsText(o.amendments) ? (
                             <span
                               className={cn(
@@ -391,21 +588,7 @@ export function UploadPanel({
               </Table>
             </div>
           ) : null}
-          {run.skipped.length > 0 ? (
-            <details className="text-sm text-muted-foreground">
-              <summary className="cursor-pointer">
-                {run.skipped.length} Dateien übersprungen (kein BPMN, größer als{' '}
-                {formatBytes(MAX_MODEL_BYTES)} oder gleicher Modellschlüssel wie eine BPMN-Datei)
-              </summary>
-              <ul className="mt-2 flex flex-col gap-1 font-mono text-xs">
-                {run.skipped.map((s) => (
-                  <li key={s.path}>
-                    {s.path} – {skippedReasonText(s)}
-                  </li>
-                ))}
-              </ul>
-            </details>
-          ) : null}
+          {run.skipped.length > 0 ? <SkippedLine skipped={run.skipped} /> : null}
         </section>
       ) : null}
     </div>

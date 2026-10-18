@@ -1,9 +1,10 @@
 import { createAgentToken, revokeAgentToken } from '@analyzr/client';
 import type { AgentScope, AgentToken, CreatedAgentToken } from '@analyzr/client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { KeyRoundIcon, ShieldAlertIcon } from 'lucide-react';
+import { ChevronRightIcon, KeyRoundIcon, ShieldAlertIcon } from 'lucide-react';
 import { useId, useState, type FormEvent } from 'react';
 
+import { StartCommands } from '@/components/agent-start';
 import { CodeBlock, CopyButton } from '@/components/copy-button';
 import { ErrorText } from '@/components/error-text';
 import { toast } from '@/lib/toast';
@@ -149,56 +150,63 @@ function CreateTokenForm({
             required
             onChange={(e) => setName(e.target.value)}
           />
-          <FieldDescription>Woran du den Token später erkennst, z. B. der Client.</FieldDescription>
         </Field>
-        <FieldSet>
-          <FieldLegend variant="label">Rechte</FieldLegend>
-          <Field orientation="horizontal">
-            <Checkbox id={`${id}-read`} checked disabled />
-            <FieldContent>
-              <FieldLabel htmlFor={`${id}-read`}>{SCOPES['analyzr:read'].label}</FieldLabel>
-              <FieldDescription>{SCOPES['analyzr:read'].hint} Immer dabei.</FieldDescription>
-            </FieldContent>
-          </Field>
-          {OPTIONAL_SCOPES.map((scope) => (
-            <Field orientation="horizontal" key={scope}>
-              <Checkbox
-                id={`${id}-${scope}`}
-                checked={scopes.has(scope)}
-                onCheckedChange={(checked) =>
-                  setScopes((prev) => {
-                    const next = new Set(prev);
-                    if (checked === true) next.add(scope);
-                    else next.delete(scope);
-                    return next;
-                  })
-                }
-              />
-              <FieldContent>
-                <FieldLabel htmlFor={`${id}-${scope}`}>{SCOPES[scope].label}</FieldLabel>
-                <FieldDescription>{SCOPES[scope].hint}</FieldDescription>
-              </FieldContent>
+        <details className="group/advanced text-sm" data-testid="token-advanced">
+          <summary className="inline-flex cursor-pointer list-none items-center gap-0.5 rounded-sm text-muted-foreground select-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none [&::-webkit-details-marker]:hidden">
+            <ChevronRightIcon
+              className="size-3.5 transition-transform group-open/advanced:rotate-90 motion-reduce:transition-none"
+              aria-hidden
+            />
+            Erweitert: Rechte und Gültigkeit
+          </summary>
+          <FieldGroup className="mt-3">
+            <FieldSet>
+              <FieldLegend variant="label">Rechte</FieldLegend>
+              <Field orientation="horizontal">
+                <Checkbox id={`${id}-read`} checked disabled />
+                <FieldContent>
+                  <FieldLabel htmlFor={`${id}-read`}>{SCOPES['analyzr:read'].label}</FieldLabel>
+                  <FieldDescription>{SCOPES['analyzr:read'].hint} Immer dabei.</FieldDescription>
+                </FieldContent>
+              </Field>
+              {OPTIONAL_SCOPES.map((scope) => (
+                <Field orientation="horizontal" key={scope}>
+                  <Checkbox
+                    id={`${id}-${scope}`}
+                    checked={scopes.has(scope)}
+                    onCheckedChange={(checked) =>
+                      setScopes((prev) => {
+                        const next = new Set(prev);
+                        if (checked === true) next.add(scope);
+                        else next.delete(scope);
+                        return next;
+                      })
+                    }
+                  />
+                  <FieldContent>
+                    <FieldLabel htmlFor={`${id}-${scope}`}>{SCOPES[scope].label}</FieldLabel>
+                    <FieldDescription>{SCOPES[scope].hint}</FieldDescription>
+                  </FieldContent>
+                </Field>
+              ))}
+            </FieldSet>
+            <Field className="max-w-48">
+              <FieldLabel htmlFor={`${id}-days`}>Gültigkeit</FieldLabel>
+              <NativeSelect
+                id={`${id}-days`}
+                className="w-full"
+                value={String(days)}
+                onChange={(e) => setDays(Number(e.target.value))}
+              >
+                {EXPIRY_CHOICES.map((d) => (
+                  <NativeSelectOption key={d} value={String(d)}>
+                    {d} Tage
+                  </NativeSelectOption>
+                ))}
+              </NativeSelect>
             </Field>
-          ))}
-          <FieldDescription>
-            Entscheiden dürfen Agent-Tokens nie; das bleibt Menschen vorbehalten.
-          </FieldDescription>
-        </FieldSet>
-        <Field className="max-w-48">
-          <FieldLabel htmlFor={`${id}-days`}>Gültigkeit</FieldLabel>
-          <NativeSelect
-            id={`${id}-days`}
-            className="w-full"
-            value={String(days)}
-            onChange={(e) => setDays(Number(e.target.value))}
-          >
-            {EXPIRY_CHOICES.map((d) => (
-              <NativeSelectOption key={d} value={String(d)}>
-                {d} Tage
-              </NativeSelectOption>
-            ))}
-          </NativeSelect>
-        </Field>
+          </FieldGroup>
+        </details>
         <div>
           <Button type="submit" disabled={create.isPending || name.trim() === ''}>
             {create.isPending ? (
@@ -445,14 +453,19 @@ function RevokeButton({
         <AlertDialogHeader>
           <AlertDialogTitle>Token „{token.name}“ widerrufen?</AlertDialogTitle>
           <AlertDialogDescription>
-            Clients mit diesem Token verlieren sofort den Zugriff. Seine offenen Vorschläge und
-            Einwände („Kein Zusammenhang laut Agent“) werden zurückgezogen. Analysen, die er gerade
-            bearbeitet, und alle Modelle, deren Paare er beurteilt hat, warten wieder auf einen
-            Agenten. Entscheidungen bleiben. Das lässt sich nicht rückgängig machen; erstelle bei
-            Bedarf einen neuen Token. Sollen seine Vorschläge zur Prüfung bleiben, lass den Token
-            stattdessen ablaufen.
+            Clients mit diesem Token verlieren sofort den Zugriff, und seine offenen Vorschläge und
+            Einwände werden zurückgezogen. Entscheidungen bleiben.
           </AlertDialogDescription>
         </AlertDialogHeader>
+        <details className="text-sm text-muted-foreground" data-testid="revoke-details">
+          <summary className="cursor-pointer select-none">Was passiert genau?</summary>
+          <p className="mt-1">
+            Analysen, die er gerade bearbeitet, und alle Modelle, deren Paare er beurteilt hat,
+            warten wieder auf einen Agenten. Der Widerruf lässt sich nicht rückgängig machen;
+            erstelle bei Bedarf einen neuen Token. Sollen seine Vorschläge zur Prüfung bleiben, lass
+            den Token stattdessen ablaufen.
+          </p>
+        </details>
         {autoAccepted > 0 ? (
           <label
             className="flex items-start gap-2 rounded-lg border px-3 py-2 text-sm"
@@ -505,7 +518,6 @@ function TokenList({ project, autoIndex }: { project: string; autoIndex?: AutoAc
       <TableHeader>
         <TableRow>
           <TableHead>Name</TableHead>
-          <TableHead>Präfix</TableHead>
           <TableHead>Rechte</TableHead>
           <TableHead>Läuft ab</TableHead>
           <TableHead>Zuletzt benutzt</TableHead>
@@ -520,10 +532,17 @@ function TokenList({ project, autoIndex }: { project: string; autoIndex?: AutoAc
           const state = tokenState(token, now);
           return (
             <TableRow key={token.id} data-testid="token-row">
-              <TableCell className="font-medium">{token.name}</TableCell>
-              <TableCell className="font-mono text-xs">
-                {AGENT_TOKEN_PREFIX}
-                {token.prefix}…
+              <TableCell>
+                <span className="flex flex-col gap-0.5">
+                  <span className="font-medium">{token.name}</span>
+                  <span
+                    className="font-mono text-xs text-muted-foreground"
+                    title="Der Anfang des Tokens, an dem du ihn wiedererkennst"
+                  >
+                    {AGENT_TOKEN_PREFIX}
+                    {token.prefix}…
+                  </span>
+                </span>
               </TableCell>
               <TableCell>
                 <span className="flex flex-wrap gap-1">
@@ -559,19 +578,24 @@ function TokenList({ project, autoIndex }: { project: string; autoIndex?: AutoAc
 }
 
 /**
- * "Agent verbinden" (CONCEPT §6): create an agent token, copy it once, and
- * paste a ready-made configuration into Claude Code, Claude Desktop or any
- * other MCP client; list and revoke tokens.
+ * "Agent verbinden" (CONCEPT §6; UX7, UX-SIMPLIFICATION.md §3.11): create
+ * an agent token (name and button; rights and validity under „Erweitert“),
+ * copy it once, paste a ready-made configuration into Claude Code, Claude
+ * Desktop or any other MCP client, start the agent (step 3, the commands of
+ * „Agent starten“); list and revoke tokens.
  */
 export function ConnectAgent({
   project,
   origin,
   autoIndex,
+  hasChain = false,
 }: {
   project: string;
   origin: string;
   /** The auto-accept ledger (owners): the token revoke offers to revoke the agent's acceptances. */
   autoIndex?: AutoAcceptIndex;
+  /** The project has a value chain: step 3 also names the placements' command. */
+  hasChain?: boolean;
 }) {
   const [created, setCreated] = useState<CreatedAgentToken | null>(null);
   return (
@@ -600,6 +624,17 @@ export function ConnectAgent({
         </CardHeader>
         <CardContent>
           <ClientSetup origin={origin} secret={created?.secret ?? null} />
+        </CardContent>
+      </Card>
+      <Card className="lg:col-span-2" data-testid="connect-start">
+        <CardHeader>
+          <CardTitle>3. Agent starten</CardTitle>
+          <CardDescription>
+            Ist der Client eingerichtet, startest du den Agenten dort mit einem Befehl.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex max-w-2xl flex-col gap-2">
+          <StartCommands project={project} hasChain={hasChain} />
         </CardContent>
       </Card>
       <Card className="lg:col-span-2">
