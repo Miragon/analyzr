@@ -158,8 +158,15 @@ and code are in English.
   starten“, the questions there are already), why a file failed in German with its remedy (a
   UTF-16 file: bpmn-facts names the encoding, the server passes it on as `encoding`) and the
   skipped elements grouped by cause; the token form shows name and button, step 3 starts the
-  agent; live-run neutral. **Next:** UX8 → S2b → UX3 → UX4 → UX5 → UX6 → UX9 (the owner: „Sonst
-  kannst du weitermachen“), alongside S2c (the trust rule) and S3c; S6 after them; after the owner's
+  agent; live-run neutral. **UX8 „S2a's web parts“** (done 2026-10-18 on the branch, every gate
+  green, the whole Playwright suite against a scratch stack; UX-SIMPLIFICATION.md §7 "UX8 as
+  delivered"): „Hochladen“ reads a dropped bundle's `analyzr-import.json` like `analyzr import`
+  (pinned keys, the subset per batch, the identity warnings in German, an invalid manifest stops
+  before sending), `Model.source` (REST only) gives the models table's chip and the project's
+  subtitle („Aus Signavio · exportiert am 14.10.2026“), the model view shows „Herkunft“, the
+  derived chip and „Beim Import übersprungen: 2 Elemente“; live-run neutral. **Next:** S2b → UX3
+  → UX4 → UX5 → UX6 → UX9 (the owner: „Sonst kannst du weitermachen“), alongside S2c (the trust
+  rule) and S3c; S6 after them; after the owner's
   live runs S5b, S7 and facts v2 as recommended (§7 "M6"; M6 §8 "After S2a").
 
 ## 2. Read in this order
@@ -959,7 +966,7 @@ delivered", "First wave review round"; DEVELOPMENT.md "UI simplification first w
 (2026-10-18)"). The owner walked five tasks on `analyzr-local` the same day („finde, das geht in
 eine gute Richtung“; UX-SIMPLIFICATION.md §7 "Owner walkthrough"); its one finding, entering the
 model from a question card, is fixed with a labelled button on the card. **Next**, in the
-proposed order (Q10), which the owner kept („Sonst kannst du weitermachen“): UX7 („Hochladen“, „Agent verbinden“; done 2026-10-18, UX-SIMPLIFICATION.md §7 "UX7 as delivered") → UX8 (S2a's web
+proposed order (Q10), which the owner kept („Sonst kannst du weitermachen“): UX7 („Hochladen“, „Agent verbinden“; done 2026-10-18, UX-SIMPLIFICATION.md §7 "UX7 as delivered") → UX8 (done 2026-10-18, "UX8 as delivered"; S2a's web
 parts: „Herkunft“, the badges, the manifest of a dropped folder) → S2b (`importImpact`, the dry
 runs, the deletion impact, absent keys within `source.scope`) → UX3 (model view) → UX4 (question
 actions) → UX5 („Relationen“ and the review screen) → UX6 (value chain) → UX9 (result views,

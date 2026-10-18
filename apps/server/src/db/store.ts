@@ -26,6 +26,7 @@ import {
   type Ref,
   type RelationId,
   type RevisionId,
+  type RevisionSource,
   type SubmissionId,
   type ValueChainId,
   type ValueChainRevisionId,
@@ -85,6 +86,7 @@ import type {
   ValueChainRevisionRecord,
   ValueChainStepRecord,
 } from '../domain/ports.ts';
+import { sourceSummary } from '../domain/provenance.ts';
 import type { Db } from './client.ts';
 import * as s from './schema.ts';
 
@@ -479,6 +481,9 @@ function repos(db: Conn): Tx {
     eq(s.model.headRevisionId, s.modelRevision.id),
   );
 
+  // An amended head declares no provenance of its own: its uploaded revision `upstream` does.
+  const upstreamRevision = alias(s.modelRevision, 'upstream_revision');
+
   function modelViews(projectId: ProjectId, ...where: (SQL | undefined)[]) {
     return db
       .select({
@@ -486,11 +491,20 @@ function repos(db: Conn): Tx {
         rev: s.modelRevision.rev,
         engine: s.modelRevision.engine,
         processes: s.modelRevision.processes,
+        source: s.modelRevision.source,
+        upstreamSource: upstreamRevision.source,
         stage: s.modelPipeline.stage,
         openItems: s.modelPipeline.openItems,
       })
       .from(s.model)
       .innerJoin(s.modelRevision, liveHead)
+      .leftJoin(
+        upstreamRevision,
+        and(
+          eq(upstreamRevision.projectId, s.modelRevision.projectId),
+          eq(upstreamRevision.id, sql`${s.modelRevision.source}->'upstream'->>'revisionId'`),
+        ),
+      )
       .innerJoin(s.modelPipeline, eq(s.modelPipeline.modelId, s.model.id))
       .where(and(eq(s.model.projectId, projectId), isNull(s.model.deletedSeq), ...where));
   }
@@ -500,6 +514,8 @@ function repos(db: Conn): Tx {
     rev: number;
     engine: ModelView['engine'];
     processes: ModelView['processes'];
+    source: RevisionSource;
+    upstreamSource: RevisionSource | null;
     stage: string;
     openItems: number;
   }): ModelView => ({
@@ -510,6 +526,7 @@ function repos(db: Conn): Tx {
     stage: r.stage as ModelStage,
     openItems: r.openItems,
     processes: r.processes,
+    source: sourceSummary(r.source, r.upstreamSource),
   });
 
   const processFact = alias(s.fact, 'process_fact');

@@ -1,5 +1,6 @@
 import { importModels } from '@analyzr/client';
-import type { ExtractWarning, ImportFileOutcome } from '@analyzr/client';
+import type { ExtractWarning, ImportFileOutcome, ImportWarning } from '@analyzr/client';
+import { bpmnSuffixOf, isHiddenPath, modelKeyFromPath } from '@analyzr/contracts/paths';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { cn } from 'cn';
@@ -21,6 +22,7 @@ import { ToneBadge } from '@/components/badges';
 import { CopyButton } from '@/components/copy-button';
 import { TechnicalDetails } from '@/components/error-text';
 import { toast } from '@/lib/toast';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Spinner } from '@/components/ui/spinner';
@@ -34,6 +36,7 @@ import {
 } from '@/components/ui/table';
 import { api, errorDetail, errorMessage, unwrap } from '@/lib/api';
 import type { Tone } from '@/lib/labels';
+import { importWarningText } from '@/lib/provenance';
 import { keys, modelsQuery, openQuestionSummaryQuery, valueChainQuery } from '@/lib/queries';
 import {
   BPMN_ACCEPT,
@@ -63,6 +66,15 @@ import {
   type UploadPlan,
   type WarningGroup,
 } from '@/lib/upload';
+import {
+  bundleFiles,
+  bundleSummary,
+  manifestSubset,
+  readManifest,
+  type BundleSummary,
+  type LoadedManifest,
+  type ManifestRead,
+} from '@/lib/upload-manifest';
 
 const OUTCOMES: Record<
   ImportFileOutcome['outcome'],
@@ -86,6 +98,8 @@ interface UploadRun {
   done: boolean;
   /** The files that are sent or failed before sending (the progress' whole). */
   total: number;
+  /** The recognized bundle (UX8), `null` for plain files. */
+  bundle: BundleSummary | null;
 }
 
 interface ImportProgress {
@@ -102,13 +116,31 @@ async function runImport(
   project: string,
   plan: UploadPlan,
   onProgress: (progress: ImportProgress) => void,
+  manifest: LoadedManifest | null,
 ): Promise<ImportProgress> {
   const outcomes: RowOutcome[] = [...plan.failed];
   const skipped: SkippedFile[] = [...plan.skipped];
   for (const batch of plan.batches) {
+    // With a bundle each batch sends its subset of the manifest, as `analyzr import` does.
+    const subset =
+      manifest === null
+        ? null
+        : manifestSubset(
+            manifest,
+            batch.map((e) => e.path),
+          );
     try {
       const result = await unwrap(
-        importModels({ client: api, path: { project }, body: { files: filesOf(batch) } }),
+        importModels({
+          client: api,
+          path: { project },
+          body: {
+            files: filesOf(batch),
+            ...(subset !== null && subset.files.length > 0
+              ? { manifest: JSON.stringify(subset) }
+              : {}),
+          },
+        }),
       );
       for (const file of result.files) {
         if (isSkippedXml(file)) skipped.push({ path: file.path, reason: 'not-bpmn' });
@@ -181,18 +213,32 @@ function WarningEntry({ group }: { group: WarningGroup }) {
 function WarningsDisclosure({
   warnings,
   count,
+  identity = [],
 }: {
   warnings: readonly ExtractWarning[];
   count: number;
+  /** The file's identity warnings against its manifest or the landscape (UX8), listed first. */
+  identity?: readonly ImportWarning[];
 }) {
   const shown = warningDisplay(warnings, count);
   const groups = groupWarnings(shown.listed);
   return (
     <details data-testid="import-warnings" className="text-sm">
       <summary className="cursor-pointer text-warning">
-        {warningCountText(warningGroupCount(groups, shown.unlisted))}
+        {warningCountText(warningGroupCount(groups, shown.unlisted) + identity.length)}
       </summary>
       <ul className="mt-2 flex flex-col gap-2 text-xs">
+        {identity.map((w, i) => (
+          <li
+            key={`identity-${i}`}
+            data-testid="import-identity-warning"
+            data-code={w.code}
+            className="flex flex-col gap-0.5"
+          >
+            <span className="text-foreground">{importWarningText(w)}</span>
+            <TechnicalDetails detail={w.message} />
+          </li>
+        ))}
         {groups.map((g, i) => (
           <WarningEntry key={i} group={g} />
         ))}
@@ -231,7 +277,16 @@ function FailedText({ outcome }: { outcome: RowOutcome }) {
  * are already, and „Zur Übersicht“. The counts are the shell's queries,
  * fresh once the import's refresh is done (`fresh`).
  */
-function NextSteps({ project, fresh }: { project: string; fresh: boolean }) {
+function NextSteps({
+  project,
+  fresh,
+  valueChain,
+}: {
+  project: string;
+  fresh: boolean;
+  /** The bundle carries a value chain (UX8): the chain page imports it. */
+  valueChain: boolean;
+}) {
   const models = useQuery(modelsQuery(project));
   const chain = useQuery(valueChainQuery(project));
   const summary = useQuery(openQuestionSummaryQuery(project));
@@ -261,6 +316,22 @@ function NextSteps({ project, fresh }: { project: string; fresh: boolean }) {
             >
               <span>{waiting}</span>
               <AgentStart project={project} hasChain={chain.data != null} size="sm" />
+            </li>
+          ) : null}
+          {valueChain ? (
+            <li
+              className="flex flex-wrap items-center gap-x-2 gap-y-1"
+              data-testid="upload-next-chain"
+            >
+              <span>Das Bundle enthält eine Wertschöpfungskette</span>
+              <span aria-hidden>·</span>
+              <Link
+                to="/projects/$project/value-chain"
+                params={{ project }}
+                className="text-link underline-offset-4 hover:underline"
+              >
+                Auf der Kette importieren
+              </Link>
             </li>
           ) : null}
           {ask ? (
@@ -337,27 +408,59 @@ export function UploadPanel({
   const [run, setRun] = useState<UploadRun | null>(null);
   /** The project's queries have refreshed after the import („Als Nächstes“ counts). */
   const [fresh, setFresh] = useState(false);
+  /** A bundle whose manifest stopped the upload before anything was sent. */
+  const [refused, setRefused] = useState<Extract<ManifestRead, { kind: 'refused' }> | null>(null);
   const busy = run !== null && !run.done;
 
   async function upload(entries: UploadEntry[]) {
     if (busy) return;
-    const plan = planUpload(entries);
-    const total = plan.batches.reduce((n, b) => n + b.length, 0) + plan.failed.length;
     setFresh(false);
+    // A bundle's manifest at the folder root pins the keys and declares the provenance (UX8).
+    const read = await readManifest(entries);
+    if (read.kind === 'refused') {
+      setRun(null);
+      setRefused(read);
+      toast({ tone: 'danger', title: 'Bundle nicht importiert', description: read.reason });
+      return;
+    }
+    setRefused(null);
+    const manifest = read.kind === 'ok' ? read.loaded : null;
+    const plan = planUpload(
+      entries,
+      undefined,
+      manifest
+        ? {
+            keyOf: (p) => manifest.byPath.get(p)?.key ?? modelKeyFromPath(p),
+            own: bundleFiles(manifest),
+          }
+        : {},
+    );
+    const bundle = manifest
+      ? bundleSummary(
+          manifest,
+          entries
+            .filter((e) => !isHiddenPath(e.path) && bpmnSuffixOf(e.path) !== null)
+            .map((e) => e.path),
+        )
+      : null;
+    const total = plan.batches.reduce((n, b) => n + b.length, 0) + plan.failed.length;
     if (total === 0) {
       toast({
         tone: 'warning',
         title: 'Keine BPMN-Dateien gefunden',
         description: `Erlaubt sind ${BPMN_SUFFIX_TEXT}, je höchstens 5 MB.`,
       });
-      setRun({ outcomes: [], skipped: plan.skipped, done: true, total });
+      setRun({ outcomes: [], skipped: plan.skipped, done: true, total, bundle });
       return;
     }
-    setRun({ outcomes: plan.failed, skipped: plan.skipped, done: false, total });
-    const { outcomes, skipped } = await runImport(project, plan, (partial) =>
-      setRun({ ...partial, done: false, total }),
+    setRun({ outcomes: plan.failed, skipped: plan.skipped, done: false, total, bundle });
+    const { outcomes, skipped } = await runImport(
+      project,
+      plan,
+      (partial) => setRun({ ...partial, done: false, total, bundle }),
+      manifest,
     );
-    setRun({ outcomes, skipped, done: true, total });
+    setRun({ outcomes, skipped, done: true, total, bundle });
     // Models, landscape, chain and questions refresh; „Als Nächstes“ waits for them.
     void Promise.all([
       queryClient.invalidateQueries({ queryKey: keys.project(project) }),
@@ -491,8 +594,24 @@ export function UploadPanel({
         />
       </div>
 
+      {refused ? (
+        <Alert variant="destructive" data-testid="upload-refused">
+          <AlertTitle>Bundle nicht importiert</AlertTitle>
+          <AlertDescription>
+            <p>{refused.reason}</p>
+            <TechnicalDetails detail={refused.detail} />
+          </AlertDescription>
+        </Alert>
+      ) : null}
+
       {run ? (
         <section aria-label="Ergebnis des Imports" className="flex flex-col gap-3">
+          {run.bundle ? (
+            <div className="text-sm text-muted-foreground" data-testid="upload-bundle">
+              <p>{run.bundle.line}</p>
+              {run.bundle.unlisted ? <p>{run.bundle.unlisted}</p> : null}
+            </div>
+          ) : null}
           <h2
             className="flex items-center gap-2 text-base font-semibold"
             aria-live="polite"
@@ -510,7 +629,11 @@ export function UploadPanel({
             )}
           </h2>
           {run.done && run.outcomes.length > 0 ? (
-            <NextSteps project={project} fresh={fresh} />
+            <NextSteps
+              project={project}
+              fresh={fresh}
+              valueChain={run.bundle?.valueChain != null}
+            />
           ) : null}
           {run.outcomes.length > 0 ? (
             <div className="rounded-xl border bg-card">
@@ -574,10 +697,11 @@ export function UploadPanel({
                               ) : null}
                             </span>
                           ) : null}
-                          {o.warningCount ? (
+                          {o.warningCount || o.importWarnings?.length ? (
                             <WarningsDisclosure
                               warnings={o.warnings ?? []}
-                              count={o.warningCount}
+                              count={o.warningCount ?? 0}
+                              identity={o.importWarnings ?? []}
                             />
                           ) : null}
                         </TableCell>

@@ -173,19 +173,27 @@ export function planUpload(
     maxBytes: MAX_IMPORT_BYTES,
     maxModelBytes: MAX_MODEL_BYTES,
   },
+  bundle: {
+    /** A path's key: with a bundle's manifest the key it pins, else the path's (UX8). */
+    keyOf?: (path: string) => string | null;
+    /** The bundle's own files (manifest, chain, inventory): neither sent nor skipped. */
+    own?: ReadonlySet<string>;
+  } = {},
 ): UploadPlan {
+  const keyOf = bundle.keyOf ?? modelKeyFromPath;
   const skipped: UploadPlan['skipped'] = [];
   const failed: UploadPlan['failed'] = [];
   const batches: UploadEntry[][] = [];
   let batch: UploadEntry[] = [];
   let bytes = 0;
   const sorted = [...entries]
-    .filter((entry) => !isHiddenPath(entry.path))
+    .filter((entry) => !isHiddenPath(entry.path) && !bundle.own?.has(entry.path))
     .sort((a, b) => comparePaths(a.path, b.path));
   const owners = modelKeyOwners(
     sorted
       .filter((e) => bpmnSuffixOf(e.path) !== null && e.file.size <= limits.maxModelBytes)
       .map((e) => e.path),
+    keyOf,
   );
   const sent = new Set<string>();
   for (const entry of sorted) {
@@ -193,7 +201,7 @@ export function planUpload(
       skipped.push({ path: entry.path, reason: 'not-bpmn' });
       continue;
     }
-    const key = modelKeyFromPath(entry.path);
+    const key = keyOf(entry.path);
     if (key === null) {
       failed.push(
         failedLocally(entry.path, null, 'the path gives no valid model key', {
@@ -202,7 +210,7 @@ export function planUpload(
       );
       continue;
     }
-    const takenBy = keyTakenBy(entry.path, owners);
+    const takenBy = keyTakenBy(entry.path, owners, keyOf);
     if (takenBy !== null) {
       skipped.push({ path: entry.path, reason: 'key-taken', takenBy });
       continue;
@@ -587,13 +595,17 @@ function fileCount(n: number): string {
  * von 6 Dateien“.
  */
 export function importHeadline(
-  outcomes: readonly Pick<ImportFileOutcome, 'outcome'>[],
+  outcomes: readonly Pick<ImportFileOutcome, 'outcome' | 'importWarnings'>[],
   skipped: number,
   progress?: { total: number },
 ): string {
   if (progress) return `Importiere … ${outcomes.length} von ${fileCount(progress.total)}`;
   const count = (o: ImportFileOutcome['outcome']) => outcomes.filter((x) => x.outcome === o).length;
   const imported = count('created') + count('revised');
+  // A tool id that moved or changed (UX8): the identity of a model is in question.
+  const identity = outcomes
+    .flatMap((o) => o.importWarnings ?? [])
+    .filter((w) => w.code === 'external-id-moved' || w.code === 'external-id-changed').length;
   const parts = [
     imported === 0
       ? 'Kein Modell importiert'
@@ -601,6 +613,11 @@ export function importHeadline(
     count('unchanged') > 0 ? `${count('unchanged')} unverändert` : null,
     count('failed') > 0 ? `${count('failed')} Fehler` : null,
     skipped > 0 ? `${skipped} übersprungen` : null,
+    identity === 0
+      ? null
+      : identity === 1
+        ? '1 Hinweis zur Identität'
+        : `${identity} Hinweise zur Identität`,
   ];
   return parts.filter((p) => p !== null).join(' · ');
 }

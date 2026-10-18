@@ -238,6 +238,7 @@ export function model(overrides: Partial<Model> & Pick<Model, 'key'>): Model {
     engine: 'c8',
     stage: 'waiting_for_review',
     openItems: 1,
+    source: null,
     updatedAt: NOW,
     ...overrides,
   };

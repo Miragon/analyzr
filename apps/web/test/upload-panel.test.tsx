@@ -478,6 +478,109 @@ describe('UploadPanel', () => {
     expect(items[20]!.textContent).toContain('150 more warnings omitted');
   });
 
+  it('reads a bundle’s manifest: pinned keys, the subset per batch, provenance and identity in German (UX8)', async () => {
+    const manifest = {
+      format: 'analyzr-import/1',
+      source: { system: 'signavio', exportedAt: '2026-10-14T00:00:00Z' },
+      files: [
+        { path: 'Finanzen/Bonität.bpmn', key: 'finanzen/bonitaet', externalId: 'sid-B' },
+        { path: 'Lager/Kommission.bpmn', key: 'lager/kommission', externalId: 'sid-K' },
+      ],
+      valueChain: { path: 'kette.vc.json' },
+    };
+    const calls = stubApi({
+      [`POST ${IMPORT_PATH}`]: (call) =>
+        json({
+          files: (call.body as string[]).map((path) => ({
+            path,
+            modelKey: path === 'Finanzen/Bonität.bpmn' ? 'finanzen/bonitaet' : 'lager/kommission',
+            outcome: 'created',
+            problem: null,
+            ...(path === 'Lager/Kommission.bpmn'
+              ? {
+                  importWarnings: [
+                    {
+                      code: 'external-id-moved',
+                      message:
+                        'signavio id sid-K already belongs to lager/alt: two models now carry it',
+                      system: 'signavio',
+                      externalId: 'sid-K',
+                      otherKeys: ['lager/alt'],
+                    },
+                  ],
+                }
+              : {}),
+          })),
+        }),
+    });
+    await render();
+    fireEvent.change(screen.getByTestId('folder-input'), {
+      target: {
+        files: [
+          withRelativePath('analyzr-import.json', 'bundle/analyzr-import.json'),
+          withRelativePath('Bonität.bpmn', 'bundle/Finanzen/Bonität.bpmn'),
+          withRelativePath('Kommission.bpmn', 'bundle/Lager/Kommission.bpmn'),
+          withRelativePath('kette.vc.json', 'bundle/kette.vc.json'),
+        ].map((f) =>
+          f.name === 'analyzr-import.json'
+            ? Object.defineProperty(
+                new File([JSON.stringify(manifest)], f.name),
+                'webkitRelativePath',
+                {
+                  value: 'bundle/analyzr-import.json',
+                },
+              )
+            : f,
+        ),
+      },
+    });
+    const table = await screen.findByRole('table', { name: 'Import je Datei' });
+    await waitFor(() => expect(within(table).getAllByTestId('import-outcome')).toHaveLength(2));
+    // one request with the BPMN files and the manifest's subset for them, as `analyzr import`
+    const [post] = imports(calls);
+    expect(post!.body).toEqual(['Finanzen/Bonität.bpmn', 'Lager/Kommission.bpmn']);
+    expect(JSON.parse(post!.manifest ?? 'null')).toEqual({
+      format: 'analyzr-import/1',
+      source: manifest.source,
+      files: manifest.files,
+    });
+    expect(screen.getByTestId('upload-bundle').textContent).toBe(
+      'Bundle erkannt: Signavio, exportiert am 14.10.2026 · 2 von 2 Dateien gelistet · Kurznamen aus dem Bundle',
+    );
+    // the manifest and the chain are the bundle's: nothing skipped
+    expect(screen.queryByTestId('import-skipped')).toBeNull();
+    expect(screen.getByTestId('import-headline').textContent).toBe(
+      '2 Modelle importiert · 1 Hinweis zur Identität',
+    );
+    const identity = within(table).getByTestId('import-identity-warning');
+    expect(identity.dataset['code']).toBe('external-id-moved');
+    expect(identity.textContent).toContain(
+      'Im Quellsystem umbenannt oder verschoben? „sid-K“ gehörte bisher zu „lager/alt“',
+    );
+    expect(await screen.findByTestId('upload-next-chain')).toBeTruthy();
+    expect(
+      within(screen.getByTestId('upload-next-chain'))
+        .getByRole('link', { name: 'Auf der Kette importieren' })
+        .getAttribute('href'),
+    ).toBe('/projects/demo/value-chain');
+  });
+
+  it('stops before sending when the bundle’s manifest is invalid, saying why in German', async () => {
+    const calls = stubApi({});
+    await render();
+    const bad = new File(['{"format":"analyzr-import/1"'], 'analyzr-import.json');
+    Object.defineProperty(bad, 'webkitRelativePath', { value: 'bundle/analyzr-import.json' });
+    fireEvent.change(screen.getByTestId('folder-input'), {
+      target: { files: [bad, withRelativePath('a.bpmn', 'bundle/a.bpmn')] },
+    });
+    const alert = await screen.findByTestId('upload-refused');
+    expect(alert.textContent).toContain(
+      'Die analyzr-import.json des Bundles ist kein gültiges JSON. Nichts importiert.',
+    );
+    expect(imports(calls)).toHaveLength(0);
+    expect(screen.queryByRole('table', { name: 'Import je Datei' })).toBeNull();
+  });
+
   it('marks the drop zone while files are dragged over it', async () => {
     stubApi({});
     await render();

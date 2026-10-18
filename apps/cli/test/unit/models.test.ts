@@ -48,6 +48,7 @@ function model(key: string, extra: Partial<Model> = {}): Model {
     engine: 'c7',
     stage: 'waiting_for_agent',
     openItems: 0,
+    source: null,
     updatedAt: '2026-10-15T10:00:00.000Z',
     ...extra,
   };

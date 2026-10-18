@@ -8,6 +8,7 @@ import { orNull } from '../zod-utils.ts';
 import { AmendmentCounts, AmendmentPlanEntry, RevisionUpstream } from './amendment-core.ts';
 import { Sha256Hex, Timestamp, pageOf } from './common.ts';
 import {
+  DerivedKind,
   ExportedAt,
   ImportWarning,
   ManifestDerived,
@@ -44,6 +45,23 @@ export const Engine = z
   .meta({ id: 'Engine', description: 'Target engine: Camunda 7 (`c7`) or Camunda 8 (`c8`).' });
 export type Engine = z.infer<typeof Engine>;
 
+/**
+ * A model's declared provenance in short (M6 §3.3; UX8, UX-SIMPLIFICATION.md
+ * §6): the source system its head declares (for an amended head, its
+ * uploaded revision `upstream`'s), how the file was derived and when the tool
+ * exported it. REST only, for the models table's badge and the model view's
+ * header; the whole provenance is the head revision's `source`.
+ */
+export const ModelSourceSummary = z
+  .object({
+    system: SourceSystem,
+    /** `derived.kind` as declared; `null` when the manifest names none. */
+    derived: orNull(DerivedKind),
+    exportedAt: orNull(ExportedAt),
+  })
+  .meta({ id: 'ModelSourceSummary', description: "A model's declared provenance in short." });
+export type ModelSourceSummary = z.infer<typeof ModelSourceSummary>;
+
 export const Model = z
   .object({
     id: ModelId,
@@ -59,6 +77,11 @@ export const Model = z
     stage: ModelStage,
     /** Relations touching the model that are proposed, held, or accepted with `endpointState` ≠ ok. */
     openItems: z.number().int().min(0),
+    /**
+     * The head's declared provenance in short (M6 S2a's web parts); `null`
+     * when it declares no source system (a plain upload, a seed).
+     */
+    source: orNull(ModelSourceSummary),
     updatedAt: Timestamp,
   })
   .meta({ id: 'Model', description: 'A BPMN model (one file) with a stable key.' });

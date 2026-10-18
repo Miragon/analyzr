@@ -409,6 +409,7 @@ export type Model = {
   engine: Engine | null;
   stage: ModelStage;
   openItems: number;
+  source: ModelSourceSummary | null;
   updatedAt: Timestamp;
 };
 
@@ -437,6 +438,30 @@ export type ModelStage =
   | 'waiting_for_review'
   | 'waiting_for_clarification'
   | 'incorporated';
+
+/**
+ * A model's declared provenance in short.
+ */
+export type ModelSourceSummary = {
+  system: SourceSystem;
+  derived: DerivedKind | null;
+  exportedAt: ExportedAt | null;
+};
+
+/**
+ * Source system of a bundle: a lowercase slug such as `signavio` or `aris`.
+ */
+export type SourceSystem = string;
+
+/**
+ * How a file was derived (declared).
+ */
+export type DerivedKind = 'export' | 'converted' | 'reconstructed' | 'as-told';
+
+/**
+ * ISO 8601 date-time of the export (declared).
+ */
+export type ExportedAt = string;
 
 /**
  * Result of uploading one BPMN file.
@@ -497,16 +522,6 @@ export type RevisionSource = {
 };
 
 /**
- * Source system of a bundle: a lowercase slug such as `signavio` or `aris`.
- */
-export type SourceSystem = string;
-
-/**
- * ISO 8601 date-time of the export (declared).
- */
-export type ExportedAt = string;
-
-/**
  * The program that wrote a bundle (declared).
  */
 export type ManifestImporter = {
@@ -523,11 +538,6 @@ export type ManifestDerived = {
   llmModel?: string | null;
   from?: Array<string>;
 };
-
-/**
- * How a file was derived (declared).
- */
-export type DerivedKind = 'export' | 'converted' | 'reconstructed' | 'as-told';
 
 /**
  * What a conversion dropped, counted (declared).

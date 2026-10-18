@@ -38,6 +38,7 @@ import type {
   MessageFlowInfo,
   ModelAmendmentId,
   ModelId,
+  ModelSourceSummary,
   ModelStage,
   NoLinkId,
   OpenQuestionAnswerId,
@@ -122,6 +123,8 @@ export interface ModelView extends ModelRecord {
   stage: ModelStage;
   openItems: number;
   processes: ProcessInfo[];
+  /** The head's declared provenance in short ({@link ModelSourceSummary}); for an amended head its upstream's. */
+  source: ModelSourceSummary | null;
 }
 
 export interface RevisionRecord {

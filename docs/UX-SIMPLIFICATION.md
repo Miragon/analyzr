@@ -4,7 +4,7 @@ Status: **decided** (owner decision 26, 2026-10-18: every "Ask now" question of 
 the recommended option; HANDOFF §4); proposal of 2026-10-17, revised the same day after a UX and a
 feasibility critique · Branch: `feat/integration-and-gaps` (the first wave UX2a, UX1 and UX2b
 delivered on it on 2026-10-18, §7; the owner's walkthrough the same day, §7 "Owner
-walkthrough"; UX7 delivered the same day; next UX8) · Source: four user-need audits of the web UI on the agent-created scratch stack
+walkthrough"; UX7 and UX8 delivered the same day; next S2b) · Source: four user-need audits of the web UI on the agent-created scratch stack
 `analyzr-uxaudit` (seeded `nordwind-handel` with its chain and a simulation agent run,
 `signavio-beispiel` from the CLI bundle import, two projects made from the raw synthetic Signavio
 export; 1440x900 and 390x844), torn down after the audit · Relates to: HANDOFF §4 decisions 8, 10,
@@ -1730,6 +1730,35 @@ bundle folder with its manifest); the bundle guard (pinned contracts list, no zo
 Done when: a dropped bundle imports under its pinned keys with its provenance (equal to `analyzr
 import` on the same folder), the identity warnings show in German, „Herkunft“ round trips through
 the web, and no new column or tab appears.
+
+**UX8 as delivered** (2026-10-18, on the branch, every gate green; DEVELOPMENT.md "UX8"). §6
+without the „Vorschau“ (S2b). Contracts first: `Model.source`, the head's declared provenance in
+short (`ModelSourceSummary`: `system`, `derived` = `derived.kind`, `exportedAt`; an amended head's
+from its `upstream`, which the store joins; `null` without a declared system), REST only (no MCP
+output schema holds `Model`; the MCP snapshots unchanged), the client regenerated, a real-PostgreSQL
+test (`provenance.test.ts`: the golden bundle's summary per model, an amended head's, a plain
+upload's `null`). The contracts export `@analyzr/contracts/import-manifest`, which the web loads
+with a dynamic import only; ESLint allows it and the bundle guard pins it and its modules (zod
+among them) in a dynamic chunk, the entry still holding `paths.ts` alone. „Hochladen“
+(`lib/upload-manifest.ts`, `lib/upload.ts`, `components/upload-panel.tsx`): a folder with
+`analyzr-import.json` at its root is read as `analyzr import` reads it (checked with the schema;
+its pinned keys plan the upload through `planUpload`'s `keyOf`; each batch sends its subset as the
+part `manifest`; the manifest, the chain and the inventory neither sent nor listed as skipped);
+„Bundle erkannt: Signavio, exportiert am 14.10.2026 · 6 von 6 Dateien gelistet · Kurznamen aus dem
+Bundle“ and the line for unlisted files; an invalid manifest, or one only in a subfolder, stops
+before sending with a German reason; the identity warnings in German in the file's disclosure,
+`external-id-moved` and `-changed` counted in the headline („1 Hinweis zur Identität“); a bundle's
+chain adds „Das Bundle enthält eine Wertschöpfungskette · Auf der Kette importieren“. „Übersicht“:
+the derived chip in the name cell („Konvertiert“, „KI-rekonstruiert“, „Aus Interview“; none for a
+plain export, never a column) and, when every model declares one system, „Aus Signavio ·
+exportiert am 14.10.2026“ after the project's key (`lib/provenance.ts`). The model view's header:
+the derived chip, „Herkunft“ (`components/model-provenance.tsx`, a lazy module: source with
+version and date „(angegeben)“, the place in the tool, how the file was derived, who uploaded it,
+the losses of a conversion, „In Signavio öffnen“ for an http(s) link; an amended head through
+`source.upstream`, „In analyzr ergänzt (aus r1)“) and „Beim Import übersprungen: 2 Elemente –
+Details“ from the model's open `extractor-loss` question, whose „Details“ shows its card. Until
+UX3 builds the header's „Mehr“, „Herkunft“ is a ghost button next to the chips and „In Signavio
+öffnen“ sits inside it. Not verified: a real phone, a screen reader.
 
 **UX9 "Relationen results, Annahmeregeln, projects summary".** Files: `components/relation-table.tsx`,
 `lib/relation-filters.ts`; `routes/project-rules-page.tsx`, `components/rules/` `rule-table.tsx`,

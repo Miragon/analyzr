@@ -1947,7 +1947,11 @@ the UI simplification slice ([UX-SIMPLIFICATION.md](UX-SIMPLIFICATION.md), writt
 run), which the owner asked for with S2a („die UI etwas zu vereinfachen … Wirkt alles inzwischen
 etwas überladen“), so that they are built into the simplified UI instead of onto today's; until then „Hochladen“ imports a bundle
 folder without its manifest, under the path keys, which equal the pinned keys for every bundle the
-integrate skill writes (§3.2), and without declared provenance. Delivered:
+integrate skill writes (§3.2), and without declared provenance. (Since UX8, 2026-10-18, the web
+parts are built: „Hochladen“ reads the manifest of a dropped folder like `analyzr import`,
+`Model.source` gives the models table's chip and the project's subtitle, the model view shows
+„Herkunft“, the derived chip and the import loss; UX-SIMPLIFICATION.md §7 "UX8 as delivered".)
+Delivered:
 
 - **Contracts** (`packages/contracts/src/api/import-manifest.ts`): `ImportManifest`
   (`analyzr-import/1`: `source` with the required `system`, a lowercase slug as in

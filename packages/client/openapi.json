@@ -938,6 +938,16 @@
             "type": "integer",
             "minimum": 0
           },
+          "source": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ModelSourceSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "updatedAt": {
             "$ref": "#/components/schemas/Timestamp"
           }
@@ -952,6 +962,7 @@
           "engine",
           "stage",
           "openItems",
+          "source",
           "updatedAt"
         ],
         "description": "A BPMN model (one file) with a stable key."
@@ -987,6 +998,63 @@
           "incorporated"
         ],
         "description": "Pipeline stage of a model."
+      },
+      "ModelSourceSummary": {
+        "type": "object",
+        "properties": {
+          "system": {
+            "$ref": "#/components/schemas/SourceSystem"
+          },
+          "derived": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DerivedKind"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "exportedAt": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExportedAt"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "system",
+          "derived",
+          "exportedAt"
+        ],
+        "description": "A model's declared provenance in short."
+      },
+      "SourceSystem": {
+        "type": "string",
+        "maxLength": 64,
+        "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+        "description": "Source system of a bundle: a lowercase slug such as `signavio` or `aris`.",
+        "example": "signavio"
+      },
+      "DerivedKind": {
+        "type": "string",
+        "enum": [
+          "export",
+          "converted",
+          "reconstructed",
+          "as-told"
+        ],
+        "description": "How a file was derived (declared)."
+      },
+      "ExportedAt": {
+        "type": "string",
+        "maxLength": 40,
+        "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(?::\\d{2}(?:\\.\\d{1,9})?)?(?:Z|[+-]\\d{2}:\\d{2})$",
+        "description": "ISO 8601 date-time of the export (declared)."
       },
       "PutModelResult": {
         "type": "object",
@@ -1198,19 +1266,6 @@
         "additionalProperties": {},
         "description": "Origin of a revision."
       },
-      "SourceSystem": {
-        "type": "string",
-        "maxLength": 64,
-        "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
-        "description": "Source system of a bundle: a lowercase slug such as `signavio` or `aris`.",
-        "example": "signavio"
-      },
-      "ExportedAt": {
-        "type": "string",
-        "maxLength": 40,
-        "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(?::\\d{2}(?:\\.\\d{1,9})?)?(?:Z|[+-]\\d{2}:\\d{2})$",
-        "description": "ISO 8601 date-time of the export (declared)."
-      },
       "ManifestImporter": {
         "type": "object",
         "properties": {
@@ -1270,16 +1325,6 @@
         },
         "required": [
           "kind"
-        ],
-        "description": "How a file was derived (declared)."
-      },
-      "DerivedKind": {
-        "type": "string",
-        "enum": [
-          "export",
-          "converted",
-          "reconstructed",
-          "as-told"
         ],
         "description": "How a file was derived (declared)."
       },

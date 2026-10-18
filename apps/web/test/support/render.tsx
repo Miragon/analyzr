@@ -66,6 +66,8 @@ export interface Call {
   search: string;
   /** Request headers, lowercased names. */
   headers: Record<string, string>;
+  /** A multipart import's part `manifest` (UX8), when it has one. */
+  manifest?: string;
 }
 
 type Handler = (call: Call) => Response | Promise<Response>;
@@ -79,9 +81,12 @@ export function stubApi(routes: Record<string, Handler>): Call[] {
       const request = input instanceof Request ? input : new Request(input, init);
       const url = new URL(request.url);
       let body: unknown;
+      let manifest: string | undefined;
       if (request.headers.get('content-type')?.startsWith('multipart/form-data')) {
         const form = await request.formData();
         body = form.getAll('files').map((part) => (part as File).name);
+        const part = form.get('manifest');
+        if (typeof part === 'string') manifest = part;
       } else if (request.method !== 'GET') {
         const text = await request.text();
         body = text === '' ? undefined : (JSON.parse(text) as unknown);
@@ -92,6 +97,7 @@ export function stubApi(routes: Record<string, Handler>): Call[] {
         body,
         search: url.search,
         headers: Object.fromEntries(request.headers.entries()),
+        ...(manifest === undefined ? {} : { manifest }),
       };
       const handler = routes[`${request.method} ${url.pathname}`];
       // The owner session is opened before the first API request; answer it unless a test cares.

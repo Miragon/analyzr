@@ -7,6 +7,7 @@ describe('constants copied from @analyzr/contracts', () => {
   it('match the originals', () => {
     expect(limits.PROBLEM_TYPE_BASE).toBe(contracts.PROBLEM_TYPE_BASE);
     expect(limits.MAX_IMPORT_FILES).toBe(contracts.MAX_IMPORT_FILES);
+    expect(limits.IMPORT_MANIFEST_FILE).toBe(contracts.IMPORT_MANIFEST_FILE);
     expect(limits.MAX_MODEL_BYTES).toBe(contracts.MAX_MODEL_BYTES);
     expect(limits.MAX_IMPORT_BYTES).toBe(contracts.MAX_IMPORT_BYTES);
     expect(limits.MAX_PAGE_LIMIT).toBe(contracts.MAX_PAGE_LIMIT);

@@ -229,6 +229,22 @@ describe('the integrate plugin’s golden bundle with its manifest', () => {
     }
   });
 
+  it('sums the provenance up on each model: system, derivation, export date (UX8)', async () => {
+    const page = await getJson<{ items: { key: string; source: unknown }[] }>(
+      '/api/v1/projects/bundle/models?limit=200',
+    );
+    const byKey = new Map(page.items.map((m) => [m.key, m.source]));
+    for (const entry of manifest.files) {
+      expect(byKey.get(entry.key ?? ''), entry.path).toEqual({
+        system: 'signavio',
+        derived: entry.derived?.kind ?? null,
+        exportedAt: '2026-10-14T00:00:00Z',
+      });
+    }
+    // the bundle converts some files: the badge has something to say
+    expect(manifest.files.some((f) => f.derived && f.derived.kind !== 'export')).toBe(true);
+  });
+
   it('rebuilds the key map the bundle was written with from GET …/external-ids', async () => {
     // The bundle's manifest is written from the confirmed keymap.json: per file its key, tool
     // id and tool folder (tools/integrate src/bundle.ts writeBundle).
@@ -416,10 +432,10 @@ describe('pinned keys, checksums and the identity warnings', () => {
     // „Hochladen“ in the web sends no manifest (M6 S2a): new bytes, no declared provenance.
     const res = await put('ident', 'lager/kommission', bpmn('Kommission', 'Neu im Web'));
     expect(res.status).toBe(200);
-    expect(PutModelResult.parse(await res.json()).revision.source).toEqual({
-      kind: 'upload',
-      uploader: 'human',
-    });
+    const revised = PutModelResult.parse(await res.json());
+    expect(revised.revision.source).toEqual({ kind: 'upload', uploader: 'human' });
+    // the head declares nothing: no summary on the model, though `external-ids` keeps the identity
+    expect(revised.model.source).toBeNull();
     expect(
       (await externalIds('ident', 'signavio')).items.find((i) => i.key === 'lager/kommission'),
     ).toEqual({
@@ -649,6 +665,13 @@ describe('an amended head follows source.upstream', () => {
     expect(amendedHead?.source.upstream?.revisionId).toBe(uploaded?.id);
     expect(amendedHead?.source.externalId).toBeUndefined();
     expect(uploaded?.source).toMatchObject({ kind: 'import', externalId: 'sid-L' });
+    // the model's summary reads the uploaded revision too (UX8)
+    const id = await modelId('amended', LAGER_KEY);
+    expect((await getJson<{ source: unknown }>(`${API}/models/${id}`)).source).toEqual({
+      system: 'signavio',
+      derived: null,
+      exportedAt: null,
+    });
     expect((await externalIds('amended')).items).toEqual([
       {
         key: LAGER_KEY,

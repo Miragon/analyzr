@@ -1,5 +1,5 @@
 import type { Model } from '@analyzr/client';
-import { PenLineIcon } from 'lucide-react';
+import { PenLineIcon, SparklesIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
 
 import { StageBadge, ToneBadge } from '@/components/badges';
@@ -12,12 +12,18 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { formatShortDateTime } from '@/lib/labels';
+import { derivedChip } from '@/lib/provenance';
+
+/** A model's derived chip (UX8): only for a file that is no plain export. */
+const chipOf = (m: Model) => derivedChip(m.source);
 
 /**
  * Models of a project on „Übersicht“ (UX-SIMPLIFICATION.md §3.2 item 4):
  * „Name | Phase | Offene Punkte | Aktualisiert“. The name is the model's name
  * (its key when it has none) with the key small below and the mark „ergänzt“
- * when amendments from analyzr wrote the head (M6 S5c-2); while an agent holds
+ * when amendments from analyzr wrote the head (M6 S5c-2), and for a file that
+ * is no plain export its derived chip („Konvertiert“, „KI-rekonstruiert“, „Aus
+ * Interview“; UX8, the system in its tooltip), never a column; while an agent holds
  * or failed a model, the phase cell says so in a muted line. On a phone name
  * and phase stack, „Aktualisiert“ hides. Engine and revision live in the
  * model view.
@@ -61,6 +67,13 @@ export function ModelsTable({
                   <span className="flex flex-wrap items-center gap-1.5">
                     {m.name ? (
                       <span className="font-mono text-xs text-muted-foreground">{m.key}</span>
+                    ) : null}
+                    {chipOf(m) ? (
+                      <span data-testid="model-derived">
+                        <ToneBadge tone="warning" icon={SparklesIcon} title={chipOf(m)?.hint}>
+                          {chipOf(m)?.label}
+                        </ToneBadge>
+                      </span>
                     ) : null}
                     {count > 0 ? (
                       <span data-testid="model-amended">

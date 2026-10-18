@@ -13,6 +13,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { ApiError } from '@/lib/api';
 import { useProjectPermissions } from '@/lib/permissions';
 import { useProjectCounts } from '@/lib/project-counts';
+import { commonSourceLine } from '@/lib/provenance';
 import { projectQuery } from '@/lib/queries';
 
 import { rootRoute } from './root';
@@ -173,6 +174,8 @@ function ProjectLayout() {
   const rest = pathname.startsWith(`${base}/`) ? pathname.slice(base.length + 1) : '';
   const section = SECTIONS[rest.split('/')[0] ?? ''];
   const name = info.data?.name ?? project;
+  // Every model from one system (UX8, §3.1 item 3): „Aus Signavio · exportiert am 14.10.2026“.
+  const origin = counts.models ? commonSourceLine(counts.models) : null;
   const [rowRef, moreTabs] = useTabRow(
     rest.split('/')[0] ?? '',
     [counts.reviewItems, counts.openPlacements, counts.ask].join(),
@@ -211,8 +214,16 @@ function ProjectLayout() {
         ) : (
           <h1 className="text-[28px] leading-tight font-bold break-words">{name}</h1>
         )}
-        <p className="font-mono text-xs text-muted-foreground" data-testid="project-key">
-          {project}
+        <p className="flex flex-wrap items-baseline gap-x-2 text-xs text-muted-foreground">
+          <span className="font-mono" data-testid="project-key">
+            {project}
+          </span>
+          {origin ? (
+            <>
+              <span aria-hidden>·</span>
+              <span data-testid="project-source">{origin}</span>
+            </>
+          ) : null}
         </p>
       </div>
       {info.isError ? (

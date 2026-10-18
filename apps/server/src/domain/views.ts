@@ -49,6 +49,7 @@ export function toModel(m: ModelView): Model {
     engine: m.engine,
     stage: m.stage,
     openItems: m.openItems,
+    source: m.source,
     updatedAt: iso(m.updatedAt),
   };
 }

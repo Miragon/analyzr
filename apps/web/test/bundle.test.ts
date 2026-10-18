@@ -26,8 +26,10 @@ import { build, type Plugin, type UserConfig } from 'vite';
  *    Of `@analyzr/contracts`, only the zod-free `paths.ts` (the upload's file
  *    rule, M6 S1), `open-question-labels.ts` (M6 S4), `open-question-csv.ts`
  *    and `personal-data.ts` (M6 S5a: the answer sheet's reader and the
- *    personal-data check) and `amendment-labels.ts` (M6 S5c-2; the last four
- *    in lazy chunks only) are in the bundle.
+ *    personal-data check) and `amendment-labels.ts` (M6 S5c-2), and, for a
+ *    dropped bundle's manifest (UX8), `api/import-manifest.ts` with its schema
+ *    (zod) and the modules it imports, a dynamic import of its own, are in the
+ *    bundle; all but `paths.ts` in lazy chunks only.
  *    The entry stays under a gzip ceiling, so a page that slips into it shows.
  * 3. The main CSS has no `.vc-` rule (the renderer's CSS comes with the chunk).
  * 4. Budget: with the diagram-js (+ diagram-js-direct-editing) dependency
@@ -290,9 +292,23 @@ describe('web bundle (M4 §5 bundle guard)', { timeout: 120_000 }, () => {
         contractsFile('open-question-labels.ts'),
         contractsFile('paths.ts'),
         contractsFile('personal-data.ts'),
+        // UX8: a dropped bundle's manifest, checked with the contracts' own schema (with zod)
+        contractsFile('api/import-manifest.ts'),
+        contractsFile('api/common.ts'),
+        contractsFile('ids.ts'),
+        contractsFile('refs.ts'),
+        contractsFile('zod-utils.ts'),
       ].sort(),
     );
     expect(fromContracts(mainModules)).toEqual([contractsFile('paths.ts')]);
+    // … loaded with a dynamic import only when a folder has a manifest, never with the entry.
+    expect(
+      chunks.some(
+        (c) =>
+          c.isDynamicEntry &&
+          (c.facadeModuleId ?? '').endsWith(`contracts${sep}src${sep}api${sep}import-manifest.ts`),
+      ),
+    ).toBe(true);
     expect(chunks.some(isChainEntry)).toBe(true);
     // The chain page, its panels and the step view load with their routes, not with every page.
     expect(mainModules.filter(isChainPageModule).map((id) => relative(WEB, id))).toEqual([]);

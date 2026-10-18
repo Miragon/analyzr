@@ -18,6 +18,8 @@ export const PROBLEM_TYPE_BASE = 'urn:analyzr:problem:';
 
 /** Limits of `POST …/imports` and `PUT …/models/by-key/{key}` (CONCEPT §3). */
 export const MAX_IMPORT_FILES = 50;
+/** The import bundle's manifest at the folder root (M6 S2a; read by the upload since UX8). */
+export const IMPORT_MANIFEST_FILE = 'analyzr-import.json';
 export const MAX_MODEL_BYTES = 5 * 1024 * 1024;
 export const MAX_IMPORT_BYTES = 25 * 1024 * 1024;
 

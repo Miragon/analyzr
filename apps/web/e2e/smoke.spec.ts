@@ -192,6 +192,55 @@ test('upload: extractor warnings per file in a disclosure, a plain XML skipped (
   await expect(page.getByTestId('toast').filter({ hasText: '1 Dateien importiert' })).toBeVisible();
 });
 
+test('upload: a bundle folder with its manifest imports as `analyzr import` does, its provenance round trips (UX8)', async ({
+  page,
+  request,
+}) => {
+  // The integrate skill's golden bundle (synthetic Signavio), into a project of its own.
+  const bundle = join(
+    import.meta.dirname,
+    '../../../tools/integrate/test/fixtures/signavio/bundle',
+  );
+  const manifest = JSON.parse(readFileSync(join(bundle, 'analyzr-import.json'), 'utf8')) as {
+    files: { path: string; key: string; externalId: string; externalPath: string }[];
+  };
+  const key = `${PROJECT}-bundle`;
+  // A test's own request context: the owner session first, as the browser opens it.
+  expect((await request.post('/api/v1/session', { data: { client: 'analyzr-web' } })).ok()).toBe(
+    true,
+  );
+  expect((await request.post('/api/v1/projects', { data: { key, name: 'Bundle' } })).status()).toBe(
+    201,
+  );
+  await page.goto(`/projects/${key}/upload`);
+  await page.getByTestId('folder-input').setInputFiles(bundle);
+  await expect(page.getByTestId('import-headline')).toHaveText('6 Modelle importiert');
+  await expect(page.getByTestId('upload-bundle')).toHaveText(
+    'Bundle erkannt: Signavio, exportiert am 14.10.2026 · 6 von 6 Dateien gelistet · Kurznamen aus dem Bundle',
+  );
+  // the manifest is the bundle's: not a skipped file
+  await expect(page.getByTestId('import-skipped')).toHaveCount(0);
+  // the keys the bundle pins and the identity it declares, as `analyzr import` stores them
+  const ids = (await (await request.get(`/api/v1/projects/${key}/external-ids`)).json()) as {
+    items: { key: string; system: string; externalId: string; externalPath: string }[];
+  };
+  expect(ids.items.map((i) => [i.key, i.system, i.externalId, i.externalPath]).sort()).toEqual(
+    manifest.files.map((f) => [f.key, 'signavio', f.externalId, f.externalPath]).sort(),
+  );
+  // „Übersicht“ names the one source; the model view's „Herkunft“ reads it back
+  await page.getByTestId('upload-overview').click();
+  await expect(page.getByTestId('project-source')).toHaveText(
+    'Aus Signavio · exportiert am 14.10.2026',
+  );
+  const [first] = manifest.files;
+  await page.goto(`/projects/${key}/models/${first?.key ?? ''}`);
+  await page.getByTestId('model-provenance-open').click();
+  const panel = page.getByTestId('model-provenance');
+  await expect(panel).toContainText('Aus Signavio 19.6.0 · exportiert am 14.10.2026 (angegeben)');
+  await expect(panel).toContainText(first?.externalPath ?? '');
+  await expect(panel).toContainText('über den Owner-Zugang');
+});
+
 test('findings behind „Offene Fragen“ and the connect page behind „Einstellungen“', async ({
   page,
 }) => {

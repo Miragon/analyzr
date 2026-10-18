@@ -540,6 +540,7 @@ export type {
   ModelId,
   ModelKey,
   ModelPage,
+  ModelSourceSummary,
   ModelStage,
   NoLink,
   NoLinkId,

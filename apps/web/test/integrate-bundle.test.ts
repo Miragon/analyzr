@@ -1,6 +1,9 @@
 // M6 S3b: dropping an import bundle of the integrate skill (analyzr-import/1) into „Hochladen“
-// yields exactly the keys the bundle pins, as `analyzr import <bundle>` does. The bundle is the
-// golden one of @analyzr/integrate (tools/integrate/test/fixtures/signavio/bundle, synthetic).
+// yields exactly the keys the bundle pins, as `analyzr import <bundle>` does, by the path rule
+// alone (the converter names the files by their keys). Since UX8 the upload also reads the
+// manifest itself (`test/provenance-lib.test.ts`); this pins that the path rule and the pinned
+// keys agree for the golden bundle of @analyzr/integrate
+// (tools/integrate/test/fixtures/signavio/bundle, synthetic).
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 

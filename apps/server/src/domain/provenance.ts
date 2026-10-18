@@ -24,6 +24,7 @@ import {
   type ImportWarning,
   type ManifestDerived,
   type ManifestFile,
+  type ModelSourceSummary,
   type RevisionSource,
 } from '@analyzr/contracts';
 
@@ -131,6 +132,25 @@ export function uploadedSource(
  */
 export function isDeclared(source: RevisionSource | undefined): boolean {
   return source?.system !== undefined;
+}
+
+/**
+ * A model's provenance in short (`Model.source`, UX8): the system, the
+ * derivation and the export date its head declares. An amended head
+ * declares none of its own (M6 S5c-2), so its uploaded revision `upstream`
+ * speaks for it. `null` without a declared system.
+ */
+export function sourceSummary(
+  head: RevisionSource,
+  upstream: RevisionSource | null,
+): ModelSourceSummary | null {
+  const declared = head.kind === 'amendment' ? upstream : head;
+  if (declared?.system === undefined) return null;
+  return {
+    system: declared.system,
+    derived: declared.derived?.kind ?? null,
+    exportedAt: declared.exportedAt ?? null,
+  };
 }
 
 /** `(system, externalId)` of a source, or `null` when it lacks either (no manifest, an as-told draft). */

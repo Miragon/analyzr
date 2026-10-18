@@ -1,4 +1,4 @@
-import type { Fact, Finding, Relation } from '@analyzr/client';
+import type { Fact, Finding, Model, Relation } from '@analyzr/client';
 import { useQuery } from '@tanstack/react-query';
 import { Link, createRoute } from '@tanstack/react-router';
 import { cn } from 'cn';
@@ -8,12 +8,20 @@ import {
   ArrowRightLeftIcon,
   ArrowUpRightIcon,
   SearchCheckIcon,
+  SparklesIcon,
   TriangleAlertIcon,
   XIcon,
 } from 'lucide-react';
 import { lazy, Suspense, useCallback, useMemo, useState } from 'react';
 
-import { EngineBadge, StageBadge, StatusBadge, TierBadge, TYPE_ICONS } from '@/components/badges';
+import {
+  EngineBadge,
+  StageBadge,
+  StatusBadge,
+  TierBadge,
+  ToneBadge,
+  TYPE_ICONS,
+} from '@/components/badges';
 import { ErrorText } from '@/components/error-text';
 import { MiragonMark } from '@/components/page-shell';
 import { toast } from '@/lib/toast';
@@ -26,7 +34,8 @@ import { Spinner } from '@/components/ui/spinner';
 
 import type { CanvasHighlight } from '@/lib/bpmn-elements';
 import { FINDING_KINDS, RELATION_TYPES, formatConfidence } from '@/lib/labels';
-import { contentQuery, landscapeQuery, modelsQuery } from '@/lib/queries';
+import { derivedChip, importLossOf } from '@/lib/provenance';
+import { contentQuery, landscapeQuery, modelOpenQuestionsQuery, modelsQuery } from '@/lib/queries';
 import { splitRef, type RefLabel, type RefResolver } from '@/lib/refs';
 import { touchesModel } from '@/lib/relation-filters';
 import { useProjectFacts } from '@/lib/use-project-facts';
@@ -59,6 +68,8 @@ const ModelAmendHeader = lazy(() =>
 const CollectBar = lazy(() =>
   import('@/components/amendments/model-amendments').then((m) => ({ default: m.CollectBar })),
 );
+/** „Herkunft“ (UX8): the declared provenance, read from the revisions when it opens. */
+const ModelProvenance = lazy(() => import('@/components/model-provenance'));
 
 /** Fact kinds an amendment can write a field of (M6 §4.8 c); other elements never ask the server. */
 const AMENDABLE_KINDS: ReadonlySet<Fact['kind']> = new Set([
@@ -231,6 +242,51 @@ function FindingItem({
   );
 }
 
+/** Shows a question's card in the panel's „Fragen“ and moves the focus there. */
+function showQuestion(id: string) {
+  const card = document.querySelector<HTMLElement>(
+    `[data-testid=open-question][data-question-id="${CSS.escape(id)}"]`,
+  );
+  card?.scrollIntoView({ block: 'center' });
+  card?.focus();
+}
+
+/** S2a's derived chip in the header (UX8): only for a file that is no plain export. */
+function DerivedChip({ source }: { source: Model['source'] }) {
+  const chip = derivedChip(source);
+  if (!chip) return null;
+  return (
+    <span data-testid="model-derived">
+      <ToneBadge tone="warning" icon={SparklesIcon} title={chip.hint}>
+        {chip.label}
+      </ToneBadge>
+    </span>
+  );
+}
+
+/**
+ * „Beim Import übersprungen: 2 Elemente – Details“ (UX8, §3.5 item 8): from
+ * the model's open question „Elemente beim Import verloren“; „Details“ shows
+ * its card in „Fragen“ (the same query as the section).
+ */
+function ImportLoss({ project, modelKey }: { project: string; modelKey: string }) {
+  const questions = useQuery(modelOpenQuestionsQuery(project, modelKey));
+  const loss = importLossOf(questions.data ?? [], modelKey);
+  if (!loss) return null;
+  return (
+    <p className="text-xs text-warning" data-testid="model-import-loss">
+      {loss.text} –{' '}
+      <button
+        type="button"
+        className="text-link underline-offset-4 hover:underline"
+        onClick={() => showQuestion(loss.questionId)}
+      >
+        Details
+      </button>
+    </p>
+  );
+}
+
 function ModelView() {
   const { project, _splat } = modelViewRoute.useParams();
   const modelKey = (_splat ?? '').replace(/\/+$/, '');
@@ -399,11 +455,16 @@ function ModelView() {
               r{model.headRev}
             </Badge>
             <StageBadge stage={model.stage} />
+            <DerivedChip source={model.source} />
             <Suspense fallback={null}>
               <ModelAmendHeader project={project} model={model} onAmended={onAmended} />
             </Suspense>
+            <Suspense fallback={null}>
+              <ModelProvenance project={project} model={model} />
+            </Suspense>
           </div>
         ) : null}
+        {model ? <ImportLoss project={project} modelKey={modelKey} /> : null}
       </header>
 
       {/* right: relations, findings and open questions of this model */}
