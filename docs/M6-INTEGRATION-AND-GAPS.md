@@ -2086,6 +2086,22 @@ Choices the spec left open (the owner may overrule):
   tool path), so the rebuilt key map has every entry.
 - **The change list's CSV is unchanged**; only the Markdown names the tool folder and the link.
 
+**S2b step 1 as delivered** (2026-10-18, on the branch, every gate green): §3.5's refactor. The
+project recompute (`apps/server/src/domain/recompute.ts`) is the pure `planRecompute` (over the
+head facts with the rule tier's result, the relations and their histories: the steps `derive`,
+`withdraw` and `refresh` in the order they are written, the findings and the summary; new
+assertions get provisional seqs after every stored one, so the planned states are the stored
+ones) and `writeRecompute`, which performs a plan in the recompute's order;
+`relation-state.ts` splits `refreshRelation` into the pure `refreshPatch` and `writeRefresh`. A new
+relation's id comes from the writer, right before its event, as before: ids of one millisecond do
+not sort by creation, and the placement claim lists relations by id (`claim-golden.test.ts` caught
+it). Pinned by a golden digest over a seeded history computed on the code before the split
+(`apps/server/test/integration/recompute-golden.test.ts`: `nordwind-handel` imported, a rule
+acceptance rejected, proposals accepted and held, a call target changed, a model deleted and
+revived, an unchanged re-import; relations, assertions, events and findings with ids and
+timestamps normalized). No behaviour changes; the claim inputs, the MCP snapshots and the reports
+are unchanged.
+
 Left for S2b: `importImpact`, the dry runs (`POST …/imports?dryRun=true`, `PUT …?dryRun=true`,
 `analyzr import --dry-run`), the deletion impact in `models delete`, and the absent keys of
 §3.5, which respect `source.scope` (stored on each revision since S2a). Left for the plugin's

@@ -60,7 +60,7 @@ const EVENT_TYPE: Readonly<Record<AssertionKind, string>> = {
  *   that supersedes another principal's proposal)
  */
 export async function prepareAssertion(
-  tx: Tx,
+  tx: Pick<Tx, 'events'>,
   projectId: ProjectId,
   relation: Pick<RelationRecord, 'id' | 'type' | 'fromRef' | 'toRef'>,
   input: AssertionInput,
@@ -126,6 +126,29 @@ export function derivedState(
   };
 }
 
+/** The derived columns a refresh writes ({@link derivedState}). */
+export type DerivedState = ReturnType<typeof derivedState>;
+
+/**
+ * What a refresh of a relation would write, pure: its derived state from
+ * the history and the head fingerprints, whether that differs from the
+ * stored row, and whether the endpoint state of a live relation changes
+ * (`relation.endpoint_changed`).
+ */
+export function refreshPatch(
+  relation: RelationRecord,
+  history: readonly AssertionView[],
+  current: { from: string | undefined; to: string | undefined },
+): { patch: DerivedState; changed: boolean; endpointChanged: boolean } {
+  const patch = derivedState(relation, history, current);
+  const changed = (Object.keys(patch) as (keyof typeof patch)[]).some(
+    (k) => patch[k] !== relation[k],
+  );
+  const endpointChanged =
+    changed && patch.endpointState !== relation.endpointState && patch.status !== 'obsolete';
+  return { patch, changed, endpointChanged };
+}
+
 /**
  * Writes a relation's derived state if it changed, or always with `touched`
  * (a new assertion: the version moves, so a bulk decision based on the old
@@ -142,14 +165,22 @@ export async function refreshRelation(
   current: { from: string | undefined; to: string | undefined },
   options: { touched: boolean; principalId: PrincipalId; clientId: string | null },
 ): Promise<{ relation: RelationRecord; endpointChanged: boolean }> {
-  const patch = derivedState(relation, history, current);
-  const changed = (Object.keys(patch) as (keyof typeof patch)[]).some(
-    (k) => patch[k] !== relation[k],
-  );
+  const { patch, changed, endpointChanged } = refreshPatch(relation, history, current);
   if (!changed && !options.touched) return { relation, endpointChanged: false };
+  const stored = await writeRefresh(tx, projectId, relation, patch, endpointChanged, options);
+  return { relation: stored, endpointChanged };
+}
+
+/** Writes a refresh's patch and, when the endpoint state changed, its event. */
+export async function writeRefresh(
+  tx: Pick<Tx, 'relations' | 'events'>,
+  projectId: ProjectId,
+  relation: RelationRecord,
+  patch: DerivedState,
+  endpointChanged: boolean,
+  options: { principalId: PrincipalId; clientId: string | null },
+): Promise<RelationRecord> {
   const stored = await tx.relations.update(projectId, relation.id, patch);
-  const endpointChanged =
-    patch.endpointState !== relation.endpointState && patch.status !== 'obsolete';
   if (endpointChanged) {
     await tx.events.append(projectId, {
       type: 'relation.endpoint_changed',
@@ -166,7 +197,7 @@ export async function refreshRelation(
       },
     });
   }
-  return { relation: stored, endpointChanged };
+  return stored;
 }
 
 /**
