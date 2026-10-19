@@ -84,6 +84,7 @@ afterAll(async () => {
 
 const readPaths = () => [
   '/api/v1/projects/p',
+  '/api/v1/projects/p/summary',
   '/api/v1/projects/p/models',
   `/api/v1/projects/p/models/${ids.model}`,
   `/api/v1/projects/p/models/${ids.model}/revisions`,

@@ -55,6 +55,11 @@ async function blankSecrets(page: Page): Promise<void> {
 test('projects', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByRole('link', { name: /Nordwind Handel/ })).toBeVisible();
+  // UX9: „Offen für dich“ and „Zuletzt geändert“ load per row; on a fresh stack the summary
+  // computes the open questions first.
+  await expect(page.locator('[data-testid=project-row] [data-slot=skeleton]')).toHaveCount(0, {
+    timeout: 30_000,
+  });
   await shot(page, '01-projects');
 });
 

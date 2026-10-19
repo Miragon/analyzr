@@ -115,7 +115,7 @@ import {
   OpenQuestionQuery,
   WithdrawOpenQuestionAnswerResult,
 } from './open-questions.ts';
-import { CreateProjectBody, Project, ProjectPage } from './projects.ts';
+import { CreateProjectBody, Project, ProjectPage, ProjectSummary } from './projects.ts';
 import {
   FindingList,
   NoLinkList,
@@ -417,6 +417,24 @@ export const apiRoutes = withDemoReadOnly({
     summary: 'One project',
     request: { params: projectParams },
     responses: { 200: json(Project, 'The project'), ...problems(...READ_PROBLEMS) },
+  },
+  getProjectSummary: {
+    method: 'get',
+    path: `${API_PREFIX}/projects/{project}/summary`,
+    operationId: 'getProjectSummary',
+    tags: ['projects'],
+    summary: "A project's open work and the time of its latest change (the projects list)",
+    description:
+      'The counts of the project tabs’ badges in one call: `reviewItems` (relations proposed, ' +
+      'or accepted with an endpoint that changed or is missing), `openPlacements` (the same ' +
+      'rule on the value chain, 0 without one) and `ask` (the open questions’ `totals.ask` of ' +
+      '`state=open`), plus `lastEventAt`. Readable by every member (permission `read`); the ' +
+      'web UI shows the counts only to roles that may decide (editor, owner).',
+    request: { params: projectParams },
+    responses: {
+      200: json(ProjectSummary, 'The project summary'),
+      ...problems(...READ_PROBLEMS),
+    },
   },
 
   listModels: {

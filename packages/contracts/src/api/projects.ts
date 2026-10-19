@@ -31,6 +31,35 @@ export const Project = z
   .meta({ id: 'Project', description: 'A project: one process landscape.' });
 export type Project = z.infer<typeof Project>;
 
+const count = () => z.number().int().min(0);
+
+/**
+ * A project's open work and its latest change, for the projects list (REST
+ * only; UX-SIMPLIFICATION §3.12 item 1). The counts follow the project tabs'
+ * badges (§2.5), so a number means the same on every screen: `reviewItems`
+ * the relations waiting for a decision (proposed, or accepted with an
+ * endpoint that changed or is missing), `openPlacements` the same rule for
+ * the placements on the project's value chain (0 without one), `ask` the
+ * open questions' `totals.ask` of `state=open`. Held items count only in
+ * `ask`. Not part of {@link Project}, which is MCP `list_projects`'s output.
+ */
+export const ProjectSummary = z
+  .object({
+    /** Time of the project's latest event (its creation at the earliest). */
+    lastEventAt: Timestamp,
+    /** Relations to review: proposed, or accepted with a changed or missing endpoint. */
+    reviewItems: count(),
+    /** Placements to review on the value chain: the same rule; 0 without a chain. */
+    openPlacements: count(),
+    /** Open questions to clarify (`totals.ask` of the open questions with `state=open`). */
+    ask: count(),
+  })
+  .meta({
+    id: 'ProjectSummary',
+    description: "A project's open work and the time of its latest change.",
+  });
+export type ProjectSummary = z.infer<typeof ProjectSummary>;
+
 export const CreateProjectBody = z
   .object({ key: ProjectKey, name: plainName(200) })
   .meta({ id: 'CreateProjectBody', description: 'Request body to create a project.' });

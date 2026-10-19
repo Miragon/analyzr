@@ -1,4 +1,4 @@
-import { createProject } from '@analyzr/client';
+import { createProject, type Project } from '@analyzr/client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, createRoute, useNavigate } from '@tanstack/react-router';
 import { PlusIcon, TerminalIcon } from 'lucide-react';
@@ -41,8 +41,9 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { ApiError, api, errorMessage, unwrap } from '@/lib/api';
-import { formatDate } from '@/lib/labels';
-import { keys, projectsQuery } from '@/lib/queries';
+import { formatDate, formatDateTime } from '@/lib/labels';
+import { openPointsText, summaryPoints } from '@/lib/project-counts';
+import { keys, projectSummaryQuery, projectsQuery } from '@/lib/queries';
 import { useServerMode } from '@/lib/server-mode';
 import { isProjectKey, slugify } from '@/lib/slug';
 
@@ -173,6 +174,83 @@ function NewProjectDialog({ trigger }: { trigger: ReactNode }) {
   );
 }
 
+const dash = <span className="text-muted-foreground">–</span>;
+
+/**
+ * One row of the projects list (UX-SIMPLIFICATION.md §3.12 item 1, UX9): the
+ * name with the key small below, „Rolle“ when the list shows it, then
+ * „Offen für dich“ and „Zuletzt geändert“ from the project's summary (one
+ * query per row, under the project's keys, so its writes refresh it).
+ * „Offen für dich“ is the sum of the project's three tab badges (relations to
+ * review, open placements, questions to clarify; §2.5), its split in the
+ * title; text, not a link, since no one list holds all three (P7). It shows
+ * only to roles that may decide (editor, owner): „–“ for viewers and the demo
+ * visitor, who cannot decide anything, and for none. „Zuletzt geändert“ is
+ * the day of the project's latest event, the time in its title. A failed
+ * summary leaves both at „–“.
+ */
+function ProjectRow({
+  project,
+  showRole,
+  demo,
+}: {
+  project: Project;
+  showRole: boolean;
+  demo: boolean;
+}) {
+  const summary = useQuery(projectSummaryQuery(project.key));
+  const mayDecide = !demo && (project.role === 'owner' || project.role === 'editor');
+  const points = summary.data ? summaryPoints(summary.data) : null;
+  return (
+    <TableRow data-testid="project-row">
+      <TableCell className="whitespace-normal">
+        <div className="flex min-w-0 flex-col">
+          <Link
+            to="/projects/$project"
+            params={{ project: project.key }}
+            className="font-medium text-link hover:underline"
+          >
+            {project.name}
+          </Link>
+          <span className="font-mono text-xs text-muted-foreground">{project.key}</span>
+        </div>
+      </TableCell>
+      {showRole ? (
+        <TableCell>
+          <Badge variant="outline">{ROLE_LABELS[project.role]}</Badge>
+        </TableCell>
+      ) : null}
+      <TableCell className="text-right tabular-nums" data-testid="open-for-you">
+        {!mayDecide ? (
+          dash
+        ) : summary.isPending ? (
+          <Skeleton className="ml-auto h-4 w-6" aria-label="Wird geladen" />
+        ) : points === null || points.total === 0 ? (
+          dash
+        ) : (
+          <span title={openPointsText(points)}>
+            {points.total}
+            <span className="sr-only">
+              {` ${points.total === 1 ? 'offener Punkt' : 'offene Punkte'}: ${openPointsText(points)}`}
+            </span>
+          </span>
+        )}
+      </TableCell>
+      <TableCell className="hidden text-muted-foreground sm:table-cell" data-testid="last-changed">
+        {summary.isPending ? (
+          <Skeleton className="h-4 w-20" aria-label="Wird geladen" />
+        ) : summary.data ? (
+          <span title={formatDateTime(summary.data.lastEventAt)}>
+            {formatDate(summary.data.lastEventAt)}
+          </span>
+        ) : (
+          dash
+        )}
+      </TableCell>
+    </TableRow>
+  );
+}
+
 function ProjectsPage() {
   const projects = useQuery(projectsQuery);
   const mode = useServerMode();
@@ -269,33 +347,13 @@ function ProjectsPage() {
               <TableRow>
                 <TableHead>Projekt</TableHead>
                 {showRole ? <TableHead>Rolle</TableHead> : null}
-                <TableHead className="hidden sm:table-cell">Angelegt</TableHead>
+                <TableHead className="text-right">Offen für dich</TableHead>
+                <TableHead className="hidden sm:table-cell">Zuletzt geändert</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {projects.data.map((p) => (
-                <TableRow key={p.id} data-testid="project-row">
-                  <TableCell className="whitespace-normal">
-                    <div className="flex min-w-0 flex-col">
-                      <Link
-                        to="/projects/$project"
-                        params={{ project: p.key }}
-                        className="font-medium text-link hover:underline"
-                      >
-                        {p.name}
-                      </Link>
-                      <span className="font-mono text-xs text-muted-foreground">{p.key}</span>
-                    </div>
-                  </TableCell>
-                  {showRole ? (
-                    <TableCell>
-                      <Badge variant="outline">{ROLE_LABELS[p.role]}</Badge>
-                    </TableCell>
-                  ) : null}
-                  <TableCell className="hidden text-muted-foreground sm:table-cell">
-                    {formatDate(p.createdAt)}
-                  </TableCell>
-                </TableRow>
+                <ProjectRow key={p.id} project={p} showRole={showRole} demo={mode.demo} />
               ))}
             </TableBody>
           </Table>

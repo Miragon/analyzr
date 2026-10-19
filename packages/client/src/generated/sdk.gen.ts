@@ -111,6 +111,9 @@ import type {
   GetProjectData,
   GetProjectErrors,
   GetProjectResponses,
+  GetProjectSummaryData,
+  GetProjectSummaryErrors,
+  GetProjectSummaryResponses,
   GetRelationAssertionsData,
   GetRelationAssertionsErrors,
   GetRelationAssertionsResponses,
@@ -350,6 +353,22 @@ export const getProject = <ThrowOnError extends boolean = false>(
     url: '/api/v1/projects/{project}',
     ...options,
   });
+
+/**
+ * A project's open work and the time of its latest change (the projects list)
+ *
+ * The counts of the project tabs’ badges in one call: `reviewItems` (relations proposed, or accepted with an endpoint that changed or is missing), `openPlacements` (the same rule on the value chain, 0 without one) and `ask` (the open questions’ `totals.ask` of `state=open`), plus `lastEventAt`. Readable by every member (permission `read`); the web UI shows the counts only to roles that may decide (editor, owner).
+ */
+export const getProjectSummary = <ThrowOnError extends boolean = false>(
+  options: Options<GetProjectSummaryData, ThrowOnError>,
+): RequestResult<GetProjectSummaryResponses, GetProjectSummaryErrors, ThrowOnError> =>
+  (options.client ?? client).get<GetProjectSummaryResponses, GetProjectSummaryErrors, ThrowOnError>(
+    {
+      security: [{ scheme: 'bearer', type: 'http' }],
+      url: '/api/v1/projects/{project}/summary',
+      ...options,
+    },
+  );
 
 /**
  * Models of a project, optionally filtered by pipeline stage

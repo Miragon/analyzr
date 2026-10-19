@@ -49,8 +49,10 @@ import {
   ModelKey,
   OWNER_KEY_PATTERN,
   PROBLEMS,
+  Project,
   ProjectId,
   ProjectRef,
+  ProjectSummary,
   Ref,
   RelationStatus,
   RelationType,
@@ -258,6 +260,7 @@ describe('openapi', () => {
     const schemas = Object.keys(doc.components?.schemas ?? {});
     for (const name of [
       'Project',
+      'ProjectSummary',
       'Model',
       'ModelStage',
       'Relation',
@@ -310,6 +313,20 @@ describe('openapi problem responses', () => {
 
   it('declares 403 insufficient-scope on listProjects (a token without analyzr:read)', () => {
     expect(Object.keys(apiRoutes.listProjects.responses)).toEqual(['200', '401', '403', '422']);
+  });
+
+  it('declares the project summary as a read route (UX9: REST only, every member)', () => {
+    expect(apiRoutes.getProjectSummary).toMatchObject({
+      method: 'get',
+      path: '/api/v1/projects/{project}/summary',
+    });
+    expect(Object.keys(apiRoutes.getProjectSummary.responses)).toEqual([
+      '200',
+      '401',
+      '403',
+      '404',
+      '422',
+    ]);
   });
 });
 
@@ -380,6 +397,32 @@ describe('read-only demo (owner decision 20)', () => {
       expect(Health.safeParse({ ...demo, imprintUrl: bad }).success, bad).toBe(false);
       expect(Health.safeParse({ ...demo, privacyUrl: bad }).success, bad).toBe(false);
     }
+  });
+});
+
+describe('project summary (UX9)', () => {
+  it('carries the latest change and three counts, never negative', () => {
+    const summary = {
+      lastEventAt: '2026-10-19T08:00:00.000Z',
+      reviewItems: 48,
+      openPlacements: 29,
+      ask: 21,
+    };
+    expect(ProjectSummary.parse(summary)).toEqual(summary);
+    expect(ProjectSummary.safeParse({ ...summary, ask: -1 }).success).toBe(false);
+    expect(ProjectSummary.safeParse({ ...summary, reviewItems: 1.5 }).success).toBe(false);
+    expect(ProjectSummary.safeParse({ ...summary, lastEventAt: 'gestern' }).success).toBe(false);
+  });
+
+  it('leaves Project (MCP list_projects) as it was', () => {
+    expect(Object.keys(Project.shape).sort()).toEqual([
+      'createdAt',
+      'id',
+      'key',
+      'lastSeq',
+      'name',
+      'role',
+    ]);
   });
 });
 

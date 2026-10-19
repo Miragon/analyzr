@@ -470,9 +470,11 @@ interface ActionWrites {
   answer: OpenQuestionAnswer | null;
 }
 
-export function openQuestionUseCases(deps: UseCaseDeps) {
-  const candidates = new CandidateCache();
-
+/**
+ * @param candidates the whole-project candidates, memoized; shared with the
+ *   project summary ({@link CandidateCache})
+ */
+export function openQuestionUseCases(deps: UseCaseDeps, candidates = new CandidateCache()) {
   /** The project and every open question, in list order. */
   async function all(
     tx: Tx,

@@ -206,6 +206,12 @@ test('projects: the banner, both landscapes as a reader, nothing to create', asy
   const rows = page.getByTestId('project-row');
   await expect(rows).toHaveCount(PROJECTS.length);
   for (const row of await rows.all()) await expect(row).toContainText('Leser');
+  // UX9: a reader cannot decide anything, so nothing is open for them; the latest change loads.
+  for (const cell of await page.getByTestId('open-for-you').all())
+    await expect(cell).toHaveText('–');
+  await expect(page.locator('[data-testid=project-row] [data-slot=skeleton]')).toHaveCount(0, {
+    timeout: 30_000,
+  });
   await noWriteActions(page);
   await expect(page.getByText(/Testlandschaften laden/)).toHaveCount(0);
   await shot(page, '01-projects');

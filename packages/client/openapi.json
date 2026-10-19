@@ -870,6 +870,33 @@
         ],
         "description": "Request body to create a project."
       },
+      "ProjectSummary": {
+        "type": "object",
+        "properties": {
+          "lastEventAt": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "reviewItems": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "openPlacements": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "ask": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "lastEventAt",
+          "reviewItems",
+          "openPlacements",
+          "ask"
+        ],
+        "description": "A project's open work and the time of its latest change."
+      },
       "ModelPage": {
         "type": "object",
         "properties": {
@@ -11848,6 +11875,84 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Project"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem: `unauthorized`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem: `insufficient-scope`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem: `not-found`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Problem: `validation-failed`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project}/summary": {
+      "get": {
+        "operationId": "getProjectSummary",
+        "tags": [
+          "projects"
+        ],
+        "summary": "A project's open work and the time of its latest change (the projects list)",
+        "description": "The counts of the project tabs’ badges in one call: `reviewItems` (relations proposed, or accepted with an endpoint that changed or is missing), `openPlacements` (the same rule on the value chain, 0 without one) and `ask` (the open questions’ `totals.ask` of `state=open`), plus `lastEventAt`. Readable by every member (permission `read`); the web UI shows the counts only to roles that may decide (editor, owner).",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": "^(?:prj_[0-7][0-9A-HJKMNP-TV-Z]{25}|[a-z0-9]+(?:-[a-z0-9]+)*)$",
+              "description": "Project id (`prj_…`) or project key.",
+              "example": "nordwind-handel"
+            },
+            "required": true,
+            "description": "Project id (`prj_…`) or project key.",
+            "name": "project",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The project summary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectSummary"
                 }
               }
             }

@@ -3,6 +3,7 @@ import {
   getLandscape,
   getPlacementAssertions,
   getProject,
+  getProjectSummary,
   getRelation,
   getRelationAssertions,
   getRevisionContent,
@@ -42,6 +43,7 @@ import type {
   Placement,
   PlacementAssertion,
   Project,
+  ProjectSummary,
   Relation,
   RelationAssertion,
   RevisionFacts,
@@ -65,6 +67,8 @@ export const keys = {
   me: ['me'] as const,
   projects: ['projects'] as const,
   project: (project: string) => ['project', project] as const,
+  // The projects list's counts (UX9): under the project, so its writes refresh them.
+  projectSummary: (project: string) => ['project', project, 'summary'] as const,
   models: (project: string) => ['project', project, 'models'] as const,
   landscape: (project: string) => ['project', project, 'landscape'] as const,
   noLinks: (project: string) => ['project', project, 'no-links'] as const,
@@ -147,6 +151,17 @@ export const projectQuery = (project: string) =>
   queryOptions({
     queryKey: keys.project(project),
     queryFn: (): Promise<Project> => unwrap(getProject({ client: api, path: { project } })),
+  });
+
+/**
+ * A project's open work and its latest change (`GET …/summary`, UX9): the
+ * projects list's „Offen für dich“ and „Zuletzt geändert“, one call per row.
+ */
+export const projectSummaryQuery = (project: string) =>
+  queryOptions({
+    queryKey: keys.projectSummary(project),
+    queryFn: (): Promise<ProjectSummary> =>
+      unwrap(getProjectSummary({ client: api, path: { project } })),
   });
 
 export const modelsQuery = (project: string) =>

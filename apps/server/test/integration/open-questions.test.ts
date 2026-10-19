@@ -18,9 +18,11 @@ import type { OpenQuestion } from '@analyzr/contracts';
 import {
   OPEN_QUESTION_CSV_COLUMNS,
   OpenQuestionPage,
+  ProjectSummary,
   isInformationalKind,
   type CreatedAgentToken,
   type FindingList,
+  type Landscape,
   type OpenQuestionKind,
   type OpenQuestionSource,
   type PlacementPage,
@@ -306,6 +308,22 @@ describe('open questions on nordwind-handel', () => {
     const simSummary = await summary('&state=open');
     expect(simSummary.totals).toEqual({ ask: 21, agent: 22, proposal: 27, info: 32 });
     expect(groupCounts(afterSim)).toEqual(simSummary.totals);
+    // UX9: the project summary (the projects list's „Offen für dich“) counts what the tabs'
+    // badges count: the relations to review, the open placements, the questions to clarify.
+    const waits = (item: { status: string; endpointState: string }) =>
+      item.status === 'proposed' || (item.status === 'accepted' && item.endpointState !== 'ok');
+    const landscape = await getJson<Landscape>(owner, `/api/v1/projects/${P}/landscape`);
+    const chainDetail = await getJson<ValueChainDetail>(owner, chainPath(P));
+    const projectSummary = ProjectSummary.parse(
+      await getJson(owner, `/api/v1/projects/${P}/summary`),
+    );
+    expect(projectSummary).toMatchObject({
+      reviewItems: landscape.relations.filter(waits).length,
+      openPlacements: chainDetail.placements.filter(waits).length,
+      ask: simSummary.totals.ask,
+    });
+    // The walkthrough's state: „Offen für dich“ 98 (UX1's badges 48, 29 and 21).
+    expect(projectSummary).toMatchObject({ reviewItems: 48, openPlacements: 29, ask: 21 });
     expect(counts(afterSim, (q) => `${q.group} ${q.kind}`)).toEqual({
       'agent agent-question': 22,
       'ask black-box-partner': 6,

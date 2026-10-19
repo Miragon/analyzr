@@ -12,7 +12,7 @@ import type { UseCaseDeps } from './deps.ts';
 import { identityUseCases } from './identity.ts';
 import { landscapeUseCases } from './landscape.ts';
 import { modelUseCases } from './models.ts';
-import { openQuestionUseCases } from './open-questions.ts';
+import { CandidateCache, openQuestionUseCases } from './open-questions.ts';
 import { placementUseCases } from './placements.ts';
 import { projectUseCases } from './projects.ts';
 import { reviewUseCases } from './review.ts';
@@ -36,9 +36,12 @@ export function createUseCases(deps: UseCaseDeps) {
     expectedPlacementProcedure: deps.expectedPlacementProcedure,
   };
   const chainDeps = { ...deps, rulesPrincipal: identity.rulesPrincipal };
+  // One memo of the whole-project candidates: the open questions and the project summary
+  // read the same read model, so the projects list adds nothing after an ingest.
+  const candidates = new CandidateCache();
   return {
     ...identity,
-    ...projectUseCases(deps),
+    ...projectUseCases(deps, candidates),
     ...modelUseCases(deps, ingestDeps),
     ...landscapeUseCases(deps),
     ...agentTokenUseCases(deps),
@@ -47,7 +50,7 @@ export function createUseCases(deps: UseCaseDeps) {
     ...valueChainUseCases(chainDeps),
     ...placementUseCases(chainDeps),
     ...autoAcceptUseCases(deps),
-    ...openQuestionUseCases(deps),
+    ...openQuestionUseCases(deps, candidates),
     ...amendmentUseCases(chainDeps),
   };
 }

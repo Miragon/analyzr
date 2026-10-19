@@ -1,4 +1,10 @@
-import type { Model, PlacementSummary, Relation, ValueChainDetail } from '@analyzr/client';
+import type {
+  Model,
+  PlacementSummary,
+  ProjectSummary,
+  Relation,
+  ValueChainDetail,
+} from '@analyzr/client';
 import { useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
 
@@ -123,6 +129,23 @@ export function projectWork({ relations, chain, summary, settled }: WorkInput): 
         questions,
       };
     },
+  };
+}
+
+/**
+ * A project's open points for the projects list's „Offen für dich“ (UX9,
+ * UX-SIMPLIFICATION.md §3.12 item 1): its three badges from the server's
+ * summary, the same rules as {@link projectWork}, so the number equals the
+ * sum of the project's tab badges.
+ */
+export function summaryPoints(
+  summary: Pick<ProjectSummary, 'reviewItems' | 'openPlacements' | 'ask'>,
+): OpenPoints {
+  return {
+    total: summary.reviewItems + summary.openPlacements + summary.ask,
+    relations: summary.reviewItems,
+    placements: summary.openPlacements,
+    questions: summary.ask,
   };
 }
 

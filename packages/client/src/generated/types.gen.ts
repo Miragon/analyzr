@@ -389,6 +389,16 @@ export type CreateProjectBody = {
 };
 
 /**
+ * A project's open work and the time of its latest change.
+ */
+export type ProjectSummary = {
+  lastEventAt: Timestamp;
+  reviewItems: number;
+  openPlacements: number;
+  ask: number;
+};
+
+/**
  * A page of Model items.
  */
 export type ModelPage = {
@@ -3862,6 +3872,49 @@ export type GetProjectResponses = {
 };
 
 export type GetProjectResponse = GetProjectResponses[keyof GetProjectResponses];
+
+export type GetProjectSummaryData = {
+  body?: never;
+  path: {
+    /**
+     * Project id (`prj_…`) or project key.
+     */
+    project: string;
+  };
+  query?: never;
+  url: '/api/v1/projects/{project}/summary';
+};
+
+export type GetProjectSummaryErrors = {
+  /**
+   * Problem: `unauthorized`
+   */
+  401: ApiProblem;
+  /**
+   * Problem: `insufficient-scope`
+   */
+  403: ApiProblem;
+  /**
+   * Problem: `not-found`
+   */
+  404: ApiProblem;
+  /**
+   * Problem: `validation-failed`
+   */
+  422: ApiProblem;
+};
+
+export type GetProjectSummaryError = GetProjectSummaryErrors[keyof GetProjectSummaryErrors];
+
+export type GetProjectSummaryResponses = {
+  /**
+   * The project summary
+   */
+  200: ProjectSummary;
+};
+
+export type GetProjectSummaryResponse =
+  GetProjectSummaryResponses[keyof GetProjectSummaryResponses];
 
 export type ListModelsData = {
   body?: never;

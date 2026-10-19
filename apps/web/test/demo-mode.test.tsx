@@ -239,6 +239,8 @@ describe('the projects page', () => {
     setup('/', { health: DEMO_HEALTH, role: 'viewer' });
     const row = await screen.findByTestId('project-row');
     expect(row.textContent).toContain('Leser');
+    // UX9: the visitor cannot decide anything, so nothing is open for them.
+    expect(within(row).getByTestId('open-for-you').textContent).toBe('–');
     expect(screen.queryByRole('button', { name: /Neues Projekt/ })).toBeNull();
     expect(screen.queryByText(/Testlandschaften laden/)).toBeNull();
   });
