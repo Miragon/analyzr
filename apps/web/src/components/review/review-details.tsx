@@ -326,6 +326,7 @@ export function ReviewDetails({
               marks={autoAccept?.marks}
               brief={shownAbove}
               technical={false}
+              callRelation={relation.type === 'call'}
             />
           )}
           <RelationTechnical relation={relation} proposal={proposal} />

@@ -3,6 +3,7 @@ import type {
   ExtractWarning,
   ImportFileOutcome,
   ImportImpact,
+  TrustReason,
 } from '@analyzr/client';
 // The shared file rule and key derivation (M6 S1): zod-free, the one runtime import from the contracts.
 import {
@@ -18,6 +19,7 @@ import {
 import { formatBytes } from './labels';
 import { MAX_IMPORT_BYTES, MAX_IMPORT_FILES, MAX_MODEL_BYTES, PROBLEM_TYPE_BASE } from './limits';
 import { problemText } from './problem-texts';
+import { TRUST_REASON_LABELS, trustReasonLabel } from './provenance';
 
 /** A file picked or dropped for import, with its path below the import root. */
 export interface UploadEntry {
@@ -694,6 +696,23 @@ function mergeList<K extends ImpactListKey>(
   } as ImportImpact[K];
 }
 
+/** The calls only proposed of several batches (M6 S2c): totals added up, reasons in order. */
+function mergeProposedCalls(impacts: readonly ImportImpact[]): ImportImpact['callsProposed'] {
+  const lists = impacts.map((i) => i.callsProposed);
+  const byReason = new Map<TrustReason, number>();
+  for (const { reason, count } of lists.flatMap((l) => l.byReason)) {
+    byReason.set(reason, (byReason.get(reason) ?? 0) + count);
+  }
+  return {
+    count: lists.reduce((n, l) => n + l.count, 0),
+    items: lists.flatMap((l) => l.items).slice(0, 100),
+    wasAccepted: lists.reduce((n, l) => n + l.wasAccepted, 0),
+    byReason: (Object.keys(TRUST_REASON_LABELS) as TrustReason[])
+      .filter((reason) => byReason.has(reason))
+      .map((reason) => ({ reason, count: byReason.get(reason) ?? 0 })),
+  };
+}
+
 /**
  * The impacts of a preview's batches as one, as `analyzr import --dry-run`
  * merges them: files and counts added up, items concatenated up to the
@@ -704,6 +723,7 @@ export function mergeImpacts(impacts: readonly ImportImpact[]): ImportImpact {
   return {
     files: impacts.flatMap((i) => i.files),
     acceptedCalls: mergeList(impacts, 'acceptedCalls'),
+    callsProposed: mergeProposedCalls(impacts),
     proposalsAdded: mergeList(impacts, 'proposalsAdded'),
     proposalsWithdrawn: mergeList(impacts, 'proposalsWithdrawn'),
     endpointsChanged: mergeList(impacts, 'endpointsChanged'),
@@ -736,15 +756,22 @@ export function previewHeadline(
 
 /**
  * At most three lines of what the import would change, the weightiest
- * first: calls the rule tier would link, accepted relations whose end
- * changes or goes missing, rule proposals added, stances withdrawn, models
- * of the system the bundle no longer names (kept), findings added.
+ * first: calls the rule tier would link, unique calls of derived models it
+ * only proposes (M6 S2c, the trust rule, with the reason most of them rest
+ * on), accepted relations whose end changes or goes missing, rule
+ * proposals added, stances withdrawn, models of the system the bundle no
+ * longer names (kept), findings added.
  */
 export function impactLines(impact: ImportImpact): string[] {
   const n = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
+  // The reason most calls rest on (the server counts each under its caller's first one).
+  const reason = [...impact.callsProposed.byReason].sort((a, b) => b.count - a.count)[0]?.reason;
   const lines = [
     impact.acceptedCalls.count > 0
       ? `${n(impact.acceptedCalls.count, 'Aufruf', 'Aufrufe')} automatisch verknüpft`
+      : null,
+    impact.callsProposed.count > 0
+      ? `${n(impact.callsProposed.count, 'Aufruf', 'Aufrufe')} nur vorgeschlagen${reason ? ` (${trustReasonLabel(reason)})` : ''} – nach dem Import gesammelt annehmen`
       : null,
     impact.endpointsChanged.count > 0
       ? `${n(impact.endpointsChanged.count, 'angenommene Relation', 'angenommene Relationen')} mit geändertem oder fehlendem Endpunkt`

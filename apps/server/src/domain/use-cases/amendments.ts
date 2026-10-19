@@ -88,6 +88,7 @@ import type {
   Tx,
 } from '../ports.ts';
 import { byRelation } from '../relation-state.ts';
+import { callTargets, trustByModel, type ModelTrust } from '../trust.ts';
 import { toModel, toRevision } from '../views.ts';
 import type { UseCaseDeps } from './deps.ts';
 import { CandidateCache, loadOpenQuestionInput } from './open-questions.ts';
@@ -193,6 +194,24 @@ function nextLive(
         seq: Number.MAX_SAFE_INTEGER,
       })),
   ];
+}
+
+/**
+ * The models' trust for an amendment's effect (M6 S2c): as stored, and with
+ * the model's call targets from the derived head's plan, which count as
+ * modelled (decision 25.2).
+ */
+async function effectTrust(
+  tx: Tx,
+  projectId: ProjectId,
+  modelKey: string,
+  derivation: Pick<Derivation, 'plan'>,
+): Promise<{ before: Map<string, ModelTrust>; after: Map<string, ModelTrust> }> {
+  const before = trustByModel(await tx.revisions.headTrustRows(projectId));
+  const after = new Map(before);
+  const own = before.get(modelKey);
+  if (own) after.set(modelKey, { ...own, ...callTargets(derivation.plan) });
+  return { before, after };
 }
 
 /** The endpoints whose name a `message-name` amendment sets: the one asked, else its readers. */
@@ -753,6 +772,7 @@ export function amendmentUseCases(deps: AmendmentDeps) {
               amended: derivation.extracted,
               relations,
               runRules: (facts) => deps.analysis.runRules(facts),
+              trust: await effectTrust(tx, project.id, model.key, derivation),
               candidates: effectCandidates,
             })
           : { effect: noEffect(), partnerPairs: new Map<number, AmendmentEffectRelation[]>() };

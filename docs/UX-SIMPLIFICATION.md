@@ -5,7 +5,8 @@ the recommended option; HANDOFF §4); proposal of 2026-10-17, revised the same d
 feasibility critique · Branch: `feat/integration-and-gaps` (the first wave UX2a, UX1 and UX2b
 delivered on it on 2026-10-18, §7; the owner's walkthrough the same day, §7 "Owner
 walkthrough"; UX7, UX8, S2b's „Vorschau“, UX3, UX4 and UX5 delivered the same day, UX6 and
-UX9 on 2026-10-19: every slice delivered) · Source: four user-need audits of the web UI on the agent-created scratch stack
+UX9 on 2026-10-19: every slice delivered; M6 S2c-1's texts on these screens the same day, §7) ·
+Source: four user-need audits of the web UI on the agent-created scratch stack
 `analyzr-uxaudit` (seeded `nordwind-handel` with its chain and a simulation agent run,
 `signavio-beispiel` from the CLI bundle import, two projects made from the raw synthetic Signavio
 export; 1440x900 and 390x844), torn down after the audit · Relates to: HANDOFF §4 decisions 8, 10,
@@ -762,7 +763,8 @@ Appendix A.
 5. **Empty text** by state: with models „Noch keine Relationen. Eindeutige Aufrufe verknüpft
    analyzr beim Hochladen; den Rest schlägt ein Agent vor.“ and „Agent starten“ (or „Agent
    verbinden“ without a token; today „Lade Modelle hoch: …“ although models exist); views and
-   filters hidden while empty. (O20)
+   filters hidden while empty. (O20) Since M6 S2c-1 (the trust rule) both texts say „Eindeutige
+   Aufrufe aus Camunda-Modellen …“, the one without models adds „aus anderen schlägt sie sie vor“.
 
 ### 3.11 „Einstellungen“: „Agent verbinden“ and „Annahmeregeln“
 
@@ -802,7 +804,10 @@ Appendix A.
    entschieden hast.“), the dialogs only what is specific to them; the system rule card one line
    „Eindeutige Aufrufe nimmt analyzr beim Hochladen an · immer aktiv · 10 angenommen“ (no
    „calledElement“, no „Verfahren analyzr-rules/1.0.0“); no „Neue Regel“ next to „Erste Regel
-   anlegen“. (R21)
+   anlegen“. (R21) Since M6 S2c-1 the card reads „Eindeutige Aufrufe aus Camunda-Modellen nimmt
+   analyzr beim Hochladen an · immer aktiv · 10 angenommen · 12 aus abgeleiteten Modellen
+   vorgeschlagen“ (the last part only while such proposals are open, plain text until S2c-2 opens
+   a list of exactly those rows).
 7. **Apply and revoke lists** (`rules/subject.tsx`, `apply-dialog.tsx`): element labels and
    „100 %“ instead of raw refs and „mit 1,00 · sim-policy-1“; the whole list scrolls instead of
    stopping at 20. (R22)
@@ -895,7 +900,7 @@ Appendix A.
 | „fehlgeschlagen“ | „gescheitert“ (as `STAGES`) | „Als Nächstes“, warnings, `CHAIN_STAGES` |
 | „Paar“, „Verbindung“ (a candidate pair) | „mögliche Relation“ | bulk dialog, amend cost, no-links |
 | preset „Durch Systemregel angenommen“ | „Eindeutige Aufrufe“ | „Relationen“ |
-| timeline „Vorgeschlagen · analyzr-rules“ / „Vorgeschlagen · agent:agent-sim“ | „Gleicher Name erkannt (analyzr)“ / „Vom Agenten vorgeschlagen“ | review „Verlauf“ |
+| timeline „Vorgeschlagen · analyzr-rules“ / „Vorgeschlagen · agent:agent-sim“ | „Gleicher Name erkannt (analyzr)“ / „Vom Agenten vorgeschlagen“; since M6 S2c-1 the trust rule's proposal of a unique call „Eindeutiger Aufruf erkannt (analyzr)“, without the tier badge | review „Verlauf“ |
 | „Herkunft“ (relation, placement, queue column) | in „Verlauf“ / „Details“; queue column „Hinweise“; relations column „Entschieden von“ | „Herkunft“ is reserved for the model's source (S2a, §6) |
 | „Befunde“ (tab, model view section) | the kind labels of the questions | – |
 | chain „Befunde (44)“ | „Link nicht auflösbar (n)“ | chain panel |
@@ -1093,7 +1098,10 @@ delivered"). They fit without a new column, tab or panel:
   `source.derived`, `system` and `exportedAt`, which `Model` does not carry and `GET …/external-ids`
   does not give: UX8 adds a REST-only provenance summary to `Model` (`source: {system, derived,
   exportedAt} | null`; `Model` is in no MCP output schema), contracts first, the client regenerated,
-  with a server test. S2c's trust marker, if the owner enables it, reuses this chip.
+  with a server test. S2c-1's trust class gets no chip: a derived revision adds the line
+  „Aufrufe: nur als Vorschlag (ohne Camunda-Engine)“ to „Herkunft“ („· von dir gesetzte
+  Aufrufziele gelten als modelliert“ when a call target was set in analyzr), so the models table
+  and the header stay as they are.
 - **`extractor-loss`**: an item in „Zu klären“ (already in the contracts), the model view's header
   line „Beim Import übersprungen: 2 Elemente – Details“ (§3.5), and the grouped upload warning
   (§3.9); no extra mark in the table (it counts in „Offene Punkte“).
@@ -1121,7 +1129,10 @@ delivered"). They fit without a new column, tab or panel:
   every key shares one top folder: „Alle Kurznamen beginnen mit „gemeinsame-dokumente/“ – lege den
   Unterordner ab, wenn das nicht Teil der Namen sein soll.“ (keys are fixed for good, M6 §3.4, so
   the preview shows on a first import too). Above 50 files: „Vorschau je 50 Dateien; Aufrufe
-  zwischen den Teilen erscheinen hier als unaufgelöst.“ One click more, no new screen.
+  zwischen den Teilen erscheinen hier als unaufgelöst.“ One click more, no new screen. Since M6
+  S2c-1 the impact lines add „12 Aufrufe nur vorgeschlagen (ohne Camunda-Engine) – nach dem
+  Import gesammelt annehmen“ for the unique calls of derived models, and „Was ändert sich?“ the
+  list „Aufrufe als Vorschlag“ („(bisher angenommen)“ for a call whose acceptance ends).
 - **Deletion impact** (S2b): stays in `analyzr models delete`; the web has no model deletion. If
   the owner wants it, it goes into the model view's „Mehr“ as „Modell löschen …“ with the impact as
   the confirmation dialog, in the chain save's pattern (only non-zero lines, „Weiter bearbeiten“ /
@@ -2071,6 +2082,24 @@ keep list's „rules off by default“). Measured with the UI load guard on `ana
 
 Not verified: other browsers than Chromium, a real phone, a screen reader, the summary on a stack
 with many projects.
+
+**M6 S2c-1's texts as delivered** (2026-10-19, on the branch, every gate green; M6 §8 "S2c-1 as
+delivered", DEVELOPMENT.md "M6 S2c-1"). The trust rule (decisions 24.2, 25.2 and 28) reaches
+these screens as text only, no new control: the „Vorschau“ line and list (§6), the „Aufrufe“ line
+in „Herkunft“ (§6, no chip), the system rule card (§3.11 item 6), „Verlauf“'s title for the
+proposal (§4), the tier hint „… aus Camunda-Modellen automatisch angenommen.“, the detail
+„eindeutiger Aufruf aus abgeleitetem Modell“, the empty texts of „Relationen“ (§3.10 item 5) and
+of a new project's „Übersicht“ („… verknüpft eindeutige Aufrufe aus Camunda-Modellen sofort und
+schlägt die übrigen und gleiche Nachrichtennamen als Relationen vor.“), and the import warning
+`trust-kept` („Unverändert: analyzr behält, ob es die Aufrufe des Modells annimmt oder nur
+vorschlägt. Eine neue Einstufung braucht geänderte Dateien.“). The UI load guard on
+`analyzr-s2c`: `signavio-beispiel` (imported with a write token, no engine) now has „Rechnung
+stellen“ as a proposal, so its tab reads „Relationen 1 zu prüfen“ and „Übersicht“'s „Als
+Nächstes“ adds „Oder jetzt schon: Vorschläge prüfen (1) …“: 20 controls and 122 / 107 words at 1440 / 390 (19,
+103 / 88 before), its „Offene Fragen“ 254 words (253); the empty project's „Übersicht“ 42 / 41
+words (37 / 36); everything else unchanged. That one proposal is the step S2c-2 shortens (and
+until it is accepted, the agent's relations claim also assigns it to judge): its „Als Nächstes“
+line and the bulk dialog's group for these calls are next.
 
 ## 8. Keep as is
 

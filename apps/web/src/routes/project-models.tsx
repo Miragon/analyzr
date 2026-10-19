@@ -303,7 +303,7 @@ function EmptyProject({ project }: { project: string }) {
         <EmptyTitle className="text-base font-semibold">Noch keine Modelle</EmptyTitle>
         <EmptyDescription>
           {can.canWrite
-            ? 'Lade BPMN-Dateien hoch. analyzr liest die Fakten, verknüpft eindeutige Aufrufe sofort und schlägt gleiche Nachrichtennamen als Relationen vor.'
+            ? 'Lade BPMN-Dateien hoch. analyzr liest die Fakten, verknüpft eindeutige Aufrufe aus Camunda-Modellen sofort und schlägt die übrigen und gleiche Nachrichtennamen als Relationen vor.'
             : 'Dieses Projekt hat noch keine Modelle.'}
         </EmptyDescription>
       </EmptyHeader>

@@ -420,6 +420,7 @@ export type Model = {
   stage: ModelStage;
   openItems: number;
   source: ModelSourceSummary | null;
+  trust: ModelTrustSummary | null;
   updatedAt: Timestamp;
 };
 
@@ -474,6 +475,26 @@ export type DerivedKind = 'export' | 'converted' | 'reconstructed' | 'as-told';
 export type ExportedAt = string;
 
 /**
+ * A model's trust class in short.
+ */
+export type ModelTrustSummary = {
+  class: TrustClass;
+  reasons: Array<TrustReason>;
+  derivedKind: DerivedKind | null;
+  converter: string | null;
+};
+
+/**
+ * Trust class of an uploaded revision.
+ */
+export type TrustClass = 'modelled' | 'derived';
+
+/**
+ * Why an uploaded revision is derived.
+ */
+export type TrustReason = 'no-engine' | 'agent-upload' | 'converted' | 'reconstructed' | 'as-told';
+
+/**
  * What an import or a deletion would change.
  */
 export type ImportImpact = {
@@ -482,6 +503,7 @@ export type ImportImpact = {
     count: number;
     items: Array<ImpactRelation>;
   };
+  callsProposed: ImpactProposedCalls;
   proposalsAdded: {
     count: number;
     items: Array<ImpactRelation>;
@@ -516,6 +538,15 @@ export type ImpactFile = {
   factsChanged: boolean;
   processesAdded: Array<Ref>;
   processesRemoved: Array<Ref>;
+  trust: RevisionTrust;
+};
+
+/**
+ * Trust class of an uploaded revision.
+ */
+export type RevisionTrust = {
+  class: TrustClass;
+  reasons: Array<TrustReason>;
 };
 
 /**
@@ -531,6 +562,29 @@ export type ImpactRelation = {
  * Type of a relation between two processes.
  */
 export type RelationType = 'call' | 'message' | 'signal' | 'trigger' | 'manual';
+
+/**
+ * Unique calls from derived models, proposed, with their totals.
+ */
+export type ImpactProposedCalls = {
+  count: number;
+  items: Array<ImpactProposedCall>;
+  wasAccepted: number;
+  byReason: Array<{
+    reason: TrustReason;
+    count: number;
+  }>;
+};
+
+/**
+ * A unique call from a derived model, proposed.
+ */
+export type ImpactProposedCall = {
+  type: RelationType;
+  from: Ref;
+  to: Ref;
+  wasAccepted: boolean;
+};
 
 /**
  * An accepted relation whose end changes.
@@ -616,6 +670,7 @@ export type RevisionSource = {
   losses?: Array<ManifestLoss>;
   upstream?: RevisionUpstream;
   amendments?: Array<AmendmentPlanEntry>;
+  trust?: RevisionTrust;
   [key: string]: unknown;
 };
 
@@ -735,7 +790,11 @@ export type ImportWarning = {
  * Kind of an import warning.
  */
 export type ImportWarningCode =
-  'manifest-sha-mismatch' | 'external-id-moved' | 'external-id-changed' | 'provenance-kept';
+  | 'manifest-sha-mismatch'
+  | 'external-id-moved'
+  | 'external-id-changed'
+  | 'provenance-kept'
+  | 'trust-kept';
 
 /**
  * A model's identity in its source system.
@@ -804,6 +863,7 @@ export type ImportFileOutcome = {
   warningCount?: number;
   amendments?: AmendmentCounts;
   importWarnings?: Array<ImportWarning>;
+  trust?: RevisionTrust;
 };
 
 export type ImportModelsBody = {
@@ -3347,6 +3407,7 @@ export type AutoAcceptSystemRule = {
   relationType: 'call';
   readOnly: true;
   accepted: number;
+  proposed: number;
 };
 
 /**

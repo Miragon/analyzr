@@ -618,11 +618,30 @@ describe('UploadPanel', () => {
           ...(call.search === '?dryRun=true'
             ? {
                 impact: {
-                  files: [],
+                  files: ['a', 'b'].map((k) => ({
+                    modelKey: `gemeinsam/${k}`,
+                    factsChanged: true,
+                    processesAdded: [],
+                    processesRemoved: [],
+                    trust: { class: 'derived', reasons: ['no-engine'] },
+                  })),
                   acceptedCalls: list(2, [
                     { type: 'call', from: 'gemeinsam/a#Call_B', to: 'gemeinsam/b#Process_B' },
                     { type: 'call', from: 'gemeinsam/b#Call_A', to: 'gemeinsam/a#Process_A' },
                   ]),
+                  // the trust rule (M6 S2c): a derived model's unique call, only proposed
+                  callsProposed: {
+                    ...list(1, [
+                      {
+                        type: 'call',
+                        from: 'gemeinsam/b#Call_C',
+                        to: 'gemeinsam/a#Process_A',
+                        wasAccepted: true,
+                      },
+                    ]),
+                    wasAccepted: 1,
+                    byReason: [{ reason: 'no-engine', count: 1 }],
+                  },
                   proposalsAdded: list(0),
                   proposalsWithdrawn: list(0),
                   endpointsChanged: list(1, [
@@ -648,7 +667,7 @@ describe('UploadPanel', () => {
     const preview = await screen.findByTestId('upload-preview');
     expect(screen.getByTestId('import-headline').textContent).toBe('Vorschau: 2 Modelle neu');
     expect(within(preview).getByTestId('preview-impact').textContent).toBe(
-      'Danach: 2 Aufrufe automatisch verknüpft · 1 angenommene Relation mit geändertem oder fehlendem Endpunkt · 3 Modelle des Quellsystems nicht im Bundle (bleiben erhalten)',
+      'Danach: 2 Aufrufe automatisch verknüpft · 1 Aufruf nur vorgeschlagen (ohne Camunda-Engine) – nach dem Import gesammelt annehmen · 1 angenommene Relation mit geändertem oder fehlendem Endpunkt',
     );
     // keys are fixed for good: a dropped parent folder in every name is worth a hint
     expect(within(preview).getByTestId('preview-folder').textContent).toContain(
@@ -658,6 +677,10 @@ describe('UploadPanel', () => {
     expect(details.hasAttribute('open')).toBe(false);
     expect(details.textContent).toContain('gemeinsam/a#Call_B → gemeinsam/b#Process_B');
     expect(details.textContent).toContain('alt/x#Call_A → gemeinsam/a#Process_A (geändert)');
+    expect(details.textContent).toContain(
+      'Aufrufe als Vorschlag (1)gemeinsam/b#Call_C → gemeinsam/a#Process_A (bisher angenommen)',
+    );
+    expect(details.textContent).toContain('alt/z');
     // the outcome column says what each file would become
     expect(
       within(screen.getByRole('table', { name: 'Import je Datei' })).getAllByText('Wird neu'),

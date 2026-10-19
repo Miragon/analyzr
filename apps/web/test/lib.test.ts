@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+import type { TrustReason } from '@analyzr/client';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -384,9 +385,11 @@ describe('upload result (UX7)', () => {
     );
     expect(previewHeadline([], 0)).toBe('Vorschau: nichts zu importieren');
     const list = (count: number) => ({ count, items: [] });
+    const proposedCalls = (count: number) => ({ ...list(count), wasAccepted: 0, byReason: [] });
     const impact = {
       files: [],
       acceptedCalls: list(1),
+      callsProposed: proposedCalls(0),
       proposalsAdded: list(4),
       proposalsWithdrawn: list(2),
       endpointsChanged: list(0),
@@ -411,6 +414,62 @@ describe('upload result (UX7)', () => {
     const merged = mergeImpacts([impact, { ...impact, absentKeys: { count: 1, items: ['x'] } }]);
     expect(merged.proposalsAdded.count).toBe(8);
     expect(merged.absentKeys.count).toBe(0);
+    // The trust rule (M6 S2c): calls of derived models only proposed, with the reason most of
+    // them rest on (the server's totals, each call under its caller's first reason).
+    const calls = (count: number, ...byReason: [TrustReason, number][]) => ({
+      ...proposedCalls(0),
+      count,
+      byReason: byReason.map(([reason, n]) => ({ reason, count: n })),
+    });
+    const proposed = {
+      ...impact,
+      callsProposed: calls(12, ['no-engine', 2], ['agent-upload', 7], ['converted', 3]),
+    };
+    expect(impactLines(proposed)).toEqual([
+      '1 Aufruf automatisch verknüpft',
+      '12 Aufrufe nur vorgeschlagen (über ein Agenten-Token hochgeladen) – nach dem Import gesammelt annehmen',
+      '4 neue Vorschläge der Regeln zu prüfen',
+    ]);
+    // A tie goes to the first reason in their order; without reasons, none.
+    expect(
+      impactLines({
+        ...proposed,
+        acceptedCalls: list(0),
+        callsProposed: calls(2, ['no-engine', 1], ['converted', 1]),
+      })[0],
+    ).toBe(
+      '2 Aufrufe nur vorgeschlagen (ohne Camunda-Engine) – nach dem Import gesammelt annehmen',
+    );
+    expect(impactLines({ ...proposed, acceptedCalls: list(0), callsProposed: calls(1) })[0]).toBe(
+      '1 Aufruf nur vorgeschlagen – nach dem Import gesammelt annehmen',
+    );
+    // Batches merge by their totals, reasons in their order.
+    const second = {
+      ...impact,
+      callsProposed: { ...calls(3, ['no-engine', 3]), wasAccepted: 2 },
+    };
+    expect(
+      mergeImpacts([
+        { ...proposed, callsProposed: { ...proposed.callsProposed, wasAccepted: 5 } },
+        second,
+      ]).callsProposed,
+    ).toEqual({
+      count: 15,
+      items: [],
+      wasAccepted: 7,
+      byReason: [
+        { reason: 'no-engine', count: 5 },
+        { reason: 'agent-upload', count: 7 },
+        { reason: 'converted', count: 3 },
+      ],
+    });
+    // The models of the source system the bundle no longer names, with fewer than three
+    // weightier lines.
+    expect(impactLines({ ...impact, proposalsWithdrawn: list(0), absentKeys: list(3) })).toEqual([
+      '1 Aufruf automatisch verknüpft',
+      '4 neue Vorschläge der Regeln zu prüfen',
+      '3 Modelle des Quellsystems nicht im Bundle (bleiben erhalten)',
+    ]);
     expect(sharedTopFolder(['gemeinsam/a', 'gemeinsam/b/c'])).toBe('gemeinsam');
     expect(sharedTopFolder(['gemeinsam/a', 'anders/b'])).toBeNull();
     expect(sharedTopFolder(['a', 'b'])).toBeNull();
@@ -559,6 +618,19 @@ describe('relation filters', () => {
         provenance: null,
       }).detail,
     ).toBe('Prozess-ID mehrdeutig');
+    // The trust rule (M6 S2c): a unique call of a derived model, only proposed.
+    expect(
+      provenanceOf({
+        tier: 'key',
+        type: 'call',
+        attrs: { calledElement: 'P', match: 'derived-caller' },
+        provenance: null,
+      }),
+    ).toEqual({
+      source: 'rule',
+      label: 'analyzr-rules/1.0.0',
+      detail: 'eindeutiger Aufruf aus abgeleitetem Modell',
+    });
     expect(provenanceOf({ tier: 'key', type: 'signal', attrs: {}, provenance: null }).detail).toBe(
       'gleicher Signalname',
     );

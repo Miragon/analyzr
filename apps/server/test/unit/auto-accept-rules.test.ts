@@ -103,14 +103,23 @@ describe('an edit', () => {
 });
 
 describe('the system rule', () => {
-  it('describes decision 9, read-only', () => {
-    expect(systemRule(3)).toMatchObject({
+  it('describes decision 9 as amended by the trust rule (24.2, 25.2), read-only', () => {
+    const rule = systemRule(3, 2);
+    expect(rule).toMatchObject({
       id: 'analyzr-rules/1.0.0',
       name: 'Eindeutige Aufrufe',
       kind: 'relation',
       relationType: 'call',
       readOnly: true,
       accepted: 3,
+      proposed: 2,
     });
+    expect(rule.description).toBe(
+      'Ein statischer Aufruf (calledElement), der genau einen anderen Prozess nennt, wird beim ' +
+        'Import angenommen, wenn das aufrufende Modell aus Camunda 7 oder 8 stammt, über den ' +
+        'Owner-Zugang oder das Web hochgeladen wurde und nicht als konvertiert, KI-rekonstruiert ' +
+        'oder aus einem Interview angegeben ist. Sonst wird er mit 90 % vorgeschlagen. Ein ' +
+        'Aufrufziel, das du in analyzr ergänzt hast, gilt immer als modelliert.',
+    );
   });
 });

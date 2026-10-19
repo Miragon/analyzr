@@ -975,6 +975,16 @@
               }
             ]
           },
+          "trust": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ModelTrustSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "updatedAt": {
             "$ref": "#/components/schemas/Timestamp"
           }
@@ -990,6 +1000,7 @@
           "stage",
           "openItems",
           "source",
+          "trust",
           "updatedAt"
         ],
         "description": "A BPMN model (one file) with a stable key."
@@ -1083,6 +1094,66 @@
         "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(?::\\d{2}(?:\\.\\d{1,9})?)?(?:Z|[+-]\\d{2}:\\d{2})$",
         "description": "ISO 8601 date-time of the export (declared)."
       },
+      "ModelTrustSummary": {
+        "type": "object",
+        "properties": {
+          "class": {
+            "$ref": "#/components/schemas/TrustClass"
+          },
+          "reasons": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TrustReason"
+            }
+          },
+          "derivedKind": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DerivedKind"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "converter": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "class",
+          "reasons",
+          "derivedKind",
+          "converter"
+        ],
+        "description": "A model's trust class in short."
+      },
+      "TrustClass": {
+        "type": "string",
+        "enum": [
+          "modelled",
+          "derived"
+        ],
+        "description": "Trust class of an uploaded revision."
+      },
+      "TrustReason": {
+        "type": "string",
+        "enum": [
+          "no-engine",
+          "agent-upload",
+          "converted",
+          "reconstructed",
+          "as-told"
+        ],
+        "description": "Why an uploaded revision is derived."
+      },
       "ImportImpact": {
         "type": "object",
         "properties": {
@@ -1111,6 +1182,9 @@
               "count",
               "items"
             ]
+          },
+          "callsProposed": {
+            "$ref": "#/components/schemas/ImpactProposedCalls"
           },
           "proposalsAdded": {
             "type": "object",
@@ -1236,6 +1310,7 @@
         "required": [
           "files",
           "acceptedCalls",
+          "callsProposed",
           "proposalsAdded",
           "proposalsWithdrawn",
           "endpointsChanged",
@@ -1265,15 +1340,38 @@
             "items": {
               "$ref": "#/components/schemas/Ref"
             }
+          },
+          "trust": {
+            "$ref": "#/components/schemas/RevisionTrust"
           }
         },
         "required": [
           "modelKey",
           "factsChanged",
           "processesAdded",
-          "processesRemoved"
+          "processesRemoved",
+          "trust"
         ],
         "description": "How a file would change its model."
+      },
+      "RevisionTrust": {
+        "type": "object",
+        "properties": {
+          "class": {
+            "$ref": "#/components/schemas/TrustClass"
+          },
+          "reasons": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TrustReason"
+            }
+          }
+        },
+        "required": [
+          "class",
+          "reasons"
+        ],
+        "description": "Trust class of an uploaded revision."
       },
       "ImpactRelation": {
         "type": "object",
@@ -1305,6 +1403,76 @@
           "manual"
         ],
         "description": "Type of a relation between two processes."
+      },
+      "ImpactProposedCalls": {
+        "type": "object",
+        "properties": {
+          "count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ImpactProposedCall"
+            },
+            "maxItems": 100
+          },
+          "wasAccepted": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "byReason": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "reason": {
+                  "$ref": "#/components/schemas/TrustReason"
+                },
+                "count": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              },
+              "required": [
+                "reason",
+                "count"
+              ]
+            }
+          }
+        },
+        "required": [
+          "count",
+          "items",
+          "wasAccepted",
+          "byReason"
+        ],
+        "description": "Unique calls from derived models, proposed, with their totals."
+      },
+      "ImpactProposedCall": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/RelationType"
+          },
+          "from": {
+            "$ref": "#/components/schemas/Ref"
+          },
+          "to": {
+            "$ref": "#/components/schemas/Ref"
+          },
+          "wasAccepted": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "type",
+          "from",
+          "to",
+          "wasAccepted"
+        ],
+        "description": "A unique call from a derived model, proposed."
       },
       "ImpactEndpoint": {
         "type": "object",
@@ -1409,7 +1577,7 @@
             "items": {
               "$ref": "#/components/schemas/ImportWarning"
             },
-            "maxItems": 3
+            "maxItems": 4
           }
         },
         "required": [
@@ -1571,6 +1739,9 @@
             "items": {
               "$ref": "#/components/schemas/AmendmentPlanEntry"
             }
+          },
+          "trust": {
+            "$ref": "#/components/schemas/RevisionTrust"
           }
         },
         "required": [
@@ -1884,7 +2055,8 @@
           "manifest-sha-mismatch",
           "external-id-moved",
           "external-id-changed",
-          "provenance-kept"
+          "provenance-kept",
+          "trust-kept"
         ],
         "description": "Kind of an import warning."
       },
@@ -1944,7 +2116,7 @@
             "items": {
               "$ref": "#/components/schemas/ImportWarning"
             },
-            "maxItems": 3
+            "maxItems": 4
           },
           "impact": {
             "$ref": "#/components/schemas/ImportImpact"
@@ -2102,7 +2274,10 @@
             "items": {
               "$ref": "#/components/schemas/ImportWarning"
             },
-            "maxItems": 3
+            "maxItems": 4
+          },
+          "trust": {
+            "$ref": "#/components/schemas/RevisionTrust"
           }
         },
         "required": [
@@ -10208,6 +10383,10 @@
           "accepted": {
             "type": "integer",
             "minimum": 0
+          },
+          "proposed": {
+            "type": "integer",
+            "minimum": 0
           }
         },
         "required": [
@@ -10217,7 +10396,8 @@
           "kind",
           "relationType",
           "readOnly",
-          "accepted"
+          "accepted",
+          "proposed"
         ],
         "description": "The built-in rule of decision 9."
       },
@@ -12363,7 +12543,7 @@
           "models"
         ],
         "summary": "Upload raw BPMN: 201 new model, 200 new revision or unchanged",
-        "description": "The optional header `Analyzr-Manifest` declares the file's provenance (M6 §3.2, §3.3): the base64url of the UTF-8 JSON of an `analyzr-import/1` manifest that lists exactly this file (its `key`, if given, equal to `{key}`). The declared fields are stored on the uploaded revision; a checksum mismatch or a known tool id are `importWarnings`, the file is stored all the same. Identical bytes stay `unchanged` and keep the first revision's provenance (`provenance-kept` when the manifest declares another place in the source tool). `dryRun=true` (M6 §3.5) answers the would-be outcome with its warnings and the `impact` and writes nothing (permission `read`).",
+        "description": "The optional header `Analyzr-Manifest` declares the file's provenance (M6 §3.2, §3.3): the base64url of the UTF-8 JSON of an `analyzr-import/1` manifest that lists exactly this file (its `key`, if given, equal to `{key}`). The declared fields are stored on the uploaded revision; a checksum mismatch or a known tool id are `importWarnings`, the file is stored all the same. Identical bytes stay `unchanged` and keep the first revision's provenance (`provenance-kept` when the manifest declares another place in the source tool) and its trust class (M6 S2c; `trust-kept` when this request would classify the file differently). `dryRun=true` (M6 §3.5) answers the would-be outcome with its warnings and the `impact` and writes nothing (permission `read`); it classifies the file by its own credential, so `impact.callsProposed` names the unique calls that would only be proposed.",
         "parameters": [
           {
             "schema": {
@@ -12821,7 +13001,7 @@
           "models"
         ],
         "summary": "Import up to 50 BPMN files; the model key is the pinned or the slugified path",
-        "description": "An optional part `manifest` holds the JSON of an `analyzr-import/1` manifest (M6 §3.2; the CLI sends each batch's subset): a listed file gets the key it pins (else its path decides) and the declared provenance on its uploaded revision. A checksum mismatch, a tool id another live key already has (`external-id-moved`) and a tool id that differs from the one on the key's head (`external-id-changed`) are `importWarnings`, and so is an unchanged file whose manifest entry declares another place in the source tool than analyzr keeps (`provenance-kept`); the file is imported all the same. An invalid manifest refuses the request (422 `validation-failed`, reason `invalid-manifest`). `dryRun=true` (M6 §3.5) answers the same outcomes and the `impact` and writes nothing: permission `read`, no project lock, so a read-only token can preview a bundle. One dry run covers one request; a call into a later batch shows as unresolved.",
+        "description": "An optional part `manifest` holds the JSON of an `analyzr-import/1` manifest (M6 §3.2; the CLI sends each batch's subset): a listed file gets the key it pins (else its path decides) and the declared provenance on its uploaded revision. A checksum mismatch, a tool id another live key already has (`external-id-moved`) and a tool id that differs from the one on the key's head (`external-id-changed`) are `importWarnings`, and so is an unchanged file whose manifest entry declares another place in the source tool than analyzr keeps (`provenance-kept`) or that this request would give another trust class than the one analyzr keeps (`trust-kept`, M6 S2c); the file is imported all the same. An invalid manifest refuses the request (422 `validation-failed`, reason `invalid-manifest`). `dryRun=true` (M6 §3.5) answers the same outcomes and the `impact` and writes nothing: permission `read`, no project lock, so a read-only token can preview a bundle. A dry run classifies the files by its own credential (M6 S2c), so a read-only token previews them as agent uploads. One dry run covers one request; a call into a later batch shows as unresolved.",
         "parameters": [
           {
             "schema": {

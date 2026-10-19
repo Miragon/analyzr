@@ -8,18 +8,24 @@
  */
 import {
   MAX_IMPACT_ITEMS,
+  TrustReason,
+  parseRef,
   type Finding,
   type ImpactEndpoint,
   type ImpactFile,
+  type ImpactProposedCall,
+  type ImpactProposedCalls,
   type ImpactRelation,
   type ImportImpact,
   type ProcessInfo,
   type RelationStatus,
   type RevisionSource,
+  type RevisionTrust,
 } from '@analyzr/contracts';
 
 import type { RelationRecord } from './ports.ts';
 import { planRecompute, type RecomputeInput } from './recompute.ts';
+import { naturalKey } from './relation-state.ts';
 
 /** The first {@link MAX_IMPACT_ITEMS} with their count. */
 function capped<T>(items: readonly T[]): { count: number; items: T[] } {
@@ -42,6 +48,7 @@ export function relationImpact(
 ): Omit<ImportImpact, 'files' | 'absentKeys'> {
   const plan = planRecompute(input);
   const accepted: ImpactRelation[] = [];
+  const callsProposed: ImpactProposedCall[] = [];
   const added: ImpactRelation[] = [];
   const withdrawn: ImpactRelation[] = [];
   const endpoints: ImpactEndpoint[] = [];
@@ -85,14 +92,20 @@ export function relationImpact(
   }
   for (const { before, now, r } of after.values()) {
     if (now === before) continue;
-    // Only the rule tier writes here: an acceptance is a rule-tier call (decision 9).
+    // Only the rule tier writes here: an acceptance is a rule-tier call of a modelled caller
+    // (decision 9 as amended by 24.2); a unique call of a derived caller only becomes a proposal.
     if (now === 'accepted') accepted.push(r);
-    else if (now === 'proposed') added.push(r);
+    else if (now === 'proposed') {
+      if (plan.derivedCalls.has(naturalKey(r.type, r.from, r.to))) {
+        callsProposed.push({ ...r, wasAccepted: before === 'accepted' });
+      } else added.push(r);
+    }
   }
   const was = new Set(findingsBefore.map(findingKey));
   const will = new Set(plan.findings.map(findingKey));
   return {
     acceptedCalls: capped(accepted),
+    callsProposed: proposedCalls(callsProposed, input.trust),
     proposalsAdded: capped(added),
     proposalsWithdrawn: capped(withdrawn),
     endpointsChanged: capped(endpoints),
@@ -101,13 +114,38 @@ export function relationImpact(
   };
 }
 
-/** A created or revised file: its key, the facts hashes before and after, the processes. */
+/**
+ * `ImportImpact.callsProposed` (M6 S2c): the capped list with its totals over
+ * every call, each counted under its caller's first trust reason.
+ */
+function proposedCalls(
+  calls: readonly ImpactProposedCall[],
+  trust: RecomputeInput['trust'],
+): ImpactProposedCalls {
+  const byReason = new Map<TrustReason, number>();
+  for (const c of calls) {
+    // A derived caller has at least one reason (trustOf).
+    const reason = trust.get(parseRef(c.from).modelKey)?.trust?.reasons[0];
+    if (reason !== undefined) byReason.set(reason, (byReason.get(reason) ?? 0) + 1);
+  }
+  return {
+    ...capped(calls),
+    wasAccepted: calls.filter((c) => c.wasAccepted).length,
+    byReason: TrustReason.options
+      .filter((reason) => byReason.has(reason))
+      .map((reason) => ({ reason, count: byReason.get(reason) ?? 0 })),
+  };
+}
+
+/** A created or revised file: its key, the facts hashes before and after, the processes, its trust. */
 export interface FileHeads {
   modelKey: string;
   previousFactsHash: string | null;
   factsHash: string;
   previousProcesses: readonly Pick<ProcessInfo, 'ref'>[];
   processes: readonly Pick<ProcessInfo, 'ref'>[];
+  /** The trust class the uploaded revision would get (M6 S2c). */
+  trust: RevisionTrust;
 }
 
 /** How each changed file would change its model (`ImportImpact.files`). */
@@ -121,6 +159,7 @@ export function fileImpact(files: readonly FileHeads[]): ImpactFile[] {
       factsChanged: f.previousFactsHash !== f.factsHash,
       processesAdded: [...now].filter((r) => !before.has(r)).sort(),
       processesRemoved: [...before].filter((r) => !now.has(r)).sort(),
+      trust: f.trust,
     };
   });
 }

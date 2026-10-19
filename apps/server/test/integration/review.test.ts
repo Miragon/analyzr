@@ -102,6 +102,8 @@ const payment: FakeModelSpec = {
       ],
     },
   ],
+  // A file that names no engine (the fake's default is `c7`).
+  engine: null,
 };
 
 let database: TestDatabase;

@@ -14,8 +14,11 @@ published (every workspace package is `private: true`). What is decided and what
 
 - **BPMN in, facts out:** Camunda 7 and Camunda 8 models, one model per file with a stable key;
   revisions, hostile-XML protection, facts per call, message, signal, start and end event.
-- **A rule tier without an LLM:** unambiguous calls are accepted at once, identical message and
-  signal names become proposals, findings name unresolved, dynamic and duplicate calls.
+- **A rule tier without an LLM:** unambiguous calls in Camunda models uploaded with the owner key
+  or the web are accepted at once, those from derived models (no engine, an agent token's upload,
+  a declared conversion, reconstruction or interview) become proposals (the trust rule),
+  identical message and signal names become proposals, findings name unresolved, dynamic and
+  duplicate calls.
 - **An analysis pipeline for agents:** models wait for analysis; agents claim tasks over MCP, judge
   candidate pairs with a versioned procedure (each pair once, also with several agents) and submit
   proposals or no-links with confidence, rationale and evidence.

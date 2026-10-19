@@ -7,6 +7,7 @@ import type { RevisionSource } from '@analyzr/contracts';
 import { describe, expect, it } from 'vitest';
 
 import { absentKeys, fileImpact } from '../../src/domain/import-impact.ts';
+import { MODELLED, NO_ENGINE } from '../support/trust.ts';
 
 const source = (system: string, externalPath?: string): RevisionSource => ({
   kind: 'import',
@@ -49,6 +50,7 @@ describe('import impact', () => {
           factsHash: 'b',
           previousProcesses: [{ ref: 'm#P1' }, { ref: 'm#P2' }],
           processes: [{ ref: 'm#P2' }, { ref: 'm#P3' }],
+          trust: MODELLED,
         },
         {
           modelKey: 'n',
@@ -56,6 +58,7 @@ describe('import impact', () => {
           factsHash: 'c',
           previousProcesses: [],
           processes: [],
+          trust: NO_ENGINE,
         },
         {
           modelKey: 'o',
@@ -63,12 +66,31 @@ describe('import impact', () => {
           factsHash: 'd',
           previousProcesses: [],
           processes: [],
+          trust: MODELLED,
         },
       ]),
     ).toEqual([
-      { modelKey: 'm', factsChanged: true, processesAdded: ['m#P3'], processesRemoved: ['m#P1'] },
-      { modelKey: 'n', factsChanged: true, processesAdded: [], processesRemoved: [] },
-      { modelKey: 'o', factsChanged: false, processesAdded: [], processesRemoved: [] },
+      {
+        modelKey: 'm',
+        factsChanged: true,
+        processesAdded: ['m#P3'],
+        processesRemoved: ['m#P1'],
+        trust: MODELLED,
+      },
+      {
+        modelKey: 'n',
+        factsChanged: true,
+        processesAdded: [],
+        processesRemoved: [],
+        trust: NO_ENGINE,
+      },
+      {
+        modelKey: 'o',
+        factsChanged: false,
+        processesAdded: [],
+        processesRemoved: [],
+        trust: MODELLED,
+      },
     ]);
   });
 });

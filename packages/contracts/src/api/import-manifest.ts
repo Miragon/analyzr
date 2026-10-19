@@ -305,10 +305,20 @@ export type ImportManifest = z.infer<typeof ImportManifest>;
  *   provenance it has for the model (identical bytes keep their first
  *   revision's, §3.3), while the manifest declares another system, tool id,
  *   tool folder or link (a folder moved in the tool), or analyzr has none
- *   (stored without a manifest). Not raised next to `external-id-changed`.
+ *   (stored without a manifest). Not raised next to `external-id-changed`;
+ * - `trust-kept` (M6 S2c): the file is `unchanged`, so analyzr keeps the
+ *   trust class of the model's uploaded revision, while this request would
+ *   classify the file differently (another credential or derivation); a
+ *   reclassification needs changed bytes.
  */
 export const ImportWarningCode = z
-  .enum(['manifest-sha-mismatch', 'external-id-moved', 'external-id-changed', 'provenance-kept'])
+  .enum([
+    'manifest-sha-mismatch',
+    'external-id-moved',
+    'external-id-changed',
+    'provenance-kept',
+    'trust-kept',
+  ])
   .meta({ id: 'ImportWarningCode', description: 'Kind of an import warning.' });
 export type ImportWarningCode = z.infer<typeof ImportWarningCode>;
 

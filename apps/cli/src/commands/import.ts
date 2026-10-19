@@ -13,6 +13,7 @@ import {
   MAX_IMPACT_ITEMS,
   bpmnSuffixOf,
   modelKeyFromPath,
+  TrustReason,
   type ExtractWarning,
   type ImportFileOutcome,
   type ImportImpact,
@@ -221,6 +222,23 @@ const IMPACT_LISTS = [
   'findingsResolved',
 ] as const;
 
+/** The calls only proposed of several batches (M6 S2c): totals added up, reasons in order. */
+function mergeProposedCalls(impacts: readonly ImportImpact[]): ImportImpact['callsProposed'] {
+  const lists = impacts.map((i) => i.callsProposed);
+  const byReason = new Map<TrustReason, number>();
+  for (const { reason, count } of lists.flatMap((l) => l.byReason)) {
+    byReason.set(reason, (byReason.get(reason) ?? 0) + count);
+  }
+  return {
+    count: lists.reduce((n, l) => n + l.count, 0),
+    items: lists.flatMap((l) => l.items).slice(0, MAX_IMPACT_ITEMS),
+    wasAccepted: lists.reduce((n, l) => n + l.wasAccepted, 0),
+    byReason: TrustReason.options
+      .filter((reason) => byReason.has(reason))
+      .map((reason) => ({ reason, count: byReason.get(reason) ?? 0 })),
+  };
+}
+
 /**
  * The impacts of a dry run's batches as one (M6 §3.5): the files and the
  * counts added up, the items concatenated up to the cap; the absent keys are
@@ -232,6 +250,7 @@ export function mergeImpacts(impacts: readonly ImportImpact[]): ImportImpact {
   const merged: ImportImpact = {
     files: impacts.flatMap((i) => i.files),
     acceptedCalls: empty,
+    callsProposed: mergeProposedCalls(impacts),
     proposalsAdded: empty,
     proposalsWithdrawn: empty,
     endpointsChanged: empty,
@@ -256,19 +275,48 @@ function plural(n: number, one: string, many = `${one}s`): string {
 /** `a#Call_X → b#Process_Y` for a relation's line. */
 const arrow = (r: { from: string; to: string }) => `${r.from} → ${r.to}`;
 
+/** The trust rule's reasons (M6 S2c) in a line's words. */
+const TRUST_REASONS: Readonly<Record<TrustReason, string>> = {
+  'no-engine': 'no engine',
+  'agent-upload': 'agent token',
+  converted: 'converted',
+  reconstructed: 'reconstructed',
+  'as-told': 'as told',
+};
+
+/**
+ * `propose instead of accept (trust rule): 12 (no engine 10, agent token 2),
+ * 3 of them accepted until now`: the unique calls of derived models a dry run
+ * names (M6 S2c), by the server's totals over all of them (each call under
+ * its caller's first reason, so the parts add up); `null` for none.
+ */
+function trustLine(impact: ImportImpact): string | null {
+  const { count, wasAccepted, byReason } = impact.callsProposed;
+  if (count === 0) return null;
+  const reasons = byReason.map((r) => `${TRUST_REASONS[r.reason]} ${r.count}`);
+  return (
+    `propose instead of accept (trust rule): ${count}` +
+    (reasons.length > 0 ? ` (${reasons.join(', ')})` : '') +
+    (wasAccepted > 0 ? `, ${wasAccepted} of them accepted until now` : '')
+  );
+}
+
 /**
  * A dry run's impact as text (M6 §3.5): the files whose model changes, the
- * rule-tier calls accepted, the rule proposals added and the stances
- * withdrawn, accepted relations whose end changes or goes missing, the
- * findings, and the keys the bundle does not name (nothing is deleted); up
- * to five examples each. A preview of several batches says that a call into
- * a later batch shows as unresolved.
+ * rule-tier calls accepted, the unique calls of derived models only proposed
+ * (M6 S2c, the trust rule; when there are any), the rule proposals added and
+ * the stances withdrawn, accepted relations whose end changes or goes
+ * missing, the findings, and the keys the bundle does not name (nothing is
+ * deleted); up to five examples each. A preview of several batches says
+ * that a call into a later batch shows as unresolved.
  */
 export function formatImpact(impact: ImportImpact, project: string, batches = 1): string {
-  const sample = (items: readonly string[], count: number) =>
-    items.length === 0
+  const sample = (items: readonly string[], count: number) => {
+    const shown = items.slice(0, 5);
+    return shown.length === 0
       ? ''
-      : `: ${items.slice(0, 5).join(', ')}${count > 5 ? `, … ${count - 5} more` : ''}`;
+      : `: ${shown.join(', ')}${count > shown.length ? `, … ${count - shown.length} more` : ''}`;
+  };
   const added = impact.files.reduce((n, f) => n + f.processesAdded.length, 0);
   const removed = impact.files.reduce((n, f) => n + f.processesRemoved.length, 0);
   const lines = [`${project}: dry run, nothing imported; the import would`];
@@ -279,6 +327,12 @@ export function formatImpact(impact: ImportImpact, project: string, batches = 1)
   const list = (label: string, l: { count: number; items: { from: string; to: string }[] }) =>
     lines.push(`  ${label} ${l.count}${sample(l.items.map(arrow), l.count)}`);
   list('accept rule-tier calls:', impact.acceptedCalls);
+  const trust = trustLine(impact);
+  if (trust !== null) {
+    lines.push(
+      `  ${trust}${sample(impact.callsProposed.items.map(arrow), impact.callsProposed.count)}`,
+    );
+  }
   list('add rule proposals:', impact.proposalsAdded);
   list('withdraw rule stances:', impact.proposalsWithdrawn);
   lines.push(

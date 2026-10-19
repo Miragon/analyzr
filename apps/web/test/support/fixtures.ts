@@ -239,6 +239,7 @@ export function model(overrides: Partial<Model> & Pick<Model, 'key'>): Model {
     stage: 'waiting_for_review',
     openItems: 1,
     source: null,
+    trust: null,
     updatedAt: NOW,
     ...overrides,
   };

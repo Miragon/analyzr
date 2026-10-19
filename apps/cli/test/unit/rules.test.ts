@@ -121,6 +121,7 @@ const SYSTEM = {
   relationType: 'call',
   readOnly: true,
   accepted: 31,
+  proposed: 4,
 };
 
 function preview(open = 2) {
@@ -311,7 +312,7 @@ describe('analyzr rules list and show', () => {
     expect(await runCli(['rules', 'list', '-p', 'p'], t.io)).toBe(0);
     expect(api.seen[0]?.authorization).toBe(`Bearer ${OWNER_KEY}`);
     expect(t.out()).toContain(
-      'system rule analyzr-rules/1.0.0 "Eindeutige Aufrufe": call relations, always on, read-only; 31 accepted',
+      'system rule analyzr-rules/1.0.0 "Eindeutige Aufrufe": call relations of modelled callers, always on, read-only; 31 accepted, 4 only proposed (derived callers, trust rule)',
     );
     expect(t.out()).toContain(
       `${RULE_ID}  "Schlüssel ab 95 %"  on  relation key ≥ 95%, type call  r2 by owner  in force 3, revoked 1, confirmed 0, overruled 0 (author is no longer an owner: matches nothing until an owner saves it again, e.g. analyzr rules edit ${RULE_ID})`,

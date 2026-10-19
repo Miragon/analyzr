@@ -328,7 +328,13 @@ describe('project tabs and write pages', () => {
     ['viewer', DEMO_HEALTH, [], 'Dieses Projekt hat noch keine Modelle.'],
     ['viewer', LOCAL_HEALTH, [], 'Dieses Projekt hat noch keine Modelle.'],
     ['editor', LOCAL_HEALTH, ['Modelle hochladen'], 'Lade BPMN-Dateien hoch.'],
-    ['owner', LOCAL_HEALTH, ['Modelle hochladen', 'Agent verbinden'], 'Lade BPMN-Dateien hoch.'],
+    // The trust rule (M6 S2c): only calls of Camunda models are linked at once.
+    [
+      'owner',
+      LOCAL_HEALTH,
+      ['Modelle hochladen', 'Agent verbinden'],
+      'verknüpft eindeutige Aufrufe aus Camunda-Modellen sofort und schlägt die übrigen',
+    ],
   ] as const)(
     'offers an empty project’s %s (%o) only the actions of the role',
     async (role, health, actions, text) => {

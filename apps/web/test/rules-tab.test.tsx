@@ -961,27 +961,42 @@ describe('RuleTable', () => {
 });
 
 describe('the system rule', () => {
+  const system = {
+    id: 'analyzr-rules/1.0.0',
+    name: 'Eindeutige Aufrufe',
+    description: '',
+    kind: 'relation',
+    relationType: 'call',
+    readOnly: true,
+    accepted: 10,
+    proposed: 0,
+  } as const;
+
   it('one line with the real count, no matching rule or procedure', async () => {
-    await renderWithRouter(
-      <SystemRuleCard
-        project="demo"
-        system={{
-          id: 'analyzr-rules/1.0.0',
-          name: 'Eindeutige Aufrufe',
-          description: '',
-          kind: 'relation',
-          relationType: 'call',
-          readOnly: true,
-          accepted: 10,
-        }}
-      />,
-    );
+    await renderWithRouter(<SystemRuleCard project="demo" system={system} />);
     const card = await screen.findByTestId('system-rule');
     expect(card.textContent).toBe(
-      'Eindeutige Aufrufe nimmt analyzr beim Hochladen an · immer aktiv · 10 angenommen',
+      'Eindeutige Aufrufe aus Camunda-Modellen nimmt analyzr beim Hochladen an · immer aktiv · 10 angenommen',
     );
     expect(within(card).getByRole('link', { name: '10 angenommen' })).toBeTruthy();
     expect(within(card).queryByRole('button')).toBeNull();
+  });
+
+  it('names the calls of derived models it only proposed (the trust rule), as text', async () => {
+    await renderWithRouter(<SystemRuleCard project="demo" system={{ ...system, proposed: 12 }} />);
+    const card = await screen.findByTestId('system-rule');
+    expect(card.textContent).toBe(
+      'Eindeutige Aufrufe aus Camunda-Modellen nimmt analyzr beim Hochladen an · immer aktiv · 10 angenommen · 12 aus abgeleiteten Modellen vorgeschlagen',
+    );
+    // No list shows exactly these rows yet, so the count leads nowhere.
+    expect(
+      within(card)
+        .getAllByRole('link')
+        .map((l) => l.textContent),
+    ).toEqual(['10 angenommen']);
+    expect(within(card).getByTestId('system-rule-proposed').textContent).toBe(
+      '12 aus abgeleiteten Modellen vorgeschlagen',
+    );
   });
 });
 
@@ -1178,6 +1193,7 @@ describe('the page „Annahmeregeln“', () => {
     relationType: 'call',
     readOnly: true,
     accepted: 10,
+    proposed: 0,
   };
 
   function page(
@@ -1246,7 +1262,7 @@ describe('the page „Annahmeregeln“', () => {
       'analyzr nimmt neue Agentenvorschläge ab deiner Konfidenz selbst an – nie bei einer offenen Frage, einem Einwand oder wenn du schon entschieden hast.',
     );
     expect(within(rulesPage).getByTestId('system-rule').textContent).toBe(
-      'Eindeutige Aufrufe nimmt analyzr beim Hochladen an · immer aktiv · 10 angenommen',
+      'Eindeutige Aufrufe aus Camunda-Modellen nimmt analyzr beim Hochladen an · immer aktiv · 10 angenommen',
     );
     expect(
       within(rulesPage)

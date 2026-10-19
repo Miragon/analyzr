@@ -16,6 +16,11 @@
  * and again inside it when the amendment set changed meanwhile (the
  * concurrency token). The tail every head change runs is
  * {@link afterHeadChange}, which amendment writes and withdrawals call too.
+ *
+ * The trust rule (M6 S2c, decision 24.2): every uploaded revision gets its
+ * trust class (`trust.ts` `trustOf`) as `source.trust`, written last by the
+ * server; an amended revision gets none (readers follow `upstream`), and
+ * unchanged bytes keep the class they have.
  */
 import { createHash } from 'node:crypto';
 
@@ -29,6 +34,7 @@ import {
   type PrincipalId,
   type ProjectId,
   type RevisionSource,
+  type RevisionTrust,
   type RevisionUpstream,
 } from '@analyzr/contracts';
 
@@ -57,6 +63,7 @@ import type {
   Tx,
 } from './ports.ts';
 import { recomputeProject } from './recompute.ts';
+import { callTargets, trustByModel, trustOf, type ModelTrust } from './trust.ts';
 import { queuePlacementTasks } from './value-chain/queue.ts';
 import { syncValueChainAfterModels } from './value-chain/sync.ts';
 import { storedWarnings } from './warnings.ts';
@@ -84,8 +91,20 @@ export type IngestResult =
       warnings: ExtractWarning[];
       /** The model's live amendments on the head (M6 S5c-2); absent for a model without any. */
       amendments?: AmendmentCounts;
+      /** The trust of the model's uploaded revision afterwards, and what this request would give it. */
+      trust: FileTrust;
     }
   | { outcome: 'failed'; error: DomainError };
+
+/**
+ * The trust class of a file's model after an ingest or its dry run (M6
+ * S2c): the class of its uploaded revision (stored, or kept for unchanged
+ * bytes; `null` stored before S2c) and the class this request gives the file.
+ */
+export interface FileTrust {
+  stored: RevisionTrust | null;
+  incoming: RevisionTrust;
+}
 
 export interface IngestDeps {
   store: Store;
@@ -417,6 +436,12 @@ async function storeFile(
     previous &&
     (await knownHashes(tx, projectId, existing, previous)).has(f.contentHash)
   ) {
+    // Unchanged bytes keep their uploaded revision's class (identical bytes, identical engine).
+    const upstream = previous.source.upstream;
+    const uploaded = upstream
+      ? await tx.revisions.findInProject(projectId, existing.id, upstream.revisionId)
+      : previous;
+    if (!uploaded) throw new Error(`uploaded revision of ${f.key} missing`);
     return {
       result: {
         outcome: 'unchanged',
@@ -424,6 +449,10 @@ async function storeFile(
         revision: previous,
         warnings: [],
         ...(amendments.length > 0 ? { amendments: planCounts(planOf(previous)) } : {}),
+        trust: {
+          stored: uploaded.source.trust ?? null,
+          incoming: trustOf(uploaded.engine, f.source),
+        },
       },
       previousFactsHash,
     };
@@ -451,6 +480,8 @@ async function storeFile(
   if (!existing) await tx.models.insert({ id: modelId, projectId, key: f.key, name });
   const rev = existing ? (await tx.revisions.maxRev(projectId, modelId)) + 1 : 1;
   const amended = derivation !== null && derivation.applied > 0;
+  // Set last by the server, so no declared value reaches it (decision 24.2).
+  const trust = trustOf(extracted.value.engine, f.source);
   const uploaded = await storeHead(tx, deps.analysis, actor, projectId, {
     modelId,
     modelKey: f.key,
@@ -460,7 +491,10 @@ async function storeFile(
     contentHash: f.contentHash,
     extracted: extracted.value,
     // Without an amended head, the uploaded head carries the plan.
-    source: derivation && !amended ? { ...f.source, amendments: derivation.plan } : f.source,
+    source: {
+      ...(derivation && !amended ? { ...f.source, amendments: derivation.plan } : f.source),
+      trust,
+    },
     name,
   });
   const revision =
@@ -492,6 +526,7 @@ async function storeFile(
       ...(revision.id === uploaded.id ? {} : { uploadedRevision: uploaded }),
       warnings: extracted.value.warnings,
       ...(derivation ? { amendments: planCounts(derivation.plan) } : {}),
+      trust: { stored: trust, incoming: trust },
     },
     previousFactsHash,
   };
@@ -666,6 +701,7 @@ export type PreviewResult =
       outcome: 'created' | 'revised' | 'unchanged';
       warnings: ExtractWarning[];
       amendments?: AmendmentCounts;
+      trust: FileTrust;
     }
   | { outcome: 'failed'; error: DomainError };
 
@@ -680,15 +716,33 @@ function rulesPrincipalOf(
   return history.find((a) => a.sourceKind === 'rule')?.principalId ?? 'prn_rules';
 }
 
-/** What a dry run reads in one transaction: the head, its relations, histories and findings. */
+/** What a dry run reads in one transaction: the head, its trust, relations, histories and findings. */
 async function readHead(tx: Tx, projectId: ProjectId) {
   const history = await tx.assertions.listForProject(projectId);
   return {
     projectFacts: await tx.facts.headProjectFacts(projectId),
+    trust: trustByModel(await tx.revisions.headTrustRows(projectId)),
     relations: await tx.relations.all(projectId),
     history,
     findings: await tx.findings.list(projectId),
     rulesPrincipalId: rulesPrincipalOf(history),
+  };
+}
+
+/** The trust a dry run gives a created or revised file's model (M6 S2c), as the ingest stores it. */
+function incomingTrust(
+  trust: RevisionTrust,
+  source: RevisionSource,
+  extracted: Pick<Extracted, 'engine'>,
+  plan: Derivation['plan'] | undefined,
+): ModelTrust {
+  return {
+    trust,
+    ...callTargets(plan ?? []),
+    derivedKind: source.derived?.kind ?? null,
+    converter: source.derived?.converter ?? null,
+    engine: extracted.engine,
+    uploader: source.uploader ?? 'agent',
   };
 }
 
@@ -699,8 +753,10 @@ async function readHead(tx: Tx, projectId: ProjectId) {
  * model's live amendments) and the impact of the would-be heads (an
  * amended head where amendments apply), computed by the pure
  * `importImpact`; nothing is written and no lock is taken. Permission
- * `read`, so a read-only token can preview a bundle. `manifest` names the
- * bundle's system, scope and listed keys for the absent keys.
+ * `read`, so a read-only token can preview a bundle; the trust rule
+ * classifies the files by the credential of the dry run (M6 S2c), unchanged
+ * files keep their stored class. `manifest` names the bundle's system, scope
+ * and listed keys for the absent keys.
  *
  * @throws {DomainError} from the policy (`read` on the project)
  */
@@ -738,14 +794,20 @@ export async function previewIngest(
   const results: PreviewResult[] = [];
   const heads: FileHeads[] = [];
   const wouldBe = new Map(read.head.projectFacts.models.map((m) => [m.modelKey, m]));
+  const trust = new Map(read.head.trust);
   for (const [i, f] of files.entries()) {
     const s = read.seen[i];
     if (!s) throw new Error('previewIngest: a file without its read');
     if (s.previous && s.known?.has(contentHash(f.bytes))) {
+      const kept = read.head.trust.get(f.key);
       results.push({
         outcome: 'unchanged',
         warnings: [],
         ...(s.live.length > 0 ? { amendments: planCounts(planOf(s.previous)) } : {}),
+        trust: {
+          stored: kept?.trust ?? null,
+          incoming: trustOf(kept?.engine ?? s.previous.engine, f.source),
+        },
       });
       continue;
     }
@@ -759,10 +821,13 @@ export async function previewIngest(
         ? await deriveHead(deps.analysis, f.bytes, f.key, s.live, extracted.value)
         : null;
     const head = derivation && derivation.applied > 0 ? derivation.extracted : extracted.value;
+    const classOf = trustOf(extracted.value.engine, f.source);
+    trust.set(f.key, incomingTrust(classOf, f.source, extracted.value, derivation?.plan));
     results.push({
       outcome: s.model ? 'revised' : 'created',
       warnings: extracted.value.warnings,
       ...(derivation ? { amendments: planCounts(derivation.plan) } : {}),
+      trust: { stored: classOf, incoming: classOf },
     });
     wouldBe.set(f.key, {
       modelKey: f.key,
@@ -780,6 +845,7 @@ export async function previewIngest(
           read.head.projectFacts.models.find((m) => m.modelKey === f.key)?.processes) ??
         [],
       processes: head.processes,
+      trust: classOf,
     });
   }
 
@@ -793,6 +859,7 @@ export async function previewIngest(
       rulesPrincipalId: read.head.rulesPrincipalId,
       projectFacts,
       rules: deps.analysis.runRules(projectFacts),
+      trust,
       relations: read.head.relations,
       history: read.head.history,
     },
@@ -825,12 +892,15 @@ export async function deletionImpact(
   const projectFacts = {
     models: read.head.projectFacts.models.filter((m) => m.modelKey !== read.model.key),
   };
+  const trust = new Map(read.head.trust);
+  trust.delete(read.model.key);
   return importImpact(
     {
       projectId: read.project.id,
       rulesPrincipalId: read.head.rulesPrincipalId,
       projectFacts,
       rules: deps.analysis.runRules(projectFacts),
+      trust,
       relations: read.head.relations,
       history: read.head.history,
     },

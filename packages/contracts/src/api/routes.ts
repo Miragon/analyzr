@@ -493,8 +493,11 @@ export const apiRoutes = withDemoReadOnly({
       'on the uploaded revision; a checksum mismatch or a known tool id are `importWarnings`, ' +
       'the file is stored all the same. Identical bytes stay `unchanged` and keep the first ' +
       "revision's provenance (`provenance-kept` when the manifest declares another place in " +
-      'the source tool). `dryRun=true` (M6 §3.5) answers the would-be outcome with its ' +
-      'warnings and the `impact` and writes nothing (permission `read`).',
+      'the source tool) and its trust class (M6 S2c; `trust-kept` when this request would ' +
+      'classify the file differently). `dryRun=true` (M6 §3.5) answers the would-be outcome ' +
+      'with its warnings and the `impact` and writes nothing (permission `read`); it ' +
+      'classifies the file by its own credential, so `impact.callsProposed` names the unique ' +
+      'calls that would only be proposed.',
     request: {
       params: projectParams.extend({ key: ModelKey }),
       query: ImportDryRunQuery,
@@ -571,11 +574,14 @@ export const apiRoutes = withDemoReadOnly({
       'checksum mismatch, a tool id another live key already has (`external-id-moved`) and a ' +
       "tool id that differs from the one on the key's head (`external-id-changed`) are " +
       '`importWarnings`, and so is an unchanged file whose manifest entry declares another ' +
-      'place in the source tool than analyzr keeps (`provenance-kept`); the file is imported ' +
-      'all the same. An invalid manifest refuses the request (422 `validation-failed`, reason ' +
-      '`invalid-manifest`). `dryRun=true` (M6 §3.5) answers the same outcomes and the `impact` ' +
-      'and writes nothing: permission `read`, no project lock, so a read-only token can preview ' +
-      'a bundle. One dry run covers one request; a call into a later batch shows as unresolved.',
+      'place in the source tool than analyzr keeps (`provenance-kept`) or that this request ' +
+      'would give another trust class than the one analyzr keeps (`trust-kept`, M6 S2c); the ' +
+      'file is imported all the same. An invalid manifest refuses the request (422 ' +
+      '`validation-failed`, reason `invalid-manifest`). `dryRun=true` (M6 §3.5) answers the ' +
+      'same outcomes and the `impact` and writes nothing: permission `read`, no project lock, ' +
+      'so a read-only token can preview a bundle. A dry run classifies the files by its own ' +
+      'credential (M6 S2c), so a read-only token previews them as agent uploads. One dry run ' +
+      'covers one request; a call into a later batch shows as unresolved.',
     request: {
       params: projectParams,
       query: ImportDryRunQuery,

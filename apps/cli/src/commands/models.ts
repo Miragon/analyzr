@@ -278,6 +278,9 @@ export function deletionImpactText(impact: ImportImpact): string {
     impact.acceptedCalls.count > 0
       ? `${plural(impact.acceptedCalls.count, 'call')} accepted by the rule tier`
       : null,
+    impact.callsProposed.count > 0
+      ? `${plural(impact.callsProposed.count, 'call')} only proposed (trust rule)`
+      : null,
     `findings ${impact.findingsAdded.count} added, ${impact.findingsResolved.count} resolved`,
   ]
     .filter((p) => p !== null)

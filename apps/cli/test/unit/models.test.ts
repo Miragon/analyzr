@@ -49,6 +49,7 @@ function model(key: string, extra: Partial<Model> = {}): Model {
     stage: 'waiting_for_agent',
     openItems: 0,
     source: null,
+    trust: null,
     updatedAt: '2026-10-15T10:00:00.000Z',
     ...extra,
   };
@@ -195,6 +196,12 @@ describe('analyzr models delete', () => {
   const impact = (missing: number) => ({
     files: [],
     acceptedCalls: { count: 0, items: [] },
+    callsProposed: {
+      count: missing,
+      items: [],
+      wasAccepted: 0,
+      byReason: missing > 0 ? [{ reason: 'no-engine' as const, count: missing }] : [],
+    },
     proposalsAdded: { count: 0, items: [] },
     proposalsWithdrawn: { count: 3, items: [] },
     endpointsChanged: { count: missing, items: [] },
@@ -235,7 +242,7 @@ describe('analyzr models delete', () => {
         '  a/eins  waiting_for_review  r1    c7  2 open items',
         // M6 S2b: each deletion's impact, against the project's head
         '  b: 0 accepted relations lose an end (missing), 3 rule stances withdrawn, findings 0 added, 0 resolved',
-        '  a/eins: 1 accepted relation loses an end (missing), 3 rule stances withdrawn, findings 1 added, 0 resolved',
+        '  a/eins: 1 accepted relation loses an end (missing), 3 rule stances withdrawn, 1 call only proposed (trust rule), findings 1 added, 0 resolved',
         'Uploading a key again revives its model with a new revision.',
         '',
       ].join('\n'),

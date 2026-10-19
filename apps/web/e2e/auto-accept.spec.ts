@@ -184,7 +184,7 @@ test('„Einstellungen › Annahmeregeln“: system rule, empty state, a rule wi
   await expect(page.getByRole('navigation', { name: 'Brotkrumen' })).toContainText('Annahmeregeln');
   // The system rule in one line (UX9), the count is the real one.
   await expect(page.getByTestId('system-rule')).toContainText(
-    'Eindeutige Aufrufe nimmt analyzr beim Hochladen an · immer aktiv · ',
+    'Eindeutige Aufrufe aus Camunda-Modellen nimmt analyzr beim Hochladen an · immer aktiv · ',
   );
   await expect(page.getByTestId('system-rule')).not.toContainText('calledElement');
   await expect(page.getByTestId('rules-empty')).toContainText(

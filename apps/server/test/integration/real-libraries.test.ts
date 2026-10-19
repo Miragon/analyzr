@@ -205,13 +205,16 @@ describe('extractor warnings in import and PUT results (M6 S1)', () => {
 
   it('import: a warning-free file answers exactly as before, a duplicate id in a revision warns', async () => {
     const created = await importOne('w/dup.bpmn', clean);
+    // A file without a Camunda engine is derived (M6 S2c): the only addition to the result.
+    const derived = { class: 'derived', reasons: ['no-engine'] };
     expect(created).toEqual({
       path: 'w/dup.bpmn',
       modelKey: 'w/dup',
       outcome: 'created',
       problem: null,
+      trust: derived,
     });
-    expect(Object.keys(created)).toEqual(['path', 'modelKey', 'outcome', 'problem']);
+    expect(Object.keys(created)).toEqual(['path', 'modelKey', 'outcome', 'problem', 'trust']);
 
     const revised = await importOne('w/dup.bpmn', duplicate);
     expect(revised).toMatchObject({ modelKey: 'w/dup', outcome: 'revised', problem: null });
@@ -227,6 +230,7 @@ describe('extractor warnings in import and PUT results (M6 S1)', () => {
       modelKey: 'w/dup',
       outcome: 'unchanged',
       problem: null,
+      trust: derived,
     });
   });
 

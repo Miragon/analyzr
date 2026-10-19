@@ -9,10 +9,12 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 
 import type { Revision } from '@analyzr/client';
+import { TRUST_REASON_LABELS as CONTRACT_TRUST_REASON_LABELS } from '@analyzr/contracts';
 import { modelKeyFromPath } from '@analyzr/contracts/paths';
 import { describe, expect, it } from 'vitest';
 
 import {
+  TRUST_REASON_LABELS,
   commonSourceLine,
   derivedChip,
   importLossOf,
@@ -102,6 +104,38 @@ describe('provenance in German (UX8)', () => {
     );
     expect(toolUrl('javascript:alert(1)')).toBeNull();
     expect(toolUrl('no url')).toBeNull();
+  });
+
+  it('says that a derived revision’s calls are only proposed (the trust rule, M6 S2c)', () => {
+    const uploaded = revision(1, {
+      kind: 'import',
+      uploader: 'human',
+      trust: { class: 'derived', reasons: ['no-engine', 'converted'] },
+    });
+    expect(provenanceLines(uploaded, uploaded).at(-1)).toEqual({
+      label: 'Aufrufe',
+      text: 'nur als Vorschlag (ohne Camunda-Engine; als konvertiert angegeben)',
+    });
+    // A call target set in analyzr counts as modelled (decision 25.2), also once taken over.
+    const amended = revision(2, {
+      kind: 'amendment',
+      uploader: 'human',
+      upstream: { revisionId: 'rev_1', rev: 1, contentHash: 'a'.repeat(64) },
+      amendments: [{ id: 'mam_1', elementId: 'Call_A', op: 'call-target', outcome: 'applied' }],
+    });
+    expect(provenanceLines(amended, uploaded).at(-1)).toEqual({
+      label: 'Aufrufe',
+      text: 'nur als Vorschlag (ohne Camunda-Engine; als konvertiert angegeben) · von dir gesetzte Aufrufziele gelten als modelliert',
+    });
+    // Modelled and stored before S2c: no line, to keep the view lean.
+    for (const trust of [{ class: 'modelled' as const, reasons: [] }, undefined]) {
+      const r = revision(1, { kind: 'upload', uploader: 'human', ...(trust ? { trust } : {}) });
+      expect(provenanceLines(r, r).map((l) => l.label)).not.toContain('Aufrufe');
+    }
+    expect(TRUST_REASON_LABELS).toEqual(CONTRACT_TRUST_REASON_LABELS);
+    expect(importWarningText({ code: 'trust-kept', message: 'x' })).toBe(
+      'Unverändert: analyzr behält, ob es die Aufrufe des Modells annimmt oder nur vorschlägt. Eine neue Einstufung braucht geänderte Dateien.',
+    );
   });
 
   it('says the identity warnings in German', () => {

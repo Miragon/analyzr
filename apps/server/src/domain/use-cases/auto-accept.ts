@@ -17,6 +17,7 @@
 import {
   AUTO_ACCEPT_CURVE,
   AUTO_ACCEPT_PREVIEW_ITEMS,
+  DERIVED_CALLER_MATCH,
   MAX_AUTO_ACCEPT_ITEMS,
   newId,
   type ApplyAutoAcceptBody,
@@ -563,9 +564,16 @@ export function autoAcceptUseCases(deps: UseCaseDeps) {
             r.status === 'accepted' &&
             basisOf(relationHistories.get(r.id) ?? [])?.sourceKind === 'rule',
         ).length;
+        // The trust rule's proposals of unique calls from derived models (M6 S2c).
+        const systemProposed = relations.filter(
+          (r) =>
+            r.type === 'call' &&
+            r.status === 'proposed' &&
+            r.attrs['match'] === DERIVED_CALLER_MATCH,
+        ).length;
         return {
           items: heads.map((h) => ruleView(h, { owners, stats, agents })),
-          system: systemRule(systemAccepted),
+          system: systemRule(systemAccepted, systemProposed),
         };
       });
     },

@@ -293,8 +293,9 @@ export type AutoAcceptRuleDetail = z.infer<typeof AutoAcceptRuleDetail>;
 /**
  * Decision 9 as a fixed system rule: the rule tier (`analyzr-rules`) accepts an
  * unambiguous call (a static `calledElement` naming exactly one other
- * process) at ingest. Always on, never stored as an auto-accept rule, not
- * editable.
+ * process) at ingest, since M6 S2c (decision 24.2) only when the calling
+ * model is modelled; from a derived model it proposes the call. Always on,
+ * never stored as an auto-accept rule, not editable.
  */
 export const AutoAcceptSystemRule = z
   .object({
@@ -306,6 +307,8 @@ export const AutoAcceptSystemRule = z
     readOnly: z.literal(true),
     /** Relations whose acceptance rests on the rule tier's decision now. */
     accepted: z.number().int().min(0),
+    /** Open rule proposals of unique calls from derived models (M6 S2c, `attrs.match` `derived-caller`). */
+    proposed: z.number().int().min(0),
   })
   .meta({ id: 'AutoAcceptSystemRule', description: 'The built-in rule of decision 9.' });
 export type AutoAcceptSystemRule = z.infer<typeof AutoAcceptSystemRule>;

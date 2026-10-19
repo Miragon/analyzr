@@ -57,6 +57,7 @@ import {
   versand,
 } from '../support/amend-fixtures.ts';
 import { AT, PROJECT, libraryInput, relationId } from '../support/open-questions.ts';
+import { NO_ENGINE, trustOfModels } from '../support/trust.ts';
 
 const amendmentId = (n: number): ModelAmendmentId => `mam_${String(n).padStart(26, '0')}`;
 
@@ -479,12 +480,14 @@ describe('the fields an amendment can set', () => {
       id: relationId(901),
       toRef: `${VERSAND_KEY}#Process_Versand`,
     };
+    const trust = trustOfModels(ctx.projectFacts);
     const { effect } = amendmentEffect({
       modelKey: AUFTRAG_KEY,
       projectFacts: ctx.projectFacts,
       amended,
       relations: [manual, other],
       runRules,
+      trust: { before: trust, after: trust },
       candidates: [
         {
           op: 'call-target',
@@ -509,6 +512,47 @@ describe('the fields an amendment can set', () => {
     expect(effect.retired.map((r) => r.relation)).toEqual([manual.id]);
     expect(effect.changed.map((r) => r.relation)).toEqual([other.id]);
     expect(effect.findingsAdded).toEqual([]);
+  });
+
+  it('accepts a call target set in analyzr on a derived caller (decision 25.2), else proposes it', async () => {
+    const ctx = await context();
+    const amended = await extractFacts(auftrag({ callRechnung: 'Process_Rechnung' }), {
+      modelKey: AUFTRAG_KEY,
+    });
+    const call = {
+      relation: null,
+      type: 'call',
+      from: `${AUFTRAG_KEY}#Call_Rechnung`,
+      to: `${RECHNUNG_KEY}#Process_Rechnung`,
+    };
+    const candidate = {
+      op: 'call-target',
+      key: 'Call_Rechnung',
+      endpoints: [],
+      call: 'Call_Rechnung',
+      partner: null,
+    };
+    const before = trustOfModels(ctx.projectFacts, { [AUFTRAG_KEY]: { trust: NO_ENGINE } });
+    const after = trustOfModels(ctx.projectFacts, {
+      [AUFTRAG_KEY]: { trust: NO_ENGINE, modelledCalls: new Set(['Call_Rechnung']) },
+    });
+    const effectWith = (afterTrust: typeof after) =>
+      amendmentEffect({
+        modelKey: AUFTRAG_KEY,
+        projectFacts: ctx.projectFacts,
+        amended,
+        relations: [],
+        runRules,
+        trust: { before, after: afterTrust },
+        candidates: [candidate],
+      }).effect;
+    const modelled = effectWith(after);
+    expect(modelled.accepted).toEqual([call]);
+    expect(modelled.proposed).toEqual([]);
+    // Without the call target counted as modelled, the derived caller's call is only proposed.
+    const derived = effectWith(before);
+    expect(derived.accepted).toEqual([]);
+    expect(derived.proposed).toEqual([call]);
   });
 });
 

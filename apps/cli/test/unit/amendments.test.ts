@@ -111,6 +111,7 @@ function model(extra: Partial<Model> = {}): Model {
     stage: 'waiting_for_agent',
     openItems: 0,
     source: null,
+    trust: null,
     updatedAt: AT,
     ...extra,
   };

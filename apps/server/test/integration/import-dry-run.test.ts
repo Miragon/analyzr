@@ -8,7 +8,11 @@
  * the import. `PUT …?dryRun=true` answers the would-be outcome. The
  * deletion impact names the accepted calls a deletion turns `missing` and
  * the rule stances it withdraws, and deletes nothing. The absent keys of a
- * bundle respect its `source.scope`.
+ * bundle respect its `source.scope`. With derived files (M6 S2c, the trust
+ * rule) the impact names the unique calls that become proposals instead
+ * (`callsProposed`, with the acceptances they end) and each file's class,
+ * as the import then stores them; a read-only token's preview classifies by
+ * its credential.
  */
 import type {
   FindingList,
@@ -20,6 +24,8 @@ import type {
   Relation,
   RelationPage,
 } from '@analyzr/contracts';
+import { isDeepStrictEqual } from 'node:util';
+
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { libraryAnalysis } from '../../src/analysis.ts';
@@ -68,6 +74,7 @@ function importFiles(p: string, batch: readonly CorpusFile[], dryRun: boolean, m
 const empty = (impact: ImportImpact) =>
   [
     impact.acceptedCalls,
+    impact.callsProposed,
     impact.proposalsAdded,
     impact.proposalsWithdrawn,
     impact.endpointsChanged,
@@ -164,6 +171,104 @@ describe('POST …/imports?dryRun=true', () => {
       body: form(),
     });
     expect(write.status).toBe(403);
+  });
+});
+
+describe('with derived files (the trust rule, M6 S2c)', () => {
+  /** Imports `batch` with an agent token (`analyzr:write`): every file is derived. */
+  async function importAsAgent(
+    p: string,
+    secret: string,
+    batch: readonly CorpusFile[],
+    dryRun: boolean,
+  ) {
+    const res = await t.asToken(
+      secret,
+      `/api/v1/projects/${p}/imports${dryRun ? '?dryRun=true' : ''}`,
+      {
+        method: 'POST',
+        body: importForm(batch),
+      },
+    );
+    const text = await res.text();
+    expect(res.status, text.slice(0, 400)).toBe(200);
+    return JSON.parse(text) as ImportResult;
+  }
+  const derivedCalls = (rs: readonly Relation[]) =>
+    rs.filter((r) => r.type === 'call' && r.attrs['match'] === 'derived-caller');
+
+  it('names the unique calls that become proposals and each file’s class, as the import does', async () => {
+    await t.createProject('derived');
+    const writer = await t.createToken('derived', ['analyzr:read', 'analyzr:write']);
+    const preview = await importAsAgent('derived', writer.secret, files, true);
+    const real = await importAsAgent('derived', writer.secret, files, false);
+    expect(preview.files).toEqual(real.files);
+    if (!preview.impact) throw new Error('no impact');
+    const agentUpload = { class: 'derived', reasons: ['agent-upload'] };
+    expect(preview.impact.files.every((f) => isDeepStrictEqual(f.trust, agentUpload))).toBe(true);
+    expect(real.files.every((f) => isDeepStrictEqual(f.trust, agentUpload))).toBe(true);
+    const after = await relations('derived');
+    expect(after.some((r) => r.status === 'accepted')).toBe(false);
+    expect(preview.impact.acceptedCalls.count).toBe(0);
+    expect(preview.impact.callsProposed.count).toBeGreaterThan(0);
+    expect(preview.impact.callsProposed.items.every((c) => !c.wasAccepted)).toBe(true);
+    expect(preview.impact.callsProposed.items.map(line).sort()).toEqual(
+      derivedCalls(after).map(line).sort(),
+    );
+    // The totals cover every call, each under its caller's first reason.
+    expect(preview.impact.callsProposed.wasAccepted).toBe(0);
+    expect(preview.impact.callsProposed.byReason).toEqual([
+      { reason: 'agent-upload', count: preview.impact.callsProposed.count },
+    ]);
+    // Together the two lists name every proposal the import made.
+    expect(
+      [...preview.impact.proposalsAdded.items, ...preview.impact.callsProposed.items]
+        .map(line)
+        .sort(),
+    ).toEqual(
+      after
+        .filter((r) => r.status === 'proposed')
+        .map(line)
+        .sort(),
+    );
+  });
+
+  it('names the acceptances a derived re-import ends', async () => {
+    await t.createProject('demoted');
+    const writer = await t.createToken('demoted', ['analyzr:read', 'analyzr:write']);
+    await importFiles('demoted', files, false);
+    const accepted = (await relations('demoted')).filter(
+      (r) => r.type === 'call' && r.status === 'accepted',
+    );
+    expect(accepted.length).toBeGreaterThan(0);
+    // Changed bytes (a comment), the same facts, uploaded with an agent token.
+    const changed = files.map((f) => ({
+      ...f,
+      bytes: new TextEncoder().encode(`${new TextDecoder().decode(f.bytes)}<!-- again -->\n`),
+    }));
+    const preview = await importAsAgent('demoted', writer.secret, changed, true);
+    if (!preview.impact) throw new Error('no impact');
+    expect(preview.impact.callsProposed.items.map((c) => [line(c), c.wasAccepted]).sort()).toEqual(
+      accepted.map((r) => [line(r), true]).sort(),
+    );
+    expect(preview.impact.callsProposed.wasAccepted).toBe(accepted.length);
+    await importAsAgent('demoted', writer.secret, changed, false);
+    const after = await relations('demoted');
+    for (const r of accepted) {
+      expect(after.find((a) => line(a) === line(r))).toMatchObject({
+        status: 'proposed',
+        tier: 'key',
+      });
+    }
+  });
+
+  it('classifies a read-only token’s preview by its credential', async () => {
+    await t.createProject('readonly');
+    const token = await t.createToken('readonly', ['analyzr:read']);
+    const preview = await importAsAgent('readonly', token.secret, files.slice(0, 3), true);
+    expect(preview.impact?.files.map((f) => f.trust.reasons)).toEqual(
+      files.slice(0, 3).map(() => ['agent-upload']),
+    );
   });
 });
 

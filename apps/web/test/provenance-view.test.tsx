@@ -68,6 +68,7 @@ const revisions: Revision[] = [
       url: 'https://editor.signavio.com/p/hub/model/sid-B',
       derived: { kind: 'converted', converter: 'normalize-bpmn 0.1.0' },
       losses: [{ code: 'element-dropped', count: 2 }],
+      trust: { class: 'derived', reasons: ['no-engine', 'converted'] },
     },
     seq: 7,
     createdAt: '2026-10-15T08:00:00.000Z',
@@ -162,7 +163,7 @@ describe('provenance in the model view (UX8)', () => {
     await user.click(await within(view).findByTestId('model-more', {}, { timeout: 10_000 }));
     await user.click(await screen.findByRole('menuitem', { name: 'Herkunft …' }));
     const panel = await screen.findByTestId('model-provenance');
-    await waitFor(() => expect(within(panel).getAllByTestId('provenance-line')).toHaveLength(5));
+    await waitFor(() => expect(within(panel).getAllByTestId('provenance-line')).toHaveLength(6));
     expect(
       within(panel)
         .getAllByTestId('provenance-line')
@@ -173,6 +174,8 @@ describe('provenance in the model view (UX8)', () => {
       'Im QuellsystemFinanzen/Bonitätsprüfung',
       'EntstandenKonvertiert · mit normalize-bpmn 0.1.0',
       'Hochgeladenüber den Owner-Zugang',
+      // M6 S2c, the trust rule: the uploaded revision is derived
+      'Aufrufenur als Vorschlag (ohne Camunda-Engine; als konvertiert angegeben)',
     ]);
     expect(within(panel).getByTestId('provenance-losses').textContent).toContain(
       'Elemente weggelassen: 2',

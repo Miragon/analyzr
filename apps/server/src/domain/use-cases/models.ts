@@ -48,6 +48,7 @@ import {
   type ReceivedManifest,
 } from '../provenance.ts';
 import type { Tx } from '../ports.ts';
+import { trustKeptWarning } from '../trust.ts';
 import { toModel, toRevision } from '../views.ts';
 import { cutWarning } from '../warnings.ts';
 import type { UseCaseDeps } from './deps.ts';
@@ -217,6 +218,7 @@ export function modelUseCases(deps: UseCaseDeps, ingestDeps: IngestDeps) {
             ? (identityWarnings([{ key, source, stored: r.outcome !== 'unchanged' }], heads)[0] ??
               [])
             : []),
+          r.outcome === 'unchanged' ? trustKeptWarning(r.trust.stored, r.trust.incoming) : null,
         ].filter((w) => w !== null);
         return {
           outcome: r.outcome,
@@ -240,6 +242,7 @@ export function modelUseCases(deps: UseCaseDeps, ingestDeps: IngestDeps) {
       const warnings = [
         shaMismatch(entry, contentHash(bytes)),
         ...(heads ? (identityWarnings([{ key, source, stored }], heads)[0] ?? []) : []),
+        stored ? null : trustKeptWarning(result.trust.stored, result.trust.incoming),
       ].filter((w) => w !== null);
       return {
         outcome: result.outcome,
@@ -351,6 +354,8 @@ export function modelUseCases(deps: UseCaseDeps, ingestDeps: IngestDeps) {
           Object.assign(outcome, resultWarnings(r.warnings));
           // Only for a model with live amendments (M6 S5c-2): other results keep their shape.
           if (r.amendments) outcome.amendments = r.amendments;
+          // Only for a derived model (M6 S2c), so a corpus result keeps its shape.
+          if (r.trust.stored?.class === 'derived') outcome.trust = r.trust.stored;
           candidates.push({
             at: a.index,
             candidate: {
@@ -375,6 +380,14 @@ export function modelUseCases(deps: UseCaseDeps, ingestDeps: IngestDeps) {
             outcome.importWarnings = [...(outcome.importWarnings ?? []), ...list];
           }
         }
+      }
+      // Unchanged bytes keep their class (M6 S2c); the warning comes last.
+      for (const [i, a] of accepted.entries()) {
+        const r = results[i];
+        const outcome = outcomes[a.index];
+        if (!r || !outcome || r.outcome !== 'unchanged') continue;
+        const kept = trustKeptWarning(r.trust.stored, r.trust.incoming);
+        if (kept) outcome.importWarnings = [...(outcome.importWarnings ?? []), kept];
       }
       return { files: outcomes, ...(preview ? { impact: preview.impact } : {}) };
     },

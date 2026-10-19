@@ -122,19 +122,26 @@ export function sameFields(head: DraftFields, next: DraftFields): boolean {
 
 /**
  * Decision 9 as a system rule (German, as the review UI shows it): the rule
- * tier accepts an unambiguous call at ingest. Unchanged in behaviour and
- * recording (`analyzr-rules`, `source_kind = 'rule'`), never stored as an
- * auto-accept rule, never editable.
+ * tier accepts an unambiguous call at ingest when the calling model is
+ * modelled, and proposes it from a derived one (decision 24.2; a call target
+ * set in analyzr counts as modelled, 25.2). Recorded under `analyzr-rules`
+ * (`source_kind = 'rule'`), never stored as an auto-accept rule, never
+ * editable. `proposed`: the open proposals of such calls.
  */
-export function systemRule(accepted: number): AutoAcceptSystemRule {
+export function systemRule(accepted: number, proposed: number): AutoAcceptSystemRule {
   return {
     id: RULES_PROCEDURE,
     name: 'Eindeutige Aufrufe',
     description:
-      'Ein statischer Aufruf (calledElement), der genau einen anderen Prozess nennt, wird beim Import angenommen.',
+      'Ein statischer Aufruf (calledElement), der genau einen anderen Prozess nennt, wird beim Import ' +
+      'angenommen, wenn das aufrufende Modell aus Camunda 7 oder 8 stammt, über den Owner-Zugang oder ' +
+      'das Web hochgeladen wurde und nicht als konvertiert, KI-rekonstruiert oder aus einem Interview ' +
+      'angegeben ist. Sonst wird er mit 90 % vorgeschlagen. Ein Aufrufziel, das du in analyzr ergänzt ' +
+      'hast, gilt immer als modelliert.',
     kind: 'relation',
     relationType: 'call',
     readOnly: true,
     accepted,
+    proposed,
   };
 }

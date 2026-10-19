@@ -87,6 +87,7 @@ import type {
   ValueChainStepRecord,
 } from '../domain/ports.ts';
 import { sourceSummary } from '../domain/provenance.ts';
+import { trustSummary } from '../domain/trust.ts';
 import type { Db } from './client.ts';
 import * as s from './schema.ts';
 
@@ -527,6 +528,7 @@ function repos(db: Conn): Tx {
     openItems: r.openItems,
     processes: r.processes,
     source: sourceSummary(r.source, r.upstreamSource),
+    trust: trustSummary(r.source, r.upstreamSource),
   });
 
   const processFact = alias(s.fact, 'process_fact');
@@ -687,6 +689,7 @@ function repos(db: Conn): Tx {
   }
 
   const uploadedRevision = alias(s.modelRevision, 'uploaded_revision');
+  const uploaderPrincipal = alias(s.principal, 'uploader_principal');
   const noLinkFrom = alias(s.model, 'no_link_from_model');
   const noLinkFromHead = alias(s.modelRevision, 'no_link_from_head');
   const noLinkTo = alias(s.model, 'no_link_to_model');
@@ -1088,6 +1091,44 @@ function repos(db: Conn): Tx {
           .orderBy(s.modelRevision.modelId, desc(s.modelRevision.rev));
         for (const d of declared) sources.set(d.key, d.source);
         return sources;
+      },
+      async headTrustRows(projectId) {
+        // An amended head's uploaded revision (`source.upstream`) carries the class and signals.
+        const rows = await db
+          .select({
+            key: s.model.key,
+            head: s.modelRevision.source,
+            headEngine: s.modelRevision.engine,
+            upstream: uploadedRevision.source,
+            upstreamEngine: uploadedRevision.engine,
+            principalKind: uploaderPrincipal.kind,
+          })
+          .from(s.model)
+          .innerJoin(s.modelRevision, liveHead)
+          .leftJoin(
+            uploadedRevision,
+            and(
+              eq(uploadedRevision.projectId, s.modelRevision.projectId),
+              eq(uploadedRevision.modelId, s.modelRevision.modelId),
+              sql`${uploadedRevision.id} = ${s.modelRevision.source}->'upstream'->>'revisionId'`,
+            ),
+          )
+          .innerJoin(
+            uploaderPrincipal,
+            eq(
+              uploaderPrincipal.id,
+              sql`coalesce(${uploadedRevision.principalId}, ${s.modelRevision.principalId})`,
+            ),
+          )
+          .where(and(eq(s.model.projectId, projectId), isNull(s.model.deletedSeq)))
+          .orderBy(s.model.key);
+        return rows.map((r) => ({
+          key: r.key,
+          head: r.head,
+          upstream: r.upstream,
+          engine: r.upstream ? r.upstreamEngine : r.headEngine,
+          uploaderPrincipalKind: r.principalKind,
+        }));
       },
       async headWarnings(projectId) {
         const rows = await db

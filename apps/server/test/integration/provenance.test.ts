@@ -56,6 +56,7 @@ import { MIGRATIONS_DIR, runMigrations } from '../../src/db/migrate.ts';
 import { LAGER_KEY, lager } from '../support/amend-fixtures.ts';
 import { startTestApp, type TestApp } from '../support/app.ts';
 import { createTestDatabase, type TestDatabase } from '../support/db.ts';
+import { NO_ENGINE } from '../support/trust.ts';
 
 const BUNDLE = fileURLToPath(
   new URL('../../../../tools/integrate/test/fixtures/signavio/bundle/', import.meta.url),
@@ -225,6 +226,11 @@ describe('the integrate plugin’s golden bundle with its manifest', () => {
         externalPath: entry.externalPath,
         derived: entry.derived,
         ...(entry.losses ? { losses: entry.losses } : {}),
+        // The trust rule (M6 S2c): a Signavio export names no Camunda engine.
+        trust: {
+          class: 'derived',
+          reasons: ['no-engine', ...(entry.derived?.kind === 'converted' ? ['converted'] : [])],
+        },
       });
     }
   });
@@ -329,6 +335,7 @@ describe('pinned keys, checksums and the identity warnings', () => {
       kind: 'import',
       path: 'Ohne Eintrag.bpmn',
       uploader: 'human',
+      trust: NO_ENGINE,
     });
   });
 
@@ -433,7 +440,11 @@ describe('pinned keys, checksums and the identity warnings', () => {
     const res = await put('ident', 'lager/kommission', bpmn('Kommission', 'Neu im Web'));
     expect(res.status).toBe(200);
     const revised = PutModelResult.parse(await res.json());
-    expect(revised.revision.source).toEqual({ kind: 'upload', uploader: 'human' });
+    expect(revised.revision.source).toEqual({
+      kind: 'upload',
+      uploader: 'human',
+      trust: NO_ENGINE,
+    });
     // the head declares nothing: no summary on the model, though `external-ids` keeps the identity
     expect(revised.model.source).toBeNull();
     expect(
@@ -570,13 +581,14 @@ describe('PUT with the header Analyzr-Manifest', () => {
       externalPath: 'Vertrieb/Angebot',
       url: 'https://tool.example/sid-A',
       derived: { kind: 'export' },
+      trust: NO_ENGINE,
     });
     expect((await revisions('put', 'vertrieb/angebot'))[0]?.source).toEqual(result.revision.source);
     // Without the header: kind and uploader only, as every upload since S2a.
     const plain = PutModelResult.parse(
       await (await put('put', 'vertrieb/ohne', bpmn('Ohne'))).json(),
     );
-    expect(plain.revision.source).toEqual({ kind: 'upload', uploader: 'human' });
+    expect(plain.revision.source).toEqual({ kind: 'upload', uploader: 'human', trust: NO_ENGINE });
     expect(plain.importWarnings).toBeUndefined();
   });
 

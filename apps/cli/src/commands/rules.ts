@@ -351,7 +351,9 @@ export function ruleLine(r: AutoAcceptRule): string {
 }
 
 function systemLine(s: AutoAcceptSystemRule): string {
-  return `system rule ${s.id} ${JSON.stringify(s.name)}: ${s.relationType} relations, always on, read-only; ${s.accepted} accepted`;
+  const proposed =
+    s.proposed > 0 ? `, ${s.proposed} only proposed (derived callers, trust rule)` : '';
+  return `system rule ${s.id} ${JSON.stringify(s.name)}: ${s.relationType} relations of modelled callers, always on, read-only; ${s.accepted} accepted${proposed}`;
 }
 
 /** `relation call a#x → b#y` / `placement main a#P → step`. */

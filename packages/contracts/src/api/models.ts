@@ -64,6 +64,70 @@ export const ModelSourceSummary = z
   .meta({ id: 'ModelSourceSummary', description: "A model's declared provenance in short." });
 export type ModelSourceSummary = z.infer<typeof ModelSourceSummary>;
 
+/**
+ * The trust class of an uploaded revision (M6 S2c, owner decisions 24.2 and
+ * 25.2): `modelled` when the file targets Camunda 7 or 8, a human uploaded
+ * it (the owner key or the web) and its manifest declares no derivation or
+ * `export`; `derived` otherwise. The rule tier accepts a unique static call
+ * only when the calling model is modelled; from a derived model it proposes
+ * the call (tier `key`, {@link DERIVED_CALL_CONFIDENCE}).
+ */
+export const TrustClass = z
+  .enum(['modelled', 'derived'])
+  .meta({ id: 'TrustClass', description: 'Trust class of an uploaded revision.' });
+export type TrustClass = z.infer<typeof TrustClass>;
+
+/**
+ * Why a revision is `derived`, in this order: no Camunda engine
+ * (`no-engine`), uploaded with an agent token (`agent-upload`), declared
+ * `converted`, `reconstructed` or `as-told`.
+ */
+export const TrustReason = z
+  .enum(['no-engine', 'agent-upload', 'converted', 'reconstructed', 'as-told'])
+  .meta({ id: 'TrustReason', description: 'Why an uploaded revision is derived.' });
+export type TrustReason = z.infer<typeof TrustReason>;
+
+/** The German label of each {@link TrustReason}, as the rationale and the web say it. */
+export const TRUST_REASON_LABELS: Readonly<Record<TrustReason, string>> = {
+  'no-engine': 'ohne Camunda-Engine',
+  'agent-upload': 'über ein Agenten-Token hochgeladen',
+  converted: 'als konvertiert angegeben',
+  reconstructed: 'als KI-rekonstruiert angegeben',
+  'as-told': 'als aus einem Interview angegeben',
+};
+
+/** Confidence of the rule tier's proposal of a unique call from a derived model (M6 S2c). */
+export const DERIVED_CALL_CONFIDENCE = 0.9;
+
+/** `attrs.match` of the rule tier's proposal of a unique call from a derived model (M6 S2c). */
+export const DERIVED_CALLER_MATCH = 'derived-caller';
+
+/**
+ * The trust class the server stores on an uploaded revision (M6 S2c):
+ * `reasons` empty for `modelled`, in {@link TrustReason}'s order for
+ * `derived`.
+ */
+export const RevisionTrust = z
+  .object({
+    class: TrustClass,
+    reasons: z.array(TrustReason),
+  })
+  .meta({ id: 'RevisionTrust', description: 'Trust class of an uploaded revision.' });
+export type RevisionTrust = z.infer<typeof RevisionTrust>;
+
+/**
+ * A model's trust class in short (M6 S2c): its uploaded revision's (for an
+ * amended head, `upstream`'s), with the declared derivation kind and
+ * converter. REST only, for the model view's „Herkunft“.
+ */
+export const ModelTrustSummary = RevisionTrust.extend({
+  /** `derived.kind` as declared; `null` when the manifest names none. */
+  derivedKind: orNull(DerivedKind),
+  /** `derived.converter` as stored; `null` when none is declared. */
+  converter: orNull(z.string()),
+}).meta({ id: 'ModelTrustSummary', description: "A model's trust class in short." });
+export type ModelTrustSummary = z.infer<typeof ModelTrustSummary>;
+
 export const Model = z
   .object({
     id: ModelId,
@@ -84,6 +148,11 @@ export const Model = z
      * when it declares no source system (a plain upload, a seed).
      */
     source: orNull(ModelSourceSummary),
+    /**
+     * The trust class of the head's uploaded revision (M6 S2c); `null` for a
+     * revision stored before S2c, which counts as modelled (decision 24.2 (a)).
+     */
+    trust: orNull(ModelTrustSummary),
     updatedAt: Timestamp,
   })
   .meta({ id: 'Model', description: 'A BPMN model (one file) with a stable key.' });
@@ -143,6 +212,13 @@ export const RevisionSource = z
      * revision itself (an uploaded head none applies to), in seq order.
      */
     amendments: z.array(AmendmentPlanEntry).optional(),
+    /**
+     * The trust class (M6 S2c), set by the server, last, on every uploaded
+     * revision stored since S2c; never declared. Absent on an amended
+     * revision (readers follow `upstream`) and on revisions stored before
+     * S2c, which count as modelled (decision 24.2 (a)).
+     */
+    trust: RevisionTrust.optional(),
   })
   .meta({ id: 'RevisionSource', description: 'Origin of a revision.' });
 export type RevisionSource = z.infer<typeof RevisionSource>;
@@ -252,7 +328,7 @@ const resultAmendments = {
  * without a manifest keep their shape. The file was imported all the same.
  */
 const resultImportWarnings = {
-  importWarnings: z.array(ImportWarning).max(3).optional(),
+  importWarnings: z.array(ImportWarning).max(4).optional(),
 };
 
 /**
@@ -302,6 +378,13 @@ export const ImportFileOutcome = z
     ...resultWarnings,
     ...resultAmendments,
     ...resultImportWarnings,
+    /**
+     * The trust class of the model's uploaded revision after the import (M6
+     * S2c): the one stored for a `created` or `revised` file, the one kept
+     * for an `unchanged` one. Present only when it is `derived`, so other
+     * results keep their shape.
+     */
+    trust: RevisionTrust.optional(),
   })
   .meta({ id: 'ImportFileOutcome', description: 'Outcome of one file of an import.' });
 export type ImportFileOutcome = z.infer<typeof ImportFileOutcome>;
@@ -337,17 +420,50 @@ export const ImpactFile = z
     processesAdded: z.array(Ref),
     /** Process refs the new head no longer has, sorted. */
     processesRemoved: z.array(Ref),
+    /** The trust class the uploaded revision would get (M6 S2c), by the credential of the dry run. */
+    trust: RevisionTrust,
   })
   .meta({ id: 'ImpactFile', description: 'How a file would change its model.' });
 export type ImpactFile = z.infer<typeof ImpactFile>;
+
+/**
+ * A unique call from a derived model the rule tier would only propose (M6
+ * S2c); `wasAccepted` when the relation is accepted now (the rule tier's
+ * acceptance ends).
+ */
+export const ImpactProposedCall = ImpactRelation.extend({
+  wasAccepted: z.boolean(),
+}).meta({ id: 'ImpactProposedCall', description: 'A unique call from a derived model, proposed.' });
+export type ImpactProposedCall = z.infer<typeof ImpactProposedCall>;
+
+/**
+ * The unique calls from derived models the rule tier would only propose (M6
+ * S2c): the capped list, with totals over all `count` calls, past the cap.
+ * `wasAccepted`: how many are accepted now (the rule tier's acceptance
+ * ends). `byReason`: each call counted once, under its caller's first
+ * {@link TrustReason}, in that order, so the counts add up to `count`;
+ * reasons without a call are left out.
+ */
+export const ImpactProposedCalls = impactList(ImpactProposedCall)
+  .extend({
+    wasAccepted: z.number().int().min(0),
+    byReason: z.array(z.object({ reason: TrustReason, count: z.number().int().min(1) })),
+  })
+  .meta({
+    id: 'ImpactProposedCalls',
+    description: 'Unique calls from derived models, proposed, with their totals.',
+  });
+export type ImpactProposedCalls = z.infer<typeof ImpactProposedCalls>;
 
 /**
  * What an import or a model's deletion would change (M6 §3.5, slice S2b),
  * computed by the pure `importImpact` over the stored head and the would-be
  * head facts; nothing is written. `files`: the created and revised files.
  * `acceptedCalls`: rule-tier calls that would become accepted (decision 9).
- * `proposalsAdded`, `proposalsWithdrawn`: rule proposals of relations that
- * would appear, and rule stances that would be withdrawn. `endpointsChanged`:
+ * `callsProposed`: unique calls from derived models that would become rule
+ * proposals instead (M6 S2c, decision 24.2). `proposalsAdded`,
+ * `proposalsWithdrawn`: the other rule proposals of relations that would
+ * appear, and rule stances that would be withdrawn. `endpointsChanged`:
  * accepted relations whose end would turn `changed` or `missing`.
  * `findingsAdded`, `findingsResolved`: the rule tier's findings. `absentKeys`:
  * live keys of the manifest's source system the import does not name, only
@@ -358,6 +474,7 @@ export const ImportImpact = z
   .object({
     files: z.array(ImpactFile),
     acceptedCalls: impactList(ImpactRelation),
+    callsProposed: ImpactProposedCalls,
     proposalsAdded: impactList(ImpactRelation),
     proposalsWithdrawn: impactList(ImpactRelation),
     endpointsChanged: impactList(ImpactEndpoint),

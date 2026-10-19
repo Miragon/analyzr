@@ -7,9 +7,14 @@
  * findings as before the split. The digest was computed on the code before
  * it; ids and timestamps are normalized (ids by first appearance), so only
  * behaviour counts. `GOLDEN_DUMP=<file>` writes the normalized end state, to
- * compare two runs.
+ * compare two runs. Since M6 S2c every uploaded revision carries its trust
+ * class in `source.trust`, which the `model.revised` events repeat: it is
+ * taken out before hashing and checked on its own (the corpus is Camunda,
+ * imported by the owner, so every revision is modelled and the recompute
+ * behaves as before).
  */
 import { createHash } from 'node:crypto';
+import { isDeepStrictEqual } from 'node:util';
 
 import type { Model, ModelPage, Relation, RelationPage } from '@analyzr/contracts';
 import { sql } from 'drizzle-orm';
@@ -98,14 +103,26 @@ async function rows(query: ReturnType<typeof sql>): Promise<unknown[]> {
   return (await database.db.execute<{ r: unknown }>(query)).rows.map((x) => x.r);
 }
 
-/** The project's relations, assertions, events and findings, normalized. */
-async function endState(): Promise<unknown> {
+/** `payload.source.trust` of a `model.revised` event, taken out of the event (M6 S2c). */
+function withoutTrust(event: unknown, trusts: unknown[]): unknown {
+  const e = event as { type?: string; payload?: { source?: Record<string, unknown> } };
+  if (e.type !== 'model.revised' || !e.payload?.source) return event;
+  const { trust, ...source } = e.payload.source;
+  trusts.push(trust);
+  return { ...e, payload: { ...e.payload, source } };
+}
+
+/** The project's relations, assertions, events and findings, normalized; the revisions' trust apart. */
+async function endState(): Promise<{ state: unknown; trusts: unknown[] }> {
   const project = sql`(select id from project where key = ${P})`;
   const norm = normalizer();
+  const trusts: unknown[] = [];
   // Events first: their order gives every id its placeholder.
-  const events = await rows(
-    sql`select row_to_json(e) as r from event e where e.project_id = ${project} order by e.seq`,
-  );
+  const events = (
+    await rows(
+      sql`select row_to_json(e) as r from event e where e.project_id = ${project} order by e.seq`,
+    )
+  ).map((e) => withoutTrust(e, trusts));
   const assertions = await rows(
     sql`select row_to_json(a) as r from relation_assertion a where a.project_id = ${project} order by a.seq`,
   );
@@ -115,7 +132,7 @@ async function endState(): Promise<unknown> {
   const findings = await rows(
     sql`select row_to_json(f) as r from finding f where f.project_id = ${project} order by f.kind, f.refs::text`,
   );
-  return norm({ events, assertions, relations: rels, findings });
+  return { state: norm({ events, assertions, relations: rels, findings }), trusts };
 }
 
 describe('recompute over a seeded history (golden digest)', () => {
@@ -152,7 +169,13 @@ describe('recompute over a seeded history (golden digest)', () => {
     expect((await put(revived.key, revived.bytes)).status).toBe(201);
     await importAll((path, init) => t.asOwner(path, init), P, files.slice(0, 5));
 
-    const state = JSON.stringify(await endState(), null, 1);
+    const end = await endState();
+    // Every revision of the history is an owner's upload of a Camunda file: modelled.
+    expect(end.trusts.length).toBeGreaterThan(0);
+    expect(end.trusts.every((x) => isDeepStrictEqual(x, { class: 'modelled', reasons: [] }))).toBe(
+      true,
+    );
+    const state = JSON.stringify(end.state, null, 1);
     if (process.env['GOLDEN_DUMP'])
       (await import('node:fs')).writeFileSync(process.env['GOLDEN_DUMP'], state);
     const digest = createHash('sha256').update(state).digest('hex');

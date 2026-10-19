@@ -2,9 +2,11 @@
  * The would-be effect and the cost of amendments (M6 §4.8 c "What an
  * amended revision sets off"), pure: the rule tier over the head facts with
  * the model's facts replaced by the derived head's, compared with the rule
- * tier over the head facts as they are; the accepted relations whose
- * endpoint fingerprint changes; the manual links the amendments retire; and
- * the current judgements a new `facts_hash` makes non-current.
+ * tier over the head facts as they are, both under the trust rule (M6 S2c:
+ * a call target set in analyzr counts as modelled, decision 25.2); the
+ * accepted relations whose endpoint fingerprint changes; the manual links
+ * the amendments retire; and the current judgements a new `facts_hash`
+ * makes non-current.
  */
 import type {
   AmendmentEffect,
@@ -18,6 +20,7 @@ import type {
 
 import { headFingerprints } from '../fingerprints.ts';
 import type { AnalysisPort, Extracted, RelationRecord } from '../ports.ts';
+import { applyTrust, type ModelTrust } from '../trust.ts';
 
 const byCodePoint = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
 const naturalKey = (type: string, from: string, to: string): string =>
@@ -73,7 +76,8 @@ export interface EffectResult {
 
 /**
  * The effect of replacing a model's facts with the derived head's (the
- * rule tier before and after), at the model and wherever the rules reach.
+ * rule tier before and after, each under its models' trust), at the model
+ * and wherever the rules reach.
  */
 export function amendmentEffect(input: {
   modelKey: string;
@@ -81,12 +85,14 @@ export function amendmentEffect(input: {
   amended: Extracted;
   relations: readonly RelationRecord[];
   runRules: AnalysisPort['runRules'];
+  /** The models' trust now, and with the derived head's call targets (M6 S2c). */
+  trust: { before: ReadonlyMap<string, ModelTrust>; after: ReadonlyMap<string, ModelTrust> };
   candidates: readonly EffectCandidate[];
 }): EffectResult {
   const { modelKey, projectFacts, relations } = input;
   const afterFacts = replaceModel(projectFacts, modelKey, input.amended);
-  const before = input.runRules(projectFacts);
-  const after = input.runRules(afterFacts);
+  const before = applyTrust(input.runRules(projectFacts), input.trust.before);
+  const after = applyTrust(input.runRules(afterFacts), input.trust.after);
   const stored = new Map(relations.map((r) => [naturalKey(r.type, r.fromRef, r.toRef), r]));
   const view = (r: { type: RelationType; from: string; to: string }): AmendmentEffectRelation => ({
     relation: stored.get(naturalKey(r.type, r.from, r.to))?.id ?? null,

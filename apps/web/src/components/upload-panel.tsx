@@ -483,6 +483,15 @@ function PreviewBox({
               }}
             />
             <ImpactList
+              title="Aufrufe als Vorschlag"
+              list={{
+                count: impact.callsProposed.count,
+                items: impact.callsProposed.items.map(
+                  (r) => `${arrow(r)}${r.wasAccepted ? ' (bisher angenommen)' : ''}`,
+                ),
+              }}
+            />
+            <ImpactList
               title="Angenommene Relationen mit geändertem oder fehlendem Endpunkt"
               list={{
                 count: impact.endpointsChanged.count,

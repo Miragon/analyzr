@@ -32,8 +32,8 @@ export function RelationsEmpty({
         <EmptyTitle className="text-base font-semibold">Noch keine Relationen</EmptyTitle>
         <EmptyDescription>
           {hasModels
-            ? 'Eindeutige Aufrufe verknüpft analyzr beim Hochladen; den Rest schlägt ein Agent vor.'
-            : 'Lade Modelle hoch: Eindeutige Aufrufe nimmt die Regel sofort an, gleiche Nachrichten- und Signalnamen erscheinen als Vorschläge.'}
+            ? 'Eindeutige Aufrufe aus Camunda-Modellen verknüpft analyzr beim Hochladen; den Rest schlägt ein Agent vor.'
+            : 'Lade Modelle hoch: Eindeutige Aufrufe aus Camunda-Modellen nimmt die Regel sofort an, aus anderen schlägt sie sie vor; gleiche Nachrichten- und Signalnamen erscheinen als Vorschläge.'}
         </EmptyDescription>
       </EmptyHeader>
       {hasModels && agentStart ? (

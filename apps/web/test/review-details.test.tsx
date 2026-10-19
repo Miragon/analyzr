@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
 import { ReviewDetails } from '../src/components/review/review-details';
+import { AssertionTimeline } from '../src/components/review/timeline';
 import { formatDateTime } from '../src/lib/labels';
 import { buildRefIndex, resolverOf } from '../src/lib/refs';
 import {
@@ -325,5 +326,92 @@ describe('ReviewDetails', () => {
     expect(within(box).getByTestId('hold-answer-latest').textContent).toBe(
       'Antwort vom 18.10.2026: Ja, laut Einkauf immer.',
     );
+  });
+});
+
+describe('a derived model’s unique call (the trust rule, M6 S2c)', () => {
+  const rule = {
+    sourceKind: 'rule' as const,
+    handle: 'analyzr-rules',
+    clientId: null,
+    procedure: null,
+    llmModel: null,
+  };
+  const TRUST =
+    'Vertrauensregel: Der Aufruf nennt genau einen Prozess, aber das aufrufende Modell gilt als abgeleitet (ohne Camunda-Engine). Darum nur vorgeschlagen.';
+  const derivedProposal = assertion({
+    id: 'ast_01DERIVED',
+    seq: 2,
+    ...rule,
+    tier: 'key',
+    confidence: 0.9,
+    rationale: TRUST,
+    evidence: [],
+  });
+
+  it('titles the rule tier’s proposal „Eindeutiger Aufruf erkannt (analyzr)“, without a tier badge', async () => {
+    await renderWithRouter(
+      <AssertionTimeline
+        assertions={[
+          assertion({ id: 'ast_01AMBIG', ...rule, tier: 'key', confidence: 0.5, rationale: null }),
+          derivedProposal,
+        ]}
+        callRelation
+      />,
+    );
+    const entries = await screen.findAllByTestId('timeline-entry');
+    expect(entries[0]?.textContent).toContain('Gleicher Name erkannt (analyzr)');
+    expect(entries[1]?.textContent).toContain('Eindeutiger Aufruf erkannt (analyzr)');
+    expect(entries[1]?.textContent).not.toContain('Gleicher Name');
+    expect(entries[1]?.textContent).toContain('Vertrauensregel');
+  });
+
+  it('never gives the proposal as the reason once the rule tier accepts the call (the caller turned modelled)', async () => {
+    stubApi({});
+    const decision = assertion({
+      id: 'ast_02ACCEPT',
+      seq: 3,
+      ...rule,
+      kind: 'decision',
+      verdict: 'accept',
+      tier: 'rule',
+      confidence: 1,
+      rationale: null,
+      evidence: [],
+    });
+    await renderWithRouter(
+      <ReviewDetails
+        project="demo"
+        // Accepted by the rule tier; the marker went with the proposal.
+        relation={relation({
+          id: 'rel_01DERIVEDCALL00000000000001',
+          type: 'call',
+          from: 'shop#Throw',
+          to: 'billing#Catch',
+          status: 'accepted',
+          tier: 'rule',
+          attrs: {},
+          provenance: provenance({
+            assertionId: 'ast_02ACCEPT',
+            kind: 'decision',
+            verdict: 'accept',
+            ...rule,
+            principalId: 'prn_01RULES',
+            tier: 'rule',
+            confidence: 1,
+            rationale: null,
+          }),
+        })}
+        assertions={[derivedProposal, decision]}
+        resolve={resolve}
+        modelKeys={new Set(['shop', 'billing'])}
+      />,
+    );
+    const details = screen.getByTestId('review-details');
+    expect(details.textContent).toContain('Keine Begründung angegeben');
+    const entries = within(details).getAllByTestId('timeline-entry');
+    // The history keeps the proposal, by its own fields.
+    expect(entries[0]?.textContent).toContain('Eindeutiger Aufruf erkannt (analyzr)');
+    expect(entries[0]?.textContent).not.toContain('Gleicher Name');
   });
 });

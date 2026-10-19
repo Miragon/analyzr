@@ -17,6 +17,7 @@ import { TierBadge } from '@/components/badges';
 import { Badge } from '@/components/ui/badge';
 import type { TimelineMark } from '@/lib/auto-accept';
 import { TIERS, formatConfidence, formatDateTime, procedureText } from '@/lib/labels';
+import { isTrustRuleProposal } from '@/lib/review';
 
 import { PlainText } from './plain-text';
 import { Principal } from './provenance';
@@ -49,7 +50,21 @@ export type TimelineAssertion = Pick<
   | 'at'
 >;
 
-function lookOf(a: TimelineAssertion, mark: TimelineMark | undefined): EntryLook {
+/**
+ * The rule tier's proposal of a unique call from a derived model on a call
+ * relation (M6 S2c, the trust rule; {@link isTrustRuleProposal}); a
+ * key-tier proposal of the same call without a rationale (an ambiguous id)
+ * keeps its own title.
+ */
+function isDerivedCallProposal(a: TimelineAssertion, callRelation: boolean): boolean {
+  return callRelation && isTrustRuleProposal(a);
+}
+
+function lookOf(
+  a: TimelineAssertion,
+  mark: TimelineMark | undefined,
+  callRelation: boolean,
+): EntryLook {
   // Owner decision 19: a decision an auto-accept rule recorded, and its revocation.
   if (mark?.kind === 'decision') {
     return {
@@ -74,7 +89,7 @@ function lookOf(a: TimelineAssertion, mark: TimelineMark | undefined): EntryLook
         // the glossary (UX-SIMPLIFICATION.md §4): what found it, not a principal's id
         title:
           a.sourceKind === 'rule'
-            ? `${a.tier ? TIERS[a.tier].label : 'Treffer'} erkannt (analyzr)`
+            ? `${isDerivedCallProposal(a, callRelation) ? TIERS.rule.label : a.tier ? TIERS[a.tier].label : 'Treffer'} erkannt (analyzr)`
             : a.sourceKind === 'agent'
               ? 'Vom Agenten vorgeschlagen'
               : 'Vorgeschlagen',
@@ -136,6 +151,11 @@ export interface AssertionTimelineProps<T extends TimelineAssertion> {
    * screen keeps them behind „Technische Angaben“ instead (UX5).
    */
   technical?: boolean;
+  /**
+   * A `call` relation's timeline: the rule tier's proposal of a unique call from a derived
+   * model (M6 S2c) reads „Eindeutiger Aufruf erkannt (analyzr)“, without a tier badge.
+   */
+  callRelation?: boolean;
 }
 
 /** The link between a corrected relation proposal and the manual relation that replaced it. */
@@ -173,6 +193,7 @@ export function AssertionTimeline<T extends TimelineAssertion>({
   marks,
   brief,
   technical = true,
+  callRelation = false,
 }: AssertionTimelineProps<T>) {
   if (assertions.length === 0) {
     return <p className="text-sm text-muted-foreground">Noch keine Einträge.</p>;
@@ -181,7 +202,8 @@ export function AssertionTimeline<T extends TimelineAssertion>({
     <ol aria-label="Verlauf" className="flex flex-col">
       {assertions.map((a, i) => {
         const mark = marks?.get(a.id);
-        const look = lookOf(a, mark);
+        const derivedCall = isDerivedCallProposal(a, callRelation);
+        const look = lookOf(a, mark, callRelation);
         const Icon = look.icon;
         const procedure = technical ? procedureText(a.procedure) : null;
         const last = i === assertions.length - 1;
@@ -212,7 +234,8 @@ export function AssertionTimeline<T extends TimelineAssertion>({
                     Regel „{mark.ruleName}“ (Revision {mark.revision})
                   </Badge>
                 ) : null}
-                {a.tier ? <TierBadge tier={a.tier} /> : null}
+                {/* The title names the basis of a derived call's proposal already. */}
+                {a.tier && !derivedCall ? <TierBadge tier={a.tier} /> : null}
                 {a.confidence !== null ? (
                   <span className="text-xs text-muted-foreground tabular-nums">
                     {formatConfidence(a.confidence)}

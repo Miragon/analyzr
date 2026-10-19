@@ -3,6 +3,7 @@ import type { Model, ModelStage, Relation, RelationAssertion, Tier } from '@anal
 import { ApiError } from './api';
 import { bulkFlags, nameKey, type GenericFlag, type NameUsage } from './generic-names';
 import { STAGE_ORDER, TIER_ORDER } from './labels';
+import { DERIVED_CALL_CONFIDENCE } from './limits';
 import { splitRef, type RefLabel, type RefResolver } from './refs';
 import { touchesModel } from './relation-filters';
 
@@ -221,8 +222,33 @@ export function evidenceItems(
 }
 
 /**
+ * The rule tier's proposal of a unique call from a derived model (M6 S2c,
+ * the trust rule), told by the assertion itself: tier `key` at
+ * {@link DERIVED_CALL_CONFIDENCE} with a rationale, which no other rule
+ * assertion carries. The relation's marker would not do: it goes when the
+ * caller turns modelled and the rule tier accepts the call.
+ */
+export function isTrustRuleProposal(a: {
+  sourceKind: string;
+  kind: string;
+  tier: string | null;
+  confidence: number | null;
+  rationale: string | null;
+}): boolean {
+  return (
+    a.sourceKind === 'rule' &&
+    a.kind === 'proposal' &&
+    a.tier === 'key' &&
+    a.confidence === DERIVED_CALL_CONFIDENCE &&
+    a.rationale !== null
+  );
+}
+
+/**
  * The proposal a relation's status rests on (its provenance), else the
  * latest proposal: its evidence and question are shown on the review screen.
+ * A trust-rule proposal never explains an acceptance of the rule tier (its
+ * caller turned modelled; the rationale says the call was only proposed).
  */
 export function currentProposal(
   relation: Pick<Relation, 'provenance'>,
@@ -230,7 +256,12 @@ export function currentProposal(
 ): RelationAssertion | null {
   const basis = assertions.find((a) => a.id === relation.provenance?.assertionId);
   if (basis?.kind === 'proposal') return basis;
-  return assertions.findLast((a) => a.kind === 'proposal') ?? null;
+  const ruleAccepted = basis?.kind === 'decision' && basis.sourceKind === 'rule';
+  return (
+    assertions.findLast(
+      (a) => a.kind === 'proposal' && !(ruleAccepted && isTrustRuleProposal(a)),
+    ) ?? null
+  );
 }
 
 /** Notes (answers) given after the relation's current hold, oldest first. */

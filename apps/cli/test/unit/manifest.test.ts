@@ -288,8 +288,29 @@ describe('analyzr import with a hand-written manifest', () => {
               factsChanged: true,
               processesAdded: [`${modelKeyFromPath(p)}#P`],
               processesRemoved: [],
+              trust: { class: 'derived', reasons: ['no-engine'] },
             })),
             acceptedCalls: list(1, [call(batch)]),
+            // M6 S2c, the trust rule: calls of derived models only proposed, with the
+            // server's totals over all of them (past the listed items)
+            callsProposed:
+              batch === 1
+                ? {
+                    ...list(150, [
+                      { ...call(3), wasAccepted: true },
+                      { ...call(4), wasAccepted: false },
+                    ]),
+                    wasAccepted: 120,
+                    byReason: [
+                      { reason: 'no-engine', count: 140 },
+                      { reason: 'agent-upload', count: 10 },
+                    ],
+                  }
+                : {
+                    ...list(2, [{ ...call(5), wasAccepted: false }]),
+                    wasAccepted: 0,
+                    byReason: [{ reason: 'agent-upload', count: 2 }],
+                  },
             proposalsAdded: list(2),
             proposalsWithdrawn: list(0),
             endpointsChanged: list(0),
@@ -317,6 +338,7 @@ describe('analyzr import with a hand-written manifest', () => {
         'demo: dry run, nothing imported; the import would',
         `  change the facts of ${paths.length} models (${paths.length} processes added, 0 removed)`,
         '  accept rule-tier calls: 2: m/f01#Call → x#P1, m/f02#Call → x#P2',
+        '  propose instead of accept (trust rule): 152 (no engine 140, agent token 12), 120 of them accepted until now: m/f03#Call → x#P3, m/f04#Call → x#P4, m/f05#Call → x#P5, … 149 more',
         '  add rule proposals: 4',
         '  withdraw rule stances: 0',
         '  change or lose an end of accepted relations: 0',

@@ -39,6 +39,7 @@ import type {
   ModelAmendmentId,
   ModelId,
   ModelSourceSummary,
+  ModelTrustSummary,
   ModelStage,
   NoLinkId,
   OpenQuestionAnswerId,
@@ -125,6 +126,21 @@ export interface ModelView extends ModelRecord {
   processes: ProcessInfo[];
   /** The head's declared provenance in short ({@link ModelSourceSummary}); for an amended head its upstream's. */
   source: ModelSourceSummary | null;
+  /** The trust class of the head's uploaded revision (M6 S2c); `null` stored before S2c. */
+  trust: ModelTrustSummary | null;
+}
+
+/** A live model as the trust rule reads it ({@link RevisionRepo.headTrustRows}). */
+export interface HeadTrustRow {
+  key: string;
+  /** The head revision's source. */
+  head: RevisionSource;
+  /** For an amended head, its uploaded revision's source (`source.upstream`); `null` otherwise. */
+  upstream: RevisionSource | null;
+  /** Engine of the uploaded revision (the head's own, or `upstream`'s). */
+  engine: Engine | null;
+  /** Kind of the principal that stored the uploaded revision. */
+  uploaderPrincipalKind: 'user' | 'service' | 'system';
 }
 
 export interface RevisionRecord {
@@ -729,6 +745,14 @@ export interface RevisionRepo {
    * manifest ever declared keeps its head's undeclared source.
    */
   uploadedSources(projectId: ProjectId): Promise<Map<string, RevisionSource>>;
+  /**
+   * What the trust rule reads of every live model (M6 S2c, `modelTrust`):
+   * its head's source and, for an amended head, its uploaded revision's
+   * (`source.upstream`), with the uploaded revision's engine and the kind of
+   * the principal that stored it. Never the newest-declared fallback of
+   * {@link uploadedSources}, which serves identity only. Ordered by key.
+   */
+  headTrustRows(projectId: ProjectId): Promise<HeadTrustRow[]>;
   /**
    * The stored extractor warnings of every live model's head revision that
    * has at least one (M6 S2a); heads stored before S2a (null) and without

@@ -50,6 +50,7 @@ export function toModel(m: ModelView): Model {
     stage: m.stage,
     openItems: m.openItems,
     source: m.source,
+    trust: m.trust,
     updatedAt: iso(m.updatedAt),
   };
 }

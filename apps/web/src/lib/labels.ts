@@ -142,7 +142,7 @@ export const TIERS: Record<Tier, Presentation> = {
   rule: {
     label: 'Eindeutiger Aufruf',
     tone: 'primary',
-    hint: 'Eindeutiger Aufruf: calledElement trifft genau eine Prozess-ID, automatisch angenommen.',
+    hint: 'Eindeutiger Aufruf: calledElement trifft genau eine Prozess-ID, aus Camunda-Modellen automatisch angenommen.',
   },
   key: {
     label: 'Gleicher Name',
@@ -263,6 +263,8 @@ export function procedureText(procedure: DeclaredProcedure | null): string | nul
 function ruleDetail(relation: Pick<Relation, 'tier' | 'type' | 'attrs'>): string {
   const match = typeof relation.attrs['match'] === 'string' ? relation.attrs['match'] : null;
   if (relation.tier === 'rule') return 'eindeutiger Aufruf';
+  // The trust rule (M6 S2c): a unique call from a derived model, only proposed.
+  if (match === 'derived-caller') return 'eindeutiger Aufruf aus abgeleitetem Modell';
   if (match === 'duplicate-process-id') return 'Prozess-ID mehrdeutig';
   if (match === 'file-stem') return 'Treffer über Dateinamen';
   if (match === 'process-name') return 'Treffer über Prozessnamen';

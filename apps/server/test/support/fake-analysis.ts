@@ -58,8 +58,11 @@ export interface FakeProcess {
 
 export interface FakeModelSpec {
   processes: FakeProcess[];
-  /** Engine the fake extractor reports (default `null`). */
-  engine?: 'c7' | 'c8';
+  /**
+   * Engine the fake extractor reports (default `c7`, so an owner's upload is
+   * modelled under the trust rule, M6 S2c; `null` for a derived model).
+   */
+  engine?: 'c7' | 'c8' | null;
   /** Changes the bytes (like moving shapes) without changing any fact. */
   layout?: string;
 }
@@ -213,7 +216,7 @@ export function extractFake(xml: string, modelKey: string): Extracted {
   facts.sort((a, b) => (a.kind + a.elementId < b.kind + b.elementId ? -1 : 1));
   return {
     factsVersion: 'test-1',
-    engine: spec.engine ?? null,
+    engine: spec.engine === undefined ? 'c7' : spec.engine,
     processes,
     facts,
     messageFlows: [],
@@ -419,7 +422,7 @@ export function fakeAmendable(xml: Uint8Array): AmendableDocument {
       }
     }
   }
-  return { engine: spec.engine ?? null, fields, endpoints };
+  return { engine: spec.engine === undefined ? 'c7' : spec.engine, fields, endpoints };
 }
 
 /** `applyAmendments` over a fake document: rewrites the spec (not byte-preserving). */

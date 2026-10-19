@@ -1,10 +1,12 @@
 # analyzr – Milestone M6 "Landscape integration and gap analysis"
 
-Status: in progress (2026-10-15); owner decisions 24 and 25 (§2, HANDOFF §4); S0 (this concept,
-revised after review), S1, S3a, S3b, S4, S5a, S5c-1, S5c-2 (answering by action and model
-amendments, decision 25, §4.8) and S2a (provenance, manifest, stable identity; its web parts wait
-for the UI simplification, §8 "S2a as delivered") done, the „erste Anfänge“ await the owner's
-review; next S2b, then S2c, S3c and S6 (§8 "Order since decision 25") · Branch:
+Status: in progress (2026-10-15); owner decisions 24, 25 and 28 (§2, HANDOFF §4); S0 (this
+concept, revised after review), S1, S3a, S3b, S4, S5a, S5c-1, S5c-2 (answering by action and model
+amendments, decision 25, §4.8), S2a (provenance, manifest, stable identity; its web parts came
+with the UI simplification's UX8, §8 "S2a as delivered"), S2b (the dry runs; its follow-up open)
+and S2c-1 (the trust class and the rule tier, §8 "S2c-1 as delivered") done, the „erste Anfänge“
+await the owner's review; next S2c-2, S2c-3 and S2c-4 (§8 "S2c"), S2b's follow-up and S3c, then
+S6 · Branch:
 `feat/integration-and-gaps` ·
 Spec: [CONCEPT.md](CONCEPT.md) §1–§7 · Previous: [M4-VALUE-CHAIN.md](M4-VALUE-CHAIN.md) · Paused:
 the process network map (decision 22, issue [#2](https://github.com/Miragon/analyzr/issues/2)),
@@ -91,7 +93,7 @@ The size and cost of the first agent run on a customer landscape (§6 "Run size 
 estimate") already matter at step 5, during M6: S1 prints the tasks waiting, and the follow-up of
 S2b's impact counts the pairs to judge.
 
-## 2. Owner decisions 24 (2026-10-15) and 25 (2026-10-17)
+## 2. Owner decisions 24 (2026-10-15), 25 (2026-10-17) and 28 (2026-10-19)
 
 Decision 24 is recorded in HANDOFF §4 on 2026-10-15 in short form; HANDOFF §7 names M6 and keeps
 M5 paused, and CONCEPT §11 notes what §7 "Deferrals" says. Decision 25 is recorded in HANDOFF §4
@@ -118,7 +120,9 @@ on 2026-10-17 in short form, and CONCEPT §11 notes it. The full records:
        derived revision, §3.10, is proposed, tier `key`, 0.9) and extends decision 19 (rules may
        accept such call proposals narrowed by derived kind and converter); revisions stored
        before S2c keep their acceptances, listed once for a bulk revocation (option (a) of
-       §10.1). It ships as S2c; until then the toolkit limits the risk on its side (§3.9: specs
+       §10.1). It ships as S2c (the class and the rule tier delivered in S2c-1 on 2026-10-19, the
+       decision-19 extension and the list follow in S2c-3 and S2c-4, §8 "S2c"; decision 28
+       below); until then the toolkit limits the risk on its side (§3.9: specs
        from ad-hoc converters, reconstructions and interviews get no `calledElement`; the
        consultant runs every import, §3.1). The related question whether REST ingest and model
        deletion need a human or a scope of their own stays open (§10.1).
@@ -210,6 +214,14 @@ on 2026-10-17 in short form, and CONCEPT §11 notes it. The full records:
     4. **Linked diagrams:** „Erst verknüpfen, Umbau später (Empfohlen)“: „Verknüpfen mit …“ from
        the model view now (S5c-1), the conversion operation once a real or sandbox export
        confirms the shape (§6, §10.4).
+
+Decision 28 (2026-10-19, at the start of S2c; HANDOFF §4) answers the three open points of the
+S2c plan, each with the recommended option, and refines 24.2 and 25.2: „Streng“ (a rule for
+derived call proposals names only „Export“, „Konvertiert“ or „Ohne Angabe“, and no rule ever
+accepts calls of a revision uploaded with an agent token), „Ja, wie gesetzt“ (a call target the
+source tool took over, `in-source`, counts as modelled like an applied one) and „Nur die heute
+abgeleiteten“ (the list „Vor der Vertrauensregel angenommen“ holds only pre-S2c acceptances whose
+revision would classify as derived from what it carries). §3.10 "Decision 28" places them.
 
 ## 3. Part A: Integration toolkit
 
@@ -337,9 +349,12 @@ so provenance never triggers re-judging.
 | `derived {kind, converter, llmModel, from}` | manifest (declared) | badges „Konvertiert“, „KI-rekonstruiert“, „Aus Interview“ |
 | `losses` | manifest (declared) | „Verluste bei der Konvertierung“ |
 | `upstream`, `amendments` (S5c-2, decision 25) | server: `upstream` on an amended revision (`kind: 'amendment'`), the uploaded revision it is computed from; `amendments` on a head with live amendments, each with its outcome (§4.8 c) | „In analyzr ergänzt (aus r3)“ |
+| `trust` (`{class, reasons}`, S2c-1, decision 24.2) | server, last, on every uploaded revision stored since S2c-1 (`trustOf` in `apps/server/src/domain/trust.ts`): `modelled` when `engine` is `c7` or `c8`, `uploader` is `human` and `derived.kind` is absent or `export`, else `derived` with its reasons in the order `no-engine`, `agent-upload`, `converted`, `reconstructed`, `as-told`; never declared (a manifest's `trust` is dropped); absent on an amended revision (readers follow `upstream`) and on revisions stored before S2c (they count as modelled, option (a)) | for a derived one „Aufrufe: nur als Vorschlag (ohne Camunda-Engine)“ in „Herkunft“, and the rationale of its call proposals (§3.10) |
 
-If the owner amends decision 9 (§3.10), declared values can only lower trust, never raise it.
-Identical bytes stay `unchanged` and keep the first revision's provenance (append-only); a
+Since decision 24.2 amends decision 9 (§3.10, delivered in S2c-1), declared values can only lower
+trust, never raise it. Identical bytes stay `unchanged` and keep the first revision's provenance
+and trust class (append-only; since S2c-1 the warning `trust-kept` says when the request would
+have classified them differently); a
 correction needs new bytes, and the import says so with the warning `provenance-kept` when the
 manifest declares another place in the tool (S2a; a folder move keeps a Signavio export's bytes,
 §10.10). A revision stored without a manifest declares nothing: readers then take the newest
@@ -348,8 +363,8 @@ provenance (the „Herkunft“ panel, `external-ids`, the trust class of S2c) fo
 the uploaded revision, so S2a extends the uploaded revisions only. Its own `uploader` and
 `principal_id` are those of the request that caused it (the human for an amendment write or a
 withdrawal; the importer, `sourceKindOf(actor)`, at a re-import or a revival); they never raise
-the trust class, which comes from `upstream`'s revision except for applied `call-target`
-amendments (§3.10). The fields analyzr adds itself aim to hold no personal data: the
+the trust class, which comes from `upstream`'s revision except for `call-target` amendments that
+are applied or taken over by the source tool (`in-source`, decision 28 (2); §3.10). The fields analyzr adds itself aim to hold no personal data: the
 integrate skill drops author and owner fields of exports, and `derived.from` takes opaque ids only
 (pattern `[A-Za-z0-9._:-]{1,64}`). The declared `externalPath` and `url` are not checked, and the
 model bytes themselves (lanes, documentation, tool metadata) can name people (§7 "Privacy").
@@ -405,6 +420,11 @@ The existing previews compute impact with pure code (`apps/server/src/domain/val
     `externalPath` lies inside the manifest's `source.scope` (default: the whole system), so a
     partial export does not list every other area (information only: nothing is pruned,
     decision 7).
+  - **S2c-1:** the trust rule planned like the import (§3.10): each created or revised file's
+    would-be class (`ImpactFile.trust`), classified by the dry run's own credential (a read-only
+    token previews the files as agent uploads), and the unique calls of derived callers that would
+    only be proposed (`callsProposed`, apart from `proposalsAdded`, with `wasAccepted` per item and
+    the totals `wasAccepted` and `byReason` over all of them, past the cap).
   - **Follow-up, right after:** judgements made non-current (pairs to re-judge, the cost signal);
     relations tasks queued or cancelled and whether the placement task becomes due; placements
     turning `changed` or `missing`. The head then also covers current judgements, placements, the
@@ -595,9 +615,13 @@ is not reused in place.
   for `reconstructed` and `as-told` specs, the renderer writes a collapsed subprocess named after
   the target plus a `link-unresolved` loss, and the report lists these links for the consultant.
   Ad-hoc converters emit specs only, so the rule applies to them; one that wrote BPMN directly
-  would bypass it, which the report's list of newly accepted calls (from S2b) shows. This limits,
-  without changing decision 9, how often decision 9 accepts a call that LLM-written code produced;
-  it is revisited with S2c and its decision-19 extension per converter.
+  would bypass it, which the report's list of newly accepted calls (from S2b) shows (or, since
+  S2c-1, its calls only proposed). This limits, without changing decision 9, how often decision 9
+  accepts a call that LLM-written code produced; it is revisited with S2c and its decision-19
+  extension per converter. The renderer (S3c) writes no engine (above), so since S2c-1 a
+  `calledElement` it writes that names exactly one process becomes a proposal (tier `key`, 0.9)
+  in any case (§3.10); the rule still keeps a guessed target from becoming even that, and S2c-3's
+  rules may accept only „Export“, „Konvertiert“ and „Ohne Angabe“ (decision 28 (1)).
 - **Where:** an entry of `tools/integrate` (§3.7), bundled into
   `plugins/analyzr-integrate/scripts/analyzr-spec.mjs`. It may start from a copy of the eval
   layouter; one package shared with the eval generator needs a principle-7 exception and waits
@@ -635,9 +659,11 @@ rationale naming the reason) instead of an acceptance; findings are unchanged. C
   angenommen“ for a bulk revocation; or (b) they are classified from what they carry (a missing
   `uploader` counts as human, `engine` null still makes them derived), and their calls turn into
   proposals at the next ingest, previewed with `importImpact` before S2c is switched on.
-  Recommendation: (a).
+  Recommendation: (a). Decided (a) with 24.2 and delivered in S2c-1; the list comes with S2c-4
+  and, by decision 28 (3), holds only acceptances whose revision would classify as derived.
 - Signavio, ARIS or interview models get their calls as proposals, accepted in bulk per tier
-  (the existing bulk dialog) or one by one. The read-only system rule „Eindeutige Aufrufe“ says
+  (the existing bulk dialog, where they sit among the „Gleicher Name“ pairs until S2c-2 gives
+  them a group of their own) or one by one. The read-only system rule „Eindeutige Aufrufe“ says
   so.
 - An owner's auto-accept rule (decision 19) never accepts a rule-tier proposal today (`not-agent`,
   `apps/server/src/domain/auto-accept/evaluate.ts`). The recommendation includes extending
@@ -648,7 +674,16 @@ rationale naming the reason) instead of an acceptance; findings are unchanged. C
 
 The owner agreed with option (a) for older revisions and with the decision-19 extension
 (decision 24.2). It ships as S2c; until then §3.9's renderer rule and the
-consultant-runs-the-import rule limit the risk.
+consultant-runs-the-import rule limit the risk. **S2c-1 delivered the class and the rule tier**
+(2026-10-19, §8 "S2c-1 as delivered"): the server stores `source.trust` at ingest, the recompute
+applies the rule before it plans (`applyTrust`, the one place it is applied), and the rule
+proposal carries `attrs.calledElement`, `attrs.match: 'derived-caller'` and the rationale
+„Vertrauensregel: Der Aufruf nennt genau einen Prozess, aber das aufrufende Modell gilt als
+abgeleitet (ohne Camunda-Engine; über ein Agenten-Token hochgeladen). Darum nur vorgeschlagen.“
+(the reasons as the model carries them). Only the caller's class counts. A rule acceptance whose
+caller's new revision is derived ends at that ingest (the rule's later proposal ends its
+decision), and a re-import as modelled accepts again; human decisions stay in force with the rule
+proposing behind them. The decision-19 extension follows in S2c-3, the list in S2c-4.
 
 **Added with decision 25 (2026-10-17; extends decision 24.2; confirmed by the owner 2026-10-17, decision 25.2).**
 A call target set by a model amendment (S5c-2, §4.8 c) was picked by a human from the
@@ -657,9 +692,24 @@ revision, and the rule tier keeps accepting it; the amended revision's other cal
 of its uploaded revision. The rule tier reads the applied `call-target` amendments from the
 head's `source.amendments` and the class of the rest from `source.upstream`'s revision; the
 amended revision's own `uploader` (the importer at a re-import, §3.3) never raises it. S5c-2
-lands before S2c, so amended revisions stored before S2c carry no `source.trust` either; under
-option (a) the list „Vor der Vertrauensregel angenommen“ leaves out calls whose element has an
-applied `call-target` amendment.
+lands before S2c, so amended revisions stored before S2c carry no `source.trust` either. The modelled
+treatment (applied and, by decision 28 (2), `in-source` call-target amendments; not `conflict`)
+is delivered in S2c-1; under option (a) the list „Vor der Vertrauensregel angenommen“ (S2c-4,
+open) will leave out the calls of both.
+
+**Decision 28 (2026-10-19, HANDOFF §4).** (1) „Streng“: S2c-3's rules for derived call proposals
+may name only the derived kinds „Export“, „Konvertiert“ and „Ohne Angabe“ (never
+„KI-rekonstruiert“ or „Aus Interview“, whose specs carry no `calledElement`, §3.9), and no rule
+ever accepts calls of a revision uploaded with an agent token (safeguard `agent-upload`).
+(2) „Ja, wie gesetzt“: `in-source` counts as modelled (above), so a call stays accepted after the
+consultant carried the change list over. (3) „Nur die heute abgeleiteten“: S2c-4's list holds
+only rule acceptances from before S2c whose revision would classify as derived from what it
+carries (engine null; an agent upload, or a service principal before S2a; a declared kind other
+than `export`); Camunda projects, the demo and the live-run projects list nothing. The readings
+the S2c plan took without asking stand: the class lives in `source.trust` and amended revisions
+store none; a converter matches exactly, version included; a dry run classifies by its own
+credential; only the caller's class counts; derived call proposals are assigned to agents like
+any rule proposal; the label `analyzr-rules/1.0.0` stays.
 
 ### 3.11 `eval:descriptive`: measure the loss first
 
@@ -707,8 +757,9 @@ must_link; aggregate only) moves the same way: 40/40 in baseline and `engine-str
 `tasks` on (its `descriptive` and `pools` coverage is hidden by the redaction), no rule-tier
 acceptance under 24.2 once the engine is gone, claim input max 74.9 → 43.3 KB. What it means:
 
-- `engine-stripped` costs nothing today; under the trust policy (S2c) every rule-tier acceptance
-  of such a model becomes a proposal.
+- `engine-stripped` costs nothing in the eval, which runs the libraries without the trust rule;
+  in analyzr, since S2c-1, every rule-tier acceptance of such a model is a proposal instead
+  (§3.10).
 - `descriptive` loses every call and the whole key tier: agents have to find every message and
   signal link themselves, and the dangling/unmatched findings jump from 9 to 54.
 - `pools` keeps the coverage, but its message flows answer the throws and catches, so those
@@ -948,8 +999,8 @@ every open process again, because the judgement bases include the procedure.
   `unknown-trigger`, `unknown-call-target`, `external-party-unclear`, `missing-documentation`,
   `ambiguous-name`, `possible-duplicate`, `other`), stored verbatim with the submission and read
   by the open-questions view from current submissions; guidance for descriptive models; the
-  revision's declared `derived.kind` (S2a provenance, not the trust class, which exists only if
-  the owner amends decision 9) and `isExecutable` in the claim input (optional fields in
+  revision's declared `derived.kind` (S2a provenance, not S2c-1's trust class `source.trust`) and
+  `isExecutable` in the claim input (optional fields in
   `analyzr-claim/1`).
 - **`analyzr-placements@0.2.0`:** unsure kinds `no-fitting-step` (with an optional
   `suggestedStep` name: a chain gap the human may draw), `process-unclear`, `several-steps`; the
@@ -1083,7 +1134,7 @@ or the rule tier. The relation counts in the direction a `link` writes (S5c-1's 
 leaving the call; leaving the coded end, or arriving at it when it only catches; along each of
 the box's flows (leaving the anchor of a flow to the box, arriving at the anchor of a flow from
 it); and a `call` never answers a pool or an external partner, since an accepted call into the
-process a pool's flow falls back to (decision 9 accepts unique calls at ingest) says nothing about
+process a pool's flow falls back to (decision 9 accepts unique calls of modelled callers at ingest) says nothing about
 the flow's partner. The pickers' suggestions and `link` follow the same rule. An agent's proposal does not count until a human or an owner's rule accepts
 it. R1 lives in the read model only; `visibleFindings`, „Befunde“ and the claim inputs'
 `findings` stay as they are (frozen for the live runs, §7). `message-partner-missing` and
@@ -1403,7 +1454,7 @@ input of the model's processes changes with names, documentation and start or en
 become due; a changed call target, name or label changes the element's fingerprint
 (documentation is not part of one, `fingerprint.ts`), so accepted relations there turn `changed`
 and wait for re-confirming, and a rejection there reopens. A unique call target set by amendment
-is accepted by decision 9 today; S2c keeps accepting it (§3.10). **The cost is shown before every
+is accepted by decision 9, since S2c-1 also on a derived caller (decision 25.2, §3.10). **The cost is shown before every
 save.** `facts_hash` includes documentation, names and labels (`fingerprint.ts`), so even one
 documentation line makes every judgement of a pair touching the model non-current, and a new head
 cancels the model's open relations task: an agent holding its claim gets 409 `task-cancelled` at
@@ -1650,10 +1701,12 @@ draft (after the owner's rated draft run, M4b) are later work.
   "BPMN bytes are canonical at their origin (the revision for uploads …)"). ADR-0001's header and
   CONCEPT principle 3 and §4 carried a forward note since decision 25; S5c-2's docs pass rewrote
   the places (§8 "S5c-2 as delivered").
-- **Decision 9 as amended by 24.2 (S2c):** a unique static call in a derived revision is
-  proposed, not accepted; until S2c ships, decision 9 holds unchanged. Decision 25.2 adds
-  (confirmed by the owner 2026-10-17) that a call target a human set by amendment counts as
-  modelled, so the rule tier keeps accepting it (§3.10). **Decision 8:** stages are fixed.
+- **Decision 9 as amended by 24.2 (since S2c-1, 2026-10-19):** a unique static call in a derived
+  revision is proposed, not accepted. Decision 25.2 adds (confirmed by the owner 2026-10-17) that
+  a call target a human set by amendment counts as modelled, so the rule tier keeps accepting it,
+  and decision 28 (2) counts one the source tool took over (`in-source`) the same (§3.10). The
+  eval, the seeds and the live-run projects hold Camunda models a human imported, so the rule
+  changes nothing there. **Decision 8:** stages are fixed.
   **Decision 10:** no assignee. **Decisions 4 and 5:** agents propose and draft, humans decide, no
   LLM credentials. This concept adds: the consultant runs every import (§3.1; not enforced by the
   policy, which lets any `analyzr:write` token ingest, §10.1), and every skill also ships as a
@@ -1661,7 +1714,7 @@ draft (after the owner's rated draft run, M4b) are later work.
 - **Deferrals (CONCEPT §11).** M6 lifts the deferral of "agent findings" in part (gap reports
   bound to submissions, without a lifecycle, S7) and adds answers to open questions (S5a), close
   to the deferred "comments"; the S2c recommendation narrows decision-19 rules by derived kind and
-  converter, which §11 also defers. CONCEPT §11 notes both since decision 24. Decision 25 lifts
+  converter, which §11 also defers (S2c-3, not delivered yet; decision 28 (1) narrows it further). CONCEPT §11 notes both since decision 24. Decision 25 lifts
   the deferral of "the Web Modeler" in part: targeted amendments of the fields open questions
   name, through forms, as amended revisions; no modeler (§9). CONCEPT §11 notes it. S5c-1
   tightens decision 19's safeguard `competing-call` to count manual relations from a call element
@@ -1693,7 +1746,7 @@ draft (after the owner's rated draft run, M4b) are later work.
 |---|---|---|
 | S0 | this concept; decision 24 | 0.5 d |
 | S1 | import hygiene: shared file rule and key derivation, duplicate keys across batches, warnings in results, `analyzr models list\|delete\|requeue`, next-step block | 2 d |
-| S2 | a: typed provenance, manifest, key pinning, identity warnings and `external-ids`, stored warnings and `extractor-loss`, „Herkunft“ in the web; b: `importImpact` (and its follow-up), dry runs in REST, CLI and the web upload; c: the trust marker (only with the owner's OK) | 3 + 3 + 1 d |
+| S2 | a: typed provenance, manifest, key pinning, identity warnings and `external-ids`, stored warnings and `extractor-loss`, „Herkunft“ in the web; b: `importImpact` (and its follow-up), dry runs in REST, CLI and the web upload; c: the trust rule (decision 24.2, OK given), with decision 19's extension and the list „Vor der Vertrauensregel angenommen“ in four steps ("S2c" below; 1 d planned before the extension and the list were counted) | 3 + 3 + 5 d |
 | S3 | a: `eval:descriptive` and the `get_landscape` size; b: integrate v0 for BPMN exports (plugin, `tools/integrate` with `inspect` and `normalize-bpmn`, workspace, key map, report); c: renderer and spec YAML, the ad-hoc converter path, the bundled CLI | 1.5 + 3 + 3 d |
 | S4 | open-questions read model, gap signals (without `extractor-loss`), tab „Offene Fragen“, model view section, export, `analyzr questions` | 5 d |
 | S5 | a: answers in the web, REST and CLI, the CSV round trip, `open_question_answer`; b: notes that make pairs non-current and queue exactly the affected work | 3 + 1.5 d |
@@ -1928,8 +1981,8 @@ uploaded revisions only and its readers (`external-ids`, „Herkunft“, `extern
 follow an amended head's `source.upstream`; S2b's `importImpact` plans the re-application of live
 amendments per file with S5c-2's `planAmendments` (applied, in the source, conflicts) and computes
 the impact against the would-be amended head; S2c classifies an amended head by its uploaded
-revision and treats its applied `call-target` amendments as modelled (§3.10, decision 25.2),
-and option (a)'s list leaves their calls out. Does not touch: facts, the claim
+revision and treats its applied or `in-source` `call-target` amendments as modelled (§3.10,
+decisions 25.2 and 28 (2)), and option (a)'s list leaves their calls out. Does not touch: facts, the claim
 input, MCP (`RevisionSource` appears in no MCP output schema), procedures. Done when: provenance
 round trips through PUT, import and the web; a manifest's pinned keys win over paths; a checksum
 mismatch gives `manifest-sha-mismatch` and the file is imported; `external-id-moved` and
@@ -2192,6 +2245,122 @@ real tool export with a manifest (only the integrate plugin's synthetic golden b
 migration 0017 on the owner's stacks (not touched; the test runs it on a database that holds a
 revision), the CI run (next push).
 
+**S2c "The trust rule"** (decisions 24.2, 25.2 and 28; §3.10). Planned on 2026-10-19 at about 5 d
+in four steps, each passing every gate on its own:
+
+| Step | Scope | State |
+|---|---|---|
+| S2c-1 | the trust class and the rule tier: the contracts (`RevisionSource.trust`, `Model.trust`, `ImpactFile.trust`, `ImportImpact.callsProposed`, `ImportFileOutcome.trust`, `trust-kept`, `AutoAcceptSystemRule.proposed`), `trust.ts`, ingest and the three planners, the recompute with the rationale, the system rule's text and count, the client texts | done 2026-10-19 (below) |
+| S2c-2 | the fast path: the bulk dialog's group „Eindeutige Aufrufe aus abgeleiteten Modellen (n)“ opened by `?bulk=calls` (the system card's count of these proposals a link to it), a line in the upload's „Als Nächstes“ and in „Übersicht“'s („12 eindeutige Aufrufe zuerst bestätigen · Gesammelt annehmen“), `analyzr import`'s `next:` line and a warning before sending with an agent token, the integrate plugin 0.1.2 (its skill and Signavio notes say that calls of engine-less or converted bundles arrive as 90 % proposals) | next |
+| S2c-3 | decision 19's extension: the criteria `proposedBy`, `derivedKind` and `converter` (migration 0018), the block reasons `agent-upload` and `amendment-conflict`, an agent rule pinned to agent proposals, the fifth write path right after the recompute of an ingest or a deletion, apply, preview, ledger and revocation, `autoAcceptedCalls` in an owner's dry run, `analyzr rules add --derived`, the dialog's third „Art“ and the bulk toast's offer | open |
+| S2c-4 | „Vor der Vertrauensregel angenommen“: the append-only `revision_trust_review` (migrations 0019/0020), the list of decision 28 (3), „Zurück in die Prüfung“ and „Behalten“ from the system rule card, two owner-only routes, `analyzr rules pre-trust` | open |
+
+**S2c-1 as delivered** (2026-10-19, on the branch, every gate green, with a review round's fixes;
+[DEVELOPMENT.md](DEVELOPMENT.md) "M6 S2c-1 (2026-10-19)"). Contracts first (client regenerated):
+`TrustClass`, `TrustReason`, `RevisionTrust` and `ModelTrustSummary`, the shared
+`TRUST_REASON_LABELS`, `DERIVED_CALL_CONFIDENCE` (0.9) and `DERIVED_CALLER_MATCH`
+(`derived-caller`); `RevisionSource.trust` (optional), `Model.trust` (REST only; `null` for a head
+stored before S2c), `ImpactFile.trust`, the required `ImportImpact.callsProposed`
+(`ImpactProposedCalls`: the capped items with `wasAccepted` each, and the totals `wasAccepted` and
+`byReason` over all calls, each counted once under its caller's first reason, so the parts add up
+to `count`), `ImportFileOutcome.trust` (only for a derived file, so corpus results keep their
+shape), the import warning `trust-kept` (at most 4 import warnings instead of 3) and
+`AutoAcceptSystemRule.proposed`; the import and PUT route descriptions name `trust-kept` and the
+dry run's classification. Server: the pure `apps/server/src/domain/trust.ts` (`trustOf`,
+`modelTrust` and `trustByModel` over `RevisionRepo.headTrustRows` (the head, an amended head's
+uploaded revision, its engine and the uploader's principal kind; never the newest-declared
+fallback of `uploadedSources`), `applyTrust`, `trustRationale`, `trustSummary`,
+`trustKeptWarning`); `storeFile` writes `trust` last on the uploaded head, amended revisions get
+none; `RecomputeInput.trust` is required, so `recomputeProject`, `previewIngest`,
+`deletionImpact` and the amendment effect (before and after, with the derived head's call
+targets) all apply it; the rationale is part of a stance's comparison, so a change of reasons
+re-asserts the proposal once; when the rules stop deriving a marked call, the withdrawal also
+drops `match` and `calledElement` from the relation's attributes, so a relation an agent keeps
+open no longer reads as a derived call; `recomputeProject` returns the derived proposals it
+recorded for S2c-3 (unread until then); the system rule's German description names the rule
+(„… wird beim Import angenommen, wenn das aufrufende Modell aus Camunda 7 oder 8 stammt, über den
+Owner-Zugang oder das Web hochgeladen wurde und nicht als konvertiert, KI-rekonstruiert oder aus
+einem Interview angegeben ist. Sonst wird er mit 90 % vorgeschlagen. Ein Aufrufziel, das du in
+analyzr ergänzt hast, gilt immer als modelliert.“) and `proposed` counts the open call proposals
+with the marker. Web: the tier hint „… aus Camunda-Modellen automatisch angenommen.“, the detail
+„eindeutiger Aufruf aus abgeleitetem Modell“, the „Vorschau“ line „12 Aufrufe nur vorgeschlagen
+(ohne Camunda-Engine) – nach dem Import gesammelt annehmen“ (the most common reason of `byReason`)
+and the list „Aufrufe als Vorschlag“ (with „(bisher angenommen)“), the line „Aufrufe: nur als
+Vorschlag (…)“ in „Herkunft“ for a derived revision („· von dir gesetzte Aufrufziele gelten als
+modelliert“ when there are any; none for a modelled or older one), the `trust-kept` text, the
+system rule card („Eindeutige Aufrufe aus Camunda-Modellen nimmt analyzr beim Hochladen an · immer
+aktiv · 10 angenommen · 12 aus abgeleiteten Modellen vorgeschlagen“), „Verlauf“ titling the
+proposal „Eindeutiger Aufruf erkannt (analyzr)“, and the empty texts of „Relationen“ and of a new
+project's „Übersicht“. CLI: `analyzr import --dry-run` prints `propose instead of accept (trust
+rule): 12 (no engine 10, agent token 2), 3 of them accepted until now` with up to five examples,
+`analyzr models delete`'s impact `N calls only proposed (trust rule)`, `analyzr rules list` the
+system rule as `call relations of modelled callers …; N accepted, M only proposed (derived
+callers, trust rule)`. No migration, no new route or use case (the existing `write` and `read`
+checks hold), MCP unchanged. Deviations from the plan, most from the review round:
+
+- **The totals past the cap.** `callsProposed` is a schema of its own with `wasAccepted` and
+  `byReason` over every call (the plan had per-item flags only, so the CLI's line contradicted
+  itself past 100 calls); the web's „Vorschau“ line takes its reason from `byReason`, not from
+  `files[].trust`.
+- **`trust-kept` compares the class, not the reasons.** A revision stored before S2c counts as
+  modelled, so re-importing its engine-less bytes with the owner key now warns.
+- **`ImportFileOutcome.trust` also on unchanged files** whose kept class is derived, and in dry
+  runs.
+- **The card's count is plain text** until S2c-2 opens a list of exactly those rows (`?tier=key`
+  showed every „Gleicher Name“ proposal, against the rule that a count opens its own list).
+- **Recognized by the assertion.** The web tells a trust-rule proposal by itself (rule, proposal,
+  tier `key`, 0.9, a rationale: `isTrustRuleProposal` in `lib/review.ts`), not by the relation's
+  marker, which goes when the caller turns modelled: „Verlauf“ titles it without the „Gleicher
+  Name“ badge, and once the rule accepted the call, its old proposal no longer shows as
+  „Begründung“ (`currentProposal`).
+- **The empty „Übersicht“** promised „verknüpft eindeutige Aufrufe sofort“; it now reads „…
+  verknüpft eindeutige Aufrufe aus Camunda-Modellen sofort und schlägt die übrigen und gleiche
+  Nachrichtennamen als Relationen vor.“
+- **Tests.** The fake extractor's default engine is `c7` (a test that wants a derived model sets
+  `engine: null`); the recompute golden digest (`a83c10ba…`) is unchanged because its normalizer
+  drops `trust` from `model.revised` payloads before hashing, while a separate assertion checks
+  that every one is modelled; the amendment cases sit in the new `integration/trust.test.ts`.
+
+Tests: server unit `trust.test.ts` (the class's truth table and the reasons' order, an amended
+head reading its upstream, applied and `in-source` call targets as modelled and conflicts apart,
+`applyTrust` over the real `runRules` for a derived, a modelled and a legacy caller, every other
+branch of a derived caller (ambiguous, by name, dynamic, recursive) and the findings unchanged,
+the pinned German texts, `trust-kept`), `recompute-trust.test.ts` (the real `planRecompute` and
+`writeRecompute` in memory: a derived call proposed with its rationale, a rule acceptance replaced
+when the caller turns derived and back, a human acceptance, rejection and hold kept, the marker
+dropped with the rule's proposal and when the callee is deleted, the totals past the cap, a
+modelled landscape planned exactly as before), `import-impact.test.ts`, `amendments.test.ts`,
+`auto-accept-rules.test.ts`; real PostgreSQL `trust.test.ts` (a C7 upload by the web or the owner
+key modelled and its call accepted; the same bytes with a write token, without an engine or
+declared converted or reconstructed derived and the call proposed; a C8 export modelled; a
+declared `trust` never stored; the findings the same whatever the class; unchanged bytes keeping
+their class with `trust-kept`; the Signavio golden bundle derived with „Rechnung stellen“
+proposed; the system rule's count; a call target set in analyzr accepted on an engine-less caller
+while its other call stays proposed, the manual link retired, the effect equal to what the write
+changed, kept through re-imports also `in-source`, the proposal back after a withdrawal;
+revisions stored before S2c keeping their acceptances), `import-dry-run.test.ts` (derived files in
+the property test: `callsProposed` and `ImpactFile.trust` equal what the import then does; a
+read-only token previews agent uploads), `provenance.test.ts`, `real-libraries.test.ts`,
+`review.test.ts`, `recompute-golden.test.ts`; web `lib`, `limits`, `provenance-lib`,
+`provenance-view`, `upload-panel`, `rules-tab`, `relation-table`, `review-details`, `demo-mode`;
+CLI `manifest`, `models`, `rules`, `amend`, `amendments` (the line with two reasons, two batches
+and a count past the cap); Playwright `auto-accept.spec.ts` (the card's text).
+
+What it costs and leaves open. A landscape a human imports from Camunda behaves as before, so the
+corpus, the seeds, the demo and the owner's live runs are unchanged (eval reports, MCP snapshots,
+procedures, recordings and claim inputs). A landscape without an engine or imported with an agent
+token now gets its unique calls as proposals, so its first analysis takes one review step more
+until S2c-2: on the UI load guard's `signavio-beispiel`, imported with a write token, „Rechnung
+stellen“ is now proposed, the tab reads „Relationen 1 zu prüfen“ and „Als Nächstes“ adds „Oder
+jetzt schon: Vorschläge prüfen (1) …“. Such proposals are not settled, so a claim assigns the pair
+to an agent until someone accepts it; the procedure's candidate keeps basis `rule` (S7 below).
+Until S2c-2's 0.1.2 the integrate plugin 0.1.1 still promises otherwise: its report lists the
+calls with `match` `one` as „Aufrufe, die analyzr beim Import als Beziehung annehmen kann“ and its
+Signavio note says such a call „is accepted at import“, while an engine-less export's calls now
+arrive as 90 % proposals.
+Revisions stored between S2a and S2c without an engine or by an agent token keep their
+acceptances until S2c-4 lists them.
+
 **S3 "Toolkit".** S3a (part of the „erste Anfänge“): §3.11, report committed, CI drift check,
 and the `get_landscape` size per model of the seeded `nordwind-handel` with the v1 limit in §6.
 S3b "Integrate v0 for BPMN exports" (part of the „erste Anfänge“): the plugin skeleton and the
@@ -2255,8 +2424,10 @@ Choices the spec left open:
 - The claim size is the input `renderClaimInput` renders on a fresh import with every candidate
   listed and without `judged` and `skip`, which depend on the claim order; the baseline (mean
   40.8 KB, max 80.1 KB) equals the M3 measurement.
-- „Accepted under decision 24.2“ is computed (acceptances whose caller has an engine), since S2c
-  does not exist yet.
+- „Accepted under decision 24.2“ is computed (acceptances whose caller has an engine): the eval
+  runs the libraries, not the server, and the trust rule lives in the server (S2c-1). The proxy
+  equals the server's class for models a human imports without a declared derivation, as the
+  variants are, so it stays as it is.
 - The holdout section shows whole-landscape numbers only, with no model names and no ground truth
   per relation type or tag (one type's count would equal the total minus the others'). A count of
   1 to 4 items is „< 5“, and a number that differs by 1 to 4 from any shown number it is nested
@@ -2350,7 +2521,9 @@ Choices the spec left open:
   `systemVersion` is the exporter version when every file agrees; an empty `losses` and a null
   `externalId` are left out. The bundle's details give each call a `match` (`one` with its target
   key and process, `none`, `several`, `expression`, `empty`), from which the report lists the
-  calls analyzr will accept on import (decision 9).
+  calls analyzr will accept on import (decision 9; since S2c-1 only from modelled bundles: an
+  engine-less export's calls arrive as 90 % proposals, which the plugin 0.1.1 does not say until
+  S2c-2's 0.1.2).
 - The scripts print short JSON (long lists cut to their first entries plus a count; on a
   200-model export inspect 5.8 KB, plan 1.9 KB, bundle 6.6 KB), and `plan` and `bundle` write the
   complete result with `--json-out`. They refuse an `--out`, `--json-out` or `--workspace` inside
@@ -2972,7 +3145,14 @@ generated texts.
 **S7 "Gap release"** (after the live runs). Scope: §4.6, §4.7. Done when: `nordwind-gaps` is
 scored by `eval:replay` for the sim agent; the owner's live gate passes for both procedures
 with the new gap thresholds; `RELEASED`, `PLUGIN_RELEASES`, the plugin and the MCP snapshots are
-updated as AGENTS.md describes.
+updated as AGENTS.md describes. `analyzr-relations@0.3.0` also takes up the case S2c-1 created: a
+unique static call from a derived caller is a candidate of basis `rule` (score 1;
+`packages/relations` is unchanged) whose relation is only proposed (tier `key`, 0.9, source
+`rule`). `relations.md` §4 describes basis `rule` as „a unique static call the rule tier
+accepted“ and §8.9 item 1 says „leave it alone“, while §10 says to judge a `proposed` relation
+like a candidate; such a pair is not settled, so a claim assigns it, and 0.3.0 should say to
+judge it like any call proposal (support or no-link). The released `0.2.0` stays as it is; the
+live runs use Camunda landscapes a human imports, where the case does not occur.
 
 **Taken by this concept (the owner may overrule):** the gaps field (decision 24.4); the order of
 §8 after the „erste Anfänge“, until the owner's review; models at the bundle root at their key's
@@ -3033,7 +3213,8 @@ write-back or sync to the source tools (decision 7).
 ## 10. Open questions for the owner
 
 1. **Trust policy (amends decisions 9 and 19). Decided 2026-10-15 as recommended, with (a)
-   (decision 24.2); only its last sentence stays open.** Calls in models that are not modelled (engine
+   (decision 24.2; the class and the rule tier delivered in S2c-1, decision 28 answered the S2c
+   plan's open points, §3.10); only its last sentence stays open.** Calls in models that are not modelled (engine
    null, uploaded with an agent token, or declared converted, reconstructed or as-told) are
    proposed (tier `key`, 0.9) instead of accepted, and decision-19 rules may accept such
    rule-tier call proposals narrowed by derived kind and converter (§3.10). Recommendation: yes to

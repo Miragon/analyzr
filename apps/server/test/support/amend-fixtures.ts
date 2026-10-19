@@ -4,7 +4,8 @@
  * a call whose target names no process, a nameless message throw, two
  * receive tasks sharing one message and an unnamed start event; a callee
  * with a named message catch; a process without documentation; a Camunda 8
- * caller with a Zeebe call.
+ * caller with a Zeebe call. The caller also comes without the camunda
+ * namespace (`engineless`), a derived model under the trust rule (M6 S2c).
  */
 const DEFS =
   'xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" targetNamespace="http://example.org/bpmn"';
@@ -15,7 +16,11 @@ export const RECHNUNG_KEY = 'finanzen/rechnung';
 export const LAGER_KEY = 'lager/einlagerung';
 export const VERSAND_KEY = 'versand/versand';
 
-/** The caller; `variant` changes bytes elsewhere (a task's name) or the fields under test. */
+/**
+ * The caller; `variant` changes bytes elsewhere (a task's name) or the
+ * fields under test; `engineless` leaves out the camunda namespace (no
+ * engine, a derived model).
+ */
 export function auftrag(
   variant: {
     taskName?: string;
@@ -23,6 +28,7 @@ export function auftrag(
     zahlungName?: string;
     withoutBestaetigung?: boolean;
     startName?: string | null;
+    engineless?: boolean;
   } = {},
 ): string {
   const call =
@@ -40,7 +46,7 @@ export function auftrag(
       <bpmn:messageEventDefinition id="MED_Best" />
     </bpmn:intermediateThrowEvent>`;
   return `<?xml version="1.0" encoding="UTF-8"?>
-<bpmn:definitions ${DEFS} ${C7} id="Defs_Auftrag">
+<bpmn:definitions ${DEFS}${variant.engineless ? '' : ` ${C7}`} id="Defs_Auftrag">
   <bpmn:process id="Process_Auftrag" name="Auftragsabwicklung" isExecutable="true">
     <bpmn:documentation>Wickelt Aufträge ab.</bpmn:documentation>
     <bpmn:laneSet id="LaneSet_A">

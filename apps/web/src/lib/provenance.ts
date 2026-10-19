@@ -5,6 +5,7 @@ import type {
   ModelSourceSummary,
   Revision,
   RevisionSource,
+  TrustReason,
 } from '@analyzr/client';
 
 import { formatDate } from './labels';
@@ -14,8 +15,8 @@ import { formatDate } from './labels';
  * UX-SIMPLIFICATION.md §6): the source system by name, a chip only for a
  * file that is not a plain export (it changes how far to trust the
  * diagram), the muted subtitle when every model comes from one system, the
- * model view's „Herkunft“, and the import's identity warnings in German.
- * Zod-free: the entry carries it.
+ * model view's „Herkunft“, the trust rule's reasons (M6 S2c), and the
+ * import's identity warnings in German. Zod-free: the entry carries it.
  */
 
 /** Source systems by their manifest slug; another slug shows as declared. */
@@ -99,6 +100,26 @@ export function lossText(loss: { code: string; count: number }): string {
   return `${label}: ${loss.count.toLocaleString('de-DE')}`;
 }
 
+/**
+ * Why a revision is derived (M6 S2c, the trust rule), as the server's
+ * rationale says it; a copy of `TRUST_REASON_LABELS` of `@analyzr/contracts`
+ * (`test/provenance-lib.test.ts` keeps them equal).
+ */
+export const TRUST_REASON_LABELS: Readonly<Record<TrustReason, string>> = {
+  'no-engine': 'ohne Camunda-Engine',
+  'agent-upload': 'über ein Agenten-Token hochgeladen',
+  converted: 'als konvertiert angegeben',
+  reconstructed: 'als KI-rekonstruiert angegeben',
+  'as-told': 'als aus einem Interview angegeben',
+};
+
+/** „ohne Camunda-Engine“; another reason as it is. */
+export function trustReasonLabel(reason: string): string {
+  return Object.hasOwn(TRUST_REASON_LABELS, reason)
+    ? (TRUST_REASON_LABELS[reason as TrustReason] ?? reason)
+    : reason;
+}
+
 /** A link into the source tool, only http(s) (declared, never followed by analyzr). */
 export function toolUrl(url: string | undefined): string | null {
   if (!url) return null;
@@ -120,9 +141,10 @@ export interface ProvenanceLine {
  * What the model view's „Herkunft“ says (UX-SIMPLIFICATION.md §6): the
  * source with its version and export date („(angegeben)“: declared, not
  * checked), where it lives in the tool, how the file was derived, who
- * uploaded it, and for an amended head that analyzr amended it. `declared`
- * is the revision that carries the provenance: the head, or for an amended
- * head its upstream.
+ * uploaded it, for an amended head that analyzr amended it, and for a
+ * derived revision that its unique calls are only proposed (M6 S2c; none
+ * for a modelled one or one stored before). `declared` is the revision that
+ * carries the provenance: the head, or for an amended head its upstream.
  */
 export function provenanceLines(
   head: Pick<Revision, 'rev' | 'source'>,
@@ -167,6 +189,16 @@ export function provenanceLines(
           ? 'Beispieldaten von analyzr, ohne Angabe eines Quellsystems'
           : 'Ohne Angabe eines Quellsystems hochgeladen',
     });
+  const trust = (declared ?? head).source.trust;
+  if (trust?.class === 'derived') {
+    const set = (head.source.amendments ?? []).some(
+      (e) => e.op === 'call-target' && (e.outcome === 'applied' || e.outcome === 'in-source'),
+    );
+    lines.push({
+      label: 'Aufrufe',
+      text: `nur als Vorschlag (${trust.reasons.map(trustReasonLabel).join('; ')})${set ? ' · von dir gesetzte Aufrufziele gelten als modelliert' : ''}`,
+    });
+  }
   return lines;
 }
 
@@ -188,6 +220,8 @@ export function importWarningText(w: ImportWarning): string {
       return 'Die Datei passt nicht zur Prüfsumme im Bundle; vermutlich wurde sie nach dem Umwandeln geändert. Importiert ist sie trotzdem.';
     case 'provenance-kept':
       return 'Unverändert: analyzr behält die Herkunft, die es für das Modell schon hat. Eine Korrektur braucht geänderte Dateien.';
+    case 'trust-kept':
+      return 'Unverändert: analyzr behält, ob es die Aufrufe des Modells annimmt oder nur vorschlägt. Eine neue Einstufung braucht geänderte Dateien.';
   }
 }
 

@@ -1,9 +1,10 @@
 /**
  * Project-wide recomputation after an ingest or a delete (CONCEPT §2, §3):
- * run the rule tier over the head facts, record the rule's assertions,
- * recompute every relation's status and endpoint state, and replace the
- * findings. Since M6 S2b (§3.5) in two parts: the pure {@link planRecompute}
- * over the head facts, the relations and their histories, and
+ * run the rule tier over the head facts, apply the trust rule (M6 S2c,
+ * `trust.ts`), record the rule's assertions, recompute every relation's
+ * status and endpoint state, and replace the findings. Since M6 S2b (§3.5)
+ * in two parts: the pure {@link planRecompute} over the head facts, the
+ * models' trust, the relations and their histories, and
  * {@link writeRecompute}, which performs the plan inside the writing
  * transaction in the order the recompute always wrote. The import's dry run
  * plans over the would-be head facts and writes nothing.
@@ -11,7 +12,9 @@
 import { isDeepStrictEqual } from 'node:util';
 
 import {
+  DERIVED_CALLER_MATCH,
   newId,
+  type AssertionId,
   type Finding,
   type PrincipalId,
   type ProjectFacts,
@@ -33,6 +36,7 @@ import {
   type DerivedState,
 } from './relation-state.ts';
 import { currentStances, decisionsInForce, type AssertionView } from './status.ts';
+import { applyTrust, trustByModel, type ModelTrust } from './trust.ts';
 
 export interface RecomputeContext {
   tx: Tx;
@@ -57,16 +61,22 @@ interface DesiredAssertion {
   confidence: number | null;
   fromFp: string | null;
   toFp: string | null;
+  /** The trust rule's rationale of a derived caller's call (M6 S2c); `null` otherwise. */
+  rationale: string | null;
 }
 
-function matches(stance: AssertionView, desired: DesiredAssertion): boolean {
+/** An assertion of a recompute's history: what status reads, and its rationale. */
+export type HistoryAssertion = AssertionView & { relationId: RelationId; rationale: string | null };
+
+function matches(stance: HistoryAssertion, desired: DesiredAssertion): boolean {
   return (
     stance.kind === desired.kind &&
     stance.verdict === desired.verdict &&
     stance.tier === desired.tier &&
     stance.confidence === desired.confidence &&
     stance.fromFp === desired.fromFp &&
-    stance.toFp === desired.toFp
+    stance.toFp === desired.toFp &&
+    (stance.rationale ?? null) === desired.rationale
   );
 }
 
@@ -75,11 +85,16 @@ export interface RecomputeInput {
   projectId: ProjectId;
   rulesPrincipalId: PrincipalId;
   projectFacts: ProjectFacts;
-  /** The rule tier over `projectFacts` (`AnalysisPort.runRules`). */
+  /** The rule tier over `projectFacts` (`AnalysisPort.runRules`), before the trust rule. */
   rules: RuleOutput;
+  /**
+   * The trust of every live model of `projectFacts` by key (M6 S2c,
+   * `trust.ts`): required, so every planner applies the trust rule.
+   */
+  trust: ReadonlyMap<string, ModelTrust>;
   relations: readonly RelationRecord[];
   /** Every assertion of the project's relations, in seq order. */
-  history: readonly (AssertionView & { relationId: RelationId })[];
+  history: readonly HistoryAssertion[];
 }
 
 type RelationTarget = Pick<RelationRecord, 'id' | 'type' | 'fromRef' | 'toRef'>;
@@ -99,9 +114,19 @@ export type RecomputeStep =
       attrs: RelationRecord['attrs'] | null;
       /** The relation before the run; `null` for a new one. */
       before: RelationRecord | null;
+      /** A unique call from a derived model, proposed by the trust rule (M6 S2c). */
+      derivedCaller: boolean;
     }
-  /** A rule stance the rules no longer derive, withdrawn. */
-  | { kind: 'withdraw'; relation: RelationRecord; assertion: AssertionInput }
+  /**
+   * A rule stance the rules no longer derive, withdrawn; `attrs` without the
+   * trust rule's marker when it was a derived caller's proposal (M6 S2c).
+   */
+  | {
+      kind: 'withdraw';
+      relation: RelationRecord;
+      assertion: AssertionInput;
+      attrs: RelationRecord['attrs'] | null;
+    }
   /** A relation's derived state, written because it changed or got a new assertion. */
   | { kind: 'refresh'; relation: RelationRecord; patch: DerivedState; endpointChanged: boolean };
 
@@ -109,16 +134,23 @@ export interface RecomputePlan {
   steps: RecomputeStep[];
   findings: Finding[];
   summary: RecomputeSummary;
+  /** Natural keys of the unique calls from derived models the rules propose (M6 S2c). */
+  derivedCalls: ReadonlySet<string>;
 }
 
 /**
  * Rule assertions follow the rules: on every run the rule tier re-derives its
  * relations. For each derived relation the rule principal holds exactly one
- * live stance, re-asserted when tier, confidence or endpoint fingerprints
- * change:
- * - an unambiguous `call` is a rule decision `accept` (the only decision the
- *   rule tier may make), unless a human has decided the relation; then the
- *   rule only proposes, so a human rejection stays until the endpoints change;
+ * live stance, re-asserted when tier, confidence, endpoint fingerprints or
+ * rationale change:
+ * - an unambiguous `call` from a modelled caller is a rule decision `accept`
+ *   (decision 9 as amended by 24.2 and 25.2: the only decision the rule tier
+ *   may make), unless a human has decided the relation; then the rule only
+ *   proposes, so a human rejection stays until the endpoints change;
+ * - an unambiguous `call` from a derived caller (the trust rule, applied
+ *   here first) is a rule proposal, tier `key`, 0.9, with its rationale; a
+ *   rule decision on it from before ends, since a later rule proposal ends
+ *   the rule's decision;
  * - everything else (key-tier messages and signals, ambiguous calls) is a
  *   rule proposal.
  * A rule stance the rules no longer derive is withdrawn, except an
@@ -132,7 +164,9 @@ export interface RecomputePlan {
  * inserts it.
  */
 export function planRecompute(input: RecomputeInput): RecomputePlan {
-  const { projectId, rulesPrincipalId, projectFacts, rules } = input;
+  const { projectId, rulesPrincipalId, projectFacts } = input;
+  const rules = applyTrust(input.rules, input.trust);
+  const derivedCalls = new Set<string>();
   const summary: RecomputeSummary = { asserted: 0, withdrawn: 0, endpointChanges: 0, findings: 0 };
   const steps: RecomputeStep[] = [];
 
@@ -145,7 +179,7 @@ export function planRecompute(input: RecomputeInput): RecomputePlan {
 
   const relations = new Map<string, RelationRecord>();
   for (const r of input.relations) relations.set(naturalKey(r.type, r.fromRef, r.toRef), r);
-  const history = byRelation<AssertionView & { relationId: RelationId }>(input.history);
+  const history = byRelation<HistoryAssertion>(input.history);
   let seq = input.history.reduce((m, a) => Math.max(m, a.seq), 0);
   let planCount = 0;
   /** The view of a planned assertion in its relation's history. */
@@ -161,7 +195,10 @@ export function planRecompute(input: RecomputeInput): RecomputePlan {
   const touched = new Set<string>();
 
   const ruleInput = (
-    a: Pick<AssertionRecord, 'kind' | 'verdict' | 'tier' | 'confidence' | 'fromFp' | 'toFp'>,
+    a: Pick<
+      AssertionRecord,
+      'kind' | 'verdict' | 'tier' | 'confidence' | 'fromFp' | 'toFp' | 'rationale'
+    >,
   ): AssertionInput => ({
     ...a,
     sourceKind: 'rule' as const,
@@ -169,7 +206,6 @@ export function planRecompute(input: RecomputeInput): RecomputePlan {
     clientId: null,
     declared: null,
     submissionId: null,
-    rationale: null,
     evidence: null,
     question: null,
     label: null,
@@ -184,6 +220,7 @@ export function planRecompute(input: RecomputeInput): RecomputePlan {
     const key = naturalKey(d.type, d.from, d.to);
     if (derived.has(key)) continue;
     derived.add(key);
+    if (d.derivedCaller) derivedCalls.add(key);
 
     const existing = relations.get(key);
     // A new relation's id comes from the writer, right before its event, as it always did:
@@ -204,6 +241,7 @@ export function planRecompute(input: RecomputeInput): RecomputePlan {
       confidence: d.confidence,
       fromFp: current.from ?? null,
       toFp: current.to ?? null,
+      rationale: d.rationale,
     };
 
     const assertion = ruleStance && matches(ruleStance, desired) ? null : ruleInput(desired);
@@ -225,7 +263,15 @@ export function planRecompute(input: RecomputeInput): RecomputePlan {
       relations.set(key, { ...existing, attrs: d.attrs });
     }
     if (assertion || insert || attrs) {
-      steps.push({ kind: 'derive', target, assertion, insert, attrs, before: existing ?? null });
+      steps.push({
+        kind: 'derive',
+        target,
+        assertion,
+        insert,
+        attrs,
+        before: existing ?? null,
+        derivedCaller: d.derivedCaller,
+      });
     }
   }
 
@@ -245,8 +291,13 @@ export function planRecompute(input: RecomputeInput): RecomputePlan {
       confidence: null,
       fromFp: current.from ?? null,
       toFp: current.to ?? null,
+      rationale: null,
     });
-    steps.push({ kind: 'withdraw', relation, assertion: withdrawal });
+    // The marker names the rule's proposal; it goes with it, so a relation that stays open
+    // (an agent proposes it too) no longer reads as a unique call from a derived model.
+    const attrs = withoutDerivedMarker(relation.attrs);
+    if (attrs) relations.set(key, { ...relation, attrs });
+    steps.push({ kind: 'withdraw', relation, assertion: withdrawal, attrs });
     hist.push(planned(relation.id, withdrawal));
     history.set(relation.id, hist);
     touched.add(relation.id);
@@ -266,7 +317,23 @@ export function planRecompute(input: RecomputeInput): RecomputePlan {
   }
 
   summary.findings = rules.findings.length;
-  return { steps, findings: rules.findings, summary };
+  return { steps, findings: rules.findings, summary, derivedCalls };
+}
+
+/**
+ * The attributes without the trust rule's marker (`match` `derived-caller`
+ * and the `calledElement` it adds, `trust.ts`); `null` without a marker.
+ */
+function withoutDerivedMarker(attrs: RelationRecord['attrs']): RelationRecord['attrs'] | null {
+  if (attrs['match'] !== DERIVED_CALLER_MATCH) return null;
+  const { match: _match, calledElement: _calledElement, ...rest } = attrs;
+  return rest;
+}
+
+/** A rule proposal of a unique call from a derived model that a recompute recorded (M6 S2c). */
+export interface DerivedProposal {
+  relationId: RelationId;
+  assertionId: AssertionId;
 }
 
 /**
@@ -274,13 +341,16 @@ export function planRecompute(input: RecomputeInput): RecomputePlan {
  * the derived relations (each assertion's event before its relation row,
  * the assertion after it), the withdrawals, the refreshes (each with its
  * `relation.endpoint_changed`), then the findings.
+ *
+ * @returns the rule proposals of unique calls from derived models it recorded
  */
 export async function writeRecompute(
   tx: Pick<Tx, 'events' | 'relations' | 'assertions' | 'findings'>,
   projectId: ProjectId,
   plan: RecomputePlan,
   rulesPrincipalId: PrincipalId,
-): Promise<void> {
+): Promise<DerivedProposal[]> {
+  const derivedProposals: DerivedProposal[] = [];
   for (const step of plan.steps) {
     switch (step.kind) {
       case 'derive': {
@@ -299,14 +369,21 @@ export async function writeRecompute(
         } else if (step.attrs) {
           await tx.relations.update(projectId, target.id, { attrs: step.attrs });
         }
-        if (assertion) await tx.assertions.insert(assertion);
+        if (assertion) {
+          await tx.assertions.insert(assertion);
+          if (step.derivedCaller && assertion.kind === 'proposal') {
+            derivedProposals.push({ relationId: target.id, assertionId: assertion.id });
+          }
+        }
         break;
       }
-      case 'withdraw':
-        await tx.assertions.insert(
-          await prepareAssertion(tx, projectId, step.relation, step.assertion),
-        );
+      case 'withdraw': {
+        const assertion = await prepareAssertion(tx, projectId, step.relation, step.assertion);
+        if (step.attrs)
+          await tx.relations.update(projectId, step.relation.id, { attrs: step.attrs });
+        await tx.assertions.insert(assertion);
         break;
+      }
       case 'refresh':
         await writeRefresh(tx, projectId, step.relation, step.patch, step.endpointChanged, {
           principalId: rulesPrincipalId,
@@ -316,10 +393,16 @@ export async function writeRecompute(
     }
   }
   await tx.findings.replace(projectId, plan.findings);
+  return derivedProposals;
 }
 
-/** {@link planRecompute} over the stored head, then {@link writeRecompute}. */
-export async function recomputeProject(ctx: RecomputeContext): Promise<RecomputeSummary> {
+/**
+ * {@link planRecompute} over the stored head and the models' trust, then
+ * {@link writeRecompute}.
+ */
+export async function recomputeProject(
+  ctx: RecomputeContext,
+): Promise<{ summary: RecomputeSummary; derivedProposals: DerivedProposal[] }> {
   const { tx, projectId, rulesPrincipalId } = ctx;
   const projectFacts = await tx.facts.headProjectFacts(projectId);
   const plan = planRecompute({
@@ -327,9 +410,10 @@ export async function recomputeProject(ctx: RecomputeContext): Promise<Recompute
     rulesPrincipalId,
     projectFacts,
     rules: ctx.analysis.runRules(projectFacts),
+    trust: trustByModel(await tx.revisions.headTrustRows(projectId)),
     relations: await tx.relations.all(projectId),
     history: await tx.assertions.listForProject(projectId),
   });
-  await writeRecompute(tx, projectId, plan, rulesPrincipalId);
-  return plan.summary;
+  const derivedProposals = await writeRecompute(tx, projectId, plan, rulesPrincipalId);
+  return { summary: plan.summary, derivedProposals };
 }

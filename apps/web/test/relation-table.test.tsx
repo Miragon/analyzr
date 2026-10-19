@@ -514,6 +514,7 @@ function setupRoute(
       relationType: 'call',
       readOnly: true,
       accepted: 10,
+      proposed: 0,
     },
   });
   // the two relations an auto-accept rule accepted (recorded under the owner)
@@ -671,7 +672,7 @@ describe('the result views of „Relationen“ (UX9)', () => {
     setupRoute('/projects/demo/relations', { models, relations: [] });
     const empty = await screen.findByTestId('relations-empty');
     expect(empty.textContent).toContain(
-      'Noch keine RelationenEindeutige Aufrufe verknüpft analyzr beim Hochladen; den Rest schlägt ein Agent vor.',
+      'Noch keine RelationenEindeutige Aufrufe aus Camunda-Modellen verknüpft analyzr beim Hochladen; den Rest schlägt ein Agent vor.',
     );
     // an owner without an agent token connects one first (UX-SIMPLIFICATION.md §2.6)
     expect(

@@ -23,6 +23,9 @@ export const IMPORT_MANIFEST_FILE = 'analyzr-import.json';
 export const MAX_MODEL_BYTES = 5 * 1024 * 1024;
 export const MAX_IMPORT_BYTES = 25 * 1024 * 1024;
 
+/** Confidence of the rule tier's proposal of a unique call from a derived model (M6 S2c, the trust rule). */
+export const DERIVED_CALL_CONFIDENCE = 0.9;
+
 /** Largest page the list endpoints serve. */
 export const MAX_PAGE_LIMIT = 200;
 
