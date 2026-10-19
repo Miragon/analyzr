@@ -6,6 +6,7 @@ import { useId, useState, type FormEvent, type ReactNode } from 'react';
 
 import { CopyButton } from '@/components/copy-button';
 import { ErrorText } from '@/components/error-text';
+import { OpenPointsCell } from '@/components/open-points-cell';
 import { MiragonMark, PageShell } from '@/components/page-shell';
 import { toast } from '@/lib/toast';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -41,8 +42,8 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { ApiError, api, errorMessage, unwrap } from '@/lib/api';
-import { formatDate, formatDateTime } from '@/lib/labels';
-import { openPointsText, summaryPoints } from '@/lib/project-counts';
+import { formatDate } from '@/lib/labels';
+import { summaryPoints } from '@/lib/project-counts';
 import { keys, projectSummaryQuery, projectsQuery } from '@/lib/queries';
 import { useServerMode } from '@/lib/server-mode';
 import { isProjectKey, slugify } from '@/lib/slug';
@@ -182,12 +183,14 @@ const dash = <span className="text-muted-foreground">–</span>;
  * „Offen für dich“ and „Zuletzt geändert“ from the project's summary (one
  * query per row, under the project's keys, so its writes refresh it).
  * „Offen für dich“ is the sum of the project's three tab badges (relations to
- * review, open placements, questions to clarify; §2.5), its split in the
- * title; text, not a link, since no one list holds all three (P7). It shows
- * only to roles that may decide (editor, owner): „–“ for viewers and the demo
- * visitor, who cannot decide anything, and for none. „Zuletzt geändert“ is
- * the day of the project's latest event, the time in its title. A failed
- * summary leaves both at „–“.
+ * review, open placements, questions to clarify; §2.5) in the models table's
+ * cell: text, not a link, since no one list holds all three (P7), its split
+ * in a tooltip on the focusable number (§3.13 item 6). It shows only to roles
+ * that may decide (editor, owner): „–“ for viewers and the demo visitor, who
+ * cannot decide anything, and for none; „nicht geladen“ when the summary
+ * failed, so a failure never reads as nothing open. „Zuletzt geändert“ is the
+ * day of the project's latest event; below `sm` its column hides and the day
+ * is a line under the key.
  */
 function ProjectRow({
   project,
@@ -200,7 +203,7 @@ function ProjectRow({
 }) {
   const summary = useQuery(projectSummaryQuery(project.key));
   const mayDecide = !demo && (project.role === 'owner' || project.role === 'editor');
-  const points = summary.data ? summaryPoints(summary.data) : null;
+  const changed = summary.data ? formatDate(summary.data.lastEventAt) : null;
   return (
     <TableRow data-testid="project-row">
       <TableCell className="whitespace-normal">
@@ -213,6 +216,14 @@ function ProjectRow({
             {project.name}
           </Link>
           <span className="font-mono text-xs text-muted-foreground">{project.key}</span>
+          {changed === null ? null : (
+            <span
+              className="text-xs text-muted-foreground sm:hidden"
+              data-testid="last-changed-line"
+            >
+              Zuletzt geändert {changed}
+            </span>
+          )}
         </div>
       </TableCell>
       {showRole ? (
@@ -223,29 +234,17 @@ function ProjectRow({
       <TableCell className="text-right tabular-nums" data-testid="open-for-you">
         {!mayDecide ? (
           dash
-        ) : summary.isPending ? (
-          <Skeleton className="ml-auto h-4 w-6" aria-label="Wird geladen" />
-        ) : points === null || points.total === 0 ? (
-          dash
+        ) : summary.data ? (
+          <OpenPointsCell points={summaryPoints(summary.data)} />
+        ) : summary.isError ? (
+          <span className="text-xs text-muted-foreground">nicht geladen</span>
         ) : (
-          <span title={openPointsText(points)}>
-            {points.total}
-            <span className="sr-only">
-              {` ${points.total === 1 ? 'offener Punkt' : 'offene Punkte'}: ${openPointsText(points)}`}
-            </span>
-          </span>
+          <Skeleton className="ml-auto h-4 w-6" aria-label="Wird geladen" />
         )}
       </TableCell>
       <TableCell className="hidden text-muted-foreground sm:table-cell" data-testid="last-changed">
-        {summary.isPending ? (
-          <Skeleton className="h-4 w-20" aria-label="Wird geladen" />
-        ) : summary.data ? (
-          <span title={formatDateTime(summary.data.lastEventAt)}>
-            {formatDate(summary.data.lastEventAt)}
-          </span>
-        ) : (
-          dash
-        )}
+        {changed ??
+          (summary.isPending ? <Skeleton className="h-4 w-20" aria-label="Wird geladen" /> : dash)}
       </TableCell>
     </TableRow>
   );

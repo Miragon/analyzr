@@ -51,15 +51,25 @@ export interface ApplyDialogProps {
   rule: AutoAcceptRule;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /**
+   * The control that opened the dialog (or stands for it): the focus goes back there when it
+   * closes (opened from a menu that closed as it opened, Radix has nothing to return to).
+   */
+  returnFocus?: () => HTMLElement | null | undefined;
 }
 
 const proposals = (n: number) => (n === 1 ? '1 Vorschlag' : `${n} Vorschläge`);
 
-function ApplyBody({ project, rule, onOpenChange }: Omit<ApplyDialogProps, 'open'>) {
+function ApplyBody({
+  project,
+  rule,
+  onOpenChange,
+}: Omit<ApplyDialogProps, 'open' | 'returnFocus'>) {
   const dry = useQuery(autoAcceptApplyDryRunQuery(project, rule.id, rule.revision));
   const real = useApplyRule(project);
   const [changed, setChanged] = useState(false);
-  const result = dry.data;
+  // Only a dry run of this opening: the row's hint may have cached an older one.
+  const result = dry.isFetchedAfterMount ? dry.data : undefined;
   const names = useSubjectNames(project, result?.items ?? []);
   const flags = useNameFlags(project);
   const flagged = result && flags ? flags(result.items) : 0;
@@ -205,12 +215,23 @@ function ApplyBody({ project, rule, onOpenChange }: Omit<ApplyDialogProps, 'open
  * name with its agent and confidence (UX9) and how many carry a bulk accept
  * name flag (Q8: shown, never blocking), then „N Vorschläge annehmen“ with
  * the head revision and the dry run's count; a 409 (the open proposals or
- * the rule changed) shows the fresh dry run.
+ * the rule changed) shows the fresh dry run. Opened without a Radix trigger,
+ * so `returnFocus` names where the focus goes when it closes.
  */
-export function ApplyDialog({ open, onOpenChange, ...props }: ApplyDialogProps) {
+export function ApplyDialog({ open, onOpenChange, returnFocus, ...props }: ApplyDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-xl" data-testid="apply-dialog">
+      <DialogContent
+        className="sm:max-w-xl"
+        data-testid="apply-dialog"
+        onCloseAutoFocus={(event) => {
+          // Radix returns the focus only to a DialogTrigger; this dialog has none.
+          const target = returnFocus?.();
+          if (!target) return;
+          event.preventDefault();
+          target.focus();
+        }}
+      >
         {open ? <ApplyBody onOpenChange={onOpenChange} {...props} /> : null}
       </DialogContent>
     </Dialog>

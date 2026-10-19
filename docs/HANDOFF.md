@@ -214,11 +214,15 @@ and code are in English.
   (a sheet on a phone collapsed to „29 offen“, view-first; from 1024 px an aside the zoom group
   hides), the selected step outlined 4 px, labels scaled with the zoom, the palette's column free
   in edit mode, a double-click on an unlinked step zooming in place, the way back to „Offene
-  Fragen“ after a decision; web only, live-run neutral. **Next:** UX9 (the owner: „Sonst kannst du
-  weitermachen“), alongside S2c (the
-  trust rule),
-  S2b's follow-up and S3c; S6 after them; after the owner's
-  live runs S5b, S7 and facts v2 as recommended (§7 "M6"; M6 §8 "After S2a").
+  Fragen“ after a decision; web only, live-run neutral. **UX9** (done 2026-10-19 on the branch,
+  every gate green, the UI load guard and the whole Playwright suite against a scratch stack;
+  UX-SIMPLIFICATION.md §7 "UX9 as delivered"; Q8 answered „Nur anzeigen“, decision 26 (7)): the
+  result views of „Relationen“ in 56 controls (194 before) with „Weitere Filter“, „Entschieden von“
+  and „Öffnen“; rule rows of „Aktiv“, „Bearbeiten“, „Mehr“ with a confirmation before enabling and
+  a leaner dialog; the projects list with „Offen für dich“ and „Zuletzt geändert“ from the new REST
+  route `GET /projects/{p}/summary` (`Project` and MCP unchanged); every UX slice is delivered.
+  **Next:** S2c (the trust rule), S2b's follow-up and S3c; S6 after them; after the owner's live
+  runs S5b, S7 and facts v2 as recommended (§7 "M6"; M6 §8 "After S2a").
 
 ## 2. Read in this order
 
@@ -423,7 +427,11 @@ and code are in English.
     Regel „…““ in the table, review screen, queue, chain and step view); (6) **bulk accept only
     for „Gleicher Name“** (the key tier, CONCEPT §3 step 2): the lexical bulk, which preselected
     pairs at 65 %, goes; the key tier's bulk preselects the unflagged pairs and its count is that
-    selection.
+    selection. At UX9 (2026-10-19) the owner answered Q8 „Nur anzeigen“, the recommended option:
+    (7) **the bulk flags do not block an auto-accept rule**: the rule's preview and apply name how
+    many of their proposals the bulk accept would flag („davon N mit allgemeinem oder mehrfach
+    genutztem Namen (in der Sammelannahme markiert)“), the rule accepts them all the same; whether
+    they should block is decided after the live runs with the what-if (§8 "Shared-name flag").
 27. **Claim order** (2026-10-18; §8 "Claim order" answered „ja, mach weiter“, the recommended
     option): a relations claim sorts its relations by type, `from` and `to`
     (`apps/server/src/domain/claim-input.ts`). Before, they came in the database's physical row
@@ -1096,7 +1104,7 @@ Git/bpmiq.yml import, MCP App widget.
 | Dependabot | Set up Dependabot for the pnpm workspace (exact versions, grouped updates)? Until then dependency bumps are manual. | Decision 23 |
 | Holdout per-item lists | `eval/reports/candidates.md` and `replay.md` list the holdout's misses and wrong pairs per item (`placements.md` shows aggregates only). Fine while the repository is private; switch them to aggregates before it goes public? | Decision 23 |
 | First users | UI upload or Git/bpmiq.yml repos? Decides whether folder/bpmiq.yml import moves earlier. | CONCEPT §12 |
-| Shared-name flag | The bulk dialog flags 20–22 of 33 key-tier pairs (names used by >2 processes), incl. legitimate broadcasts. Keep, or flag only names with several senders? Since UX5 the flagged pairs sit under „Genauer ansehen“ (no checkbox, decided one by one) and the button names the unflagged ones („11 unauffällige annehmen …“), so the flag decides what the bulk leaves out; whether it should also block an auto-accept rule is Q8 (UX9). | M2 web stage |
+| Shared-name flag | The bulk dialog flags 20–22 of 33 key-tier pairs (names used by >2 processes), incl. legitimate broadcasts. Keep, or flag only names with several senders? Since UX5 the flagged pairs sit under „Genauer ansehen“ (no checkbox, decided one by one) and the button names the unflagged ones („11 unauffällige annehmen …“), so the flag decides what the bulk leaves out; an auto-accept rule shows the flagged count and is not blocked (Q8, decision 26 (7)); whether it should block is decided after the live runs with the what-if. | M2 web stage |
 | `correct` on a typed pair | Correcting towards a pair that already has a key-tier proposal creates a second, manual relation. Offer "accept the existing proposal instead"? | M2 e2e |
 | Revoking a token | Revoking now withdraws that token's open proposals and no-links (CONCEPT §6) and, since `0.2.0`, queues the models whose pairs it judged again, and, since M4 S2, withdraws its live placement proposals; since M4 S5 the chain's placement task is queued again for the processes it judged. Confirm. | M2 fix, 0.2.0, M4 S2, M4 S5 |
 | Ad-hoc verdicts | Since M4 S5 an agent's ad-hoc placement proposals count as its verdict (the pipeline does not judge those processes again); ad-hoc relation proposals do not. Keep the asymmetry? | M4 S5 |
@@ -1110,7 +1118,7 @@ Git/bpmiq.yml import, MCP App widget.
 | Auto-accept: unique names | Rule names are unique per project ignoring case, so marks and filters are unambiguous. Keep? | Decision 19 |
 | Auto-accept: results | Submission and ad-hoc results report the status before rules ran (an agent's `proposed` may already be accepted; `get_relations` shows the truth). Keeps recordings comparable and agents uninformed. Keep? | Decision 19 |
 | Auto-accept: marks for editors | Editors see which acceptances a rule made (the ledger names rule, revision, agent and confidence, never the criteria); only owners see the rules, apply and revoke. Keep, or show the marks to viewers too? | Decision 19 review |
-| Auto-accept: take-over | A rule whose author lost the owner role matches nothing until an owner saves it; saving it, also unchanged, makes that owner its author (its later acceptances are recorded under them). Keep, or add an explicit „Übernehmen“ action? | Decision 19 review |
+| Auto-accept: take-over | A rule whose author lost the owner role matches nothing until an owner saves it; saving it, also unchanged, makes that owner its author (its later acceptances are recorded under them). Since UX9 the rule's „Aktiv“ switch (off for such a rule) and its dialog say so before saving („Du wirst damit die entscheidende Person dieser Regel“), also when another owner wrote it. Keep, or add an explicit „Übernehmen“ action? | Decision 19 review |
 | M6: address form | „Sie“ in interview guides for customers, „du“ elsewhere? | M6 §10.3 |
 | M6: sample exports | Sandbox instances or anonymized exports of ARIS, Signavio, ADONIS, Bizagi, Visio? | M6 §10.4 |
 | M6: answers re-queue | May S5b widen the relations judgement basis by human notes and queue tasks (after the live runs), and from S7 on also by subject notes and outside marks? | M6 §10.5 |

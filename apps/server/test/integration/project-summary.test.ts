@@ -5,7 +5,8 @@
  * questions' `totals.ask` of `state=open`) through proposals, decisions, a
  * hold, a deleted model and an agent's placement; `lastEventAt` is the latest
  * event's time; every member reads it, other credentials get the usual 401
- * and 404. Synthetic models and chain only.
+ * and 404; an unchanged project answers from the memo, a write builds the
+ * read model again. Synthetic models and chain only.
  */
 import {
   OpenQuestionPage,
@@ -19,7 +20,10 @@ import {
 } from '@analyzr/contracts';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
+import { placementsProcedure, relationsProcedure } from '../../src/app.ts';
 import { createStore } from '../../src/db/store.ts';
+import type { Store } from '../../src/domain/ports.ts';
+import { projectUseCases } from '../../src/domain/use-cases/projects.ts';
 import { startTestApp, type TestApp } from '../support/app.ts';
 import { createTestDatabase, type TestDatabase } from '../support/db.ts';
 import { fakeBpmn } from '../support/fake-analysis.ts';
@@ -234,6 +238,74 @@ describe('GET /projects/{project}/summary', () => {
     expect(await other.json()).toMatchObject({ code: 'not-found' });
     expect((await t.request(`${API}/summary`)).status).toBe(401);
     expect((await t.asOwner('/api/v1/projects/nope/summary')).status).toBe(404);
+  });
+
+  it('answers an unchanged project from the memo and builds it again after a write', async () => {
+    const key = 'summary-memo';
+    await t.createProject(key);
+    for (const model of ['vertrieb/annahme', 'finanzen/mahnlauf'] as const) {
+      expect((await t.putModel(key, model, MODELS[model])).status).toBe(201);
+    }
+    // Use cases of their own over a store that counts the read model's loads.
+    let loads = 0;
+    const base = createStore(database.db);
+    const store: Store = {
+      read: (fn) =>
+        base.read((tx) =>
+          fn({
+            ...tx,
+            facts: {
+              ...tx.facts,
+              headProjectFacts: (projectId) => {
+                loads++;
+                return tx.facts.headProjectFacts(projectId);
+              },
+            },
+          }),
+        ),
+      write: (fn) => base.write(fn),
+    };
+    const useCases = projectUseCases({
+      store,
+      analysis: t.analysis,
+      clock: { now: () => new Date() },
+      notifier: database.notifier,
+      expectedProcedure: relationsProcedure,
+      expectedPlacementProcedure: placementsProcedure,
+    });
+    const actor = await t.useCases.localOwnerActor('analyzr-web');
+
+    const first = await useCases.getProjectSummary(actor, key);
+    expect(first).toEqual(await summary(key));
+    expect(first.reviewItems).toBe(1);
+    expect(loads).toBe(1);
+    expect(await useCases.getProjectSummary(actor, key)).toEqual(first);
+    expect(loads).toBe(1);
+
+    // The policy still runs before the memo: a foreign token gets 404, not the memoized summary.
+    const outsider = await t.useCases.authenticateAgentToken(foreign.secret);
+    if (!outsider) throw new Error('the foreign token does not authenticate');
+    await expect(useCases.getProjectSummary(outsider, key)).rejects.toMatchObject({
+      code: 'not-found',
+    });
+
+    // A decision is a write: it advances lastSeq, so the summary is built again.
+    const landscape = await json<Landscape>(await t.asOwner(`/api/v1/projects/${key}/landscape`));
+    const message = landscape.relations.find((r) => r.type === 'message');
+    expect(message?.status).toBe('proposed');
+    await json(
+      await t.asOwner(
+        `/api/v1/projects/${key}/relations/${message?.id}/decision`,
+        post({ verdict: 'hold', note: 'Beim Kunden nachfragen.' }),
+      ),
+    );
+    const held = await useCases.getProjectSummary(actor, key);
+    expect(loads).toBe(2);
+    expect(held).toEqual(await summary(key));
+    expect(held).toMatchObject({ reviewItems: 0, ask: first.ask + 1 });
+    expect(held.lastEventAt > first.lastEventAt).toBe(true);
+    expect(await useCases.getProjectSummary(actor, key)).toEqual(held);
+    expect(loads).toBe(2);
   });
 
   it('leaves the project resource as it was (MCP list_projects reads it)', async () => {

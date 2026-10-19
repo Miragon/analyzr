@@ -9,9 +9,9 @@
  * header's „Mehr“).
  */
 import type { AutoAcceptItem, AutoAcceptRule, Health, Project } from '@analyzr/client';
-import { QueryClient } from '@tanstack/react-query';
+import { QueryClient, focusManager } from '@tanstack/react-query';
 import { createMemoryHistory } from '@tanstack/react-router';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 
@@ -61,10 +61,10 @@ function visibleFields(root: HTMLElement): HTMLElement[] {
   ].filter((el) => el.getAttribute('aria-hidden') !== 'true' && !el.closest('details:not([open])'));
 }
 
-/** The focusable controls of a rule row (buttons, the switch, links). */
+/** The focusable controls of a rule row at desktop width (buttons, the switch, links; not what `md:hidden` hides). */
 function controls(row: HTMLElement): HTMLElement[] {
   return [...row.querySelectorAll<HTMLElement>('button, a[href], input, select, textarea')].filter(
-    (el) => el.getAttribute('aria-hidden') !== 'true',
+    (el) => el.getAttribute('aria-hidden') !== 'true' && !el.closest('.md\\:hidden'),
   );
 }
 
@@ -560,6 +560,46 @@ describe('RuleDialog', () => {
     );
   });
 
+  it('says that saving another owner’s rule active makes the caller its deciding person', async () => {
+    const me = 'prn_01J9Z3N4X5Q6R7S8T9V0W1X2ME';
+    const { calls, user } = open(autoAcceptRule({ id: RULE_ID }), {
+      'GET /api/v1/me': () =>
+        json({
+          principalId: me,
+          handle: 'ich',
+          kind: 'user',
+          authMode: 'local',
+          clientId: 'analyzr-web',
+        }),
+    });
+    const dialog = screen.getByTestId('rule-dialog');
+    await waitFor(() => expect(calls.some((c) => c.path === '/api/v1/me')).toBe(true));
+    // Off, it accepts nothing either way; the „Aktiv“ switch is the second way to enable it.
+    expect(within(dialog).queryByTestId('take-over-hint')).toBeNull();
+    await user.click(within(dialog).getByRole('switch', { name: 'Aktiv' }));
+    expect(within(dialog).getByTestId('take-over-hint').textContent).toBe(
+      'Bisher entscheidet owner. Speicherst du eine Änderung, wirst du die entscheidende Person dieser Regel: Ihre Annahmen werden dann als deine Entscheidungen vermerkt.',
+    );
+  });
+
+  it('hedges the take-over while the caller cannot be loaded', async () => {
+    open(autoAcceptRule({ id: RULE_ID, enabled: true }), {
+      'GET /api/v1/me': () => problem(500, 'internal'),
+    });
+    expect((await screen.findByTestId('take-over-hint')).textContent).toBe(
+      'Bisher entscheidet owner. Bist du das nicht und speicherst du eine Änderung, wirst du die entscheidende Person dieser Regel: Ihre Annahmen werden dann als deine Entscheidungen vermerkt.',
+    );
+  });
+
+  it('says nothing about taking over one’s own active rule', async () => {
+    const { calls } = open(autoAcceptRule({ id: RULE_ID, enabled: true }), {
+      'GET /api/v1/me': () =>
+        json({ ...OWNER, kind: 'user', authMode: 'local', clientId: 'analyzr-web' }),
+    });
+    await waitFor(() => expect(calls.some((c) => c.path === '/api/v1/me')).toBe(true));
+    await waitFor(() => expect(screen.queryByTestId('take-over-hint')).toBeNull());
+  });
+
   it('names a refused rule in German', async () => {
     const { user } = open(null, {
       [`POST ${BASE}/auto-accept-rules`]: () =>
@@ -656,6 +696,18 @@ describe('RuleTable', () => {
     expect(within(rows[1]!).getByTestId('rule-criteria').textContent).toBe(
       'Platzierungen · Gleiche Bedeutung · ab 90 %',
     );
+    // Below 768 px „Bisher“ hides and its counts follow the name in one line (nothing while all are 0).
+    const line = within(rows[0]!).getByTestId('rule-stats-line');
+    expect(line.classList.contains('md:hidden')).toBe(true);
+    expect(line.textContent).toBe(
+      '5 in Kraft · 2 bestätigt · 1 abgelehnt, korrigiert oder vorgemerkt',
+    );
+    expect(within(line).getByRole('link', { name: '5 in Kraft' }).getAttribute('href')).toBe(
+      within(within(rows[0]!).getByTestId('rule-stats'))
+        .getByRole('link', { name: '5 in Kraft' })
+        .getAttribute('href'),
+    );
+    expect(within(rows[1]!).queryByTestId('rule-stats-line')).toBeNull();
   });
 
   it('„Mehr“: „Verlauf“, and „Widerrufen…“ only while acceptances are in force', async () => {
@@ -704,6 +756,17 @@ describe('RuleTable', () => {
     // A rule that is off runs no dry run and offers nothing.
     expect(within(rows[1]!).queryByTestId('rule-apply')).toBeNull();
     expect(calls.filter((c) => c.path.includes(RULE_B))).toEqual([]);
+    // A hint: its dry run is not repeated when the window regains the focus.
+    try {
+      act(() => {
+        focusManager.setFocused(false);
+        focusManager.setFocused(true);
+      });
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(calls.filter((c) => c.path.endsWith(`${RULE_ID}/apply`))).toHaveLength(1);
+    } finally {
+      focusManager.setFocused(undefined);
+    }
   });
 
   it('disabling asks nothing and writes with If-Match; a 412 offers the newer revision', async () => {
@@ -820,6 +883,79 @@ describe('RuleTable', () => {
     );
     await user.click(within(confirm).getByRole('button', { name: 'Abbrechen' }));
     await waitFor(() => expect(screen.queryByTestId('enable-confirm')).toBeNull());
+    expect(calls.some((c) => c.method === 'PUT')).toBe(false);
+  });
+
+  it('an enabled rule whose author lost the owner role is drawn off; turning it on takes it over after asking', async () => {
+    const former = { principalId: 'prn_01J9Z3N4X5Q6R7S8T9V0W1X2FO', handle: 'ehemalig' };
+    const rule = autoAcceptRule({
+      id: RULE_ID,
+      revision: 2,
+      enabled: true,
+      authorIsOwner: false,
+      author: former,
+    });
+    const { calls, user } = await table([rule], {
+      [`POST ${BASE}/auto-accept-rules/${RULE_ID}/apply`]: dryRoute({}),
+      [`PUT ${BASE}/auto-accept-rules/${RULE_ID}`]: () =>
+        json({ outcome: 'revised', rule: detail({ ...rule, revision: 3, author: OWNER }) }),
+    });
+    const [row] = await screen.findAllByTestId('rule-row');
+    // It accepts nothing: the switch is off and no open proposals are offered.
+    const toggle = within(row!).getByRole('switch', { name: 'Regel „Schlüssel ab 95 %“ aktiv' });
+    expect(toggle.getAttribute('aria-checked')).toBe('false');
+    expect(within(row!).getByTestId('author-not-owner').title).toContain('„Aktiv“ auf aus');
+    expect(within(row!).queryByTestId('rule-apply')).toBeNull();
+    await user.click(toggle);
+    const confirm = await screen.findByTestId('enable-confirm');
+    expect(within(confirm).getByTestId('enable-take-over').textContent).toBe(
+      'ehemalig ist kein Inhaber mehr, deshalb nimmt die Regel bisher nichts an. Du wirst damit die entscheidende Person dieser Regel: Ihre Annahmen werden als deine Entscheidungen vermerkt.',
+    );
+    expect(calls.some((c) => c.method === 'PUT')).toBe(false);
+    await user.click(within(confirm).getByRole('button', { name: 'Aktivieren' }));
+    await findToast('Regel „Schlüssel ab 95 %“ aktiviert');
+    // The same fields, enabled: the server writes the take-over revision.
+    const put = calls.find((c) => c.method === 'PUT');
+    expect(put).toMatchObject({ headers: { 'if-match': '"r2"' } });
+    expect(put?.body).toMatchObject({ enabled: true, name: 'Schlüssel ab 95 %' });
+  });
+
+  it('enabling while „me“ is not loaded yet fetches it: one’s own rule asks nothing', async () => {
+    const rule = autoAcceptRule({ id: RULE_ID, revision: 2 });
+    const { calls, user } = await table(
+      [rule],
+      {
+        'GET /api/v1/me': () =>
+          json({ ...OWNER, kind: 'user', authMode: 'local', clientId: 'analyzr-web' }),
+        [`POST ${BASE}/auto-accept-rules/${RULE_ID}/apply`]: dryRoute({}),
+        [`PUT ${BASE}/auto-accept-rules/${RULE_ID}`]: () =>
+          json({ outcome: 'revised', rule: detail({ ...rule, revision: 3, enabled: true }) }),
+      },
+      null,
+    );
+    const [row] = await screen.findAllByTestId('rule-row');
+    await user.click(within(row!).getByRole('switch'));
+    await findToast('Regel „Schlüssel ab 95 %“ aktiviert');
+    expect(screen.queryByTestId('enable-confirm')).toBeNull();
+    expect(calls.some((c) => c.path === '/api/v1/me')).toBe(true);
+  });
+
+  it('enabling while „me“ cannot be loaded asks, since the author may be someone else', async () => {
+    const rule = autoAcceptRule({ id: RULE_ID, revision: 2 });
+    const { calls, user } = await table(
+      [rule],
+      {
+        'GET /api/v1/me': () => problem(500, 'internal'),
+        [`POST ${BASE}/auto-accept-rules/${RULE_ID}/apply`]: dryRoute({}),
+      },
+      null,
+    );
+    const [row] = await screen.findAllByTestId('rule-row');
+    await user.click(within(row!).getByRole('switch'));
+    const confirm = await screen.findByTestId('enable-confirm');
+    expect(within(confirm).getByTestId('enable-take-over').textContent).toBe(
+      'Bisher entscheidet owner. Bist du das nicht, wirst du damit die entscheidende Person dieser Regel: Ihre Annahmen werden als deine Entscheidungen vermerkt.',
+    );
     expect(calls.some((c) => c.method === 'PUT')).toBe(false);
   });
 });
@@ -1048,6 +1184,7 @@ describe('the page „Annahmeregeln“', () => {
     rules: AutoAcceptRule[],
     ledger: ReturnType<typeof ledgerEntry>[] = [],
     path = '/projects/demo/rules',
+    routes: Record<string, (c: Call) => Response | Promise<Response>> = {},
   ) {
     const calls = stubApi({
       'GET /api/v1/projects': () => json({ items: [PROJECT], nextCursor: null }),
@@ -1069,6 +1206,9 @@ describe('the page „Annahmeregeln“', () => {
           items: [],
           truncated: false,
         }),
+      [`GET ${BASE}/auto-accept-rules/${RULE_ID}`]: () =>
+        json(detail(rules.find((r) => r.id === RULE_ID) ?? autoAcceptRule({ id: RULE_ID }))),
+      ...routes,
     });
     const queryClient = new QueryClient({
       defaultOptions: { queries: { staleTime: Infinity, retry: false } },
@@ -1151,5 +1291,72 @@ describe('the page „Annahmeregeln“', () => {
       ['?dryRun=true', { agentPrincipalId: 'prn_01AGENT' }],
       ['', { agentPrincipalId: 'prn_01AGENT', expectedCount: 2 }],
     ]);
+  });
+
+  // The menus close as their dialog opens, so Radix has nothing to return the focus to.
+  const IN_FORCE = { inForce: 2, confirmed: 0, revoked: 0, overruled: 0, lastAcceptedAt: null };
+  const LEDGER = [
+    ledgerEntry({ id: 'rel_01A' }),
+    ledgerEntry({ id: 'rel_01B', decisionId: 'ast_01B' }),
+  ];
+
+  it.each([
+    ['Verlauf', 'rule-history'],
+    ['Widerrufen…', 'revoke-dialog'],
+  ])('„%s“ from a row’s „Mehr“ returns the focus to it on closing', async (item, testId) => {
+    const { user } = page([autoAcceptRule({ id: RULE_ID, stats: IN_FORCE })], LEDGER);
+    const row = await screen.findByTestId('rule-row');
+    const more = within(row).getByTestId('rule-more');
+    await user.click(more);
+    await user.click(screen.getByRole('menuitem', { name: item }));
+    await screen.findByTestId(testId);
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByTestId(testId)).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(more));
+  });
+
+  it('„Nach Agent widerrufen…“ returns the focus to the page’s „Mehr“ on closing', async () => {
+    const { user } = page([autoAcceptRule({ id: RULE_ID, stats: IN_FORCE })], LEDGER);
+    const more = await screen.findByTestId('rules-more');
+    await user.click(more);
+    await user.click(screen.getByRole('menuitem', { name: 'Nach Agent widerrufen…' }));
+    const dialog = await screen.findByTestId('revoke-dialog');
+    await user.click(within(dialog).getByRole('button', { name: 'Abbrechen' }));
+    await waitFor(() => expect(screen.queryByTestId('revoke-dialog')).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(more));
+  });
+
+  it('the apply dialog of a row’s hint runs its own dry run and returns the focus to the row’s „Mehr“', async () => {
+    let dryRuns = 0;
+    let release: () => void = () => undefined;
+    const { user } = page(
+      [autoAcceptRule({ id: RULE_ID, revision: 2, enabled: true })],
+      [],
+      undefined,
+      {
+        [`POST ${BASE}/auto-accept-rules/${RULE_ID}/apply`]: () => {
+          dryRuns += 1;
+          if (dryRuns === 1) return json(applyResult(true, 2));
+          return new Promise<Response>((resolve) => {
+            release = () => resolve(json(applyResult(true, 3)));
+          });
+        },
+      },
+    );
+    const row = await screen.findByTestId('rule-row');
+    const hint = await within(row).findByTestId('rule-apply');
+    expect(hint.textContent).toBe('2 offene Vorschläge passen – ansehen …');
+    await user.click(hint);
+    const dialog = await screen.findByTestId('apply-dialog');
+    // While its own dry run runs, the dialog shows no count: never the hint's cached one.
+    await waitFor(() => expect(dryRuns).toBe(2));
+    expect(within(dialog).queryByTestId('apply-summary')).toBeNull();
+    act(() => release());
+    expect((await within(dialog).findByTestId('apply-summary')).textContent).toBe(
+      '3 offene Vorschläge erfüllen die Regel.',
+    );
+    await user.click(within(dialog).getByRole('button', { name: 'Abbrechen' }));
+    await waitFor(() => expect(screen.queryByTestId('apply-dialog')).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(within(row).getByTestId('rule-more')));
   });
 });

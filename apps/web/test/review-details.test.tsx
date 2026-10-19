@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
 import { ReviewDetails } from '../src/components/review/review-details';
+import { formatDateTime } from '../src/lib/labels';
 import { buildRefIndex, resolverOf } from '../src/lib/refs';
 import {
   assertion,
@@ -174,7 +175,7 @@ describe('ReviewDetails', () => {
     expect(within(first!).getByText('agent:claude code')).toBeTruthy();
     expect(within(first!).getByText('(Agent)')).toBeTruthy();
     expect(first!.textContent).toContain('Analyse von billing');
-    expect(first!.textContent).toContain('06.10.2026');
+    expect(first!.textContent).toContain(formatDateTime('2026-10-06T14:30:00.000Z'));
     const reason = within(first!).getByText(`no-evidence: ${HOSTILE}`);
     expect(reason.hasAttribute('data-plain-text')).toBe(true);
     expect(callout.querySelector('img, script, a, strong')).toBeNull();

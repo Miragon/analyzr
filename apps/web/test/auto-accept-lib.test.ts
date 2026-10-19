@@ -12,7 +12,6 @@ import { countNameFlags } from '../src/lib/auto-accept-flags';
 import { subjectLabel } from '../src/lib/auto-accept-names';
 import {
   changingCurve,
-  criteriaOf,
   draftOf,
   formatPercent,
   formatThreshold,
@@ -140,7 +139,7 @@ describe('texts and numbers in German', () => {
     }
   });
 
-  it('the tiers per kind, narrowing, drafts and criteria', () => {
+  it('the tiers per kind, narrowing and drafts', () => {
     expect(tiersOf('relation')).toEqual(['key', 'lexical', 'semantic']);
     expect(tiersOf('placement')).toEqual(['lexical', 'semantic']);
     expect(
@@ -153,7 +152,10 @@ describe('texts and numbers in German', () => {
       }),
     ).toEqual(['Typ Nachricht', 'Agent sim (widerrufen)', 'LLM-Modell m1', 'auch Ad-hoc']);
     const rule = autoAcceptRule({ id: RULE_A, relationType: 'call', enabled: true });
-    expect(criteriaOf(draftOf(rule))).toEqual({
+    expect(draftOf(rule)).toEqual({
+      name: 'Schlüssel ab 95 %',
+      enabled: true,
+      note: null,
       kind: 'relation',
       tier: 'key',
       minConfidence: 0.95,

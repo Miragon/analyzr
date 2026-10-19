@@ -4,8 +4,8 @@ Status: **decided** (owner decision 26, 2026-10-18: every "Ask now" question of 
 the recommended option; HANDOFF §4); proposal of 2026-10-17, revised the same day after a UX and a
 feasibility critique · Branch: `feat/integration-and-gaps` (the first wave UX2a, UX1 and UX2b
 delivered on it on 2026-10-18, §7; the owner's walkthrough the same day, §7 "Owner
-walkthrough"; UX7, UX8, S2b's „Vorschau“, UX3, UX4 and UX5 delivered the same day, UX6 on
-2026-10-19; next UX9) · Source: four user-need audits of the web UI on the agent-created scratch stack
+walkthrough"; UX7, UX8, S2b's „Vorschau“, UX3, UX4 and UX5 delivered the same day, UX6 and
+UX9 on 2026-10-19: every slice delivered) · Source: four user-need audits of the web UI on the agent-created scratch stack
 `analyzr-uxaudit` (seeded `nordwind-handel` with its chain and a simulation agent run,
 `signavio-beispiel` from the CLI bundle import, two projects made from the raw synthetic Signavio
 export; 1440x900 and 390x844), torn down after the audit · Relates to: HANDOFF §4 decisions 8, 10,
@@ -1066,7 +1066,7 @@ recommendation.
 - **Q8 Should the bulk flags (generic name, name in several processes) block an auto-accept rule?**
   (UX9; decision 19's safeguard list; HANDOFF §8 "Shared-name flag"). The plan only shows the count
   in the preview and apply. *Recommendation: show only; decide after the live runs with the
-  what-if.*
+  what-if.* **Answered at UX9 (2026-10-19): „Nur anzeigen“** (decision 26 (7)).
 - **Q9 German texts for the simulation agent** (after the live runs; decision 20: the demo runs
   it; M3: agents write German). Its English rationales („scores 3 in the lexical baseline …“, „no
   lexical evidence for any step“) show in the demo and on every scratch stack; changing them needs
@@ -2027,6 +2027,50 @@ at most 60 controls (194 today); a rule row has 3 controls (6 today) and the dia
 plus the prefilled name (10 today); enabling a rule with open proposals or another author confirms
 first; the preview shows the flags count; the projects list shows „Offen für dich“ (or „–“) and
 „Zuletzt geändert“, and `Project` is unchanged.
+
+**UX9 as delivered** (2026-10-19, on the branch, every gate green; DEVELOPMENT.md "UX9"). §3.10
+items 2, 3 and 5, §3.11 items 3–7, §3.12 item 1 and Q8 („Nur anzeigen“, decision 26 (7)); one
+REST route, live-run neutral. Built by three agents in worktrees of their own, reviewed
+adversarially part by part; the review's two major findings on the rules (an orphaned active
+rule's switch, focus lost after a dialog from a menu) and one on the summary (a full read model
+per row) fixed before the merge. „Relationen“ (`relation-table.tsx`, `lib/relation-filters.ts`):
+„Status“ (only in „Alle“, offering what keeps the view: „Vorgeschlagen“, „Vorgemerkt“) and „Modell“
+visible, „Grundlage“, „Typ“ and „Annahmeregel“ (not in „Abgelehnt“; choosing a rule in „Gilt“
+moves to „Automatisch angenommen“) behind „Weitere Filter (n)“; rows without the chevron and its
+details, one „Öffnen“, „Entschieden von“, the endpoints wrapped instead of cut and without the
+ref tooltip; 40 rows a page in the URL (`?shown=`), which the review screen keeps: in its new
+`?from=relations` mode J/K walk the result list (also after a decision moved the relation out),
+a decision stays on the relation and the back link returns to the view and page; without any
+relation the empty state with „Agent starten“, on `/relations` and on the tab's landing `/review`.
+„Annahmeregeln“ (`project-rules-page.tsx`, `components/rules/`): the safeguard once, the system
+rule in one line, rows of the „Aktiv“ switch, „Bearbeiten“ and „Mehr“ („Verlauf“, „Widerrufen…“),
+„Bisher“ with non-zero counts, the inline hint „N offene Vorschläge passen – ansehen …“ instead of
+„Anwenden“, „Nach Agent widerrufen…“ in the page's „Mehr“, „Vorschau“ gone; the switch asks before
+enabling when proposals are open or the caller becomes the deciding person (an orphaned rule's
+switch stands off; `GET /me` tells who decides); the dialog with four criteria and the name
+prefilled from them, the rest behind „Weiter einschränken“, one „Speichern“ with „Aktiv“, the
+curve behind „Nach Konfidenz aufschlüsseln“; preview and apply name the flagged count; apply and
+revoke lists by element name and „100 %“, scrolling. Projects list (`routes/index.tsx`): „Projekt“
+with the key, „Offen für dich“ (the shared focusable „Offene Punkte“ cell, now
+`components/open-points-cell.tsx`) and „Zuletzt geändert“ from `GET /projects/{p}/summary`
+(permission `read`, REST only: `lastEventAt`, `reviewItems`, `openPlacements`, `ask`, memoized per
+project event in a 256-entry LRU, so an unchanged project costs the policy and one read; CONCEPT
+§5). Deviations: the paging (the done-when cannot hold with every row and one „Öffnen“ each); the
+review screen's `from=relations` mode and the empty state on `/review`, outside the slice's file
+list; „–“ also for 0 open, „nicht geladen“ on a failed read; a new rule's „Aktiv“ starts off (the
+keep list's „rules off by default“). Measured with the UI load guard on `analyzr-ux9`:
+
+| Done when | Before | After (UX9) |
+|---|---|---|
+| The result view „Alle“ | 194 controls (58 rows) | 56 controls, 1 per row (≤ 60) |
+| A rule row | 6 controls | 3 („Aktiv“, „Bearbeiten“, „Mehr“; „N in Kraft“ and the open hint when they apply) |
+| The rule dialog | 10 fields | 4 criteria and the prefilled name, 4 more behind „Weiter einschränken“ |
+| Enabling with open proposals or another author | no question | one confirmation naming both |
+| Preview and apply | no flags | „davon N mit allgemeinem oder mehrfach genutztem Namen …“ |
+| Projects list | „Stand“, „Angelegt“ | „Offen für dich“ (the sum of the badges) and „Zuletzt geändert“; `Project` unchanged |
+
+Not verified: other browsers than Chromium, a real phone, a screen reader, the summary on a stack
+with many projects.
 
 ## 8. Keep as is
 

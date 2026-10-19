@@ -797,6 +797,92 @@ test('UX6 mobile: the chain view-first, the project link on top, the sheet colla
   }
 });
 
+// ------------------------------------------------------------------ UX9
+
+/** UX9's budgets (§7 "UX9", done when). */
+const UX9_BUDGET = {
+  /** The result view „Alle“, the shell included (194 at the audit). */
+  resultControls: 60,
+  /** A rule row: „Aktiv“, „Bearbeiten“, „Mehr“ (6 at the audit). */
+  ruleRowControls: 3,
+  /** The rule dialog: four criteria and the prefilled name (10 at the audit). */
+  dialogFields: 5,
+} as const;
+
+test('UX9: the result view „Alle“ within 60 controls, one per row, no ids, no ref tooltips', async ({
+  page,
+}) => {
+  await settle(page, `/projects/${NORDWIND}/relations`, '[data-testid=relation-row]');
+  const m = await measure(page, NORDWIND, 'Relationen › Alle', '[data-testid=relation-row]');
+  expect(m.controls).toBeLessThanOrEqual(UX9_BUDGET.resultControls);
+  const perRow = await page
+    .locator('[data-testid=relation-row]')
+    .evaluateAll(
+      (rows, selector) => Math.max(...rows.map((r) => r.querySelectorAll(selector).length)),
+      CONTROLS,
+    );
+  expect(perRow).toBe(1);
+  expect(await page.locator('main').innerText()).not.toMatch(ID_PATTERN);
+  expect(await page.locator('[data-testid=relation-row] [title*="#"]').count()).toBe(0);
+});
+
+test('UX9: a rule row in 3 controls, the dialog in four criteria and the prefilled name', async ({
+  page,
+}) => {
+  // a rule that is off accepts nothing: the other checks' numbers stay
+  const NAME = 'UI-Last: Gleicher Name ab 95 %';
+  const rules = await json<{ items: { name: string }[] }>(
+    `/api/v1/projects/${NORDWIND}/auto-accept-rules`,
+  );
+  if (!rules.items.some((r) => r.name === NAME)) {
+    const created = await owner.post(`/api/v1/projects/${NORDWIND}/auto-accept-rules`, {
+      data: { name: NAME, kind: 'relation', tier: 'key', minConfidence: 0.95, enabled: false },
+    });
+    expect(created.status()).toBe(201);
+  }
+  await settle(page, `/projects/${NORDWIND}/rules`, '[data-testid=rule-row]');
+  await measure(page, NORDWIND, 'Annahmeregeln', '[data-testid=rule-row]');
+  const row = page.locator('[data-testid=rule-row]').filter({ hasText: NAME });
+  const rowControls = await row.evaluate(
+    (el, selector) =>
+      [...el.querySelectorAll(`${selector}, summary`)].filter((c) => {
+        const r = c.getBoundingClientRect();
+        return r.width > 0 && r.height > 0 && c.checkVisibility({ visibilityProperty: true });
+      }).length,
+    CONTROLS,
+  );
+  expect(rowControls).toBeLessThanOrEqual(UX9_BUDGET.ruleRowControls);
+  await page.getByTestId('new-rule').click();
+  const fields = page.getByTestId('rule-dialog').getByTestId('rule-fields');
+  const shown = await fields.evaluate(
+    (el) =>
+      [...el.querySelectorAll('input, select, textarea, [role=checkbox], [role=switch]')].filter(
+        (c) => c.getAttribute('aria-hidden') !== 'true' && c.checkVisibility(),
+      ).length,
+  );
+  expect(shown).toBe(UX9_BUDGET.dialogFields);
+  await expect(page.getByTestId('rule-dialog').getByLabel('Name')).toHaveValue(/ab \d+ %/);
+  await page.keyboard.press('Escape');
+});
+
+test('UX9: the projects list shows „Offen für dich“ as the sum of the project’s badges and „Zuletzt geändert“', async ({
+  page,
+}) => {
+  await settle(page, `/projects/${NORDWIND}`, '[data-testid=next-step-primary]');
+  const badges = [
+    await badgeOf(page, /^Relationen/),
+    await badgeOf(page, /^Wertschöpfungskette/),
+    await badgeOf(page, /^Offene Fragen/),
+  ];
+  await settle(page, '/', '[data-testid=project-row]');
+  const row = page.locator('[data-testid=project-row]').filter({ hasText: NORDWIND });
+  await expect(row.getByTestId('open-points')).toHaveText(
+    String(badges.reduce((sum, n) => sum + n, 0)),
+  );
+  await expect(row.getByTestId('last-changed')).toHaveText(/^\d\d\.\d\d\.\d{4}$/);
+  await measure(page, '–', 'Projekte', '[data-testid=project-row]');
+});
+
 // ------------------------------------------------------------------ „Relationen › Zu prüfen“ (UX5)
 
 /** UX5's budgets (§7 "UX5", done when): „Zu prüfen“ on `nordwind-handel`. */

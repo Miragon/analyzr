@@ -41,6 +41,11 @@ export interface RevokeDialogProps {
   /** Above the dry run: what narrows the selection (the agent of „Nach Agent widerrufen…“). */
   picker?: ReactNode;
   onDone?: (result: AutoAcceptRevocationResult) => void;
+  /**
+   * The control that opened the dialog (or stands for it): the focus goes back there when it
+   * closes (opened from a menu that closed as it opened, Radix has nothing to return to).
+   */
+  returnFocus?: () => HTMLElement | null | undefined;
 }
 
 function RevokeBody({
@@ -50,7 +55,7 @@ function RevokeBody({
   title,
   picker,
   onDone,
-}: Omit<RevokeDialogProps, 'open'>) {
+}: Omit<RevokeDialogProps, 'open' | 'returnFocus'>) {
   const id = useId();
   const dry = useQuery(autoAcceptRevokeDryRunQuery(project, selection));
   const real = useRevokeAutoAccepted(project);
@@ -202,10 +207,20 @@ function RevokeBody({
  * when the selection changed in between (409) the dialog shows the fresh dry
  * run. A human decision taken since an acceptance is never touched.
  */
-export function RevokeDialog({ open, onOpenChange, ...props }: RevokeDialogProps) {
+export function RevokeDialog({ open, onOpenChange, returnFocus, ...props }: RevokeDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-xl" data-testid="revoke-dialog">
+      <DialogContent
+        className="sm:max-w-xl"
+        data-testid="revoke-dialog"
+        onCloseAutoFocus={(event) => {
+          // Radix returns the focus only to a DialogTrigger; this dialog has none.
+          const target = returnFocus?.();
+          if (!target) return;
+          event.preventDefault();
+          target.focus();
+        }}
+      >
         {open ? <RevokeBody onOpenChange={onOpenChange} {...props} /> : null}
       </DialogContent>
     </Dialog>

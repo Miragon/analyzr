@@ -39,8 +39,8 @@ import {
   decidedBy,
   filterRelations,
   moreFilterCount,
+  narrowsView,
   resultViewOf,
-  sameFilters,
   statusOptions,
   viewFilters,
   type RelationFilters,
@@ -50,13 +50,14 @@ import type { RefLabel, RefResolver } from '@/lib/refs';
 
 /**
  * One end of a relation: element label (or id), model key and process. Cut
- * to one line each, or with `wrap` (the relations table, UX9) wrapped, so a
- * name shows in full where its column allows.
+ * to one line each (the ref in the tooltip), or with `wrap` (the relations
+ * table, UX9) wrapped, so a name shows in full where its column allows, and
+ * without the ref (no ids, P2).
  */
 export function Endpoint({ label, wrap = false }: { label: RefLabel; wrap?: boolean }) {
   const line = wrap ? 'break-words' : 'truncate';
   return (
-    <div className="flex min-w-0 flex-col" title={label.ref}>
+    <div className="flex min-w-0 flex-col" title={wrap ? undefined : label.ref}>
       {wrap && label.label !== null ? (
         <PlainText as="span" text={label.label} className="font-medium" />
       ) : (
@@ -82,12 +83,21 @@ export interface RelationTableProps {
 }
 
 /**
+ * The badges of „Grundlage“ and „Status“ break at their spaces instead of
+ * widening the column (UX9): „Eindeutiger Aufruf“ or „Automatisch
+ * angenommen“ take two lines, the endpoints keep the width.
+ */
+const BADGE_CELL =
+  'whitespace-normal [&_[data-slot=badge]]:h-auto [&_[data-slot=badge]]:w-min [&_[data-slot=badge]]:whitespace-normal [&_[data-slot=badge]>span]:whitespace-normal';
+
+/**
  * The relation rows (UX-SIMPLIFICATION.md §3.10 item 3, UX9): type, both
  * endpoints in the width the dropped details chevron and the narrower
  * columns free (wrapped, not cut), tier, status, confidence, „Entschieden
  * von“ (who: a handle, „analyzr“ or the auto-accept rule, never a procedure
  * or a model) and one action; refs, id, version and attributes are the
- * review screen's.
+ * review screen's. „Grundlage“ and „Status“ keep their widths from before
+ * UX9, their badges wrap.
  */
 export function RelationTable({
   relations,
@@ -102,8 +112,8 @@ export function RelationTable({
         <col />
         <col className="w-6" />
         <col />
-        <col className="w-40" />
-        <col className="w-44" />
+        <col className="w-28" />
+        <col className="w-36" />
         <col className="w-20" />
         <col className="w-36" />
         <col className="w-24" />
@@ -151,10 +161,10 @@ export function RelationTable({
               <TableCell className="whitespace-normal">
                 <Endpoint label={resolve(r.to)} wrap />
               </TableCell>
-              <TableCell>
+              <TableCell className={BADGE_CELL}>
                 <TierBadge tier={r.tier} />
               </TableCell>
-              <TableCell>
+              <TableCell className={BADGE_CELL}>
                 <div className="flex min-w-0 flex-col items-start gap-1">
                   {auto ? <AutoAcceptMark entry={auto} /> : <StatusBadge status={r.status} />}
                   <EndpointStateBadge state={r.endpointState} />
@@ -189,7 +199,12 @@ export interface RelationsViewProps extends RelationTableProps {
   /** Model keys offered in the model filter. */
   modelKeys: readonly string[];
   filters: RelationFilters;
+  /** A filter change starts the rows over: the route drops `shown`. */
   onFiltersChange: (filters: RelationFilters) => void;
+  /** Rows shown (`shown` in the URL), {@link RELATION_PAGE} without. */
+  shown?: number | undefined;
+  /** „Weitere 40 anzeigen“: the rows to show next. */
+  onShownChange: (shown: number) => void;
   /**
    * The relation auto-accept rules (reviewers; owners get every rule, editors
    * the ones the ledger names): with them the filter „Annahmeregel“ appears
@@ -213,8 +228,10 @@ const EMPTY_VIEW: Record<ResultView, string> = {
  * UX9), filtered on the client: „Status“ (in „Alle“ only, the other views
  * are a status) and „Modell“ in the row, „Grundlage“, „Typ“ and
  * „Annahmeregel“ behind „Weitere Filter“ (a light disclosure saying how many
- * of them are set); „Filter zurücksetzen“ returns to the view's own filters.
- * The first 40 rows, then „Weitere 40 anzeigen“. The tab's routes show
+ * of them are set; „Annahmeregel“ not in „Abgelehnt“, where no acceptance
+ * is in force); „Filter zurücksetzen“ returns to the view's own filters.
+ * The first 40 rows, then „Weitere 40 anzeigen“, kept in the URL so the way
+ * back from the review screen shows the same rows. The tab's routes show
  * `RelationsEmpty` instead while the project has no relation at all.
  */
 export function RelationsView({
@@ -222,6 +239,8 @@ export function RelationsView({
   modelKeys,
   filters,
   onFiltersChange,
+  shown,
+  onShownChange,
   autoRules,
   ...table
 }: RelationsViewProps) {
@@ -232,13 +251,10 @@ export function RelationsView({
   );
   const view = resultViewOf(filters);
   const own = viewFilters(view);
-  const filtered = !sameFilters(filters, own);
+  const filtered = narrowsView(filters);
   const more = moreFilterCount(filters);
   const [moreOpen, setMoreOpen] = useState(false);
-  // The rows shown start over with every other filter set (a view link included).
-  const key = JSON.stringify(filters);
-  const [page, setPage] = useState({ key, count: RELATION_PAGE });
-  const limit = page.key === key ? page.count : RELATION_PAGE;
+  const limit = shown ?? RELATION_PAGE;
   const rest = visible.length - limit;
 
   const set = (patch: Partial<RelationFilters>) => {
@@ -366,7 +382,7 @@ export function RelationsView({
                 ))}
               </NativeSelect>
             </Field>
-            {autoRules !== undefined && autoRules.length > 0 ? (
+            {autoRules !== undefined && autoRules.length > 0 && view !== 'rejected' ? (
               <Field>
                 <FieldLabel htmlFor="filter-auto">Annahmeregel</FieldLabel>
                 <NativeSelect
@@ -413,7 +429,7 @@ export function RelationsView({
             <Button
               variant="outline"
               className="self-center"
-              onClick={() => setPage({ key, count: limit + RELATION_PAGE })}
+              onClick={() => onShownChange(limit + RELATION_PAGE)}
               data-testid="relations-more"
             >
               {`Weitere ${Math.min(RELATION_PAGE, rest)} anzeigen (${rest} übrig)`}

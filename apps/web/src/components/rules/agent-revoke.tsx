@@ -21,12 +21,15 @@ export function AgentRevokeDialog({
   agents,
   open,
   onOpenChange,
+  returnFocus,
 }: {
   project: string;
   /** `inForceAgents` of the ledger: at least one. */
   agents: readonly InForceAgent[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Where the focus goes when it closes (the header's „Mehr“ closed as it opened). */
+  returnFocus?: () => HTMLElement | null | undefined;
 }) {
   const id = useId();
   const [picked, setPicked] = useState('');
@@ -37,6 +40,7 @@ export function AgentRevokeDialog({
       project={project}
       open={open}
       onOpenChange={onOpenChange}
+      returnFocus={returnFocus}
       selection={{ agentPrincipalId: agent.principalId }}
       title={
         agents.length === 1

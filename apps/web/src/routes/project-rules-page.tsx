@@ -54,6 +54,32 @@ type Open =
 /** „Gleicher Name ab 100 %“ (its name follows the criteria): the rule a bulk accept of the key tier offers (UX5). */
 const KEY_RULE_DRAFT: RuleDraft = { tier: 'key', percent: '100' };
 
+/** A control of the page by its test id, or of a rule's row with `ruleId`. */
+function control(testId: string, ruleId?: string): HTMLElement | null {
+  const scope =
+    ruleId === undefined
+      ? document
+      : [...document.querySelectorAll<HTMLElement>('[data-testid="rule-row"]')].find(
+          (row) => row.dataset['ruleId'] === ruleId,
+        );
+  return scope?.querySelector<HTMLElement>(`[data-testid="${testId}"]`) ?? null;
+}
+
+/**
+ * Where the focus goes when a dialog of a rule closes: its row's „Mehr“, else
+ * its switch, else the page's „Neue Regel“ or „Mehr“. The dialogs open as a
+ * menu closes, or from a hint that may be gone by then (or from another
+ * dialog), so Radix has nothing to return to.
+ */
+const rowFocus = (ruleId: string) => () =>
+  control('rule-more', ruleId) ??
+  control('rule-toggle', ruleId) ??
+  control('new-rule') ??
+  control('rules-more');
+
+/** Where the focus goes when „Nach Agent widerrufen…“ closes: the page's „Mehr“ (gone once nothing is in force). */
+const pageFocus = () => control('rules-more') ?? control('new-rule');
+
 /** The page's „Mehr“ (UX9): actions across rules, here „Nach Agent widerrufen…“. */
 function PageMenu({ onAgentRevoke }: { onAgentRevoke: () => void }) {
   const [open, setOpen] = useState(false);
@@ -236,6 +262,7 @@ export function RulesPage() {
             rule={ruleOpen}
             open={open?.kind === 'apply'}
             onOpenChange={closer('apply')}
+            returnFocus={rowFocus(ruleOpen.id)}
           />
           <RevokeDialog
             project={project}
@@ -243,12 +270,14 @@ export function RulesPage() {
             title={`Annahmen der Regel „${ruleOpen.name}“ widerrufen`}
             open={open?.kind === 'revoke'}
             onOpenChange={closer('revoke')}
+            returnFocus={rowFocus(ruleOpen.id)}
           />
           <RuleHistoryDialog
             project={project}
             rule={ruleOpen}
             open={open?.kind === 'history'}
             onOpenChange={closer('history')}
+            returnFocus={rowFocus(ruleOpen.id)}
           />
         </>
       ) : null}
@@ -258,6 +287,7 @@ export function RulesPage() {
           agents={agents}
           open={open?.kind === 'agent-revoke'}
           onOpenChange={closer('agent-revoke')}
+          returnFocus={pageFocus}
         />
       ) : null}
       <AlertDialog open={open?.kind === 'offer-apply'} onOpenChange={closer('offer-apply')}>

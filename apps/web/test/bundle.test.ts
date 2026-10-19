@@ -109,10 +109,12 @@ const BUDGET = 40 * 1024;
  * „Agent starten“ on `RetryAgent`; the chain's panel, cards and header load
  * with its route chunk. Unchanged after step 2 (the chain on the shared
  * panel and sheet, the way back from „Offene Fragen“).
- * 222.9 KB after UX9's result views of „Relationen“: „Weitere Filter“ on the
- * light popover, „Entschieden von“ and „Öffnen“ per row with the first 40
- * rows, the empty state with „Agent starten“, and the review screen walking
- * and returning to a result view.
+ * 223.4 KB after UX9: the result views of „Relationen“ („Weitere Filter“ on
+ * the light popover, „Entschieden von“ and „Öffnen“ per row, 40 rows a page
+ * in the URL, the empty state with „Agent starten“, the review screen walking
+ * and returning to a result view), the revoke dialog the review screen loads
+ * with the rules' new switch and menus, and the projects list's summary with
+ * the shared „Offene Punkte“ cell.
  */
 const ENTRY_CEILING = 240 * 1024;
 

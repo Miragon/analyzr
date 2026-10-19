@@ -27,7 +27,7 @@ import {
   tierLabel,
 } from '@/lib/auto-accept-rules';
 import { useReviseRule } from '@/lib/auto-accept-rule-actions';
-import { autoAcceptApplyDryRunQuery } from '@/lib/auto-accept-queries';
+import { autoAcceptApplyDryRunQuery, meQuery } from '@/lib/auto-accept-queries';
 import { toast } from '@/lib/toast';
 
 import { EnableDialog, type EnableRequest } from './enable-dialog';
@@ -36,7 +36,7 @@ export interface RuleTableProps {
   project: string;
   /** In creation order: the first matching rule is recorded. */
   rules: readonly AutoAcceptRule[];
-  /** The caller's principal id, once known: enabling another's rule makes them its deciding person. */
+  /** The caller's principal id, once known (else enabling fetches it): enabling another's rule makes them its deciding person. */
   me: string | null;
   onEdit: (rule: AutoAcceptRule) => void;
   /** Open the rule's apply dialog (the row's hint, or after enabling with „Liste ansehen…“). */
@@ -47,10 +47,9 @@ export interface RuleTableProps {
   onReload: () => void;
 }
 
-/** „Bisher“: only the counts above 0 (UX-SIMPLIFICATION.md §3.11 item 3); acceptances in force lead to them. */
-function Stats({ project, rule }: { project: string; rule: AutoAcceptRule }) {
-  const s = rule.stats;
-  const parts = [
+/** The counts besides „in Kraft“ that are above 0 (UX-SIMPLIFICATION.md §3.11 item 3). */
+function statParts(s: AutoAcceptRule['stats']): { text: string; title: string }[] {
+  return [
     s.confirmed > 0
       ? { text: `${s.confirmed} bestätigt`, title: 'Seither von einem Menschen angenommen' }
       : null,
@@ -64,25 +63,37 @@ function Stats({ project, rule }: { project: string; rule: AutoAcceptRule }) {
         }
       : null,
   ].filter((p) => p !== null);
-  if (s.inForce === 0 && parts.length === 0) {
+}
+
+const IN_FORCE_TITLE = 'Von der Regel angenommen und weiter in Kraft';
+
+/** „N in Kraft“: a relation rule's acceptances in force lead to them in „Relationen“. */
+function InForce({ project, rule }: { project: string; rule: AutoAcceptRule }) {
+  const text = `${rule.stats.inForce} in Kraft`;
+  if (rule.kind !== 'relation') return text;
+  return (
+    <Link
+      to="/projects/$project/relations"
+      params={{ project }}
+      search={{ auto: rule.id as AutoFilter }}
+      className="text-link hover:underline"
+    >
+      {text}
+    </Link>
+  );
+}
+
+/** „Bisher“: only the counts above 0 (UX-SIMPLIFICATION.md §3.11 item 3); acceptances in force lead to them. */
+function Stats({ project, rule }: { project: string; rule: AutoAcceptRule }) {
+  const parts = statParts(rule.stats);
+  if (rule.stats.inForce === 0 && parts.length === 0) {
     return <span className="text-muted-foreground">–</span>;
   }
   return (
     <>
-      {s.inForce > 0 ? (
-        <span className="block" title="Von der Regel angenommen und weiter in Kraft">
-          {rule.kind === 'relation' ? (
-            <Link
-              to="/projects/$project/relations"
-              params={{ project }}
-              search={{ auto: rule.id as AutoFilter }}
-              className="text-link hover:underline"
-            >
-              {s.inForce} in Kraft
-            </Link>
-          ) : (
-            `${s.inForce} in Kraft`
-          )}
+      {rule.stats.inForce > 0 ? (
+        <span className="block" title={IN_FORCE_TITLE}>
+          <InForce project={project} rule={rule} />
         </span>
       ) : null}
       {parts.map((p) => (
@@ -91,6 +102,33 @@ function Stats({ project, rule }: { project: string; rule: AutoAcceptRule }) {
         </span>
       ))}
     </>
+  );
+}
+
+/** „Bisher“ below 768 px, where its column hides: one line under the name, nothing while all are 0. */
+function StatsLine({ project, rule }: { project: string; rule: AutoAcceptRule }) {
+  const items = [
+    ...(rule.stats.inForce > 0
+      ? [
+          <span key="in-force" title={IN_FORCE_TITLE}>
+            <InForce project={project} rule={rule} />
+          </span>,
+        ]
+      : []),
+    ...statParts(rule.stats).map((p) => (
+      <span key={p.text} title={p.title}>
+        {p.text}
+      </span>
+    )),
+  ];
+  if (items.length === 0) return null;
+  return (
+    <span
+      className="text-xs text-muted-foreground tabular-nums md:hidden"
+      data-testid="rule-stats-line"
+    >
+      {items.flatMap((item, i) => (i === 0 ? [item] : [' · ', item]))}
+    </span>
   );
 }
 
@@ -110,6 +148,11 @@ function OpenHint({
   const active = rule.enabled && rule.authorIsOwner;
   const dry = useQuery({
     ...autoAcceptApplyDryRunQuery(project, rule.id, rule.revision),
+    // A hint, not a decision: one dry run per rule and half minute, not per mount or focus
+    // (enabling and the apply dialog fetch their own, fresh).
+    staleTime: 30_000,
+    gcTime: 60_000,
+    refetchOnWindowFocus: false,
     enabled: active,
   });
   const count = active ? (dry.data?.count ?? 0) : 0;
@@ -180,9 +223,11 @@ function RowMenu({
  * (only the counts above 0) and three controls, the „Aktiv“ switch,
  * „Bearbeiten“ and „Mehr“ („Verlauf“, „Widerrufen…“ while acceptances are
  * in force); an active rule whose dry run finds open proposals offers them
- * in one line. Enabling and disabling write a new revision with `If-Match`;
- * enabling asks first when it makes the caller the deciding person or when
- * open proposals already match ({@link EnableDialog}), disabling never asks.
+ * in one line. The switch is on only while the rule accepts (enabled, its
+ * author still an owner). Enabling and disabling write a new revision with
+ * `If-Match`; enabling asks first when it makes the caller the deciding
+ * person (or the caller is unknown) or when open proposals already match
+ * ({@link EnableDialog}), disabling never asks.
  * When someone saved a newer revision meanwhile (412) the table offers to
  * load it.
  */
@@ -238,17 +283,26 @@ export function RuleTable({
   /**
    * Enabling: the dry run of the head (it runs while the rule is off) and the
    * author decide whether to ask first; a failed dry run asks only about the
-   * author (the offer is a convenience, the row's hint shows it later).
+   * author (the offer is a convenience, the row's hint shows it later). While
+   * the caller is unknown (`GET /me` still loading or failed) it is fetched
+   * here; if that fails too, the switch asks.
    */
   async function enable(rule: AutoAcceptRule) {
     setChecking(rule.id);
-    const count = await queryClient
-      .fetchQuery(autoAcceptApplyDryRunQuery(project, rule.id, rule.revision))
-      .then((dry) => dry.count)
-      .catch(() => 0)
-      .finally(() => setChecking(null));
-    const takeOver = !rule.authorIsOwner || (me !== null && rule.author.principalId !== me);
-    if (count > 0 || takeOver) setConfirm({ rule, count, takeOver });
+    const [count, caller] = await Promise.all([
+      queryClient
+        .fetchQuery(autoAcceptApplyDryRunQuery(project, rule.id, rule.revision))
+        .then((dry) => dry.count)
+        .catch(() => 0),
+      me ??
+        queryClient.fetchQuery(meQuery).then(
+          (m) => m.principalId,
+          () => null,
+        ),
+    ]).finally(() => setChecking(null));
+    const unsure = rule.authorIsOwner && caller === null;
+    const takeOver = !rule.authorIsOwner || unsure || rule.author.principalId !== caller;
+    if (count > 0 || takeOver) setConfirm({ rule, count, takeOver, unsure });
     else write(rule, true);
   }
 
@@ -274,7 +328,7 @@ export function RuleTable({
       ) : null}
       <div className="rounded-xl border bg-card">
         {/* Not `Table`: its scrolling wrapper would clip the rows' „Mehr“ menus. Below 768 px
-            the criteria move under the name and „Bisher“ hides, so nothing scrolls sideways. */}
+            the criteria and „Bisher“ move under the name, so nothing scrolls sideways. */}
         <table aria-label="Annahmeregeln" className="w-full text-sm" data-slot="table">
           <TableHeader>
             <TableRow>
@@ -307,6 +361,7 @@ export function RuleTable({
                     <div className="flex flex-col items-start gap-0.5">
                       <PlainText as="span" className="font-medium" text={rule.name} />
                       <span className="text-xs text-muted-foreground md:hidden">{criteria}</span>
+                      <StatsLine project={project} rule={rule} />
                       {rule.note ? (
                         <PlainText
                           as="span"
@@ -318,7 +373,7 @@ export function RuleTable({
                         <span
                           className="inline-flex items-center gap-1 text-xs text-warning"
                           data-testid="author-not-owner"
-                          title="Die Regel nimmt nichts an, bis ein Inhaber sie neu speichert oder aktiviert und damit übernimmt."
+                          title="Die Regel nimmt nichts an, darum steht „Aktiv“ auf aus. Aktivierst du sie oder speicherst du sie neu, übernimmst du sie."
                         >
                           <TriangleAlertIcon className="size-3.5" aria-hidden />
                           Urheber ist kein Inhaber mehr
@@ -347,8 +402,10 @@ export function RuleTable({
                     <Stats project={project} rule={rule} />
                   </TableCell>
                   <TableCell>
+                    {/* On only while the rule accepts: turning on a rule whose author lost the
+                        owner role takes it over, so it confirms like any other enabling. */}
                     <Switch
-                      checked={rule.enabled}
+                      checked={rule.enabled && rule.authorIsOwner}
                       disabled={busy}
                       aria-label={`Regel „${rule.name}“ aktiv`}
                       onCheckedChange={(on) => (on ? void enable(rule) : write(rule, false))}

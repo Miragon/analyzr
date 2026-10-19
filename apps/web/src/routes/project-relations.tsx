@@ -13,7 +13,7 @@ import { ledgerRules } from '@/lib/auto-accept';
 import { useAutoAcceptIndex, useCanReview, useIsOwner } from '@/lib/auto-accept-actions';
 import { autoAcceptRulesQuery, landscapeQuery, modelsQuery, valueChainQuery } from '@/lib/queries';
 import type { RefLabel } from '@/lib/refs';
-import { matchesFilters, parseRelationFilters, resultViewOf } from '@/lib/relation-filters';
+import { matchesFilters, parseResultViewSearch, resultViewOf } from '@/lib/relation-filters';
 import { reviewQueue, sideName } from '@/lib/review';
 import { useProjectFacts } from '@/lib/use-project-facts';
 
@@ -22,7 +22,7 @@ import { projectRoute } from './project';
 export const projectRelationsRoute = createRoute({
   getParentRoute: () => projectRoute,
   path: 'relations',
-  validateSearch: parseRelationFilters,
+  validateSearch: parseResultViewSearch,
   component: RelationsTab,
 });
 
@@ -32,14 +32,14 @@ const endName = (label: RefLabel) => label.label ?? sideName(label);
 /**
  * The result views of „Relationen“ (UX-SIMPLIFICATION.md §3.10; UX5, UX9):
  * „Gilt“, „Abgelehnt“, „Automatisch angenommen“ and „Alle“ with their
- * filters in the URL; each row's „Öffnen“ leads to the review screen with
- * the list's filters, so J/K walk this list and the way back returns to it.
- * While the project has no relation at all, `RelationsEmpty` instead of
- * views and filters.
+ * filters and the rows shown (`shown`) in the URL; each row's „Öffnen“ leads
+ * to the review screen with both, so J/K walk this list and the way back
+ * returns to it with the relation in view. While the project has no relation
+ * at all, `RelationsEmpty` instead of views and filters.
  */
 function RelationsTab() {
   const { project } = projectRelationsRoute.useParams();
-  const filters = projectRelationsRoute.useSearch();
+  const { shown, ...filters } = projectRelationsRoute.useSearch();
   const navigate = projectRelationsRoute.useNavigate();
   const landscape = useQuery(landscapeQuery(project));
   const models = useQuery(modelsQuery(project));
@@ -97,6 +97,10 @@ function RelationsTab() {
         modelKeys={modelKeys}
         filters={filters}
         onFiltersChange={(next) => void navigate({ search: next, replace: true })}
+        shown={shown}
+        onShownChange={(next) =>
+          void navigate({ search: { ...filters, shown: next }, replace: true })
+        }
         autoIndex={autoIndex}
         autoRules={autoRules}
         renderActions={(relation) => (
@@ -104,7 +108,11 @@ function RelationsTab() {
             <Link
               to="/projects/$project/review/$relation"
               params={{ project, relation: relation.id }}
-              search={{ ...filters, from: 'relations' as const }}
+              search={{
+                ...filters,
+                ...(shown === undefined ? {} : { shown }),
+                from: 'relations' as const,
+              }}
               aria-label={`${endName(resolve(relation.from))} → ${endName(resolve(relation.to))} öffnen`}
               data-testid="relation-open"
             >

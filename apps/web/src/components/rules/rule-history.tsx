@@ -99,15 +99,31 @@ export function RuleHistoryDialog({
   rule,
   open,
   onOpenChange,
+  returnFocus,
 }: {
   project: string;
   rule: AutoAcceptRule;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /**
+   * The control that opened the dialog (or stands for it): the focus goes back there when it
+   * closes (opened from a menu that closed as it opened, Radix has nothing to return to).
+   */
+  returnFocus?: () => HTMLElement | null | undefined;
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-3xl" data-testid="rule-history">
+      <DialogContent
+        className="sm:max-w-3xl"
+        data-testid="rule-history"
+        onCloseAutoFocus={(event) => {
+          // Radix returns the focus only to a DialogTrigger; this dialog has none.
+          const target = returnFocus?.();
+          if (!target) return;
+          event.preventDefault();
+          target.focus();
+        }}
+      >
         <DialogHeader>
           <DialogTitle>Verlauf der Regel „{rule.name}“</DialogTitle>
           <DialogDescription>

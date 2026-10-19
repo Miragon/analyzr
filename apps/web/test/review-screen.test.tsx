@@ -1,4 +1,4 @@
-import type { Fact, Landscape, Model, Project, RelationAssertion } from '@analyzr/client';
+import type { Fact, Landscape, Model, Project, Relation, RelationAssertion } from '@analyzr/client';
 import { QueryClient } from '@tanstack/react-query';
 import { createMemoryHistory } from '@tanstack/react-router';
 import { act, render, screen, waitFor, within } from '@testing-library/react';
@@ -86,10 +86,22 @@ const history: Record<string, RelationAssertion[]> = {
   rel_01H: [],
 };
 
-function setup(path: string, { role }: { role?: Project['role'] } = {}) {
+function setup(
+  path: string,
+  {
+    role,
+    relations = [X, M, D, H],
+    routes = {},
+  }: {
+    role?: Project['role'];
+    relations?: Relation[];
+    routes?: Parameters<typeof stubApi>[0];
+  } = {},
+) {
   stubApi({
     'GET /api/v1/projects/demo/open-questions': () =>
       json({ items: [], nextCursor: null, totals: {}, askByModel: {} }),
+    ...routes,
   });
   const queryClient = new QueryClient({
     defaultOptions: { queries: { staleTime: Infinity, retry: false } },
@@ -98,7 +110,7 @@ function setup(path: string, { role }: { role?: Project['role'] } = {}) {
     projectId: 'prj_01DEMO',
     seq: 1,
     models: [],
-    relations: [X, M, D, H],
+    relations,
     findings: [],
   };
   queryClient.setQueryData(landscapeQuery('demo').queryKey, landscape);
@@ -112,7 +124,7 @@ function setup(path: string, { role }: { role?: Project['role'] } = {}) {
       createdAt: '2026-10-07T09:00:00.000Z',
     });
   queryClient.setQueryData(modelsQuery('demo').queryKey, models);
-  for (const r of [X, M, D, H]) {
+  for (const r of relations) {
     queryClient.setQueryData(relationQuery('demo', r.id).queryKey, r);
     queryClient.setQueryData(assertionsQuery('demo', r.id).queryKey, history[r.id] ?? []);
   }
@@ -252,5 +264,59 @@ describe('the review screen since UX5', () => {
     expect(await within(panel).findByTestId('hold-answer')).toBeTruthy();
     expect(within(panel).queryByRole('button', { name: /Vormerken/ })).toBeNull();
     expect(within(panel).getByRole('button', { name: /Annehmen/ })).toBeTruthy();
+  });
+});
+
+describe('the review screen from a result view of „Relationen“ (UX9)', () => {
+  // „Alle“ › „Vorgeschlagen“: three proposals in the result view's order (by „Nach“)
+  const proposals = ['b/two#C', 'b/two#U', 'c/three#Z'].map((to, i) =>
+    relation({ id: `rel_01P${i + 1}`, from: 'a/one#S', to }),
+  );
+
+  it('goes on from the place of a relation a decision moved out of the view', async () => {
+    let relations = proposals;
+    const landscape = (): Landscape => ({
+      projectId: 'prj_01DEMO',
+      seq: 2,
+      models: [],
+      relations,
+      findings: [],
+    });
+    const { router, user } = setup(
+      '/projects/demo/review/rel_01P2?status=proposed&from=relations',
+      {
+        role: 'owner',
+        relations,
+        routes: {
+          'POST /api/v1/projects/demo/relations/rel_01P2/decision': () => {
+            relations = relations.map((r) =>
+              r.id === 'rel_01P2' ? { ...r, status: 'accepted' as const, version: 2 } : r,
+            );
+            return json({ relation: relations[1], corrected: null });
+          },
+          'GET /api/v1/projects/demo/landscape': () => json(landscape()),
+          'GET /api/v1/projects/demo/relations/rel_01P2': () => json(relations[1]),
+          'GET /api/v1/projects/demo/relations/rel_01P2/assertions': () =>
+            json({ items: [], nextCursor: null }),
+          'GET /api/v1/projects/demo/models': () => json({ items: models, nextCursor: null }),
+        },
+      },
+    );
+    const position = () => screen.getByTestId('queue-position').textContent;
+    await waitFor(() => expect(position()).toBe('2 von 3'));
+    const panel = await screen.findByTestId('decision-panel');
+    await user.click(within(panel).getByRole('button', { name: /Annehmen/ }));
+    // accepted, it left „Vorgeschlagen“; the screen stays on it …
+    await waitFor(() => expect(position()).toBe('nicht in der Liste'));
+    expect(router.state.location.pathname).toBe('/projects/demo/review/rel_01P2');
+    // … and K and J go on from its place, not from the top
+    expect(screen.getByTestId('review-previous').hasAttribute('disabled')).toBe(false);
+    expect(screen.getByTestId('review-next').hasAttribute('disabled')).toBe(false);
+    await user.keyboard('j');
+    await waitFor(() =>
+      expect(router.state.location.pathname).toBe('/projects/demo/review/rel_01P3'),
+    );
+    expect(position()).toBe('2 von 2');
+    expect(router.state.location.search).toEqual({ status: 'proposed', from: 'relations' });
   });
 });

@@ -12,7 +12,7 @@ import type {
 } from '../src/components/value-chain/chain-canvas-types';
 import { getToasts } from '../src/lib/toast';
 import { createAppRouter } from '../src/router';
-import { chainDetail, impact, placement, step } from './support/fixtures';
+import { chainDetail, impact, placement, relation, step } from './support/fixtures';
 import { json, stubApi, type Call } from './support/render';
 
 // The renderer needs a real browser (e2e/value-chain*.spec.ts): a stand-in records what the page
@@ -476,10 +476,24 @@ describe('value chain page', () => {
   });
 
   it('counts the open placements on the chain’s tab, not in the inbox (UX5)', async () => {
-    setup('/projects/demo/review');
-    // no relation in this project: the tab says what comes next, without views (UX9)
-    await screen.findByTestId('relations-empty');
+    // one proposal, so the inbox shows its views and queue (without a relation, RelationsEmpty, UX9)
+    setup('/projects/demo/review', {
+      routes: {
+        'GET /api/v1/projects/demo/landscape': () =>
+          json({
+            projectId: 'prj_01DEMO',
+            seq: 1,
+            models: [],
+            relations: [relation({ id: 'rel_01X', from: 'a/one#S', to: 'b/two#C' })],
+            findings: [],
+          }),
+      },
+    });
+    // the inbox below the project tabs: its views, the queue, and no word of placements
+    const inbox = (await screen.findByRole('navigation', { name: 'Ansichten' })).parentElement!;
+    expect(await within(inbox).findAllByTestId('queue-row')).toHaveLength(1);
     expect(screen.queryByTestId('placements-callout')).toBeNull();
+    expect(inbox.textContent).not.toMatch(/Platzierung/);
     const tabs = within(screen.getByRole('navigation', { name: 'Projektbereiche' }));
     await waitFor(() =>
       expect(tabs.getByRole('link', { name: /^Wertschöpfungskette/ }).textContent).toBe(

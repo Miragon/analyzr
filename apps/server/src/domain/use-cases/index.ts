@@ -37,7 +37,7 @@ export function createUseCases(deps: UseCaseDeps) {
   };
   const chainDeps = { ...deps, rulesPrincipal: identity.rulesPrincipal };
   // One memo of the whole-project candidates: the open questions and the project summary
-  // read the same read model, so the projects list adds nothing after an ingest.
+  // read the same read model; the summary, memoized per `lastSeq`, builds it only after a write.
   const candidates = new CandidateCache();
   return {
     ...identity,

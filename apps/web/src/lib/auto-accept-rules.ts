@@ -1,6 +1,5 @@
 import type {
   AutoAcceptBlockReason,
-  AutoAcceptCriteria,
   AutoAcceptCurvePoint,
   AutoAcceptKind,
   AutoAcceptLedgerState,
@@ -17,9 +16,9 @@ import { AUTO_ACCEPT_TIERS, MIN_AUTO_ACCEPT_CONFIDENCE } from './limits';
 /**
  * The tab „Regeln“ (owner decision 19): German labels for kinds, tiers,
  * block reasons and ledger states, the percent input of a rule's minimum
- * confidence, drafts and criteria, and the preview's history line. Only the
- * rules page and its dialogs use these (they load with the route); the marks
- * of the review views are in `auto-accept.ts`.
+ * confidence, drafts and the preview's history line. Only the rules page and
+ * its dialogs use these (they load with the route); the marks of the review
+ * views are in `auto-accept.ts`.
  */
 
 export const AUTO_ACCEPT_KINDS: Record<AutoAcceptKind, { label: string; one: string }> = {
@@ -120,19 +119,6 @@ export function narrowingOf(
   if (rule.llmModel) out.push(`LLM-Modell ${rule.llmModel}`);
   if (rule.includeAdHoc) out.push('auch Ad-hoc');
   return out;
-}
-
-/** The criteria of a draft (what a preview takes). */
-export function criteriaOf(d: AutoAcceptRuleDraft): AutoAcceptCriteria {
-  return {
-    kind: d.kind,
-    tier: d.tier,
-    minConfidence: d.minConfidence,
-    relationType: d.relationType ?? null,
-    agentPrincipalId: d.agentPrincipalId ?? null,
-    llmModel: d.llmModel ?? null,
-    includeAdHoc: d.includeAdHoc ?? false,
-  };
 }
 
 /** The draft of a rule's head revision (what an edit or a switch starts from). */

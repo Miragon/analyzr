@@ -61,6 +61,7 @@ describe('marks in the relation views', () => {
         modelKeys={[]}
         filters={filters}
         onFiltersChange={() => undefined}
+        onShownChange={() => undefined}
         autoIndex={index}
         autoRules={[{ id: RULE_ID, name: 'Schlüssel ab 95 %' }]}
       />,
@@ -97,6 +98,7 @@ describe('marks in the relation views', () => {
         modelKeys={[]}
         filters={{ auto: RULE_ID }}
         onFiltersChange={() => undefined}
+        onShownChange={() => undefined}
         autoIndex={index}
         autoRules={[{ id: RULE_ID, name: 'Schlüssel ab 95 %' }]}
       />,
@@ -116,6 +118,7 @@ describe('marks in the relation views', () => {
         modelKeys={[]}
         filters={{}}
         onFiltersChange={() => undefined}
+        onShownChange={() => undefined}
       />,
     );
     await screen.findAllByTestId('relation-row');

@@ -51,7 +51,7 @@ import {
   MAX_AUTO_ACCEPT_NAME_CHARS,
   MAX_AUTO_ACCEPT_NOTE_CHARS,
 } from '@/lib/limits';
-import { autoAcceptPreviewQuery, autoAcceptRuleQuery } from '@/lib/auto-accept-queries';
+import { autoAcceptPreviewQuery, autoAcceptRuleQuery, meQuery } from '@/lib/auto-accept-queries';
 import { toast } from '@/lib/toast';
 import { useDebounced } from '@/lib/use-debounced';
 
@@ -192,6 +192,30 @@ function nameOfForm(f: FormState, base: AutoAcceptRule | null, taken: readonly s
   );
 }
 
+/**
+ * Why saving makes the caller the rule's deciding person (its acceptances are
+ * recorded under the head revision's author, owner decision 19), as the
+ * table's switch says it: always while the author is no longer an owner
+ * (saving takes the rule over, even unchanged); for another owner's rule
+ * while it is or will be active (a save with changes is authored by the
+ * caller). While the caller is unknown (`GET /me` loading or failed) the
+ * author may be the caller, and the text says so.
+ */
+function takeOverText(
+  base: AutoAcceptRule | null,
+  enabled: boolean,
+  me: string | null,
+): string | null {
+  if (!base) return null;
+  const author = handleName(base.author.handle);
+  const records = 'Ihre Annahmen werden dann als deine Entscheidungen vermerkt.';
+  if (!base.authorIsOwner) {
+    return `${author} ist kein Inhaber mehr; bis jemand die Regel neu speichert, nimmt sie nichts an. Speicherst du sie, übernimmst du sie: ${records}`;
+  }
+  if (base.author.principalId === me || !(base.enabled || enabled)) return null;
+  return `Bisher entscheidet ${author}. ${me === null ? 'Bist du das nicht und speicherst' : 'Speicherst'} du eine Änderung, wirst du die entscheidende Person dieser Regel: ${records}`;
+}
+
 export interface RuleDialogProps {
   project: string;
   /** The rule to edit (its head revision); `null` creates a new rule. */
@@ -241,6 +265,7 @@ function RuleForm({
     placeholderData: keepPreviousData,
   });
   const flags = useNameFlags(project);
+  const me = useQuery(meQuery);
 
   const shownName = nameOfForm(form, base, ruleNames);
   const name = shownName.trim();
@@ -343,6 +368,7 @@ function RuleForm({
     save();
   }
 
+  const takeOver = takeOverText(base, form.enabled, me.data?.principalId ?? null);
   const show412 = conflict !== null;
   const showSaveError = saveError && !(saveError instanceof ApiError && saveError.status === 412);
   const tiers = tiersOf(form.kind);
@@ -541,13 +567,9 @@ function RuleForm({
           )}
         </section>
       </div>
-      {base && !base.authorIsOwner ? (
+      {takeOver ? (
         <Alert data-testid="take-over-hint">
-          <AlertDescription>
-            {handleName(base.author.handle)} ist kein Inhaber mehr; bis jemand die Regel neu
-            speichert, nimmt sie nichts an. Speicherst du sie, übernimmst du sie: Ihre Annahmen
-            werden dann als deine Entscheidungen vermerkt.
-          </AlertDescription>
+          <AlertDescription>{takeOver}</AlertDescription>
         </Alert>
       ) : null}
       {show412 ? (

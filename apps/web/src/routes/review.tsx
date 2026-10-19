@@ -44,8 +44,9 @@ import { splitRef } from '@/lib/refs';
 import {
   RESULT_VIEW_LABELS,
   filterRelations,
-  parseRelationFilters,
+  parseResultViewSearch,
   resultViewOf,
+  shownFor,
   type RelationFilters,
 } from '@/lib/relation-filters';
 import {
@@ -80,9 +81,12 @@ interface ReviewScreenSearch extends QueueFilters, Omit<RelationFilters, 'tier' 
    * Opened from „Offene Fragen“ (a hold's „Jetzt entscheiden“, owner decision 26 Q4): the back
    * link and the end of the list lead back there (UX5). Opened from a result view of
    * „Relationen“ (a row's „Öffnen“, UX9) with its filters (`status`, `tier`, `type`, `model`,
-   * `auto`): J/K walk that list, the back link returns to it, a decision stays on the relation.
+   * `auto`) and rows shown (`shown`): J/K walk that list, the back link returns to it, a
+   * decision stays on the relation.
    */
   from?: 'open-questions' | 'relations';
+  /** The result view's rows shown (`from=relations`), kept for the way back. */
+  shown?: number;
 }
 
 /**
@@ -96,7 +100,7 @@ export const reviewRoute = createRoute({
   path: '/projects/$project/review/$relation',
   validateSearch: (search: Record<string, unknown>): ReviewScreenSearch => ({
     ...(search['from'] === 'relations'
-      ? { ...parseRelationFilters(search), from: 'relations' as const }
+      ? { ...parseResultViewSearch(search), from: 'relations' as const }
       : {
           ...parseQueueFilters(search),
           ...(search['view'] === 'held' ? { view: 'held' as const } : {}),
@@ -287,6 +291,8 @@ function ReviewScreen() {
   // the browser history) starts without it.
   const [cited, setCited] = useState<(FocusTarget & { relationId: string }) | null>(null);
   const evidence = cited?.relationId === relationId ? cited : null;
+  // Where the relation stood in a result view (UX9), for when a decision moves it out.
+  const [place, setPlace] = useState<{ relationId: string; index: number } | null>(null);
 
   const relationQ = useQuery(relationQuery(project, relationId));
   const assertions = useQuery(assertionsQuery(project, relationId));
@@ -300,7 +306,7 @@ function ReviewScreen() {
   const facts = useMemo<Fact[]>(() => [...byModel.values()].flatMap((f) => f.facts), [byModel]);
   const modelKeys = useMemo(() => new Set((models.data ?? []).map((m) => m.key)), [models.data]);
 
-  const { stage, tier, model: modelFilter, status, type, auto } = search;
+  const { stage, tier, model: modelFilter, status, type, auto, shown } = search;
   const filters = useMemo<QueueFilters>(
     () => ({
       ...(stage ? { stage } : {}),
@@ -343,8 +349,26 @@ function ReviewScreen() {
     () => ({ ...filters, ...(held ? { view: 'held' as const } : {}) }),
     [filters, held],
   );
-  const listSearch = results ?? queueSearch;
-  const nav = neighbours(queue, relationId);
+  const listSearch = results ? { ...results, ...(shown ? { shown } : {}) } : queueSearch;
+  const found = neighbours(queue, relationId);
+  // Kept while rendering (React's state from the previous render), whenever its place changes.
+  if (
+    results &&
+    found.index >= 0 &&
+    (place?.relationId !== relationId || place.index !== found.index)
+  ) {
+    setPlace({ relationId, index: found.index });
+  }
+  // A decision moved it out of the result view (accepting one in „Vorgeschlagen“, rejecting
+  // one in „Gilt“): J goes on to the row now at its place, K to the one before.
+  const left = results && found.index < 0 && place?.relationId === relationId ? place : null;
+  const nav = left
+    ? {
+        index: -1,
+        previous: queue[left.index - 1]?.relation ?? null,
+        next: queue[left.index]?.relation ?? null,
+      }
+    : found;
 
   const relation = relationQ.data;
   const from = relation ? splitRef(relation.from) : null;
@@ -438,6 +462,8 @@ function ReviewScreen() {
   const loadError = relationQ.error ?? models.error ?? landscape.error;
   const fromName = relation ? sideName(resolve(relation.from)) : '';
   const toName = relation ? sideName(resolve(relation.to)) : '';
+  // The way back shows the view's rows down to this relation (or its place), so it is in view.
+  const backShown = results ? shownFor(left ? left.index : nav.index, shown) : undefined;
   const back = results
     ? RESULT_VIEW_LABELS[resultViewOf(results)]
     : fromQuestions
@@ -462,7 +488,7 @@ function ReviewScreen() {
           <Link
             to="/projects/$project/relations"
             params={{ project }}
-            search={results}
+            search={{ ...results, ...(backShown ? { shown: backShown } : {}) }}
             data-testid="review-back"
           >
             <ArrowLeftIcon data-icon="inline-start" />

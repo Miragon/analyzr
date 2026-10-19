@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 
 import { PlacementCard } from '../src/components/value-chain/placement-card';
+import { formatDateTime } from '../src/lib/labels';
 import { resolverOf } from '../src/lib/refs';
 import { openQuestion, placement, placementAssertion } from './support/fixtures';
 import { json, renderWithRouter, stubApi } from './support/render';
@@ -102,8 +103,8 @@ describe('placement card (UX6)', () => {
     expect(within(details).getByTestId('placement-tier').textContent).toBe(
       'Grundlage: Gleiche Bedeutung',
     );
-    expect(within(details).getByTestId('placement-proposer').textContent).toMatch(
-      /^Vorgeschlagen von Agent „claude code“ · 17\.10\.2026, \d\d:32$/,
+    expect(within(details).getByTestId('placement-proposer').textContent).toBe(
+      `Vorgeschlagen von Agent „claude code“ · ${formatDateTime('2026-10-17T20:32:00.000Z')}`,
     );
     // the evidence by name
     await waitFor(() =>

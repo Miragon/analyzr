@@ -23,6 +23,8 @@ export interface EnableRequest {
    * authored by the caller, whose decisions the rule's acceptances then are.
    */
   takeOver: boolean;
+  /** The caller is unknown (`GET /me` failed): asked anyway, the author may be the caller. */
+  unsure?: boolean;
 }
 
 /**
@@ -55,11 +57,13 @@ export function EnableDialog({
             <div className="flex flex-col gap-2">
               {request?.takeOver ? (
                 <p data-testid="enable-take-over">
-                  {rule?.authorIsOwner
-                    ? `Bisher entscheidet ${author}. `
-                    : `${author} ist kein Inhaber mehr, deshalb nimmt die Regel bisher nichts an. `}
-                  Du wirst damit die entscheidende Person dieser Regel: Ihre Annahmen werden als
-                  deine Entscheidungen vermerkt.
+                  {!rule?.authorIsOwner
+                    ? `${author} ist kein Inhaber mehr, deshalb nimmt die Regel bisher nichts an. Du wirst`
+                    : request.unsure
+                      ? `Bisher entscheidet ${author}. Bist du das nicht, wirst du`
+                      : `Bisher entscheidet ${author}. Du wirst`}{' '}
+                  damit die entscheidende Person dieser Regel: Ihre Annahmen werden als deine
+                  Entscheidungen vermerkt.
                 </p>
               ) : null}
               {request && request.count > 0 ? (

@@ -19,8 +19,13 @@ import {
 import {
   decidedBy,
   moreFilterCount,
+  narrowsView,
+  parseResultViewSearch,
+  parseShown,
   resultViewOf,
+  shownFor,
   statusOptions,
+  viewFilters,
   type RelationFilters,
 } from '../src/lib/relation-filters';
 import { createAppRouter } from '../src/router';
@@ -52,6 +57,7 @@ function Harness({
   onChange?: (filters: RelationFilters) => void;
 }) {
   const [filters, setFilters] = useState<RelationFilters>(initial);
+  const [shown, setShown] = useState<number>();
   return (
     <RelationsView
       relations={relations}
@@ -61,7 +67,10 @@ function Harness({
       onFiltersChange={(next) => {
         onChange?.(next);
         setFilters(next);
+        setShown(undefined);
       }}
+      shown={shown}
+      onShownChange={setShown}
       renderActions={(r) => <button type="button">Zeigen {r.id}</button>}
     />
   );
@@ -115,6 +124,32 @@ describe('RelationsView', () => {
     expect(within(call).getByText('Payment collection')).toBeTruthy();
     const signal = rows()[3]!;
     expect(within(signal).getByText('End_RechnungsstellungAbgeschlossen')).toBeTruthy();
+    // the name shows in full: no ref `model#Element` behind it on hover (P2)
+    const table = screen.getByRole('table', { name: 'Relationen' });
+    expect(table.querySelectorAll('[title*="#"]')).toHaveLength(0);
+  });
+
+  it('gives the endpoints the freed width; „Grundlage“ and „Status“ wrap their badges instead', () => {
+    render(<Harness />);
+    const table = screen.getByRole('table', { name: 'Relationen' });
+    // Typ, Von, →, Nach, Grundlage, Status, Konfidenz, Entschieden von, Aktion: the endpoints take
+    // the rest; „Grundlage“ and „Status“ as wide as before UX9 (§3.10 item 3)
+    expect([...table.querySelectorAll('col')].map((c) => c.className)).toEqual([
+      'w-28',
+      '',
+      'w-6',
+      '',
+      'w-28',
+      'w-36',
+      'w-20',
+      'w-36',
+      'w-24',
+    ]);
+    const call = rows()[0]!;
+    const tier = within(call).getByText('Eindeutiger Aufruf').closest('td')!;
+    expect(tier.className).toContain('[&_[data-slot=badge]]:whitespace-normal');
+    const status = within(call).getByText('Angenommen').closest('td')!;
+    expect(status.className).toContain('[&_[data-slot=badge]]:whitespace-normal');
   });
 
   it('filters by status and model in the row, tier and type behind „Weitere Filter“, and resets', async () => {
@@ -252,6 +287,24 @@ describe('RelationsView', () => {
     expect(table.textContent).not.toMatch(/agent:|analyzr-relations|claude-|sim-policy/);
   });
 
+  it('hides „Annahmeregel“ in „Abgelehnt“, where no acceptance is in force', async () => {
+    const user = userEvent.setup();
+    const props = {
+      relations: sampleRelations,
+      resolve: sampleResolver,
+      modelKeys: MODEL_KEYS,
+      onFiltersChange: () => undefined,
+      onShownChange: () => undefined,
+      autoRules: [{ id: 'aar_01J9Z3N4X5Q6R7S8T9V0W1X2Y3', name: 'Gleicher Name ab 95 %' }],
+    };
+    const { rerender } = render(<RelationsView {...props} filters={{ status: 'accepted' }} />);
+    await user.click(moreFilters());
+    expect(screen.getByLabelText('Annahmeregel')).toBeTruthy();
+    rerender(<RelationsView {...props} filters={{ status: 'rejected' }} />);
+    expect(screen.getByLabelText('Typ')).toBeTruthy();
+    expect(screen.queryByLabelText('Annahmeregel')).toBeNull();
+  });
+
   it('shows the first 40 rows, then „Weitere 40 anzeigen“, and starts over with another filter', async () => {
     const user = userEvent.setup();
     const many = Array.from({ length: 90 }, (_, i) =>
@@ -284,14 +337,59 @@ describe('result view helpers (UX9)', () => {
     expect(resultViewOf({ status: 'rejected' })).toBe('rejected');
     expect(resultViewOf({ auto: 'any' })).toBe('auto');
     expect(resultViewOf({ auto: 'aar_01J9Z3N4X5Q6R7S8T9V0W1X2Y3' })).toBe('auto');
-    expect(resultViewOf({ auto: 'any', status: 'accepted' })).toBe('all');
+    // a rule chosen in „Gilt“: every acceptance in force is accepted, so the view of the rules
+    expect(resultViewOf({ auto: 'any', status: 'accepted' })).toBe('auto');
+    expect(resultViewOf({ auto: 'aar_01J9Z3N4X5Q6R7S8T9V0W1X2Y3', status: 'accepted' })).toBe(
+      'auto',
+    );
+    // with another status (in „Alle“) nothing matches: no view of its own
+    expect(resultViewOf({ auto: 'any', status: 'rejected' })).toBe('all');
+    expect(resultViewOf({ auto: 'any', status: 'proposed' })).toBe('all');
     expect(resultViewOf({ status: 'proposed' })).toBe('all');
     expect(moreFilterCount({ auto: 'any' })).toBe(0);
+    expect(moreFilterCount({ auto: 'any', status: 'accepted' })).toBe(0);
+    expect(moreFilterCount({ auto: 'aar_01J9Z3N4X5Q6R7S8T9V0W1X2Y3', status: 'accepted' })).toBe(1);
     expect(moreFilterCount({ auto: 'aar_01J9Z3N4X5Q6R7S8T9V0W1X2Y3', tier: 'key' })).toBe(2);
     expect(moreFilterCount({ type: 'call', model: 'a', status: 'held' })).toBe(1);
     // „Angenommen“ and „Abgelehnt“ are views of their own
     expect(statusOptions(undefined)).toEqual(['proposed', 'held']);
     expect(statusOptions('accepted')).toEqual(['accepted', 'proposed', 'held']);
+  });
+
+  it('resets a view to its own filters, and „Gilt“ with a rule to the rules’ view', () => {
+    expect(narrowsView({ status: 'accepted' })).toBe(false);
+    expect(narrowsView({ status: 'accepted', model: 'a' })).toBe(true);
+    expect(narrowsView({ auto: 'any' })).toBe(false);
+    // „Automatisch angenommen“ is accepted anyway: a status kept from „Gilt“ narrows nothing
+    expect(narrowsView({ auto: 'any', status: 'accepted' })).toBe(false);
+    expect(narrowsView({ auto: 'aar_01J9Z3N4X5Q6R7S8T9V0W1X2Y3', status: 'accepted' })).toBe(true);
+    expect(viewFilters(resultViewOf({ auto: 'aar_01J9Z3N4X5Q6R7S8T9V0W1X2Y3' }))).toEqual({
+      auto: 'any',
+    });
+    expect(narrowsView({})).toBe(false);
+    expect(narrowsView({ status: 'held' })).toBe(true);
+  });
+
+  it('keeps the rows shown as a multiple of the page, enough for the relation on the way back', () => {
+    expect(parseShown(80)).toBe(80);
+    expect(parseShown('120')).toBe(120);
+    expect(parseShown(40)).toBe(40);
+    for (const bad of [0, -40, 50, 80.5, '80px', '', null, undefined, Number.POSITIVE_INFINITY]) {
+      expect(parseShown(bad)).toBeUndefined();
+    }
+    expect(parseResultViewSearch({ status: 'accepted', shown: 80, x: 1 })).toEqual({
+      status: 'accepted',
+      shown: 80,
+    });
+    expect(parseResultViewSearch({ shown: 7 })).toEqual({});
+    // the first page holds rows 1 to 40: no `shown`; row 41 needs two pages
+    expect(shownFor(0, undefined)).toBeUndefined();
+    expect(shownFor(39, undefined)).toBeUndefined();
+    expect(shownFor(40, undefined)).toBe(80);
+    expect(shownFor(-1, undefined)).toBeUndefined();
+    // never fewer rows than the view showed
+    expect(shownFor(3, 120)).toBe(120);
+    expect(shownFor(130, 80)).toBe(160);
   });
 
   it('says who decided', () => {
@@ -513,6 +611,59 @@ describe('the result views of „Relationen“ (UX9)', () => {
       model: 'finanzen/prozess-07',
       from: 'relations',
     });
+  });
+
+  it('keeps the rows shown in the URL, through the review screen and back; a filter starts over', async () => {
+    const { router, user } = setupRoute('/projects/demo/relations', nordwind());
+    const listed = () => screen.getAllByTestId('relation-row');
+    await waitFor(() => expect(listed()).toHaveLength(40));
+    await user.click(screen.getByRole('button', { name: 'Weitere 40 anzeigen (60 übrig)' }));
+    await waitFor(() => expect(listed()).toHaveLength(80));
+    expect(router.state.location.search).toEqual({ shown: 80 });
+    // row 60 of „Alle“: its „Öffnen“ carries the rows shown to the review screen …
+    const open = within(listed()[59]!).getByRole('link', { name: /öffnen$/ });
+    expect(
+      Object.fromEntries(new URL(open.getAttribute('href')!, 'http://x').searchParams),
+    ).toEqual({ shown: '80', from: 'relations' });
+    await user.click(open);
+    await waitFor(() =>
+      expect(screen.getByTestId('queue-position').textContent).toBe('60 von 100'),
+    );
+    // … J keeps them, and the way back shows them again, the relation now open among them
+    await user.click(screen.getByRole('button', { name: 'Nächste Relation (J)' }));
+    await waitFor(() =>
+      expect(screen.getByTestId('queue-position').textContent).toBe('61 von 100'),
+    );
+    expect(router.state.location.search).toEqual({ shown: 80, from: 'relations' });
+    const relation = router.state.location.pathname.split('/').at(-1);
+    const back = screen.getByTestId('review-back');
+    expect(back.getAttribute('href')).toBe('/projects/demo/relations?shown=80');
+    await user.click(back);
+    await waitFor(() => expect(listed()).toHaveLength(80));
+    expect(listed().map((r) => r.dataset['relationId'])).toContain(relation);
+    // another filter starts the rows over
+    await user.selectOptions(screen.getByLabelText('Modell'), 'einkauf/prozess-00');
+    await waitFor(() =>
+      expect(router.state.location.search).toEqual({ model: 'einkauf/prozess-00' }),
+    );
+  });
+
+  it('shows the rows down to a relation J reached beyond the first page on the way back', async () => {
+    const { user } = setupRoute('/projects/demo/relations', nordwind());
+    const listed = () => screen.getAllByTestId('relation-row');
+    await waitFor(() => expect(listed()).toHaveLength(40));
+    await user.click(within(listed()[39]!).getByRole('link', { name: /öffnen$/ }));
+    await waitFor(() =>
+      expect(screen.getByTestId('queue-position').textContent).toBe('40 von 100'),
+    );
+    expect(screen.getByTestId('review-back').getAttribute('href')).toBe('/projects/demo/relations');
+    await user.click(screen.getByRole('button', { name: 'Nächste Relation (J)' }));
+    await waitFor(() =>
+      expect(screen.getByTestId('queue-position').textContent).toBe('41 von 100'),
+    );
+    expect(screen.getByTestId('review-back').getAttribute('href')).toBe(
+      '/projects/demo/relations?shown=80',
+    );
   });
 
   it('says what comes next while the project has models but no relation, without views and filters', async () => {

@@ -122,11 +122,13 @@ export type ResultView = Extract<RelationView, 'accepted' | 'rejected' | 'auto' 
 
 /**
  * The result view a filter set is: „Automatisch angenommen“ (any rule or one
- * of them) without a status, „Gilt“ and „Abgelehnt“ by their status, else
- * „Alle“.
+ * of them) without a status or with `accepted` (an acceptance in force is
+ * accepted: a rule chosen in „Gilt“), „Gilt“ and „Abgelehnt“ by their status,
+ * else „Alle“.
  */
 export function resultViewOf(filters: RelationFilters): ResultView {
-  if (filters.auto !== undefined) return filters.status === undefined ? 'auto' : 'all';
+  if (filters.auto !== undefined)
+    return filters.status === undefined || filters.status === 'accepted' ? 'auto' : 'all';
   if (filters.status === 'accepted') return 'accepted';
   if (filters.status === 'rejected') return 'rejected';
   return 'all';
@@ -147,11 +149,56 @@ export function viewFilters(view: ResultView): RelationFilters {
 }
 
 /**
+ * Whether a filter set narrows its result view, so „Filter zurücksetzen“
+ * returns to the view's own filters; under „Automatisch angenommen“ a status
+ * `accepted` (kept from „Gilt“) narrows nothing.
+ */
+export function narrowsView(filters: RelationFilters): boolean {
+  const view = resultViewOf(filters);
+  const { status, ...rest } = filters;
+  return !sameFilters(view === 'auto' && status === 'accepted' ? rest : filters, viewFilters(view));
+}
+
+/**
  * Rows a result view shows at first and adds per „Weitere anzeigen“ (UX9):
  * with one „Öffnen“ per row, the shell, the views and the filters, a page
  * stays within the 60 controls of UX-SIMPLIFICATION.md §7 "UX9".
  */
 export const RELATION_PAGE = 40;
+
+/** A result view's search (UX9): its filters and the rows shown, kept on the way back. */
+export interface ResultViewSearch extends RelationFilters {
+  /** Rows shown after „Weitere anzeigen“: a multiple of {@link RELATION_PAGE}. */
+  shown?: number;
+}
+
+/** `shown` from untrusted search params: a positive multiple of the page, else none. */
+export function parseShown(value: unknown): number | undefined {
+  const n =
+    typeof value === 'number'
+      ? value
+      : typeof value === 'string' && /^\d+$/.test(value)
+        ? Number(value)
+        : Number.NaN;
+  return Number.isSafeInteger(n) && n > 0 && n % RELATION_PAGE === 0 ? n : undefined;
+}
+
+/** Validates a result view's search (TanStack Router `validateSearch`). */
+export function parseResultViewSearch(search: Record<string, unknown>): ResultViewSearch {
+  const shown = parseShown(search['shown']);
+  return { ...parseRelationFilters(search), ...(shown === undefined ? {} : { shown }) };
+}
+
+/**
+ * `shown` for the way back to a result view with row `index` (0-based, -1
+ * for none) in view: at least `shown`, `undefined` while the first page
+ * holds it.
+ */
+export function shownFor(index: number, shown: number | undefined): number | undefined {
+  const pages = Math.floor(Math.max(index, 0) / RELATION_PAGE) + 1;
+  const rows = Math.max(shown ?? RELATION_PAGE, pages * RELATION_PAGE);
+  return rows > RELATION_PAGE ? rows : undefined;
+}
 
 /** The way back to a result view from the review screen (UX9). */
 export const RESULT_VIEW_LABELS: Record<ResultView, string> = {
@@ -178,7 +225,7 @@ export function statusOptions(current: RelationStatus | undefined): RelationStat
  */
 export function moreFilterCount(filters: RelationFilters): number {
   const auto =
-    filters.auto !== undefined && !(filters.auto === 'any' && filters.status === undefined);
+    filters.auto !== undefined && !(filters.auto === 'any' && resultViewOf(filters) === 'auto');
   return [filters.tier !== undefined, filters.type !== undefined, auto].filter(Boolean).length;
 }
 

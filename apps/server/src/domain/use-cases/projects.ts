@@ -4,6 +4,7 @@ import {
   type PageQuery,
   type Project,
   type ProjectPage,
+  type ProjectId,
   type ProjectSummary,
 } from '@analyzr/contracts';
 
@@ -31,11 +32,59 @@ import { CandidateCache, loadOpenQuestionInput } from './open-questions.ts';
 const waitsForDecision = (item: Pick<RelationRecord, 'status' | 'endpointState'>): boolean =>
   item.status === 'proposed' || (item.status === 'accepted' && item.endpointState !== 'ok');
 
+/** Projects whose summary a use-case instance keeps (least recently used first out). */
+const SUMMARY_MEMO_PROJECTS = 256;
+
+/**
+ * The project summaries, memoized per project on its `lastSeq` and the
+ * procedures claims name now: every write appends an event, whose `seq`
+ * advances `lastSeq` in the writing transaction (CONCEPT §2; the landscape
+ * ETag `"s<seq>"` rests on the same), the summary reads one REPEATABLE READ
+ * snapshot, and the open questions' read model reads no clock, so a hit is
+ * exact. An unchanged project then costs the policy and the project read;
+ * the projects list builds a project's read model once per change, not once
+ * per visit, so its rows no longer push the candidates of the project in
+ * work out of {@link CandidateCache}.
+ */
+class SummaryMemo {
+  private readonly entries = new Map<ProjectId, { key: string; summary: ProjectSummary }>();
+  private readonly size: number;
+
+  constructor(size = SUMMARY_MEMO_PROJECTS) {
+    this.size = size;
+  }
+
+  get(projectId: ProjectId, key: string): ProjectSummary | undefined {
+    const hit = this.entries.get(projectId);
+    if (hit?.key !== key) return undefined;
+    this.entries.delete(projectId);
+    this.entries.set(projectId, hit);
+    return { ...hit.summary };
+  }
+
+  set(projectId: ProjectId, key: string, summary: ProjectSummary): void {
+    this.entries.delete(projectId);
+    this.entries.set(projectId, { key, summary: { ...summary } });
+    while (this.entries.size > this.size) {
+      const oldest = this.entries.keys().next().value;
+      if (oldest === undefined) break;
+      this.entries.delete(oldest);
+    }
+  }
+}
+
 /**
  * @param candidates the whole-project candidates, memoized; shared with the
  *   open questions' use cases, so the summary and the list pay them once
  */
 export function projectUseCases(deps: UseCaseDeps, candidates = new CandidateCache()) {
+  const summaries = new SummaryMemo();
+  /** The memo key of a project state: its `lastSeq` and both procedures (tests play releases). */
+  const summaryKey = (lastSeq: number): string => {
+    const relations = deps.expectedProcedure();
+    const placements = deps.expectedPlacementProcedure();
+    return `${lastSeq} ${relations.id}@${relations.version} ${placements.id}@${placements.version}`;
+  };
   return {
     /**
      * Any user may create a project and owns it (CONCEPT §6). Agent tokens
@@ -105,25 +154,32 @@ export function projectUseCases(deps: UseCaseDeps, candidates = new CandidateCac
      * read model, whose whole-project candidates are memoized on the head
      * facts: the relations that are not obsolete and the value chain's
      * placements are its input, so the summary reads nothing the open
-     * questions' list does not read as well.
+     * questions' list does not read as well. The summary itself is memoized
+     * per project state ({@link SummaryMemo}), after the policy check: an
+     * unchanged project answers from the memo.
      *
      * @throws {DomainError} policy errors (`not-found` for an unknown or foreign project)
      */
     async getProjectSummary(actor: Actor, projectRef: string): Promise<ProjectSummary> {
       return deps.store.read(async (tx) => {
         const { project } = await policy.require(tx, actor, 'read', projectRef);
+        const key = summaryKey(project.lastSeq);
+        const memoized = summaries.get(project.id, key);
+        if (memoized) return memoized;
         const input = await loadOpenQuestionInput(tx, deps, project.id, candidates);
         const { items } = buildOpenQuestions(input);
         const [latest] = await tx.events.list(project.id, {
           afterSeq: Math.max(0, project.lastSeq - 1),
           limit: 1,
         });
-        return {
+        const summary: ProjectSummary = {
           lastEventAt: (latest?.at ?? project.createdAt).toISOString(),
           reviewItems: input.relations.filter(waitsForDecision).length,
           openPlacements: input.chain?.placements.filter(waitsForDecision).length ?? 0,
           ask: groupTotals(filterOpenQuestions(items, { state: 'open' })).ask,
         };
+        summaries.set(project.id, key, summary);
+        return summary;
       });
     },
   };

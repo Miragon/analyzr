@@ -2,13 +2,14 @@ import type { ModelStage } from '@analyzr/client';
 import { useQuery } from '@tanstack/react-query';
 import { Link, createRoute } from '@tanstack/react-router';
 import { PlugIcon, SearchIcon, SearchXIcon, UploadIcon } from 'lucide-react';
-import { useId, useMemo } from 'react';
+import { useMemo } from 'react';
 
 import { RetryAgent } from '@/components/agent-start';
 import { ErrorText } from '@/components/error-text';
 import { ExportHub } from '@/components/export-hub';
 import { ModelsTable } from '@/components/models-table';
 import { NextStepBlock } from '@/components/next-step-block';
+import { OpenPointsCell } from '@/components/open-points-cell';
 import { MiragonMark } from '@/components/page-shell';
 import { StageChips } from '@/components/review/stage-bar';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -28,7 +29,7 @@ import { matchesName } from '@/lib/generic-names';
 import { STAGE_ORDER, formatTimeOrDay } from '@/lib/labels';
 import { nextStep } from '@/lib/next-step';
 import { useProjectPermissions } from '@/lib/permissions';
-import { openPointsText, useProjectCounts, type OpenPoints } from '@/lib/project-counts';
+import { useProjectCounts } from '@/lib/project-counts';
 import { usePipelineState } from '@/lib/pipeline-state';
 import { amendmentsQuery, landscapeQuery, modelsQuery } from '@/lib/queries';
 import { reviewQueue, stageCounts } from '@/lib/review';
@@ -287,43 +288,6 @@ function OverviewTab() {
         )}
       </div>
     </div>
-  );
-}
-
-/**
- * „Offene Punkte“ of a model (UX-SIMPLIFICATION.md §2.5): the number as
- * text, since no one list holds all of a model's points (P7: a number that
- * opens a list equals it); the model's name leads to the model. Its split by
- * where to act („6 Relationen · 1 Platzierung · 1 Frage“) is repeated in a
- * tooltip on a focusable trigger (§3.13 item 6), until UX3 shows it in the
- * model view's tabs. „–“ for none.
- */
-function OpenPointsCell({ points }: { points: OpenPoints | null }) {
-  const id = useId();
-  if (points === null)
-    return (
-      <Skeleton className="h-4 w-6" aria-label="Wird geladen" data-testid="open-points-loading" />
-    );
-  if (points.total === 0) return <span className="text-muted-foreground">–</span>;
-  return (
-    <span className="group/points relative inline-flex">
-      <span
-        tabIndex={0}
-        aria-describedby={id}
-        className="cursor-default rounded-sm tabular-nums underline decoration-dotted underline-offset-4 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
-      >
-        <span data-testid="open-points">{points.total}</span>
-        <span className="sr-only"> {points.total === 1 ? 'offener Punkt' : 'offene Punkte'}</span>
-      </span>
-      <span
-        role="tooltip"
-        id={id}
-        className="pointer-events-none absolute top-1/2 right-full z-20 mr-2 hidden -translate-y-1/2 rounded-md border bg-popover px-2 py-1 text-xs whitespace-nowrap text-popover-foreground shadow-md group-focus-within/points:block group-hover/points:block"
-        data-testid="open-points-split"
-      >
-        {openPointsText(points)}
-      </span>
-    </span>
   );
 }
 
