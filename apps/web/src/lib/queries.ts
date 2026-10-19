@@ -62,6 +62,7 @@ import { revisionOfEtag } from './value-chain';
  */
 export const keys = {
   health: ['health'] as const,
+  me: ['me'] as const,
   projects: ['projects'] as const,
   project: (project: string) => ['project', project] as const,
   models: (project: string) => ['project', project, 'models'] as const,

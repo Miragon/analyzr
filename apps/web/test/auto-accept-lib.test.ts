@@ -2,26 +2,40 @@ import { describe, expect, it } from 'vitest';
 
 import {
   autoAcceptLabel,
-  formatDecimal,
   inForceByAgent,
   indexLedger,
   matchesAuto,
   parseAutoFilter,
   revocationSummary,
 } from '../src/lib/auto-accept';
+import { countNameFlags } from '../src/lib/auto-accept-flags';
+import { subjectLabel } from '../src/lib/auto-accept-names';
 import {
+  changingCurve,
   criteriaOf,
   draftOf,
   formatPercent,
   formatThreshold,
   historyText,
+  nameFlagsText,
   narrowingOf,
+  openMatchesText,
   parsePercent,
   percentInput,
+  suggestedRuleName,
   tiersOf,
 } from '../src/lib/auto-accept-rules';
+import { nameUsage } from '../src/lib/generic-names';
+import { buildRefIndex, resolverOf } from '../src/lib/refs';
 import { filterRelations, parseRelationFilters, sameFilters } from '../src/lib/relation-filters';
-import { autoAcceptPreview, autoAcceptRule, ledgerEntry, relation } from './support/fixtures';
+import {
+  autoAcceptPreview,
+  autoAcceptRule,
+  fact,
+  ledgerEntry,
+  relation,
+  sampleResolver,
+} from './support/fixtures';
 
 const RULE_A = 'aar_01J9Z3N4X5Q6R7S8T9V0W1X2Y3';
 const RULE_B = 'aar_01J9Z3N4X5Q6R7S8T9V0W1X2Y4';
@@ -98,7 +112,6 @@ describe('ledger join (owner decision 19)', () => {
 describe('texts and numbers in German', () => {
   it('marks, decimals and percentages', () => {
     expect(autoAcceptLabel('Schlüssel')).toBe('Automatisch angenommen – Regel „Schlüssel“');
-    expect(formatDecimal(0.93)).toBe('0,93');
     expect(formatPercent(0.9)).toBe('90 %');
     expect(formatPercent(0.925)).toBe('92,5 %');
     expect(formatPercent(14 / 15)).toBe('93,3 %');
@@ -138,7 +151,7 @@ describe('texts and numbers in German', () => {
         agentHandle: 'agent:sim',
         agentRevoked: true,
       }),
-    ).toEqual(['Typ Nachricht', 'Agent agent:sim (widerrufen)', 'LLM-Modell m1', 'auch Ad-hoc']);
+    ).toEqual(['Typ Nachricht', 'Agent sim (widerrufen)', 'LLM-Modell m1', 'auch Ad-hoc']);
     const rule = autoAcceptRule({ id: RULE_A, relationType: 'call', enabled: true });
     expect(criteriaOf(draftOf(rule))).toEqual({
       kind: 'relation',
@@ -171,6 +184,109 @@ describe('texts and numbers in German', () => {
       }),
     ).toBe(
       '3 automatische Annahmen: 2 gehen zurück in die Prüfung (ein Agentenvorschlag ist noch offen); 1 wird veraltet und von den Agenten neu beurteilt (kein offener Vorschlag mehr). 2 wurden inzwischen von einem Menschen entschieden und bleiben unverändert. 1 war schon widerrufen.',
+    );
+  });
+});
+
+describe('the rules page’s helpers (UX9)', () => {
+  it('suggests a rule name from the criteria, „(2)“ … while another rule has it', () => {
+    const key = { kind: 'relation' as const, tier: 'key' as const, relationType: null };
+    expect(suggestedRuleName({ ...key, threshold: '95 %' }, [])).toBe('Gleicher Name ab 95 %');
+    expect(suggestedRuleName({ ...key, relationType: 'signal', threshold: '90 %' }, [])).toBe(
+      'Signal: Gleicher Name ab 90 %',
+    );
+    expect(
+      suggestedRuleName(
+        { kind: 'placement', tier: 'semantic', relationType: null, threshold: '80 %' },
+        [],
+      ),
+    ).toBe('Platzierung: Gleiche Bedeutung ab 80 %');
+    // names are unique ignoring case
+    expect(
+      suggestedRuleName({ ...key, threshold: '95 %' }, [
+        'GLEICHER NAME AB 95 %',
+        'Gleicher Name ab 95 % (2)',
+      ]),
+    ).toBe('Gleicher Name ab 95 % (3)');
+  });
+
+  it('keeps the curve rows whose numbers change, and the rule’s own', () => {
+    const curve = autoAcceptPreview().curve;
+    expect(changingCurve(curve, 0.95).map((c) => c.minConfidence)).toEqual([0.5, 0.95]);
+    expect(changingCurve(curve, 0.8).map((c) => c.minConfidence)).toEqual([0.5, 0.8, 0.95]);
+    expect(changingCurve(curve, null).map((c) => c.minConfidence)).toEqual([0.5, 0.95]);
+  });
+
+  it('the open matches and the flags count', () => {
+    expect(openMatchesText(1)).toBe('1 offener Vorschlag passt');
+    expect(openMatchesText(2)).toBe('2 offene Vorschläge passen');
+    expect(nameFlagsText(3, false)).toBe(
+      'davon 3 mit allgemeinem oder mehrfach genutztem Namen (in der Sammelannahme markiert)',
+    );
+    expect(nameFlagsText(3, true)).toContain('davon mindestens 3 mit');
+  });
+
+  it('names a subject by its processes, element and step, never by ref', () => {
+    const steps = (id: string) => (id === 'step-a' ? 'Auftrag abwickeln' : id);
+    expect(subjectLabel(ledgerEntry({ id: 'rel_01A' }), sampleResolver, steps)).toEqual({
+      title: 'Auftragsabwicklung → Rechnungsstellung',
+      meta: 'Nachricht · Ware versandbereit',
+    });
+    const placed = {
+      kind: 'placement' as const,
+      type: null,
+      from: null,
+      to: null,
+      process: 'vertrieb/auftragsabwicklung#Process_Auftragsabwicklung',
+      step: 'step-a',
+    };
+    expect(subjectLabel(placed, sampleResolver, steps)).toEqual({
+      title: 'Auftragsabwicklung → Auftrag abwickeln',
+      meta: 'Platzierung',
+    });
+    expect(subjectLabel({ ...placed, step: '@outside' }, sampleResolver, steps).title).toBe(
+      'Auftragsabwicklung → Außerhalb der Kette',
+    );
+  });
+
+  it('counts the items with a generic or shared name, as the bulk accept flags them', () => {
+    const facts = [
+      ['a/angebot', 'Send_Antwort', 'msg_throw', 'P_a'],
+      ['b/anfrage', 'Catch_Antwort', 'msg_catch', 'P_b'],
+      ['c/ticket', 'Catch_Antwort', 'msg_catch', 'P_c'],
+      ['d/auftrag', 'Send_Rechnung', 'msg_throw', 'P_d'],
+      ['e/debitoren', 'Catch_Rechnung', 'msg_catch', 'P_e'],
+    ].map(([modelKey, elementId, kind, processId]) =>
+      fact({
+        modelKey: modelKey!,
+        elementId: elementId!,
+        kind: kind as 'msg_throw' | 'msg_catch',
+        processId: processId!,
+        label: elementId!.endsWith('Antwort') ? 'Antwort' : 'Rechnung gestellt',
+        attrs: { messageName: elementId!.endsWith('Antwort') ? 'Antwort' : 'RechnungGestellt' },
+      }),
+    );
+    const resolve = resolverOf(buildRefIndex(facts, []));
+    const antwort = relation({
+      id: 'rel_01ANTWORT',
+      from: 'a/angebot#Send_Antwort',
+      to: 'b/anfrage#Catch_Antwort',
+      attrs: { messageName: 'Antwort' },
+    });
+    const item = (id: string, from: string, to: string) => ({
+      id,
+      kind: 'relation' as const,
+      type: 'message' as const,
+      from,
+      to,
+    });
+    const items = [
+      item(antwort.id, antwort.from, antwort.to),
+      item('rel_01RECHNUNG', 'd/auftrag#Send_Rechnung', 'e/debitoren#Catch_Rechnung'),
+      { ...item('plc_01X', '', ''), kind: 'placement' as const, type: null },
+    ];
+    expect(countNameFlags(items, new Map([[antwort.id, antwort]]), resolve, nameUsage(facts))).toBe(
+      1,
     );
   });
 });

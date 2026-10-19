@@ -20,11 +20,6 @@ export function autoAcceptLabel(ruleName: string): string {
   return `Automatisch angenommen – Regel „${ruleName}“`;
 }
 
-/** `0.93` → `0,93` (a confidence as agents send it). */
-export function formatDecimal(value: number): string {
-  return value.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-
 // ------------------------------------------------------------- ledger join
 
 /** What the history marks on one assertion of a relation or placement. */
@@ -115,11 +110,16 @@ export function ledgerRules(
     .sort((a, b) => a.name.localeCompare(b.name, 'de'));
 }
 
+/** An agent whose proposals triggered acceptances in force, and how many. */
+export interface InForceAgent {
+  principalId: string;
+  handle: string;
+  count: number;
+}
+
 /** The agents whose proposals triggered acceptances still in force (per-agent revoke). */
-export function inForceAgents(
-  index: AutoAcceptIndex,
-): { principalId: string; handle: string; count: number }[] {
-  const out = new Map<string, { principalId: string; handle: string; count: number }>();
+export function inForceAgents(index: AutoAcceptIndex): InForceAgent[] {
+  const out = new Map<string, InForceAgent>();
   for (const e of index.inForce.values()) {
     const a = out.get(e.agent.principalId) ?? { ...e.agent, count: 0 };
     a.count += 1;

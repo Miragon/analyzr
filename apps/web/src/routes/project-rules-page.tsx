@@ -1,12 +1,12 @@
 import type { AutoAcceptRule } from '@analyzr/client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { PlusIcon, WandSparklesIcon } from 'lucide-react';
+import { ChevronDownIcon, PlusIcon, Undo2Icon, WandSparklesIcon } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 import { ErrorText } from '@/components/error-text';
-import { AgentRevoke } from '@/components/rules/agent-revoke';
+import { LightPopover, MENU_ITEM_CLASS } from '@/components/light-popover';
+import { AgentRevokeDialog } from '@/components/rules/agent-revoke';
 import { ApplyDialog } from '@/components/rules/apply-dialog';
-import { PreviewDialog } from '@/components/rules/preview-dialog';
 import { RevokeDialog } from '@/components/rules/revoke-dialog';
 import { RuleDialog, type RuleDraft } from '@/components/rules/rule-dialog';
 import { RuleHistoryDialog } from '@/components/rules/rule-history';
@@ -35,28 +35,68 @@ import {
 } from '@/components/ui/empty';
 import { Skeleton } from '@/components/ui/skeleton';
 
+import { inForceAgents } from '@/lib/auto-accept';
 import { useAutoAcceptIndex } from '@/lib/auto-accept-actions';
+import { OPEN_PROPOSALS_HINT } from '@/lib/auto-accept-rules';
 import { useProjectPermissions } from '@/lib/permissions';
 import { agentTokensQuery, autoAcceptRulesQuery, keys, projectQuery } from '@/lib/queries';
-import { autoAcceptApplyDryRunQuery } from '@/lib/auto-accept-queries';
+import { autoAcceptApplyDryRunQuery, meQuery } from '@/lib/auto-accept-queries';
 
 import { projectRulesRoute } from './project-rules';
 
 type Open =
   | { kind: 'create'; draft?: RuleDraft }
-  | { kind: 'edit' | 'preview' | 'apply' | 'revoke' | 'history'; rule: AutoAcceptRule }
+  | { kind: 'edit' | 'apply' | 'revoke' | 'history'; rule: AutoAcceptRule }
   | { kind: 'offer-apply'; rule: AutoAcceptRule; count: number }
+  | { kind: 'agent-revoke' }
   | null;
 
-/** „Gleicher Name ab 100 %“: the rule a bulk accept of the key tier offers (UX5). */
-const KEY_RULE_DRAFT: RuleDraft = { name: 'Gleicher Name ab 100 %', tier: 'key', percent: '100' };
+/** „Gleicher Name ab 100 %“ (its name follows the criteria): the rule a bulk accept of the key tier offers (UX5). */
+const KEY_RULE_DRAFT: RuleDraft = { tier: 'key', percent: '100' };
+
+/** The page's „Mehr“ (UX9): actions across rules, here „Nach Agent widerrufen…“. */
+function PageMenu({ onAgentRevoke }: { onAgentRevoke: () => void }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <LightPopover
+      open={open}
+      onOpenChange={setOpen}
+      role="menu"
+      label="Weitere Aktionen"
+      trigger={(props) => (
+        <Button variant="outline" data-testid="rules-more" {...props}>
+          Mehr
+          <ChevronDownIcon data-icon="inline-end" />
+        </Button>
+      )}
+    >
+      <button
+        type="button"
+        role="menuitem"
+        className={MENU_ITEM_CLASS}
+        onClick={() => {
+          setOpen(false);
+          onAgentRevoke();
+        }}
+        data-testid="agent-revoke-open"
+      >
+        <Undo2Icon aria-hidden />
+        Nach Agent widerrufen…
+      </button>
+    </LightPopover>
+  );
+}
 
 /**
- * The tab „Regeln“ (owner decision 19): the built-in system rule of decision
- * 9, the project's auto-accept rules with their numbers and actions (edit
- * with the live preview, enable and disable, apply to the open proposals,
- * revoke, the revisions), and revoking one agent's acceptances across rules.
- * Owners only; agents never see rules.
+ * „Annahmeregeln“ (owner decision 19; UX-SIMPLIFICATION.md §3.11 items 3–7):
+ * the safeguard said once, the built-in system rule of decision 9 in one
+ * line, the project's auto-accept rules (a row: the „Aktiv“ switch,
+ * „Bearbeiten“ with the live preview, „Mehr“ with „Verlauf“ and
+ * „Widerrufen…“; an active rule's open matches as a hint that opens the
+ * apply dialog), and in the header's „Mehr“, while acceptances are in
+ * force, revoking one agent's acceptances across rules. „Neue Regel“ only
+ * beside rules: the empty page has „Erste Regel anlegen“. Owners only;
+ * agents never see rules.
  */
 export function RulesPage() {
   const { project } = projectRulesRoute.useParams();
@@ -66,7 +106,9 @@ export function RulesPage() {
   const owner = can.isOwner;
   const rules = useQuery({ ...autoAcceptRulesQuery(project), enabled: owner });
   const tokens = useQuery({ ...agentTokensQuery(project), enabled: owner });
+  const me = useQuery({ ...meQuery, enabled: owner });
   const autoIndex = useAutoAcceptIndex(project);
+  const agents = inForceAgents(autoIndex);
   const search = projectRulesRoute.useSearch();
   const navigate = projectRulesRoute.useNavigate();
   // `?new=key` (after a bulk accept of „Gleicher Name“): the new rule prefilled, the URL cleaned.
@@ -85,7 +127,7 @@ export function RulesPage() {
   const reload = () =>
     void queryClient.invalidateQueries({ queryKey: keys.autoAcceptRules(project) });
 
-  /** After saving an enabled rule: offer to apply it when open proposals already match. */
+  /** After saving an enabled rule in its dialog: offer to apply it when open proposals already match. */
   async function offerApply(rule: AutoAcceptRule) {
     if (!rule.enabled || !rule.authorIsOwner) return;
     try {
@@ -94,7 +136,7 @@ export function RulesPage() {
       );
       if (dry.count > 0) setOpen({ kind: 'offer-apply', rule, count: dry.count });
     } catch {
-      // The offer is a convenience: „Auf offene Vorschläge anwenden…“ stays in the table.
+      // The offer is a convenience: the row's hint „… passen – ansehen …“ shows them too.
     }
   }
 
@@ -121,25 +163,33 @@ export function RulesPage() {
   }
   if (!rules.data) return <Skeleton className="h-40 w-full" />;
   const list = rules.data.items;
+  const ruleOpen = open && 'rule' in open ? open.rule : null;
 
   return (
     <div className="flex flex-col gap-5" data-testid="rules-page">
-      <SystemRuleCard project={project} system={rules.data.system} />
-      <div className="flex flex-wrap items-end justify-between gap-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex max-w-3xl flex-col gap-1">
           <h2 className="text-lg font-semibold">Annahmeregeln</h2>
-          <p className="text-sm text-muted-foreground">
-            Bis zu einer Konfidenz, die du festlegst, nimmt analyzr neue Agentenvorschläge selbst an
-            – als deine Entscheidung, mit Regel und Revision vermerkt. Agenten sehen keine Regeln.
-            Nie angenommen wird bei einer Frage, einem Einwand, einer Vormerkung oder einer
-            Entscheidung eines Menschen.
+          <p className="text-sm text-muted-foreground" data-testid="rules-safeguard">
+            analyzr nimmt neue Agentenvorschläge ab deiner Konfidenz selbst an – nie bei einer
+            offenen Frage, einem Einwand oder wenn du schon entschieden hast.
           </p>
         </div>
-        <Button onClick={() => setOpen({ kind: 'create' })} data-testid="new-rule">
-          <PlusIcon data-icon="inline-start" />
-          Neue Regel
-        </Button>
+        {list.length > 0 || agents.length > 0 ? (
+          <div className="flex items-center gap-2">
+            {list.length > 0 ? (
+              <Button onClick={() => setOpen({ kind: 'create' })} data-testid="new-rule">
+                <PlusIcon data-icon="inline-start" />
+                Neue Regel
+              </Button>
+            ) : null}
+            {agents.length > 0 ? (
+              <PageMenu onAgentRevoke={() => setOpen({ kind: 'agent-revoke' })} />
+            ) : null}
+          </div>
+        ) : null}
       </div>
+      <SystemRuleCard project={project} system={rules.data.system} />
       {list.length === 0 ? (
         <Empty className="border bg-card" data-testid="rules-empty">
           <EmptyHeader>
@@ -150,7 +200,7 @@ export function RulesPage() {
             <EmptyDescription>Ohne Regeln entscheidest du jeden Vorschlag selbst.</EmptyDescription>
           </EmptyHeader>
           <EmptyContent>
-            <Button variant="outline" onClick={() => setOpen({ kind: 'create' })}>
+            <Button onClick={() => setOpen({ kind: 'create' })} data-testid="new-rule">
               <PlusIcon data-icon="inline-start" />
               Erste Regel anlegen
             </Button>
@@ -160,54 +210,55 @@ export function RulesPage() {
         <RuleTable
           project={project}
           rules={list}
+          me={me.data?.principalId ?? null}
           onEdit={(rule) => setOpen({ kind: 'edit', rule })}
-          onPreview={(rule) => setOpen({ kind: 'preview', rule })}
           onApply={(rule) => setOpen({ kind: 'apply', rule })}
           onRevoke={(rule) => setOpen({ kind: 'revoke', rule })}
           onHistory={(rule) => setOpen({ kind: 'history', rule })}
-          onSaved={(rule) => void offerApply(rule)}
           onReload={reload}
         />
       )}
-      <AgentRevoke project={project} index={autoIndex} />
 
       <RuleDialog
         project={project}
         rule={open?.kind === 'edit' ? open.rule : null}
         draft={open?.kind === 'create' ? open.draft : undefined}
+        ruleNames={list.map((r) => r.name)}
         tokens={tokens.data ?? []}
         open={open?.kind === 'create' || open?.kind === 'edit'}
         onOpenChange={closer('create', 'edit')}
         onSaved={(rule) => void offerApply(rule)}
       />
-      {open && open.kind !== 'create' ? (
+      {ruleOpen ? (
         <>
-          <PreviewDialog
-            project={project}
-            rule={open.rule}
-            open={open.kind === 'preview'}
-            onOpenChange={closer('preview')}
-          />
           <ApplyDialog
             project={project}
-            rule={open.rule}
-            open={open.kind === 'apply'}
+            rule={ruleOpen}
+            open={open?.kind === 'apply'}
             onOpenChange={closer('apply')}
           />
           <RevokeDialog
             project={project}
-            selection={{ ruleId: open.rule.id }}
-            title={`Annahmen der Regel „${open.rule.name}“ widerrufen`}
-            open={open.kind === 'revoke'}
+            selection={{ ruleId: ruleOpen.id }}
+            title={`Annahmen der Regel „${ruleOpen.name}“ widerrufen`}
+            open={open?.kind === 'revoke'}
             onOpenChange={closer('revoke')}
           />
           <RuleHistoryDialog
             project={project}
-            rule={open.rule}
-            open={open.kind === 'history'}
+            rule={ruleOpen}
+            open={open?.kind === 'history'}
             onOpenChange={closer('history')}
           />
         </>
+      ) : null}
+      {agents.length > 0 ? (
+        <AgentRevokeDialog
+          project={project}
+          agents={agents}
+          open={open?.kind === 'agent-revoke'}
+          onOpenChange={closer('agent-revoke')}
+        />
       ) : null}
       <AlertDialog open={open?.kind === 'offer-apply'} onOpenChange={closer('offer-apply')}>
         <AlertDialogContent data-testid="offer-apply">
@@ -219,10 +270,7 @@ export function RulesPage() {
                   : `${open.count} offene Vorschläge erfüllen die Regel bereits – jetzt anwenden?`
                 : ''}
             </AlertDialogTitle>
-            <AlertDialogDescription>
-              Regeln wirken nur auf neue Vorschläge. Offene nimmst du nur an, wenn du sie
-              ausdrücklich anwendest; vorher siehst du die Liste.
-            </AlertDialogDescription>
+            <AlertDialogDescription>{OPEN_PROPOSALS_HINT}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Später</AlertDialogCancel>

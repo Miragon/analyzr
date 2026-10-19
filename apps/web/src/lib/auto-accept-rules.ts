@@ -1,6 +1,7 @@
 import type {
   AutoAcceptBlockReason,
   AutoAcceptCriteria,
+  AutoAcceptCurvePoint,
   AutoAcceptKind,
   AutoAcceptLedgerState,
   AutoAcceptPreview,
@@ -10,7 +11,7 @@ import type {
   AutoAcceptTier,
 } from '@analyzr/client';
 
-import { RELATION_TYPES, TIERS } from './labels';
+import { RELATION_TYPES, TIERS, handleName } from './labels';
 import { AUTO_ACCEPT_TIERS, MIN_AUTO_ACCEPT_CONFIDENCE } from './limits';
 
 /**
@@ -115,7 +116,7 @@ export function narrowingOf(
   const out: string[] = [];
   if (rule.relationType) out.push(`Typ ${relationTypeLabel(rule.relationType)}`);
   if (rule.agentHandle)
-    out.push(`Agent ${rule.agentHandle}${rule.agentRevoked ? ' (widerrufen)' : ''}`);
+    out.push(`Agent ${handleName(rule.agentHandle)}${rule.agentRevoked ? ' (widerrufen)' : ''}`);
   if (rule.llmModel) out.push(`LLM-Modell ${rule.llmModel}`);
   if (rule.includeAdHoc) out.push('auch Ad-hoc');
   return out;
@@ -172,7 +173,9 @@ export function historyText(h: AutoAcceptPreview['history']): string {
  */
 export function revisionChanges(from: AutoAcceptRule, to: AutoAcceptRule): string[] {
   const agent = (r: AutoAcceptRule) =>
-    r.agentPrincipalId === null ? 'alle Agenten' : (r.agent?.handle ?? r.agentPrincipalId);
+    r.agentPrincipalId === null
+      ? 'alle Agenten'
+      : handleName(r.agent?.handle ?? r.agentPrincipalId);
   const out: string[] = [];
   const diff = (label: string, a: string, b: string) => {
     if (a !== b) out.push(`${label}: ${a} → ${b}`);
@@ -192,3 +195,82 @@ export function revisionChanges(from: AutoAcceptRule, to: AutoAcceptRule): strin
   diff('Notiz', from.note ? `„${from.note}“` : 'keine', to.note ? `„${to.note}“` : 'keine');
   return out;
 }
+
+// ------------------------------------------------------------------- UX9
+
+/**
+ * A new rule's name from its criteria (UX-SIMPLIFICATION.md §3.11 item 4,
+ * P4): „Gleicher Name ab 95 %“, with the type or the kind in front where the
+ * criteria name one („Nachricht: …“, „Platzierung: …“), and „(2)“, „(3)“ …
+ * while another rule of the project has the name (names are unique ignoring
+ * case). `threshold` is the minimum confidence as the field shows it („95 %“).
+ */
+export function suggestedRuleName(
+  criteria: {
+    kind: AutoAcceptKind;
+    tier: AutoAcceptTier;
+    relationType: AutoAcceptRelationType | null;
+    threshold: string;
+  },
+  taken: readonly string[],
+): string {
+  const prefix =
+    criteria.kind === 'placement'
+      ? AUTO_ACCEPT_KINDS.placement.one
+      : criteria.relationType
+        ? relationTypeLabel(criteria.relationType)
+        : null;
+  const base = `${prefix ? `${prefix}: ` : ''}${tierLabel(criteria.tier)} ab ${criteria.threshold}`;
+  const used = new Set(taken.map((name) => name.trim().toLowerCase()));
+  if (!used.has(base.toLowerCase())) return base;
+  for (let n = 2; ; n += 1) {
+    const candidate = `${base} (${n})`;
+    if (!used.has(candidate.toLowerCase())) return candidate;
+  }
+}
+
+/** The numbers a row of the preview's curve shows. */
+function curveNumbers(c: AutoAcceptCurvePoint): string {
+  return [c.wouldAccept, c.accepted, c.rejected + c.corrected, c.precision, c.open].join('|');
+}
+
+/**
+ * „Nach Konfidenz aufschlüsseln“ (UX9): only the rows whose numbers change,
+ * each the lowest threshold of a run of equal numbers, plus the rule's own
+ * threshold (marked) where the curve has it.
+ */
+export function changingCurve(
+  curve: readonly AutoAcceptCurvePoint[],
+  minConfidence: number | null,
+): AutoAcceptCurvePoint[] {
+  const out: AutoAcceptCurvePoint[] = [];
+  let previous: string | null = null;
+  for (const c of curve) {
+    const numbers = curveNumbers(c);
+    const own = minConfidence !== null && Math.abs(c.minConfidence - minConfidence) < 1e-9;
+    if (numbers !== previous || own) out.push(c);
+    previous = numbers;
+  }
+  return out;
+}
+
+/** „2 offene Vorschläge passen“: the open proposals a rule's dry run finds. */
+export function openMatchesText(count: number): string {
+  return count === 1 ? '1 offener Vorschlag passt' : `${count} offene Vorschläge passen`;
+}
+
+/**
+ * The bulk accept's name flags among a preview's or dry run's items (UX9,
+ * Q8: shown, never blocking); `atLeast` while the list holds only the first
+ * of them.
+ */
+export function nameFlagsText(count: number, atLeast: boolean): string {
+  return `davon ${atLeast ? 'mindestens ' : ''}${count} mit allgemeinem oder mehrfach genutztem Namen (in der Sammelannahme markiert)`;
+}
+
+/**
+ * Why open proposals need an explicit apply (rules are never retroactive):
+ * the switch's confirmation and the offer after saving say it alike.
+ */
+export const OPEN_PROPOSALS_HINT =
+  'Regeln wirken nur auf neue Vorschläge. Offene nimmst du nur an, wenn du sie ausdrücklich anwendest; vorher siehst du die Liste.';

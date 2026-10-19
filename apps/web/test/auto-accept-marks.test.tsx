@@ -3,13 +3,13 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 
 import { ConnectAgent } from '../src/components/connect-agent';
-import { AgentRevoke } from '../src/components/rules/agent-revoke';
+import { AgentRevokeDialog } from '../src/components/rules/agent-revoke';
 import { RelationsView } from '../src/components/relation-table';
 import { QueueList } from '../src/components/review/queue-table';
 import { AssertionTimeline } from '../src/components/review/timeline';
 import { AutoAcceptProvenance } from '../src/components/rules/auto-accept-provenance';
 import { PlacementCard } from '../src/components/value-chain/placement-card';
-import { indexLedger } from '../src/lib/auto-accept';
+import { inForceAgents, indexLedger } from '../src/lib/auto-accept';
 import { useAutoAcceptIndex } from '../src/lib/auto-accept-actions';
 import type { RelationFilters } from '../src/lib/relation-filters';
 import {
@@ -244,7 +244,9 @@ describe('provenance and single-item revoke', () => {
     const dialog = await screen.findByTestId('revoke-dialog');
     await user.click(await within(dialog).findByRole('button', { name: '1 widerrufen' }));
     await findToast('Automatische Annahme widerrufen');
-    expect(calls.slice(0, 2).map((c) => c.body)).toEqual([
+    // (the dialog also reads the models for the names it lists)
+    const revocations = calls.filter((c) => c.path.endsWith('/auto-accept-revocations'));
+    expect(revocations.slice(0, 2).map((c) => c.body)).toEqual([
       { ids: [MESSAGE.id] },
       { ids: [MESSAGE.id], expectedCount: 1 },
     ]);
@@ -379,46 +381,57 @@ describe('the chain page card', () => {
   );
 });
 
-describe('rules tab: revoke by agent', () => {
-  it('lists the agents with acceptances in force and revokes one agent’s after a dry run', async () => {
+describe('rules page: „Nach Agent widerrufen…“', () => {
+  it('asks which agent when several have acceptances in force, then revokes after a dry run', async () => {
     const calls = stubApi({
       'POST /api/v1/projects/demo/auto-accept-revocations': (c) =>
         json({
           dryRun: c.search === '?dryRun=true',
-          count: 2,
+          count: 1,
           toProposed: 0,
-          toObsolete: 2,
+          toObsolete: 1,
           humanDecidedSince: 0,
           alreadyRevoked: 0,
           items: [],
           truncated: false,
         }),
     });
-    renderWithQuery(<AgentRevoke project="demo" index={index} />);
-    const section = screen.getByTestId('agent-revoke');
+    const agents = inForceAgents(
+      indexLedger([
+        ...index.inForce.values(),
+        ledgerEntry({
+          id: 'rel_01SIM',
+          decisionId: 'ast_01SIM',
+          agent: { principalId: 'prn_01SIM', handle: 'agent:sim' },
+        }),
+      ]),
+    );
+    renderWithQuery(
+      <AgentRevokeDialog project="demo" agents={agents} open onOpenChange={() => undefined} />,
+    );
+    const dialog = await screen.findByTestId('revoke-dialog');
+    expect(within(dialog).getByRole('heading').textContent).toBe('Annahmen nach Agent widerrufen');
+    const picker = within(dialog).getByLabelText('Agent');
+    // without „agent:“ (P2)
     expect(
-      within(within(section).getByLabelText('Agent'))
+      within(picker)
         .getAllByRole('option')
         .map((o) => o.textContent),
-    ).toEqual(['agent:claude code (2 in Kraft)']);
+    ).toEqual(['claude code (2 in Kraft)', 'sim (1 in Kraft)']);
     const user = userEvent.setup();
-    await user.click(within(section).getByTestId('agent-revoke-open'));
-    const dialog = await screen.findByTestId('revoke-dialog');
-    expect(within(dialog).getByTestId('revoke-summary').textContent).toBe(
-      '2 automatische Annahmen: 2 werden veraltet und von den Agenten neu beurteilt (kein offener Vorschlag mehr).',
+    await user.selectOptions(picker, 'prn_01SIM');
+    const revocations = () => calls.filter((c) => c.path.endsWith('/auto-accept-revocations'));
+    await waitFor(() =>
+      expect(revocations().at(-1)?.body).toEqual({ agentPrincipalId: 'prn_01SIM' }),
     );
-    await user.click(within(dialog).getByRole('button', { name: '2 widerrufen' }));
-    await findToast('2 automatische Annahmen widerrufen');
-    // The dry run, then the revocation with its count (a refetched dry run may follow).
-    expect(calls.slice(0, 2).map((c) => [c.search, c.body])).toEqual([
-      ['?dryRun=true', { agentPrincipalId: 'prn_01AGENT' }],
-      ['', { agentPrincipalId: 'prn_01AGENT', expectedCount: 2 }],
-    ]);
-  });
-
-  it('shows nothing without acceptances in force', () => {
-    renderWithQuery(<AgentRevoke project="demo" index={indexLedger([])} />);
-    expect(screen.queryByTestId('agent-revoke')).toBeNull();
+    await user.click(await within(dialog).findByRole('button', { name: '1 widerrufen' }));
+    await findToast('Automatische Annahme widerrufen');
+    // The dry runs, then the revocation with its count (a refetched dry run may follow).
+    expect(
+      revocations()
+        .filter((c) => c.search === '')
+        .map((c) => c.body),
+    ).toEqual([{ agentPrincipalId: 'prn_01SIM', expectedCount: 1 }]);
   });
 });
 

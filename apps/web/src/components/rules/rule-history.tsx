@@ -23,7 +23,7 @@ import {
 } from '@/components/ui/table';
 
 import { formatThreshold, narrowingOf, tierLabel } from '@/lib/auto-accept-rules';
-import { formatDateTime } from '@/lib/labels';
+import { formatDateTime, handleName } from '@/lib/labels';
 import { autoAcceptRuleQuery } from '@/lib/auto-accept-queries';
 
 function History({ project, rule }: { project: string; rule: AutoAcceptRule }) {
@@ -56,10 +56,7 @@ function History({ project, rule }: { project: string; rule: AutoAcceptRule }) {
             <TableRow key={r.revision} data-testid="rule-revision">
               <TableCell className="font-mono">r{r.revision}</TableCell>
               <TableCell>{formatDateTime(r.at)}</TableCell>
-              <TableCell>
-                <span className="font-mono">{r.author.handle}</span>
-                {r.clientId ? <span className="text-muted-foreground"> · {r.clientId}</span> : null}
-              </TableCell>
+              <TableCell title={r.clientId ?? undefined}>{handleName(r.author.handle)}</TableCell>
               <TableCell>
                 <ToneBadge tone={r.enabled ? 'success' : 'neutral'}>
                   {r.enabled ? 'Aktiv' : 'Aus'}
@@ -91,8 +88,11 @@ function History({ project, rule }: { project: string; rule: AutoAcceptRule }) {
 }
 
 /**
- * The immutable revisions of a rule, newest first: every create, edit,
- * enable and disable is one. Acceptances name the revision that made them.
+ * „Verlauf“ of a rule (its row's „Mehr“; UX9 moved the revision and its
+ * author out of the row into here): the immutable revisions, newest first,
+ * each with when, by whom (the client in its title), status, name and
+ * criteria. Every create, edit, enable and disable is one; acceptances name
+ * the revision that made them.
  */
 export function RuleHistoryDialog({
   project,

@@ -10,16 +10,17 @@ import { DEMO_SKIP, probeServer } from './server-mode';
  * server with the built UI: a project from eval/corpus/nordwind-handel with
  * its golden chain and an agent token; the agent proposes key-tier pairs ad
  * hoc over REST (one the owner accepts, two at 0.97/0.96, one at 0.6). The
- * page „Annahmeregeln“ (owner menu „Einstellungen“) shows the system rule and the empty state; a rule is created
- * with its live preview (history precision, open count), saved and enabled,
+ * page „Annahmeregeln“ (owner menu „Einstellungen“) shows the system rule in
+ * one line and the empty state; a rule is created with its live preview
+ * (history precision, open count), saved with the „Aktiv“ switch on (UX9),
  * and applied to the open proposals (dry run, then „2 Vorschläge annehmen“).
  * The Relations tab marks and filters the two; the review screen names rule,
- * revision, owner and agent; the rule's „Widerrufen…“ returns both to
- * „Prüfen“, marked „widerrufen“. A placement rule (over REST) shows its mark
- * on the chain page. Then the rule dialog meets a 412 (the rule was raised
- * over REST meanwhile) and „Neuere Revision laden“ puts the newer revision
- * into the form, and „Annahmen eines Agenten widerrufen“ revokes the agent's
- * remaining acceptance. No CSP violation on the way. With
+ * revision, owner and agent; the rule's „Widerrufen…“ (its row's „Mehr“)
+ * returns both to „Prüfen“, marked „widerrufen“. A placement rule (over
+ * REST) shows its mark on the chain page. Then the rule dialog meets a 412
+ * (the rule was raised over REST meanwhile) and „Neuere Revision laden“ puts
+ * the newer revision into the form, and „Nach Agent widerrufen…“ (the page
+ * header's „Mehr“) revokes the agent's remaining acceptance. No CSP violation on the way. With
  * ANALYZR_SCREENSHOTS_DIR it writes d19-*.png. Skips itself when no server
  * answers.
  */
@@ -181,25 +182,35 @@ test('„Einstellungen › Annahmeregeln“: system rule, empty state, a rule wi
   await page.getByRole('menuitem', { name: 'Annahmeregeln' }).click();
   await expect(page).toHaveURL(new RegExp(`/projects/${PROJECT}/rules$`));
   await expect(page.getByRole('navigation', { name: 'Brotkrumen' })).toContainText('Annahmeregeln');
-  await expect(page.getByTestId('system-rule')).toContainText('Systemregel: Eindeutige Aufrufe');
-  await expect(page.getByTestId('system-rule')).toContainText('immer aktiv, nicht änderbar');
+  // The system rule in one line (UX9), the count is the real one.
+  await expect(page.getByTestId('system-rule')).toContainText(
+    'Eindeutige Aufrufe nimmt analyzr beim Hochladen an · immer aktiv · ',
+  );
+  await expect(page.getByTestId('system-rule')).not.toContainText('calledElement');
   await expect(page.getByTestId('rules-empty')).toContainText(
     'Ohne Regeln entscheidest du jeden Vorschlag selbst.',
   );
   await shot(page, 'd19-01-rules-empty');
 
+  // The empty page has „Erste Regel anlegen“ only (UX9).
+  await expect(page.getByTestId('new-rule')).toHaveText('Erste Regel anlegen');
   await page.getByTestId('new-rule').click();
   const dialog = page.getByTestId('rule-dialog');
+  // The name follows the criteria until it is typed (UX9).
+  await expect(dialog.getByLabel('Name')).toHaveValue('Gleicher Name ab 95 %');
   await dialog.getByLabel('Name').fill(RULE_NAME);
   await expect(dialog.getByLabel('Grundlage')).toHaveValue('key');
   await expect(dialog.getByLabel('ab Konfidenz (%)')).toHaveValue('95');
-  // Ad-hoc proposals count only when the rule says so.
+  // Ad-hoc proposals count only when the rule says so (under „Weiter einschränken“).
   await expect(dialog.getByTestId('preview-open')).toHaveText('Jetzt offen: 0 würden angenommen');
+  await dialog.getByText('Weiter einschränken').click();
   await dialog.getByLabel('Auch Ad-hoc-Vorschläge').click();
   await expect(dialog.getByTestId('preview-open')).toHaveText('Jetzt offen: 2 würden angenommen');
   await expect(dialog.getByTestId('preview-history')).toContainText('(Trefferquote 100 %)');
   await shot(page, 'd19-02-rule-dialog');
-  await dialog.getByTestId('save-on').click();
+  // One „Speichern“ with the „Aktiv“ switch.
+  await dialog.getByRole('switch', { name: 'Aktiv' }).click();
+  await dialog.getByTestId('rule-save').click();
 
   // Enabled with open matches: the offer, then the dry run list and „2 Vorschläge annehmen“.
   const offer = page.getByTestId('offer-apply');
@@ -215,7 +226,8 @@ test('„Einstellungen › Annahmeregeln“: system rule, empty state, a rule wi
   await expect(apply).toBeHidden();
   const row = page.getByTestId('rule-row');
   await expect(row).toHaveAttribute('data-enabled', 'true');
-  await expect(row.getByTestId('rule-stats')).toContainText('2 in Kraft0 widerrufen');
+  // „Bisher“ lists only the counts above 0 (UX9).
+  await expect(row.getByTestId('rule-stats')).toHaveText('2 in Kraft');
   await shot(page, 'd19-04-rules');
   for (const id of accepted) expect((await relationOf(id)).status).toBe('accepted');
 });
@@ -254,7 +266,9 @@ test('marks and the filter in the Relations tab, provenance on the review screen
 
 test('revoking the rule returns both to „Prüfen“, marked „widerrufen“', async ({ page }) => {
   await page.goto(`/projects/${PROJECT}/rules`);
-  await page.getByTestId('rule-revoke').click();
+  // „Widerrufen…“ is in the row's „Mehr“ while acceptances are in force (UX9).
+  await page.getByTestId('rule-row').getByTestId('rule-more').click();
+  await page.getByRole('menuitem', { name: 'Widerrufen…' }).click();
   const dialog = page.getByTestId('revoke-dialog');
   await expect(dialog.getByTestId('revoke-summary')).toHaveText(
     '2 automatische Annahmen: 2 gehen zurück in die Prüfung (ein Agentenvorschlag ist noch offen).',
@@ -263,9 +277,7 @@ test('revoking the rule returns both to „Prüfen“, marked „widerrufen“',
   await shot(page, 'd19-07-revoke');
   await dialog.getByRole('button', { name: '2 widerrufen' }).click();
   await expect(dialog).toBeHidden();
-  await expect(page.getByTestId('rule-row').getByTestId('rule-stats')).toContainText(
-    '0 in Kraft2 widerrufen',
-  );
+  await expect(page.getByTestId('rule-row').getByTestId('rule-stats')).toHaveText('2 widerrufen');
   for (const id of accepted) expect((await relationOf(id)).status).toBe('proposed');
 
   await page.goto(`/projects/${PROJECT}/review`);
@@ -373,27 +385,31 @@ test('the rule dialog loads a newer revision after a 412; one agent’s acceptan
   expect(raised.ok()).toBe(true);
 
   // Saving the stale form is refused; loading the newer revision puts it into the form.
-  await dialog.getByLabel('Notiz (optional)').fill('nur eine Notiz');
-  await dialog.getByTestId('save-on').click();
+  // („Weiter einschränken“ is open: the rule takes ad-hoc proposals.)
+  await dialog.getByLabel('Notiz').fill('nur eine Notiz');
+  await dialog.getByTestId('rule-save').click();
   await expect(dialog).toContainText(
     `Die Regel wurde inzwischen geändert (Revision ${current!.revision + 1})`,
   );
   await dialog.getByRole('button', { name: 'Neuere Revision laden' }).click();
   await expect(dialog.getByTestId('reloaded')).toContainText('ab Konfidenz: 95 % → 97 %');
   await expect(dialog.getByLabel('ab Konfidenz (%)')).toHaveValue('97');
-  await expect(dialog.getByLabel('Notiz (optional)')).toHaveValue('');
+  await expect(dialog.getByLabel('Notiz')).toHaveValue('');
   await dialog.getByRole('button', { name: 'Abbrechen' }).click();
   await expect(dialog).toBeHidden();
 
-  // The placement acceptance of the agent is still in force: revoke it per agent.
-  const section = page.getByTestId('agent-revoke');
-  await expect(section.getByLabel('Agent')).toContainText('agent:e2e-rules (1 in Kraft)');
-  await section.getByTestId('agent-revoke-open').click();
+  // The placement acceptance of the agent is still in force: revoke it per agent, a page
+  // action in the header's „Mehr“ (UX9); with one agent the dialog's title names it.
+  await page.getByTestId('rules-more').click();
+  await page.getByRole('menuitem', { name: 'Nach Agent widerrufen…' }).click();
   const revoke = page.getByTestId('revoke-dialog');
+  await expect(
+    revoke.getByRole('heading', { name: 'Annahmen von e2e-rules widerrufen' }),
+  ).toBeVisible();
   await expect(revoke.getByTestId('revoke-summary')).toHaveText(
     '1 automatische Annahme: 1 geht zurück in die Prüfung (ein Agentenvorschlag ist noch offen). 2 waren schon widerrufen.',
   );
   await revoke.getByRole('button', { name: '1 widerrufen' }).click();
   await expect(revoke).toBeHidden();
-  await expect(section).toBeHidden();
+  await expect(page.getByTestId('rules-more')).toBeHidden();
 });

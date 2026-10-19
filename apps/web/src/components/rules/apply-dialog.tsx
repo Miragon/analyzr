@@ -16,15 +16,15 @@ import {
 } from '@/components/ui/dialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ApiError } from '@/lib/api';
-import { formatDecimal } from '@/lib/auto-accept';
-import { AUTO_ACCEPT_BLOCK_LABELS } from '@/lib/auto-accept-rules';
+import { useNameFlags } from '@/lib/auto-accept-flags';
+import { useSubjectNames } from '@/lib/auto-accept-names';
+import { AUTO_ACCEPT_BLOCK_LABELS, nameFlagsText } from '@/lib/auto-accept-rules';
 import { useApplyRule } from '@/lib/auto-accept-rule-actions';
 import { autoAcceptApplyDryRunQuery } from '@/lib/auto-accept-queries';
+import { formatConfidence, handleName } from '@/lib/labels';
 import { toast } from '@/lib/toast';
 
 import { SubjectText } from './subject';
-
-const LISTED = 20;
 
 /** The blocked-reason histogram as a list (preview, dry runs). */
 export function BlockedList({ blocked }: { blocked: ApplyAutoAcceptResult['blocked'] }) {
@@ -60,6 +60,9 @@ function ApplyBody({ project, rule, onOpenChange }: Omit<ApplyDialogProps, 'open
   const real = useApplyRule(project);
   const [changed, setChanged] = useState(false);
   const result = dry.data;
+  const names = useSubjectNames(project, result?.items ?? []);
+  const flags = useNameFlags(project);
+  const flagged = result && flags ? flags(result.items) : 0;
   // The dry run's view of the head wins over the (possibly older) table row.
   const enabled = result?.enabled ?? rule.enabled;
   const authorIsOwner = result?.authorIsOwner ?? rule.authorIsOwner;
@@ -78,7 +81,7 @@ function ApplyBody({ project, rule, onOpenChange }: Omit<ApplyDialogProps, 'open
           toast({
             tone: 'success',
             title: `${proposals(done.count)} automatisch angenommen`,
-            description: `Regel „${rule.name}“ (Revision ${done.revision}). Du kannst die Annahmen jederzeit widerrufen.`,
+            description: `Regel „${rule.name}“. Du kannst die Annahmen jederzeit widerrufen.`,
           });
           onOpenChange(false);
         },
@@ -98,8 +101,7 @@ function ApplyBody({ project, rule, onOpenChange }: Omit<ApplyDialogProps, 'open
       <DialogHeader>
         <DialogTitle>Regel „{rule.name}“ auf offene Vorschläge anwenden</DialogTitle>
         <DialogDescription>
-          Regeln wirken nur auf neue Vorschläge. Hier nimmst du die offenen an, die die Regel schon
-          jetzt erfüllt; jede Annahme wird als deine Entscheidung durch diese Regel vermerkt.
+          Jede Annahme wird als deine Entscheidung durch diese Regel vermerkt.
         </DialogDescription>
       </DialogHeader>
       {changed ? (
@@ -126,28 +128,39 @@ function ApplyBody({ project, rule, onOpenChange }: Omit<ApplyDialogProps, 'open
       ) : !result ? (
         <Skeleton className="h-16 w-full" />
       ) : (
-        <div className="flex flex-col gap-3">
-          <p data-testid="apply-summary">
-            {result.count === 0
-              ? 'Kein offener Vorschlag erfüllt die Regel.'
-              : result.count === 1
-                ? '1 offener Vorschlag erfüllt die Regel.'
-                : `${result.count} offene Vorschläge erfüllen die Regel.`}
-          </p>
+        <div className="flex min-w-0 flex-col gap-3">
+          <div className="flex flex-col gap-0.5">
+            <p data-testid="apply-summary">
+              {result.count === 0
+                ? 'Kein offener Vorschlag erfüllt die Regel.'
+                : result.count === 1
+                  ? '1 offener Vorschlag erfüllt die Regel.'
+                  : `${result.count} offene Vorschläge erfüllen die Regel.`}
+            </p>
+            {flagged > 0 ? (
+              <p className="text-xs text-muted-foreground" data-testid="apply-flags">
+                {nameFlagsText(flagged, result.truncated)}
+              </p>
+            ) : null}
+          </div>
           {result.items.length > 0 ? (
-            <ul className="flex max-h-56 flex-col gap-1.5 overflow-y-auto rounded-lg border p-2">
-              {result.items.slice(0, LISTED).map((i) => (
-                <li key={i.triggerId} className="flex flex-col gap-0.5" data-testid="apply-item">
-                  <SubjectText subject={i} />
-                  <span className="text-xs text-muted-foreground">
-                    {i.agent.handle} mit {formatDecimal(i.confidence)}
-                    {i.llmModel ? ` · ${i.llmModel}` : ''}
-                  </span>
+            // the whole list, scrolling (UX-SIMPLIFICATION.md §3.11 item 7)
+            <ul
+              aria-label="Offene Vorschläge, die die Regel erfüllt"
+              className="flex max-h-72 flex-col gap-2 overflow-y-auto rounded-lg border p-2"
+            >
+              {result.items.map((i) => (
+                <li key={i.triggerId} className="flex min-w-0 flex-col" data-testid="apply-item">
+                  <SubjectText
+                    subject={i}
+                    names={names}
+                    details={[handleName(i.agent.handle), formatConfidence(i.confidence)]}
+                  />
                 </li>
               ))}
-              {result.count > LISTED ? (
+              {result.truncated ? (
                 <li className="text-xs text-muted-foreground">
-                  … und {result.count - LISTED} weitere
+                  … und {result.count - result.items.length} weitere
                 </li>
               ) : null}
             </ul>
@@ -188,9 +201,11 @@ function ApplyBody({ project, rule, onOpenChange }: Omit<ApplyDialogProps, 'open
 
 /**
  * Applies a rule to the open proposals (rules are never retroactive
- * otherwise): the dry run when the dialog opens, then „N Vorschläge
- * annehmen“ with the head revision and the dry run's count; a 409 (the open
- * proposals or the rule changed) shows the fresh dry run.
+ * otherwise): the dry run when the dialog opens, listing every proposal by
+ * name with its agent and confidence (UX9) and how many carry a bulk accept
+ * name flag (Q8: shown, never blocking), then „N Vorschläge annehmen“ with
+ * the head revision and the dry run's count; a 409 (the open proposals or
+ * the rule changed) shows the fresh dry run.
  */
 export function ApplyDialog({ open, onOpenChange, ...props }: ApplyDialogProps) {
   return (

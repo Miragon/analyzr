@@ -8,7 +8,7 @@ import type {
   AutoAcceptTier,
 } from '@analyzr/client';
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
-import { InfoIcon, PowerIcon, SaveIcon } from 'lucide-react';
+import { ChevronRightIcon, InfoIcon, SaveIcon } from 'lucide-react';
 import { useId, useMemo, useState, type FormEvent } from 'react';
 
 import { ErrorText } from '@/components/error-text';
@@ -23,23 +23,29 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Field, FieldDescription, FieldError, FieldLabel } from '@/components/ui/field';
+import { Field, FieldError, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { ApiError, errorMessage } from '@/lib/api';
+import { useNameFlags } from '@/lib/auto-accept-flags';
 import {
   AUTO_ACCEPT_KINDS,
   AUTO_ACCEPT_RELATION_TYPES,
+  formatThreshold,
   parsePercent,
   percentInput,
   relationTypeLabel,
   revisionChanges,
+  suggestedRuleName,
   tierLabel,
   tiersOf,
 } from '@/lib/auto-accept-rules';
 import { useCreateRule, useReviseRule } from '@/lib/auto-accept-rule-actions';
+import { handleName } from '@/lib/labels';
 import {
   MAX_AUTO_ACCEPT_MODEL_CHARS,
   MAX_AUTO_ACCEPT_NAME_CHARS,
@@ -85,6 +91,9 @@ const NO_CRITERIA: AutoAcceptCriteria = {
 
 interface FormState {
   name: string;
+  /** The owner typed the name: it stays theirs; until then it follows the criteria. */
+  nameEdited: boolean;
+  enabled: boolean;
   kind: AutoAcceptKind;
   tier: AutoAcceptTier;
   percent: string;
@@ -97,16 +106,19 @@ interface FormState {
 
 /** A new rule's prefill (UX5: after a bulk accept, „Gleicher Name ab 100 %“). */
 export interface RuleDraft {
-  name: string;
   tier: AutoAcceptTier;
   /** The minimum confidence as the field shows it, e.g. „100“. */
   percent: string;
+  /** A name of its own; without one the name follows the criteria. */
+  name?: string;
 }
 
 function initialState(rule: AutoAcceptRule | null, draft?: RuleDraft): FormState {
   if (!rule) {
     return {
       name: draft?.name ?? '',
+      nameEdited: draft?.name !== undefined,
+      enabled: false,
       kind: 'relation',
       tier: draft?.tier ?? 'key',
       percent: draft?.percent ?? '95',
@@ -119,6 +131,8 @@ function initialState(rule: AutoAcceptRule | null, draft?: RuleDraft): FormState
   }
   return {
     name: rule.name,
+    nameEdited: true,
+    enabled: rule.enabled,
     kind: rule.kind,
     tier: rule.tier,
     percent: percentInput(rule.minConfidence),
@@ -128,6 +142,13 @@ function initialState(rule: AutoAcceptRule | null, draft?: RuleDraft): FormState
     includeAdHoc: rule.includeAdHoc,
     note: rule.note ?? '',
   };
+}
+
+/** „Weiter einschränken“ opens by itself when the rule narrows by agent, model, ad hoc or a note. */
+function narrows(f: FormState): boolean {
+  return (
+    f.agentPrincipalId !== ANY || f.llmModel.trim() !== '' || f.includeAdHoc || f.note.trim() !== ''
+  );
 }
 
 /**
@@ -156,12 +177,29 @@ function criteriaOfForm(f: FormState, base: AutoAcceptRule | null): AutoAcceptCr
   };
 }
 
+/** The name the form shows: the owner's, else the one its criteria suggest. */
+function nameOfForm(f: FormState, base: AutoAcceptRule | null, taken: readonly string[]): string {
+  if (f.nameEdited) return f.name;
+  const min = minConfidenceOf(f, base);
+  return suggestedRuleName(
+    {
+      kind: f.kind,
+      tier: f.tier,
+      relationType: f.kind === 'relation' && f.relationType !== ANY ? f.relationType : null,
+      threshold: min === null ? `${f.percent.replace(/%/g, '').trim()} %` : formatThreshold(min),
+    },
+    taken,
+  );
+}
+
 export interface RuleDialogProps {
   project: string;
   /** The rule to edit (its head revision); `null` creates a new rule. */
   rule: AutoAcceptRule | null;
   /** A new rule's prefill. */
   draft?: RuleDraft | undefined;
+  /** The names of the project's rules: a suggested name avoids them. */
+  ruleNames?: readonly string[];
   /** The project's agent tokens (revoked ones marked). */
   tokens: readonly AgentToken[];
   open: boolean;
@@ -174,6 +212,7 @@ function RuleForm({
   project,
   rule,
   draft,
+  ruleNames = [],
   tokens,
   onOpenChange,
   onSaved,
@@ -183,6 +222,7 @@ function RuleForm({
   /** The revision the form edits: the rule as opened, or the newer one loaded after a 412. */
   const [base, setBase] = useState<AutoAcceptRule | null>(rule);
   const [form, setForm] = useState<FormState>(() => initialState(rule, draft));
+  const [narrowOpen, setNarrowOpen] = useState(() => narrows(form));
   const [conflict, setConflict] = useState<number | null>(null);
   /** After loading a newer revision: what the other owner changed. */
   const [reloaded, setReloaded] = useState<{ revision: number; changes: string[] } | null>(null);
@@ -200,8 +240,10 @@ function RuleForm({
     enabled: debounced !== null,
     placeholderData: keepPreviousData,
   });
+  const flags = useNameFlags(project);
 
-  const name = form.name.trim();
+  const shownName = nameOfForm(form, base, ruleNames);
+  const name = shownName.trim();
   const nameError =
     name === ''
       ? 'Gib der Regel einen Namen.'
@@ -222,25 +264,25 @@ function RuleForm({
     for (const a of preview.data?.agents ?? []) {
       if (!known.has(a.principalId)) {
         known.add(a.principalId);
-        out.push({ principalId: a.principalId, label: a.handle });
+        out.push({ principalId: a.principalId, label: handleName(a.handle) });
       }
     }
     if (base?.agentPrincipalId && !known.has(base.agentPrincipalId)) {
       out.push({
         principalId: base.agentPrincipalId,
-        label: base.agent?.handle ?? base.agentPrincipalId,
+        label: handleName(base.agent?.handle ?? base.agentPrincipalId),
       });
     }
     return out;
   }, [tokens, preview.data?.agents, base]);
 
-  function save(enabled: boolean) {
+  function save() {
     setTouched(true);
     if (!valid || saving) return;
     const draft: AutoAcceptRuleDraft = {
       ...criteria,
       name,
-      enabled,
+      enabled: form.enabled,
       note: form.note.trim() === '' ? null : form.note.trim(),
     };
     const done = (outcome: string, saved: AutoAcceptRule) => {
@@ -251,7 +293,7 @@ function RuleForm({
             ? `Regel „${saved.name}“ angelegt${saved.enabled ? ' und aktiviert' : ''}`
             : outcome === 'unchanged'
               ? 'Nichts geändert'
-              : `Regel „${saved.name}“ gespeichert (Revision ${saved.revision})`,
+              : `Regel „${saved.name}“ gespeichert`,
       });
       onOpenChange(false);
       if (outcome !== 'unchanged') onSaved?.(saved);
@@ -287,16 +329,18 @@ function RuleForm({
       ...autoAcceptRuleQuery(project, base.id),
       staleTime: 0,
     });
+    const next = initialState(fresh);
     setReloaded({ revision: fresh.revision, changes: revisionChanges(base, fresh) });
     setBase(fresh);
-    setForm(initialState(fresh));
+    setForm(next);
+    if (narrows(next)) setNarrowOpen(true);
     setConflict(null);
     revise.reset();
   }
 
   function submit(event: FormEvent) {
     event.preventDefault();
-    save(base?.enabled ?? false);
+    save();
   }
 
   const show412 = conflict !== null;
@@ -308,21 +352,18 @@ function RuleForm({
       <DialogHeader>
         <DialogTitle>{base ? `Regel „${base.name}“ bearbeiten` : 'Neue Annahmeregel'}</DialogTitle>
         <DialogDescription>
-          Agentenvorschläge, die alle Kriterien erfüllen, nimmt analyzr als deine Entscheidung an –
-          nur neue Vorschläge, und nie, wenn eine Schutzregel greift (Frage, Einwand, Vormerkung,
-          Entscheidung eines Menschen).
+          Die Vorschau zeigt, was die Regel bisher angenommen hätte und jetzt annähme.
         </DialogDescription>
       </DialogHeader>
       <div className="grid gap-5 md:grid-cols-[minmax(0,5fr)_minmax(0,6fr)]">
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-3" data-testid="rule-fields">
           <Field data-invalid={touched && nameError ? true : undefined}>
             <FieldLabel htmlFor={`${id}-name`}>Name</FieldLabel>
             <Input
               id={`${id}-name`}
-              value={form.name}
+              value={shownName}
               maxLength={MAX_AUTO_ACCEPT_NAME_CHARS}
-              onChange={(e) => set({ name: e.target.value })}
-              placeholder="z. B. Gleicher Name ab 95 %"
+              onChange={(e) => set({ name: e.target.value, nameEdited: true })}
               aria-invalid={touched && nameError ? true : undefined}
             />
             {touched && nameError ? <FieldError>{nameError}</FieldError> : null}
@@ -367,102 +408,111 @@ function RuleForm({
                 ))}
               </NativeSelect>
             </Field>
-          </div>
-          <Field data-invalid={percentError ? true : undefined}>
-            <FieldLabel htmlFor={`${id}-min`}>ab Konfidenz (%)</FieldLabel>
-            <Input
-              id={`${id}-min`}
-              inputMode="decimal"
-              value={form.percent}
-              onChange={(e) => set({ percent: e.target.value })}
-              aria-invalid={percentError ? true : undefined}
-              className="w-28"
-            />
-            {percentError ? (
-              <FieldError>{percentError}</FieldError>
-            ) : (
-              <FieldDescription>
-                Einschließlich: ein Vorschlag mit genau diesem Wert zählt.
-              </FieldDescription>
-            )}
-          </Field>
-          {form.kind === 'relation' ? (
-            <Field>
-              <FieldLabel htmlFor={`${id}-type`}>Typ</FieldLabel>
-              <NativeSelect
-                id={`${id}-type`}
-                className="w-full"
-                value={form.relationType}
-                onChange={(e) =>
-                  set({ relationType: e.target.value as AutoAcceptRelationType | typeof ANY })
-                }
-              >
-                <NativeSelectOption value={ANY}>Alle Typen</NativeSelectOption>
-                {AUTO_ACCEPT_RELATION_TYPES.map((t) => (
-                  <NativeSelectOption key={t} value={t}>
-                    {relationTypeLabel(t)}
-                  </NativeSelectOption>
-                ))}
-              </NativeSelect>
+            <Field data-invalid={percentError ? true : undefined}>
+              <FieldLabel htmlFor={`${id}-min`}>ab Konfidenz (%)</FieldLabel>
+              <Input
+                id={`${id}-min`}
+                inputMode="decimal"
+                value={form.percent}
+                onChange={(e) => set({ percent: e.target.value })}
+                aria-invalid={percentError ? true : undefined}
+              />
+              {percentError ? <FieldError>{percentError}</FieldError> : null}
             </Field>
-          ) : (
+            {form.kind === 'relation' ? (
+              <Field>
+                <FieldLabel htmlFor={`${id}-type`}>Typ</FieldLabel>
+                <NativeSelect
+                  id={`${id}-type`}
+                  className="w-full"
+                  value={form.relationType}
+                  onChange={(e) =>
+                    set({ relationType: e.target.value as AutoAcceptRelationType | typeof ANY })
+                  }
+                >
+                  <NativeSelectOption value={ANY}>Alle Typen</NativeSelectOption>
+                  {AUTO_ACCEPT_RELATION_TYPES.map((t) => (
+                    <NativeSelectOption key={t} value={t}>
+                      {relationTypeLabel(t)}
+                    </NativeSelectOption>
+                  ))}
+                </NativeSelect>
+              </Field>
+            ) : null}
+          </div>
+          {form.kind === 'placement' ? (
             <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
               <InfoIcon className="mt-0.5 size-3.5 shrink-0" aria-hidden />
               @outside wird nie automatisch angenommen, und ein Prozess mit Heimatschritt oder
               mehreren vorgeschlagenen Schritten auch nicht.
             </p>
-          )}
-          <Field>
-            <FieldLabel htmlFor={`${id}-agent`}>Agent</FieldLabel>
-            <NativeSelect
-              id={`${id}-agent`}
-              className="w-full"
-              value={form.agentPrincipalId}
-              onChange={(e) => set({ agentPrincipalId: e.target.value })}
-            >
-              <NativeSelectOption value={ANY}>Alle Agenten</NativeSelectOption>
-              {agentOptions.map((a) => (
-                <NativeSelectOption key={a.principalId} value={a.principalId}>
-                  {a.label}
-                </NativeSelectOption>
-              ))}
-            </NativeSelect>
-          </Field>
-          <Field>
-            <FieldLabel htmlFor={`${id}-model`}>LLM-Modell</FieldLabel>
-            <Input
-              id={`${id}-model`}
-              list={`${id}-models`}
-              value={form.llmModel}
-              maxLength={MAX_AUTO_ACCEPT_MODEL_CHARS}
-              onChange={(e) => set({ llmModel: e.target.value })}
-              placeholder="Alle Modelle"
-            />
-            <datalist id={`${id}-models`}>
-              {(preview.data?.llmModels ?? []).map((m) => (
-                <option key={m} value={m} />
-              ))}
-            </datalist>
-            <FieldDescription>Genau so, wie die Agenten es angeben.</FieldDescription>
-          </Field>
-          <Field orientation="horizontal">
-            <Checkbox
-              id={`${id}-adhoc`}
-              checked={form.includeAdHoc}
-              onCheckedChange={(checked) => set({ includeAdHoc: checked === true })}
-            />
-            <FieldLabel htmlFor={`${id}-adhoc`}>Auch Ad-hoc-Vorschläge</FieldLabel>
-          </Field>
-          <Field>
-            <FieldLabel htmlFor={`${id}-note`}>Notiz (optional)</FieldLabel>
-            <Textarea
-              id={`${id}-note`}
-              value={form.note}
-              maxLength={MAX_AUTO_ACCEPT_NOTE_CHARS}
-              onChange={(e) => set({ note: e.target.value })}
-              className="min-h-12"
-            />
-          </Field>
+          ) : null}
+          <details
+            className="group/narrow text-sm"
+            open={narrowOpen}
+            onToggle={(event) => setNarrowOpen(event.currentTarget.open)}
+            data-testid="rule-narrow"
+          >
+            <summary className="inline-flex cursor-pointer list-none items-center gap-0.5 rounded-sm text-muted-foreground select-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none [&::-webkit-details-marker]:hidden">
+              <ChevronRightIcon
+                className="size-3.5 transition-transform group-open/narrow:rotate-90 motion-reduce:transition-none"
+                aria-hidden
+              />
+              Weiter einschränken
+            </summary>
+            <div className="mt-3 flex flex-col gap-3">
+              <Field>
+                <FieldLabel htmlFor={`${id}-agent`}>Agent</FieldLabel>
+                <NativeSelect
+                  id={`${id}-agent`}
+                  className="w-full"
+                  value={form.agentPrincipalId}
+                  onChange={(e) => set({ agentPrincipalId: e.target.value })}
+                >
+                  <NativeSelectOption value={ANY}>Alle Agenten</NativeSelectOption>
+                  {agentOptions.map((a) => (
+                    <NativeSelectOption key={a.principalId} value={a.principalId}>
+                      {a.label}
+                    </NativeSelectOption>
+                  ))}
+                </NativeSelect>
+              </Field>
+              <Field>
+                <FieldLabel htmlFor={`${id}-model`}>LLM-Modell</FieldLabel>
+                <Input
+                  id={`${id}-model`}
+                  list={`${id}-models`}
+                  value={form.llmModel}
+                  maxLength={MAX_AUTO_ACCEPT_MODEL_CHARS}
+                  onChange={(e) => set({ llmModel: e.target.value })}
+                  placeholder="Alle Modelle, genau so, wie die Agenten es angeben"
+                />
+                <datalist id={`${id}-models`}>
+                  {(preview.data?.llmModels ?? []).map((m) => (
+                    <option key={m} value={m} />
+                  ))}
+                </datalist>
+              </Field>
+              <Field orientation="horizontal">
+                <Checkbox
+                  id={`${id}-adhoc`}
+                  checked={form.includeAdHoc}
+                  onCheckedChange={(checked) => set({ includeAdHoc: checked === true })}
+                />
+                <FieldLabel htmlFor={`${id}-adhoc`}>Auch Ad-hoc-Vorschläge</FieldLabel>
+              </Field>
+              <Field>
+                <FieldLabel htmlFor={`${id}-note`}>Notiz</FieldLabel>
+                <Textarea
+                  id={`${id}-note`}
+                  value={form.note}
+                  maxLength={MAX_AUTO_ACCEPT_NOTE_CHARS}
+                  onChange={(e) => set({ note: e.target.value })}
+                  className="min-h-12"
+                />
+              </Field>
+            </div>
+          </details>
         </div>
         <section aria-label="Vorschau" className="flex min-w-0 flex-col gap-2">
           <h3 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
@@ -483,6 +533,7 @@ function RuleForm({
             <RulePreview
               preview={preview.data}
               minConfidence={criteria.minConfidence}
+              flagged={flags ? flags(preview.data.open.items) : null}
               stale={preview.isPlaceholderData || debounced !== criteria}
             />
           ) : (
@@ -490,17 +541,12 @@ function RuleForm({
           )}
         </section>
       </div>
-      {base ? (
-        <p className="text-xs text-muted-foreground">
-          Erzeugt eine neue Revision; bereits angenommene Vorschläge behalten ihre Revision.
-        </p>
-      ) : null}
       {base && !base.authorIsOwner ? (
         <Alert data-testid="take-over-hint">
           <AlertDescription>
-            {base.author.handle} ist kein Inhaber mehr; bis jemand die Regel neu speichert, nimmt
-            sie nichts an. Speicherst du sie, übernimmst du sie: Ihre Annahmen werden dann als deine
-            Entscheidungen vermerkt.
+            {handleName(base.author.handle)} ist kein Inhaber mehr; bis jemand die Regel neu
+            speichert, nimmt sie nichts an. Speicherst du sie, übernimmst du sie: Ihre Annahmen
+            werden dann als deine Entscheidungen vermerkt.
           </AlertDescription>
         </Alert>
       ) : null}
@@ -544,28 +590,23 @@ function RuleForm({
           <AlertDescription>{saveProblem(saveError)}</AlertDescription>
         </Alert>
       ) : null}
-      <DialogFooter>
+      <DialogFooter className="sm:items-center">
+        {/* last in the phone's reversed column (on top), first in the row (at the left) */}
+        <div className="order-last flex items-center gap-2 sm:order-first sm:mr-auto">
+          <Switch
+            id={`${id}-enabled`}
+            checked={form.enabled}
+            onCheckedChange={(enabled) => set({ enabled })}
+            data-testid="rule-enabled"
+          />
+          <Label htmlFor={`${id}-enabled`}>Aktiv</Label>
+        </div>
         <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
           Abbrechen
         </Button>
-        <Button
-          type="button"
-          variant="outline"
-          disabled={saving || show412}
-          onClick={() => save(false)}
-          data-testid="save-off"
-        >
+        <Button type="submit" disabled={saving || show412} data-testid="rule-save">
           <SaveIcon data-icon="inline-start" />
-          Speichern (aus)
-        </Button>
-        <Button
-          type="button"
-          disabled={saving || show412}
-          onClick={() => save(true)}
-          data-testid="save-on"
-        >
-          <PowerIcon data-icon="inline-start" />
-          Speichern und aktivieren
+          Speichern
         </Button>
       </DialogFooter>
     </form>
@@ -573,10 +614,13 @@ function RuleForm({
 }
 
 /**
- * Create or edit an auto-accept rule (owner decision 19): kind-specific
- * tiers, the minimum confidence in percent (at least 50 %), type, agent, LLM
- * model and ad hoc; beside them the live preview (debounced). Saving writes
- * a new immutable revision, off or on; an edit sends `If-Match` and, on 412,
+ * Create or edit an auto-accept rule (owner decision 19; UX-SIMPLIFICATION.md
+ * §3.11 item 4): „Art“, „Grundlage“, „ab Konfidenz“ and „Typ“ in view, the
+ * name prefilled from them („Gleicher Name ab 95 %“, „(2)“ while another
+ * rule has it) until the owner types one; agent, LLM model, ad hoc and a
+ * note under „Weiter einschränken“ (open when the rule uses one); beside
+ * them the live preview (debounced). One „Speichern“ with the „Aktiv“ switch
+ * writes a new immutable revision; an edit sends `If-Match` and, on 412,
  * loads the newer revision into the form (listing what changed) before
  * anything can be saved on top of it. A threshold the field still shows
  * unchanged is saved as it was (never re-read from its text).

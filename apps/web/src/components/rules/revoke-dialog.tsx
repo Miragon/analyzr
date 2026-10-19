@@ -1,7 +1,7 @@
 import type { AutoAcceptRevocationBody, AutoAcceptRevocationResult } from '@analyzr/client';
 import { useQuery } from '@tanstack/react-query';
 import { Undo2Icon } from 'lucide-react';
-import { useId, useState } from 'react';
+import { useId, useState, type ReactNode } from 'react';
 
 import { ErrorText } from '@/components/error-text';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -18,16 +18,15 @@ import { Field, FieldDescription, FieldLabel } from '@/components/ui/field';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
 import { ApiError } from '@/lib/api';
-import { formatDecimal, revocationSummary } from '@/lib/auto-accept';
+import { revocationSummary } from '@/lib/auto-accept';
 import { useRevokeAutoAccepted } from '@/lib/auto-accept-actions';
+import { useSubjectNames } from '@/lib/auto-accept-names';
+import { formatConfidence, handleName } from '@/lib/labels';
 import { MAX_AUTO_ACCEPT_REASON_CHARS } from '@/lib/limits';
 import { autoAcceptRevokeDryRunQuery } from '@/lib/queries';
 import { toast } from '@/lib/toast';
 
 import { SubjectText } from './subject';
-
-/** Items the dialog lists; the rest are counted. */
-const LISTED = 20;
 
 export type RevocationSelection = Omit<AutoAcceptRevocationBody, 'expectedCount' | 'reason'>;
 
@@ -39,6 +38,8 @@ export interface RevokeDialogProps {
   selection: RevocationSelection;
   /** Dialog title, e.g. „Annahmen der Regel „…“ widerrufen“. */
   title: string;
+  /** Above the dry run: what narrows the selection (the agent of „Nach Agent widerrufen…“). */
+  picker?: ReactNode;
   onDone?: (result: AutoAcceptRevocationResult) => void;
 }
 
@@ -47,6 +48,7 @@ function RevokeBody({
   onOpenChange,
   selection,
   title,
+  picker,
   onDone,
 }: Omit<RevokeDialogProps, 'open'>) {
   const id = useId();
@@ -55,6 +57,9 @@ function RevokeBody({
   const [reason, setReason] = useState('');
   const [changed, setChanged] = useState(false);
   const result = dry.data;
+  const names = useSubjectNames(project, result?.items ?? []);
+  // one rule's acceptances need no rule name per entry; an agent's or a list of ids may span rules
+  const byRule = selection.ruleId !== undefined;
 
   function confirm() {
     if (!result || result.count === 0) return;
@@ -99,6 +104,7 @@ function RevokeBody({
           bleibt, wie es ist.
         </DialogDescription>
       </DialogHeader>
+      {picker}
       {changed ? (
         <Alert>
           <AlertTitle>Die Auswahl hat sich geändert</AlertTitle>
@@ -118,23 +124,31 @@ function RevokeBody({
       ) : !result ? (
         <Skeleton className="h-16 w-full" />
       ) : (
-        <div className="flex flex-col gap-3">
+        <div className="flex min-w-0 flex-col gap-3">
           <p data-testid="revoke-summary">{revocationSummary(result)}</p>
           {result.items.length > 0 ? (
-            <ul className="flex max-h-56 flex-col gap-1.5 overflow-y-auto rounded-lg border p-2">
-              {result.items.slice(0, LISTED).map((i) => (
-                <li key={i.decisionId} className="flex flex-col gap-0.5" data-testid="revoke-item">
-                  <SubjectText subject={i} />
-                  <span className="text-xs text-muted-foreground">
-                    Regel „{i.ruleName}“ (Revision {i.revision}) · {i.agent.handle}
-                    {i.confidence === null ? '' : ` mit ${formatDecimal(i.confidence)}`} ·{' '}
-                    {i.outcome === 'obsolete' ? 'wird veraltet' : 'zurück in die Prüfung'}
-                  </span>
+            // the whole list, scrolling (UX-SIMPLIFICATION.md §3.11 item 7)
+            <ul
+              aria-label="Automatische Annahmen"
+              className="flex max-h-72 flex-col gap-2 overflow-y-auto rounded-lg border p-2"
+            >
+              {result.items.map((i) => (
+                <li key={i.decisionId} className="flex min-w-0 flex-col" data-testid="revoke-item">
+                  <SubjectText
+                    subject={i}
+                    names={names}
+                    details={[
+                      ...(byRule ? [] : [`Regel „${i.ruleName}“`]),
+                      handleName(i.agent.handle),
+                      ...(i.confidence === null ? [] : [formatConfidence(i.confidence)]),
+                      i.outcome === 'obsolete' ? 'wird veraltet' : 'zurück in die Prüfung',
+                    ]}
+                  />
                 </li>
               ))}
-              {result.count > LISTED ? (
+              {result.truncated ? (
                 <li className="text-xs text-muted-foreground">
-                  … und {result.count - LISTED} weitere
+                  … und {result.count - result.items.length} weitere
                 </li>
               ) : null}
             </ul>
@@ -183,9 +197,10 @@ function RevokeBody({
 
 /**
  * Revokes auto-acceptances (owner decision 19): the dry run when the dialog
- * opens, then „N widerrufen“ with the dry run's count; when the selection
- * changed in between (409) the dialog shows the fresh dry run. A human
- * decision taken since an acceptance is never touched.
+ * opens, listing every acceptance by name with its agent, confidence and
+ * what becomes of it (UX9), then „N widerrufen“ with the dry run's count;
+ * when the selection changed in between (409) the dialog shows the fresh dry
+ * run. A human decision taken since an acceptance is never touched.
  */
 export function RevokeDialog({ open, onOpenChange, ...props }: RevokeDialogProps) {
   return (
