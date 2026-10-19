@@ -665,6 +665,18 @@ export function waitingText(waitingModels: number, placementQueued: boolean): st
     : `${models} warten auf den Agenten`;
 }
 
+/**
+ * „12 eindeutige Aufrufe warten auf deine Bestätigung“ (M6 S2c): the open
+ * unique calls from derived models after an import, the group „Gesammelt
+ * annehmen“ opens; `null` for none.
+ */
+export function callsWaitingText(calls: number): string | null {
+  if (calls === 0) return null;
+  return calls === 1
+    ? '1 eindeutiger Aufruf wartet auf deine Bestätigung'
+    : `${calls} eindeutige Aufrufe warten auf deine Bestätigung`;
+}
+
 /** „9 offene Fragen gibt es schon jetzt“; `null` for none. */
 export function askNowText(ask: number): string | null {
   if (ask === 0) return null;

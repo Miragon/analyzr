@@ -103,8 +103,8 @@ this analyzr and no other. `keymap.json` belongs to the scripts: change it only 
 4. The import path, in this order: `$ANALYZR_CLI` if set (check with `printenv ANALYZR_CLI`);
    else, if the consultant names an analyzr checkout, `pnpm -C <absolute checkout path>
    analyzr` (check that `<checkout>/apps/cli/src/main.ts` exists); else the web („Hochladen“),
-   which does not read `analyzr-import.json` yet (same keys, but no provenance; step 4).
-   Record it as `cli` and write `analyzr-workspace.json`.
+   which reads `analyzr-import.json` as well (step 4). Record it as `cli` and write
+   `analyzr-workspace.json`.
 5. On first use, offer the guard setup at the end of this file.
 6. If the export does not lie below `<workspace>/exports/`, go on with step 1 and propose its
    folder `exports/<YYYY-MM-DD>-<system>/` with confirmation 1; after the consultant's yes,
@@ -219,7 +219,7 @@ entry's `key` in `keymap.json` (a valid model key no other entry has) and run `p
 which must report every model `known`.
 
 **Another key rule**, only while nothing of this system is imported into the real project
-(the probe project of step 5 does not count; with `cli`, `models list` shows none of the
+(the dry run of step 5 imports nothing; with `cli`, `models list` shows none of the
 system's keys): with the consultant's yes, plan again with `--reset`, the new rule and the
 scope and folders to leave out (it drops everything recorded for the system; other systems'
 keys stay taken), confirm as on a first import, then `--write` with `--reset`. Write the next
@@ -259,10 +259,10 @@ not excluded, normalized, at its key's path (`<key>.bpmn`), `analyzr-import.json
 `inventory.json`. On stdout: `counts`, loss totals, `totals`, `calls`, the files with changes
 or notes, `failed`, `skipped` (no BPMN 2.0), `excluded`, `absent` and `coverage`. Exit 1 with
 `failed` entries means: those files could not be taken over; the bundle holds every other
-file and can be imported. `analyzr import` reads `analyzr-import.json`: keys pinned, the
-provenance stored for new and changed models, import warnings. „Hochladen“ in the web does not
-read it yet: the same keys from the paths, but no provenance, and identical bytes imported later
-keep that (analyzr keeps a revision's first provenance). So prefer the CLI for a bundle.
+file and can be imported. `analyzr import` and „Hochladen“ in the web (the bundle folder dropped
+in or chosen) both read `analyzr-import.json`: keys pinned, the provenance stored for new and
+changed models, import warnings. Identical bytes imported later keep a revision's first
+provenance, so import the bundle folder itself, never its files one by one.
 
 Per file, the details file has: `kind`, `encoding`, `compact` (written without indentation to
 stay under analyzr's 5 MB), `idRewrites` (`from` → `to` with `reason` `unsafe`, `duplicate` or
@@ -274,12 +274,15 @@ with its `target` key and process, `none`, `several`, `expression` or `empty`),
 
 ## Step 5: Preview
 
-analyzr has no dry run for models yet (M6 S2b). Recommend a probe project only when the bundle
-shows `failed`, `parseWarnings`, `layoutMissing` or `ambiguousReferences`:
-`<cli> --url "<analyzrUrl>" import "<absolute bundle path>" -p <project>-probe --create --name "<name> (Probe)"`,
-to see analyzr's warnings and first findings before the real project; say that no route
-deletes a project, so the probe project stays in the list. Otherwise say that the direct
-import is fine. Run nothing.
+analyzr previews an import without changing anything: per file what it would become and
+analyzr's warnings, then what the import would change (calls accepted or only proposed, rule
+proposals, findings, keys the bundle does not name). Recommend the dry run before the import,
+above all when the bundle shows `failed`, `parseWarnings`, `layoutMissing` or
+`ambiguousReferences`, or the project already holds models:
+`<cli> --url "<analyzrUrl>" import "<absolute bundle path>" -p <project> --dry-run`.
+It previews into an existing project only (no `--create`): for a new project the consultant
+creates it first in the web („Neues Projekt“). „Hochladen“ in the web shows the same preview
+(„Vorschau“) before „Importieren“. Run nothing.
 
 ## Step 6: Report
 
@@ -307,12 +310,16 @@ count, naming `analyzr-import.json` and the details file for the full lists.
    `link-unresolved` „Verweis nicht aufgelöst“ (v0 writes none). Then „Mehrdeutige Verweise
    (doppelte IDs, bitte im Modell prüfen)“ from `ambiguousReferences`, „Zugeklappte
    Teilprozesse (vermutlich Verweise auf andere Diagramme; analyzr erkennt daraus keinen
-   Aufruf)“ from `collapsedSubprocesses`, and „Aufrufe, die analyzr beim Import als Beziehung
-   annehmen kann“: the calls with `match` `one` as „<Schlüssel> „<Name>“ → <Ziel-Schlüssel>“
-   (analyzr accepts a call whose target matches exactly one process id of the project without
-   review, owner decision 9; a model of the project outside this bundle can make it
-   ambiguous), plus the calls with `none` („Ziel nicht im Bündel“) and `several` („Ziel
-   mehrdeutig“).
+   Aufruf)“ from `collapsedSubprocesses`, and „Eindeutige Aufrufe“: the calls with `match`
+   `one` as „<Schlüssel> „<Name>“ → <Ziel-Schlüssel>“. analyzr accepts such a call at import
+   only from a Camunda 7 or 8 model uploaded with the owner key or the web (owner decisions 9
+   and 24.2); the calls of an engine-less or converted bundle (most exports) arrive as
+   proposals at 90 %, which the consultant accepts in one step after the import with
+   „Gesammelt annehmen“ (in the web after „Importieren“ and on „Übersicht“), before the agent
+   starts. Say so in one sentence, for example „analyzr schlägt diese Aufrufe mit 90 % vor; nimm
+   sie nach dem Import gesammelt an, bevor der Agent startet.“ A model of the project outside
+   this bundle can make a call ambiguous. Then the calls with `none` („Ziel nicht im Bündel“)
+   and `several` („Ziel mehrdeutig“).
 6. **„Schlüssel“:** the rule, new, moved (old → new folder), known, excluded and absent models,
    collisions and flags.
 7. **„Hinweise des Extraktors“:** `parseWarnings` per file with the label „Unbekannter oder
@@ -341,17 +348,19 @@ count, naming `analyzr-import.json` and the details file for the full lists.
    in analyzr and keep being analysed; if they should go, the consultant lists them with
    `<cli> --url "<analyzrUrl>" models delete -p <project> <key> …` (changes nothing, shows
    what would go) and deletes them with the same command and `--yes`.
-10. **„Import“:** the probe import if recommended (step 5), then the import into the project,
+10. **„Import“:** the dry run if recommended (step 5), then the import into the project,
     `<cli> --url "<analyzrUrl>" import "<absolute bundle path>" -p <project> --create --name "<name>"`
     (`--create` is harmless when the project exists). The import and `--create` need
     analyzr's owner key: with analyzr from the checkout the CLI finds it itself; with analyzr in
     Docker, `ANALYZR_OWNER_KEY_FILE` must point at a copy of the container's key (analyzr's
-    `docs/DEVELOPMENT.md`, „The `analyzr` CLI“), otherwise use the web. The web path, „ohne
-    Herkunftsangaben“ (step 4; prefer the command): „Öffne <analyzrUrl>, leg das Projekt
-    <project> an („Neues Projekt“), öffne „Hochladen“ und zieh den Ordner `bundles/<…>` hinein
-    (oder wähl ihn aus); der Ordnername selbst zählt nicht.“
-    Then the next steps: the relations run (`/analyzr:relations <project>` with an agent
-    token, the start prompts of analyzr's `examples/agents`).
+    `docs/DEVELOPMENT.md`, „The `analyzr` CLI“), otherwise use the web. The web path reads the
+    manifest as well: „Öffne <analyzrUrl>, leg das Projekt <project> an („Neues Projekt“), öffne
+    „Hochladen“ und zieh den Ordner `bundles/<…>` hinein (oder wähl ihn aus); der Ordnername
+    selbst zählt nicht. Prüf die Vorschau und klick „Importieren“.“
+    Then the next steps: the unique calls analyzr only proposed, accepted in one step
+    („Gesammelt annehmen“ in the web after „Importieren“ and on „Übersicht“; the CLI prints the
+    link), then the relations run (`/analyzr:relations <project>` with an agent token, the
+    start prompts of analyzr's `examples/agents`).
 
 ## Step 7: Stop
 

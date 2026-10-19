@@ -22,6 +22,10 @@ const RELEASES: Readonly<Record<string, string>> = {
   // M6 S2a: the skill says that `analyzr import` reads the manifest now, that the web does not
   // yet (no provenance), and labels the import warnings; no script changed.
   '0.1.1': 'af55bbe2f25172df4ef18b419f6be6df018504719b68e43cd320e97ae7015ef1',
+  // M6 S2c: the preview is `analyzr import … --dry-run` or the web's „Vorschau“ (no probe
+  // project), the web reads the manifest too (UX8), and unique calls of engine-less or
+  // converted bundles arrive as 90 % proposals for „Gesammelt annehmen“; no script changed.
+  '0.1.2': 'b9f2a073a5a8e8649c451acb9f746db238a3c8f136665c704d4b5be5ffc63f37',
 };
 
 async function pluginFiles(): Promise<string[]> {

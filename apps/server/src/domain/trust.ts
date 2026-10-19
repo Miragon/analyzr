@@ -28,7 +28,7 @@ import {
   type TrustReason,
 } from '@analyzr/contracts';
 
-import type { HeadTrustRow, RuleOutput } from './ports.ts';
+import type { HeadTrustRow, RelationRecord, RuleOutput } from './ports.ts';
 
 /**
  * The trust class of an uploaded revision (decision 24.2): `modelled` when
@@ -218,4 +218,24 @@ export function applyTrust(
       };
     }),
   };
+}
+
+/**
+ * An open unique call from a derived model: a call relation the rule tier
+ * only proposed (status `proposed`, tier `key`, marked `attrs.match`
+ * `derived-caller`), the web's `isDerivedCall` (apps/web/src/lib/review.ts).
+ * The system rule's `proposed` counts those of them a bulk accept takes as
+ * they stand (`isBulkDerivedCall` over their views: no agent's question, no
+ * no-link), so the card's number equals the selection its link opens (M6
+ * S2c-2); this test on the stored rows picks the few to build views for.
+ */
+export function isOpenDerivedCall(
+  relation: Pick<RelationRecord, 'type' | 'status' | 'tier' | 'attrs'>,
+): boolean {
+  return (
+    relation.type === 'call' &&
+    relation.status === 'proposed' &&
+    relation.tier === 'key' &&
+    relation.attrs['match'] === DERIVED_CALLER_MATCH
+  );
 }

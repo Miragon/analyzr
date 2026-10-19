@@ -114,7 +114,9 @@ const BUDGET = 40 * 1024;
  * in the URL, the empty state with „Agent starten“, the review screen walking
  * and returning to a result view), the revoke dialog the review screen loads
  * with the rules' new switch and menus, and the projects list's summary with
- * the shared „Offene Punkte“ cell.
+ * the shared „Offene Punkte“ cell. 224.1 KB after M6 S2c-1, 225.1 KB after
+ * S2c-2 (2026-10-20): the calls line on „Übersicht“ and after „Importieren“,
+ * `?bulk=calls` with the bulk dialog's calls group, selection and focus.
  */
 const ENTRY_CEILING = 240 * 1024;
 

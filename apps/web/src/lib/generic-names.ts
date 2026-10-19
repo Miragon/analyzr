@@ -1,5 +1,7 @@
 import type { Fact, Relation } from '@analyzr/client';
 
+import { DERIVED_CALLER_MATCH } from './limits';
+
 /**
  * Flags for the bulk accept preview (M2 item 7): key-tier proposals match on
  * identical names, which is right for "RechnungVersendet" and risky for
@@ -384,13 +386,20 @@ function cut(text: string): string {
  *   proposal the status rests on says;
  * - `ambiguous-target`: a call whose process id several models define
  *   (`duplicate-process-id`), where accepting every target is rarely right.
+ *
+ * A unique call from a derived model (M6 S2c, `attrs.match`
+ * `derived-caller`) names its one target by id, not by a name: no name flag
+ * ({@link genericFlags}) applies to it; an agent's question or no-link does.
  */
 export function bulkFlags(
   relation: Pick<Relation, 'type' | 'from' | 'to' | 'attrs' | 'provenance' | 'noLinks'>,
   labelOf: (ref: string) => string | null,
   usage: NameUsage,
 ): GenericFlag[] {
-  const flags = genericFlags(relation, labelOf, usage);
+  const flags =
+    relation.type === 'call' && relation.attrs['match'] === DERIVED_CALLER_MATCH
+      ? []
+      : genericFlags(relation, labelOf, usage);
   const question = relation.provenance?.question?.trim();
   if (question) {
     flags.push({

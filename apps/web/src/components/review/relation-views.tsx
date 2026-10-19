@@ -3,6 +3,9 @@ import { cn } from 'cn';
 
 import type { RelationView } from '@/lib/relation-filters';
 
+/** The id of the view „Zu prüfen“: where the focus goes when nothing else is left (M6 S2c-2). */
+export const REVIEW_VIEW_ID = 'relation-view-review';
+
 const item =
   'relative -mb-px inline-flex items-center gap-1.5 rounded-md px-1 pt-2 pb-2 text-sm font-medium whitespace-nowrap text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none aria-[current=page]:text-foreground aria-[current=page]:after:absolute aria-[current=page]:after:inset-x-0 aria-[current=page]:after:-bottom-px aria-[current=page]:after:h-0.5 aria-[current=page]:after:bg-primary';
 
@@ -32,6 +35,7 @@ export function RelationViews({
   const m = model ? { model } : {};
   const at = (view: RelationView) => ({
     'aria-current': current === view ? ('page' as const) : undefined,
+    id: `relation-view-${view}`,
     className: item,
     'data-testid': 'relation-view',
     'data-view': view,

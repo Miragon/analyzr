@@ -3,10 +3,10 @@
 Status: in progress (2026-10-15); owner decisions 24, 25 and 28 (§2, HANDOFF §4); S0 (this
 concept, revised after review), S1, S3a, S3b, S4, S5a, S5c-1, S5c-2 (answering by action and model
 amendments, decision 25, §4.8), S2a (provenance, manifest, stable identity; its web parts came
-with the UI simplification's UX8, §8 "S2a as delivered"), S2b (the dry runs; its follow-up open)
-and S2c-1 (the trust class and the rule tier, §8 "S2c-1 as delivered") done, the „erste Anfänge“
-await the owner's review; next S2c-2, S2c-3 and S2c-4 (§8 "S2c"), S2b's follow-up and S3c, then
-S6 · Branch:
+with the UI simplification's UX8, §8 "S2a as delivered"), S2b (the dry runs; its follow-up open),
+S2c-1 (the trust class and the rule tier, §8 "S2c-1 as delivered") and S2c-2 (the fast path for
+derived calls, §8 "S2c-2 as delivered") done, the „erste Anfänge“ await the owner's review; next
+S2c-3 and S2c-4 (§8 "S2c"), S2b's follow-up and S3c, then S6 · Branch:
 `feat/integration-and-gaps` ·
 Spec: [CONCEPT.md](CONCEPT.md) §1–§7 · Previous: [M4-VALUE-CHAIN.md](M4-VALUE-CHAIN.md) · Paused:
 the process network map (decision 22, issue [#2](https://github.com/Miragon/analyzr/issues/2)),
@@ -66,8 +66,11 @@ the command or screen and the slice that adds it ("today" means it exists now):
    (S3b).
 3. **Import.** Create the project and import the bundle: `analyzr import <bundle> -p <project>
    --create --name …`, or „Neues Projekt“ and „Hochladen“ with the bundle folder in the web
-   (today). The preview comes with S2b; until then a first import can go into a probe project
-   (§3.7 step 5).
+   (today). The preview („Vorschau“ in the web, `--dry-run` in the CLI) came with S2b; the skill
+   recommends it instead of a probe project since plugin 0.1.2 (S2c-2, §3.7 step 5). A bundle
+   without a Camunda engine (most exports) gets its unique calls as proposals (the trust rule,
+   §3.10): one bulk accept, „Gesammelt annehmen“ after „Importieren“ or the link `analyzr import`
+   prints opens the dialog with them selected and one click accepts them before step 5 (S2c-2).
 4. **First gap list.** „Offene Fragen“ right after the import, from the deterministic signals
    alone, without an LLM run (S4).
 5. **Relations.** Create an agent token and run `/analyzr:relations <project>` or
@@ -121,7 +124,8 @@ on 2026-10-17 in short form, and CONCEPT §11 notes it. The full records:
        accept such call proposals narrowed by derived kind and converter); revisions stored
        before S2c keep their acceptances, listed once for a bulk revocation (option (a) of
        §10.1). It ships as S2c (the class and the rule tier delivered in S2c-1 on 2026-10-19, the
-       decision-19 extension and the list follow in S2c-3 and S2c-4, §8 "S2c"; decision 28
+       fast path for the derived calls in S2c-2 on 2026-10-20, the decision-19 extension and
+       the list follow in S2c-3 and S2c-4, §8 "S2c"; decision 28
        below); until then the toolkit limits the risk on its side (§3.9: specs
        from ad-hoc converters, reconstructions and interviews get no `calledElement`; the
        consultant runs every import, §3.1). The related question whether REST ingest and model
@@ -553,16 +557,17 @@ import with `--create --name …`.
    (from S2b also from the dry run) and asks before it changes the map. It asks „Vollständiger
    Export oder Ausschnitt?“ and records a partial export's tool folders as `source.scope` and in
    `keymap.json`. A missing or stale `keymap.json` is rebuilt from analyzr (§3.4, from S2a; the
-   skill's part in the plugin's next version): a tool id several keys carry (after
+   skill's part still open after plugin 0.1.2): a tool id several keys carry (after
    `external-id-moved`, one tool model twice) keeps the older key, the other entries get
    `externalId: null` and go to the consultant; the key rule is inferred from the (`externalPath`,
    key) pairs and confirmed by the consultant.
 4. **Emit the bundle** (§3.2) under `bundles/`, every file at its pinned key's path; the
    inventory, if any, gives the coverage line and the request list.
 5. **Preview** (from S2b): `analyzr import <bundle> -p <project> --dry-run`, with `--token` if
-   the workspace names a read-only token (§3.1). Until S2b the report suggests a probe project for
-   a first import (`analyzr import <bundle> -p <kunde>-probe --create`); no route deletes a
-   project, so probe projects stay in the list.
+   the workspace names a read-only token (§3.1). Until plugin 0.1.2 (S2c-2) the report suggested a
+   probe project for a first import (`analyzr import <bundle> -p <kunde>-probe --create`; no route
+   deletes a project, so probe projects stay in the list); since then it recommends the dry run,
+   which needs an existing project.
 6. **Report** in German under `reports/`: tool and format found, what was converted and lost
    (every `link-unresolved` link listed), the keys, the extractor warnings with their German
    labels (S1), from S2b the impact (every rule-tier call the import would newly accept,
@@ -661,10 +666,10 @@ rationale naming the reason) instead of an acceptance; findings are unchanged. C
   proposals at the next ingest, previewed with `importImpact` before S2c is switched on.
   Recommendation: (a). Decided (a) with 24.2 and delivered in S2c-1; the list comes with S2c-4
   and, by decision 28 (3), holds only acceptances whose revision would classify as derived.
-- Signavio, ARIS or interview models get their calls as proposals, accepted in bulk per tier
-  (the existing bulk dialog, where they sit among the „Gleicher Name“ pairs until S2c-2 gives
-  them a group of their own) or one by one. The read-only system rule „Eindeutige Aufrufe“ says
-  so.
+- Signavio, ARIS or interview models get their calls as proposals, accepted in bulk (since S2c-2
+  the key tier's bulk dialog lists them first as their own group, „Eindeutige Aufrufe aus
+  abgeleiteten Modellen“, which „Gesammelt annehmen“ opens with exactly those selected) or one by
+  one. The read-only system rule „Eindeutige Aufrufe“ says so.
 - An owner's auto-accept rule (decision 19) never accepts a rule-tier proposal today (`not-agent`,
   `apps/server/src/domain/auto-accept/evaluate.ts`). The recommendation includes extending
   decision-19 rules to rule-tier call proposals of derived revisions, narrowed by derived kind
@@ -683,7 +688,11 @@ abgeleitet (ohne Camunda-Engine; über ein Agenten-Token hochgeladen). Darum nur
 (the reasons as the model carries them). Only the caller's class counts. A rule acceptance whose
 caller's new revision is derived ends at that ingest (the rule's later proposal ends its
 decision), and a re-import as modelled accepts again; human decisions stay in force with the rule
-proposing behind them. The decision-19 extension follows in S2c-3, the list in S2c-4.
+proposing behind them. **S2c-2 delivered the fast path** (2026-10-20, §8 "S2c-2 as delivered"):
+„Gesammelt annehmen“ on „Übersicht“ and after „Importieren“, the system rule card's count „N aus
+abgeleiteten Modellen vorgeschlagen“ and the link `analyzr import` prints open the bulk dialog
+with such calls selected, and one click accepts them before the agent runs (at most 500 at a
+time; one an agent asks about or objects to is decided one by one). The decision-19 extension follows in S2c-3, the list in S2c-4.
 
 **Added with decision 25 (2026-10-17; extends decision 24.2; confirmed by the owner 2026-10-17, decision 25.2).**
 A call target set by a model amendment (S5c-2, §4.8 c) was picked by a human from the
@@ -2112,7 +2121,8 @@ Choices the spec left open (the owner may overrule):
   drop a model from `external-ids` or from the identity warnings' protection. Known interim gap:
   a bundle imported first through the web records no identity at all, and importing the same
   bytes again with the CLI cannot add it (`provenance-kept` says so); the skill therefore prefers
-  the CLI for a bundle (plugin 0.1.1).
+  the CLI for a bundle (plugin 0.1.1). Since UX8 „Hochladen“ reads the manifest as well, and
+  plugin 0.1.2 (S2c-2) no longer marks the web path „ohne Herkunftsangaben“.
 - **Informational declared fields are tidied, identity fields refused** (an addition after the
   review): `systemVersion`, `externalPath`, `derived.converter` and `derived.llmModel` accept any
   string within their length; analyzr stores them with lone surrogates replaced by U+FFFD, control
@@ -2189,9 +2199,11 @@ Left for S2b: `importImpact`, the dry runs (`POST …/imports?dryRun=true`, `PUT
 §3.5, which respect `source.scope` (stored on each revision since S2a). Left for the plugin's
 next version, with S2b's dry run: the skill's rebuild of a lost `keymap.json` from `analyzr
 models external-ids` (§3.7 step 3, with the rule for a tool id several keys carry) and the
-pre-approved `--dry-run`; plugin 0.1.1 changes only the skill text (above). Left for the plugin's
-next version as well: `normalize-bpmn` writing `null` for an empty or blank `exporterVersion`
-(analyzr already stores it as absent).
+pre-approved `--dry-run`; plugin 0.1.1 changes only the skill text (above). Plugin 0.1.2 (S2c-2)
+recommends the dry run in the report, for the consultant to run; the key-map rebuild and a
+pre-approved `--dry-run` are still left. Left for the plugin's
+next version as well, and still left after 0.1.2 (no script changed): `normalize-bpmn` writing
+`null` for an empty or blank `exporterVersion` (analyzr already stores it as absent).
 Left for the UI simplification slice ([UX-SIMPLIFICATION.md](UX-SIMPLIFICATION.md)): S2a's web
 parts, that is „Herkunft“ in the model view, the badges in the models table and the manifest of a
 dropped folder in „Hochladen“.
@@ -2251,7 +2263,7 @@ in four steps, each passing every gate on its own:
 | Step | Scope | State |
 |---|---|---|
 | S2c-1 | the trust class and the rule tier: the contracts (`RevisionSource.trust`, `Model.trust`, `ImpactFile.trust`, `ImportImpact.callsProposed`, `ImportFileOutcome.trust`, `trust-kept`, `AutoAcceptSystemRule.proposed`), `trust.ts`, ingest and the three planners, the recompute with the rationale, the system rule's text and count, the client texts | done 2026-10-19 (below) |
-| S2c-2 | the fast path: the bulk dialog's group „Eindeutige Aufrufe aus abgeleiteten Modellen (n)“ opened by `?bulk=calls` (the system card's count of these proposals a link to it), a line in the upload's „Als Nächstes“ and in „Übersicht“'s („12 eindeutige Aufrufe zuerst bestätigen · Gesammelt annehmen“), `analyzr import`'s `next:` line and a warning before sending with an agent token, the integrate plugin 0.1.2 (its skill and Signavio notes say that calls of engine-less or converted bundles arrive as 90 % proposals) | next |
+| S2c-2 | the fast path: the bulk dialog's group „Eindeutige Aufrufe aus abgeleiteten Modellen (n)“ opened by `?bulk=calls` (the system card's count of these proposals a link to it), a line in the upload's „Als Nächstes“ and in „Übersicht“'s („12 eindeutige Aufrufe zuerst bestätigen · Gesammelt annehmen“), `analyzr import`'s `next:` line and a warning before sending with an agent token, the integrate plugin 0.1.2 (its skill and Signavio notes say that calls of engine-less or converted bundles arrive as 90 % proposals) | done 2026-10-20 (below) |
 | S2c-3 | decision 19's extension: the criteria `proposedBy`, `derivedKind` and `converter` (migration 0018), the block reasons `agent-upload` and `amendment-conflict`, an agent rule pinned to agent proposals, the fifth write path right after the recompute of an ingest or a deletion, apply, preview, ledger and revocation, `autoAcceptedCalls` in an owner's dry run, `analyzr rules add --derived`, the dialog's third „Art“ and the bulk toast's offer | open |
 | S2c-4 | „Vor der Vertrauensregel angenommen“: the append-only `revision_trust_review` (migrations 0019/0020), the list of decision 28 (3), „Zurück in die Prüfung“ and „Behalten“ from the system rule card, two owner-only routes, `analyzr rules pre-trust` | open |
 
@@ -2307,7 +2319,8 @@ checks hold), MCP unchanged. Deviations from the plan, most from the review roun
 - **`ImportFileOutcome.trust` also on unchanged files** whose kept class is derived, and in dry
   runs.
 - **The card's count is plain text** until S2c-2 opens a list of exactly those rows (`?tier=key`
-  showed every „Gleicher Name“ proposal, against the rule that a count opens its own list).
+  showed every „Gleicher Name“ proposal, against the rule that a count opens its own list). S2c-2
+  made it a link to `?bulk=calls`.
 - **Recognized by the assertion.** The web tells a trust-rule proposal by itself (rule, proposal,
   tier `key`, 0.9, a rationale: `isTrustRuleProposal` in `lib/review.ts`), not by the relation's
   marker, which goes when the caller turns modelled: „Verlauf“ titles it without the „Gleicher
@@ -2350,16 +2363,115 @@ What it costs and leaves open. A landscape a human imports from Camunda behaves 
 corpus, the seeds, the demo and the owner's live runs are unchanged (eval reports, MCP snapshots,
 procedures, recordings and claim inputs). A landscape without an engine or imported with an agent
 token now gets its unique calls as proposals, so its first analysis takes one review step more
-until S2c-2: on the UI load guard's `signavio-beispiel`, imported with a write token, „Rechnung
-stellen“ is now proposed, the tab reads „Relationen 1 zu prüfen“ and „Als Nächstes“ adds „Oder
-jetzt schon: Vorschläge prüfen (1) …“. Such proposals are not settled, so a claim assigns the pair
-to an agent until someone accepts it; the procedure's candidate keeps basis `rule` (S7 below).
-Until S2c-2's 0.1.2 the integrate plugin 0.1.1 still promises otherwise: its report lists the
-calls with `match` `one` as „Aufrufe, die analyzr beim Import als Beziehung annehmen kann“ and its
+(S2c-2 below makes it one bulk accept): on the UI load guard's `signavio-beispiel`, imported with a
+write token, „Rechnung stellen“ is now proposed, the tab reads „Relationen 1 zu prüfen“ and „Als
+Nächstes“ adds „Oder jetzt schon: Vorschläge prüfen (1) …“. Such proposals are not settled, so a
+claim assigns the pair to an agent until someone accepts it; the procedure's candidate keeps basis
+`rule` (S7 below). The integrate plugin 0.1.1 still promised otherwise: its report lists the calls
+with `match` `one` as „Aufrufe, die analyzr beim Import als Beziehung annehmen kann“ and its
 Signavio note says such a call „is accepted at import“, while an engine-less export's calls now
-arrive as 90 % proposals.
+arrive as 90 % proposals; 0.1.2 (S2c-2) corrects both.
 Revisions stored between S2a and S2c without an engine or by an agent token keep their
 acceptances until S2c-4 lists them.
+
+**S2c-2 as delivered** (2026-10-20, on the branch, every gate green, with a review round's fixes;
+[DEVELOPMENT.md](DEVELOPMENT.md) "M6 S2c-2 (2026-10-20)" and "The trust rule"). The fast path for
+derived calls: one bulk accept (a link opens the dialog with them selected, one click accepts
+them; at most 500 at a time, one an agent asks about or objects to decided one by one) takes the
+unique calls of a derived landscape before the agent runs, so the agent's relations claims skip
+those pairs (accepted pairs are settled) and the agent judges
+only the pairs that are really open; the CLI and the integrate plugin point there. No route, no
+migration, no MCP change; the OpenAPI spec and the client are unchanged.
+
+- **What counts.** `isBulkDerivedCall` in the contracts (`api/relations.ts`, a plain function): an
+  open unique call from a derived model (call, `proposed`, tier `key`, `attrs.match`
+  `derived-caller`) with no agent's question on the proposal its status rests on and no current
+  no-link, so the bulk accept takes it as it stands. Every number that leads to this bulk accept
+  counts these: the web's (`isBulkCall`, mirrored in `apps/web/src/lib/review.ts`), the system
+  rule card's (`isOpenDerivedCall` in `trust.ts` picks the stored rows, now also requiring tier
+  `key`, which S2c-1's count did not check; `auto-accept.ts` builds their views and filters with
+  `isBulkDerivedCall`) and `analyzr import`'s, so each equals the selection its link opens (up
+  to 500; the rest follow).
+- **The bulk dialog.** `isDerivedCall` (the same test without the flags) puts the derived calls
+  first under „Eindeutige Aufrufe aus abgeleiteten Modellen (N)“, then the other unflagged pairs
+  under „Gleicher Name (M)“; no name flag applies to such a call (it names its target by id); the
+  description „Gleicher Name und eindeutige Aufrufe. …“ while such calls are listed. `?bulk=calls`
+  opens it by itself for reviewers once the flags are known, titled „N eindeutige Aufrufe
+  annehmen?“, with exactly the unflagged calls selected (at most 500: „Höchstens 500 auf einmal;
+  die übrigen N danach.“) and the other rows unselected. Closing drops `?bulk` (replace) and
+  returns the focus to the page; a stale `?bulk` with nothing to open is dropped. After accepting
+  only derived calls the toast says „Eindeutige Aufrufe aus abgeleiteten Modellen.“ and offers no
+  rule.
+- **The links.** „Übersicht“'s „Als Nächstes“: „N eindeutige Aufrufe zuerst bestätigen ·
+  Gesammelt annehmen“ while an agent row leads (after the failed and expired lines), „Davon N
+  eindeutige Aufrufe · Gesammelt annehmen“ as the first line under „Vorschläge prüfen“; it
+  replaces „Oder jetzt schon: Vorschläge prüfen (n). …“ when every open review item is such a
+  call; at most two lines, viewers the text only. The upload's „Als Nächstes“ after „Importieren“:
+  first `upload-next-calls`, „12 eindeutige Aufrufe warten auf deine Bestätigung · Gesammelt
+  annehmen“. The system rule card's count is a link now (plain text in S2c-1).
+- **CLI.** `analyzr import`, after an import with derived models and only while such calls wait:
+  `next: 6 models are derived (no engine 6); 1 unique call is a proposal: accept it in the web
+  review before the agent runs:` and `  <url>/projects/<p>/review?bulk=calls`, the agent step then
+  `then:`. With an agent token, before anything is sent (also for `--dry-run`), on stderr:
+  `importing with an agent token (ANALYZR_TOKEN): unique calls become proposals (trust rule);
+  unset ANALYZR_TOKEN to import with the owner key` (with `--token`:
+  `… (--token): …; drop --token to import with the owner key`).
+- **Integrate plugin 0.1.2** (texts only, no script changed, so `normalize-bpmn` and its golden
+  bundle stay; hash `b9f2a073…` in `RELEASES`, 0.1.0 and 0.1.1 unchanged): step 5 recommends the
+  dry run (`analyzr import … --dry-run`, or the web's „Vorschau“) instead of a probe project and
+  notes that it needs an existing project; the report's „Eindeutige Aufrufe“ says that analyzr
+  accepts such calls at import only from a Camunda 7 or 8 model uploaded with the owner key or the
+  web, and that an engine-less or converted bundle's calls arrive as 90 % proposals the consultant
+  accepts in one step with „Gesammelt annehmen“ before the agent starts; the „Import“ step names
+  that step before the relations run; the passages saying „Hochladen“ ignores the manifest (stale
+  since UX8) are gone; `reference/signavio.md` says the same.
+- **Demo.** `demo.spec.ts` treats „Gesammelt annehmen“ as a write label; a demo viewer gets the
+  calls line as text only.
+
+Deviations from the plan, most from the review round:
+
+- **The counts leave out flagged calls.** The plan counted every derived call; after „Agent
+  starten“ an agent's question on such a pair would have made a link promise N calls and open a
+  dialog with 0 selected. The group's heading still counts every derived call, a flagged one in
+  it, flagged and without a checkbox (not under „Genauer ansehen“), and the review line shows while
+  such a call remains.
+- **„Davon N eindeutige Aufrufe“** under „Vorschläge prüfen“, where „zuerst“ read oddly.
+- **No rule offer after only derived calls** (no agent rule accepts them); the toast's offer of a
+  rule for them comes with S2c-3. A mixed selection keeps the „Gleicher Name ab 100 %“ offer.
+- **At most 500 selected** from `?bulk=calls`, so the link never ends at a disabled button.
+- **The dialog stays open until closed** (`bulkMode`): the accept's refetches dropped its rows and
+  unmounted it before its toast, leaving `?bulk` in the URL.
+- **The CLI's `next:` line counts the waiting calls**, not the derived models, and prints the deep
+  link instead of the label „Gesammelt annehmen“ (which the review page does not show); it no
+  longer mentions `analyzr rules add --derived` (S2c-3). It asks only after an import with derived
+  models (unchanged ones included), so an import of modelled files only does not mention calls
+  still waiting from an earlier import.
+- **The notice names the token's source and the way out**, since a token left in the shell is the
+  plan's main risk and a re-import of the same bytes keeps the class (`trust-kept`); no
+  `analyzr:` prefix.
+- **Plugin 0.1.2 also fixes the manifest passages** stale since UX8 (the plan changed steps 5 and 6
+  only).
+
+Tests: contracts (`isBulkDerivedCall`), server unit `trust.test.ts` (`isOpenDerivedCall`), real
+PostgreSQL `trust.test.ts` (a bulk accept of „Rechnung stellen“ at tier `key`, the card's count 1
+→ 0; an agent's no-link drops it to 0 with the call still proposed); web `review-lib`,
+`bulk-accept-dialog`, `review-inbox` (incl. the accept while another query answers 300 ms after
+the landscape), `overview`, `upload-panel`, `lib`, `rules-tab`, `limits`; CLI `import` (the notice
+for both sources and a dry run, `--json` with an agent token, the `next:` line, no lookup after
+modelled files); integrate `plugin.test.ts`; Playwright `trust-calls.spec.ts` (new: „Hochladen“ and
+`analyzr import` with an agent token, each into a project of its own), `ui-load.spec.ts` (the calls
+line equals the dialog's selection), `demo.spec.ts`.
+
+What it costs and leaves open. Nothing changes for Camunda landscapes a human imports, so the
+corpus, the seeds, the demo and the owner's live runs are unchanged (eval reports, MCP snapshots,
+procedures, recordings). On the UI load guard's `signavio-beispiel`, „Übersicht“ reads „1
+eindeutigen Aufruf zuerst bestätigen · Gesammelt annehmen“ instead of „Oder jetzt schon:
+Vorschläge prüfen (1) …“ (122 → 113 words at 1440, the controls unchanged), and the dialog behind
+it measures 22 controls and 112 words. Calls nobody accepts stay unsettled, and the claims assign
+them to judge as before. Left: S2c-3 (owners' rules for these proposals by derived kind and
+converter, the toast's rule offer), S2c-4 („Vor der Vertrauensregel angenommen“), the skill's
+key-map rebuild, a pre-approved `--dry-run` and `normalize-bpmn` writing `null` for an empty
+`exporterVersion`.
 
 **S3 "Toolkit".** S3a (part of the „erste Anfänge“): §3.11, report committed, CI drift check,
 and the `get_landscape` size per model of the seeded `nordwind-handel` with the v1 limit in §6.
@@ -2522,8 +2634,8 @@ Choices the spec left open:
   `externalId` are left out. The bundle's details give each call a `match` (`one` with its target
   key and process, `none`, `several`, `expression`, `empty`), from which the report lists the
   calls analyzr will accept on import (decision 9; since S2c-1 only from modelled bundles: an
-  engine-less export's calls arrive as 90 % proposals, which the plugin 0.1.1 does not say until
-  S2c-2's 0.1.2).
+  engine-less export's calls arrive as 90 % proposals, which the plugin says since 0.1.2, S2c-2,
+  under „Eindeutige Aufrufe“ with the one-step accept „Gesammelt annehmen“).
 - The scripts print short JSON (long lists cut to their first entries plus a count; on a
   200-model export inspect 5.8 KB, plan 1.9 KB, bundle 6.6 KB), and `plan` and `bundle` write the
   complete result with `--json-out`. They refuse an `--out`, `--json-out` or `--workspace` inside
@@ -2534,8 +2646,8 @@ Choices the spec left open:
 - Every command the skill prints is `<cli> --url "<analyzrUrl>" …`; the report says that the
   import needs the owner key (`ANALYZR_OWNER_KEY_FILE` with analyzr in Docker) and gives the web
   path. A probe project is recommended only when the bundle shows failed files, warnings, missing
-  layout or ambiguous references; confirmations 1 and 3 and the archive question go in one
-  message.
+  layout or ambiguous references (since 0.1.2, S2c-2: the dry run instead, above all in those
+  cases); confirmations 1 and 3 and the archive question go in one message.
 - Releases: `RELEASES` in `tools/integrate/test/plugin.test.ts` pins a sha256 over the plugin's
   files per plugin version, and `CONVERTER_OUTPUTS` in `tools/integrate/test/bundle.test.ts` the
   golden bundle's models per `NORMALIZE_BPMN_VERSION`, so a change of the plugin moves its
@@ -3313,8 +3425,8 @@ write-back or sync to the source tools (decision 7).
     `external-ids` and the change list keep the old tool folder, and a bundle imported first
     through the web (no manifest until the web's S2a part) can never get its identity recorded
     by importing the same bytes again with the CLI. S2a says so (`provenance-kept`, „provenance
-    stored for 0; 6 unchanged keep what analyzr had“) and the skill prefers the CLI, but does not
-    fix it. Proposal: record each import's declared identity per model in an append-only row
+    stored for 0; 6 unchanged keep what analyzr had“) and the skill prefers the CLI (until
+    plugin 0.1.2: since UX8 the web sends the manifest too), but does not fix it. Proposal: record each import's declared identity per model in an append-only row
     (model, seq: system, tool id, tool folder, link), written also for unchanged files whose
     declaration differs; `external-ids`, the change list, „Herkunft“ and the identity warnings
     read the newest row, the revision keeps its first provenance, and nothing re-queues (facts

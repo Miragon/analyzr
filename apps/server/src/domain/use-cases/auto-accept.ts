@@ -17,8 +17,8 @@
 import {
   AUTO_ACCEPT_CURVE,
   AUTO_ACCEPT_PREVIEW_ITEMS,
-  DERIVED_CALLER_MATCH,
   MAX_AUTO_ACCEPT_ITEMS,
+  isBulkDerivedCall,
   newId,
   type ApplyAutoAcceptBody,
   type ApplyAutoAcceptResult,
@@ -98,8 +98,9 @@ import type {
   ValueChainRecord,
 } from '../ports.ts';
 import type { ProposalContext } from '../proposals.ts';
-import { byRelation, naturalKey } from '../relation-state.ts';
+import { byRelation, naturalKey, relationViews } from '../relation-state.ts';
 import { currentStances, recomputeStatus, type StanceView } from '../status.ts';
+import { isOpenDerivedCall } from '../trust.ts';
 import { loadChainState, type ChainState } from '../value-chain/chain-state.ts';
 import {
   byPlacement,
@@ -564,13 +565,16 @@ export function autoAcceptUseCases(deps: UseCaseDeps) {
             r.status === 'accepted' &&
             basisOf(relationHistories.get(r.id) ?? [])?.sourceKind === 'rule',
         ).length;
-        // The trust rule's proposals of unique calls from derived models (M6 S2c).
-        const systemProposed = relations.filter(
-          (r) =>
-            r.type === 'call' &&
-            r.status === 'proposed' &&
-            r.attrs['match'] === DERIVED_CALLER_MATCH,
-        ).length;
+        // The trust rule's proposals of unique calls from derived models (M6 S2c) a bulk accept
+        // takes as they stand (no agent's question, no no-link): the selection the card opens.
+        const systemProposed = (
+          await relationViews(
+            tx,
+            project.id,
+            relations.filter(isOpenDerivedCall),
+            deps.expectedProcedure(),
+          )
+        ).filter(isBulkDerivedCall).length;
         return {
           items: heads.map((h) => ruleView(h, { owners, stats, agents })),
           system: systemRule(systemAccepted, systemProposed),

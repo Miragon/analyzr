@@ -5,7 +5,8 @@ the recommended option; HANDOFF §4); proposal of 2026-10-17, revised the same d
 feasibility critique · Branch: `feat/integration-and-gaps` (the first wave UX2a, UX1 and UX2b
 delivered on it on 2026-10-18, §7; the owner's walkthrough the same day, §7 "Owner
 walkthrough"; UX7, UX8, S2b's „Vorschau“, UX3, UX4 and UX5 delivered the same day, UX6 and
-UX9 on 2026-10-19: every slice delivered; M6 S2c-1's texts on these screens the same day, §7) ·
+UX9 on 2026-10-19: every slice delivered; M6 S2c-1's texts on these screens the same day, S2c-2's
+fast path for derived calls on 2026-10-20, §7) ·
 Source: four user-need audits of the web UI on the agent-created scratch stack
 `analyzr-uxaudit` (seeded `nordwind-handel` with its chain and a simulation agent run,
 `signavio-beispiel` from the CLI bundle import, two projects made from the raw synthetic Signavio
@@ -242,7 +243,11 @@ From top to bottom, all on `/projects/{p}` (today's models tab, `routes/project-
    versuchen“ and „Bei 1 Modell ist die Reservierung abgelaufen · Nochmal versuchen“ (the requeues
    `StageModels` in „Prüfen“ offers today, permission `write`), the review line above, and „Noch
    keine Wertschöpfungskette · Anlegen oder importieren“ once relations exist. „Exportieren“ (§3.2)
-   sits at the block's right.
+   sits at the block's right. Since M6 S2c-2 one more line while unique calls of derived models
+   wait for a bulk accept (the trust rule): „12 eindeutige Aufrufe zuerst bestätigen · Gesammelt
+   annehmen“ after the failed and expired lines while an agent row leads, or „Davon 12 eindeutige
+   Aufrufe · Gesammelt annehmen“ as the first line under „Vorschläge prüfen“; it replaces the
+   review line when every open item is such a call (§7 "M6 S2c-2's texts as delivered").
 2. **The models table** with its toolbar: „Modell suchen …“ (name and key, umlauts and case folded
    with `lib/generic-names.ts` `nameWords`, in the URL as `?q=`) and the phase chips „Modelle nach
    Phase: Alle 31 · Wartet auf Prüfung 25 · Klärung offen 2 · Eingearbeitet 4“ (only stages with
@@ -599,7 +604,13 @@ Appendix A.
    wählst du bewusst selbst aus.“ After a bulk accept, owners get one line: „Gleicher Name ab
    100 % künftig automatisch annehmen? · Annahmeregel anlegen“, opening the rule dialog prefilled
    (rules match agent proposals only, decision 19; whether the flags block is Q8). The lexical bulk
-   („Ähnlich: 13 annehmen…“, preselecting pairs at 65 % and 66 %) goes (Q7). (R6, R7)
+   („Ähnlich: 13 annehmen…“, preselecting pairs at 65 % and 66 %) goes (Q7). (R6, R7) Since M6
+   S2c-2 the unique calls of derived models come first as their own group, which „Gesammelt
+   annehmen“ and the system rule card's count open with exactly those selected; a flagged one
+   stays in that group, flagged and without a checkbox, instead of under „Genauer ansehen“, the
+   other unflagged pairs are headed „Gleicher Name (n)“ only next to that group, and after
+   accepting only such calls the toast says „Eindeutige Aufrufe aus abgeleiteten Modellen.“ with
+   no rule offer until S2c-3 (§7 "M6 S2c-2's texts as delivered").
 6. **Filters** „Stufe“ and „Modell“ → „Grundlage“ and „Modell“ (§4); hidden while the list is
    empty. (R8, R24)
 7. **„Vorgemerkt“** (`held-list.tsx`): rows without open text areas (today two large text areas
@@ -715,6 +726,8 @@ Appendix A.
 2. **Next-step box**, the web twin of `formatNextSteps` (`apps/cli/src/commands/import.ts`): „5
    Modelle warten auf den Agenten · Agent starten“ (the popover of §2.6, or „Agent verbinden“
    without a token), „9 offene Fragen gibt es schon jetzt · Offene Fragen ansehen“. (O5, O16)
+   Since M6 S2c-2 it starts with „12 eindeutige Aufrufe warten auf deine Bestätigung · Gesammelt
+   annehmen“ while such calls wait (reviewers only; §7 "M6 S2c-2's texts as delivered").
 3. **Warnings grouped by element and cause** (O6): today „9 Hinweise“, each „Unbekannter oder
    fehlerhafter Inhalt“ plus bpmn-moddle English („unparsable content <task> detected … illegal ID
    <Aufgabe_Bonität_prüfen>“, „unresolved reference <4711>“). A warning carries only the code, that
@@ -806,8 +819,8 @@ Appendix A.
    „calledElement“, no „Verfahren analyzr-rules/1.0.0“); no „Neue Regel“ next to „Erste Regel
    anlegen“. (R21) Since M6 S2c-1 the card reads „Eindeutige Aufrufe aus Camunda-Modellen nimmt
    analyzr beim Hochladen an · immer aktiv · 10 angenommen · 12 aus abgeleiteten Modellen
-   vorgeschlagen“ (the last part only while such proposals are open, plain text until S2c-2 opens
-   a list of exactly those rows).
+   vorgeschlagen“ (the last part only while such proposals are open; since S2c-2 a link to the
+   bulk accept with exactly those calls selected, `?bulk=calls`).
 7. **Apply and revoke lists** (`rules/subject.tsx`, `apply-dialog.tsx`): element labels and
    „100 %“ instead of raw refs and „mit 1,00 · sim-policy-1“; the whole list scrolls instead of
    stopping at 20. (R22)
@@ -1132,7 +1145,9 @@ delivered"). They fit without a new column, tab or panel:
   zwischen den Teilen erscheinen hier als unaufgelöst.“ One click more, no new screen. Since M6
   S2c-1 the impact lines add „12 Aufrufe nur vorgeschlagen (ohne Camunda-Engine) – nach dem
   Import gesammelt annehmen“ for the unique calls of derived models, and „Was ändert sich?“ the
-  list „Aufrufe als Vorschlag“ („(bisher angenommen)“ for a call whose acceptance ends).
+  list „Aufrufe als Vorschlag“ („(bisher angenommen)“ for a call whose acceptance ends); since
+  S2c-2 the result's „Als Nächstes“ names them first: „12 eindeutige Aufrufe warten auf deine
+  Bestätigung · Gesammelt annehmen“.
 - **Deletion impact** (S2b): stays in `analyzr models delete`; the web has no model deletion. If
   the owner wants it, it goes into the model view's „Mehr“ as „Modell löschen …“ with the impact as
   the confirmation dialog, in the chain save's pattern (only non-zero lines, „Weiter bearbeiten“ /
@@ -2099,7 +2114,47 @@ Nächstes“ adds „Oder jetzt schon: Vorschläge prüfen (1) …“: 20 contro
 103 / 88 before), its „Offene Fragen“ 254 words (253); the empty project's „Übersicht“ 42 / 41
 words (37 / 36); everything else unchanged. That one proposal is the step S2c-2 shortens (and
 until it is accepted, the agent's relations claim also assigns it to judge): its „Als Nächstes“
-line and the bulk dialog's group for these calls are next.
+line and the bulk dialog's group for these calls followed on 2026-10-20 (below).
+
+**M6 S2c-2's texts as delivered** (2026-10-20, on the branch, every gate green; M6 §8 "S2c-2 as
+delivered", DEVELOPMENT.md "M6 S2c-2"). The fast path for the unique calls of derived models:
+three links, all opening `/projects/<p>/review?bulk=calls`, the bulk dialog with exactly those
+calls selected: „Gesammelt annehmen“ on „Übersicht“ and after „Importieren“, and the system rule
+card's count „12 aus abgeleiteten Modellen vorgeschlagen“; one click there accepts them before
+the agent runs, so the agent judges only the pairs that are really open. Each number counts the
+calls the dialog selects (no agent's question, no no-link; `isBulkCall`), so it equals the list
+it opens (P5; above 500 the dialog selects 500 and says „die übrigen N danach“):
+
+- **„Übersicht“, „Als Nächstes“** (§2.3): while an agent row leads („Agent verbinden“, „Agent
+  starten“, „Nochmal versuchen“) the line „12 eindeutige Aufrufe zuerst bestätigen · Gesammelt annehmen“ („1
+  eindeutigen Aufruf …“) after the failed and expired lines; under „Vorschläge prüfen“ the first
+  line „Davon 12 eindeutige Aufrufe · Gesammelt annehmen“ („Davon 1 eindeutiger Aufruf …“), since
+  the primary already counts them. When every open review item is such a call, it replaces „Oder
+  jetzt schon: Vorschläge prüfen (n). …“, so no two lines offer the same rows. The cap of two
+  lines holds; viewers get the text without the link.
+- **„Hochladen“, „Als Nächstes“ after „Importieren“** (§3.9): the first item „12 eindeutige Aufrufe
+  warten auf deine Bestätigung · Gesammelt annehmen“ („1 eindeutiger Aufruf wartet …“), before
+  what waits for the agent; reviewers only.
+- **„Annahmeregeln“, the system rule card** (§3.11 item 6): „12 aus abgeleiteten Modellen
+  vorgeschlagen“ is a link now (plain text in S2c-1).
+- **The bulk dialog** (§3.6 item 5): the derived calls first under „Eindeutige Aufrufe aus
+  abgeleiteten Modellen (12)“ (every derived call; one an agent asks about or objects to stays in
+  the group, flagged, without a checkbox), then the other unflagged pairs under „Gleicher Name
+  (8)“, then „Genauer ansehen (n)“ as before; the description „Gleicher Name und eindeutige
+  Aufrufe. Markierte mögliche Relationen wählst du bewusst selbst aus.“ Opened from „Gesammelt
+  annehmen“ its title is „12 eindeutige Aufrufe annehmen?“ and only those calls are selected, at
+  most 500 („Höchstens 500 auf einmal; die übrigen N danach.“); opened from „8 unauffällige
+  annehmen …“ it selects every unflagged pair as before. Closing drops `?bulk`, so a reload does
+  not reopen it, and the focus goes back to the page. After accepting only such calls the toast
+  reads „12 Relationen angenommen“ with „Eindeutige Aufrufe aus abgeleiteten Modellen.“ and no
+  rule offer (owners' rules for them come with S2c-3).
+
+The UI load guard on `analyzr-s2c2`: `signavio-beispiel`'s only open review item is such a call,
+so „Übersicht“ shows the calls line instead of the review line: 20 controls and 113 / 98 words at
+1440 / 390 (122 / 107 after S2c-1), the badges and the primary unchanged; the dialog behind
+„Gesammelt annehmen“ 22 controls and 112 words (no budget); its line's number equals the
+dialog's selection and the API's count, and closing it with Escape leaves the focus on
+„Vorschläge prüfen“. Everything else unchanged.
 
 ## 8. Keep as is
 

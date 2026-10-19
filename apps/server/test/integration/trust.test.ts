@@ -9,7 +9,9 @@
  *   declared `trust` never reaches the revision; the findings are the same
  *   whatever the class; unchanged bytes keep their class and warn
  *   `trust-kept`; the Signavio golden bundle is derived and „Rechnung
- *   stellen“ is proposed;
+ *   stellen“ is proposed, a reviewer's bulk accept of the key tier accepts
+ *   it, and the system rule counts it as the web's `isBulkCall` does; one
+ *   an agent objects to stays proposed and leaves that count (S2c-2);
  * - a call target set in analyzr counts as modelled (25.2): on an
  *   engine-less caller that call is accepted while the model's other call
  *   stays proposed, the manual link is retired, the effect's dry run equals
@@ -47,7 +49,7 @@ import { trustRationale } from '../../src/domain/trust.ts';
 import { AUFTRAG_KEY, RECHNUNG_KEY, auftrag, rechnung } from '../support/amend-fixtures.ts';
 import { startTestApp, type TestApp } from '../support/app.ts';
 import { createTestDatabase, type TestDatabase } from '../support/db.ts';
-import { post } from '../support/pipeline.ts';
+import { asAgent, claim, post, submission, submit } from '../support/pipeline.ts';
 import { MODELLED, NO_ENGINE } from '../support/trust.ts';
 
 const BUNDLE = fileURLToPath(
@@ -366,6 +368,84 @@ describe('the trust class at ingest', () => {
     expect(dry.impact?.files.map((f) => f.trust.reasons.includes('no-engine')).every(Boolean)).toBe(
       true,
     );
+  });
+
+  it('lets a reviewer accept „Rechnung stellen“ in bulk; the system rule counts what the web groups (S2c-2)', async () => {
+    const rules = '/api/v1/projects/signavio/auto-accept-rules';
+    // the web's `isDerivedCall`: what „Gesammelt annehmen“ opens selected
+    const open = (await relations('signavio')).filter(
+      (r) =>
+        r.type === 'call' &&
+        r.tier === 'key' &&
+        r.status === 'proposed' &&
+        r.attrs['match'] === 'derived-caller',
+    );
+    expect(open).toHaveLength(1);
+    expect((await getJson<{ system: { proposed: number } }>(rules)).system.proposed).toBe(
+      open.length,
+    );
+    // the bulk route checks the tier only: the trust rule's proposal is tier key
+    const res = await post(
+      (path, init) => t.asOwner(path, init),
+      '/api/v1/projects/signavio/decisions',
+      {
+        verdict: 'accept',
+        tier: 'key',
+        items: open.map((r) => ({ id: r.id, version: r.version })),
+        expectedCount: open.length,
+      },
+    );
+    expect(res.status, await res.clone().text()).toBe(200);
+    expect((await relations('signavio')).find((r) => r.id === open[0]?.id)).toMatchObject({
+      status: 'accepted',
+      provenance: { sourceKind: 'human', kind: 'decision', verdict: 'accept' },
+    });
+    expect((await getJson<{ system: { proposed: number } }>(rules)).system.proposed).toBe(0);
+  });
+
+  it('leaves a unique call an agent objects to out of the system rule’s count; it stays proposed (S2c-2)', async () => {
+    const P = 'objected';
+    const rules = `/api/v1/projects/${P}/auto-accept-rules`;
+    await t.createProject(P);
+    for (const [key, xml] of [
+      [AUFTRAG_KEY, auftrag({ callRechnung: 'Process_Rechnung', engineless: true })],
+      [RECHNUNG_KEY, rechnung()],
+    ] as const) {
+      expect((await t.putModel(P, key, xml)).status).toBe(201);
+    }
+    expect(await relationOf(P, CALL, PROCESS_RECHNUNG)).toMatchObject({
+      status: 'proposed',
+      tier: 'key',
+      attrs: { match: 'derived-caller' },
+      noLinks: [],
+    });
+    expect((await getJson<{ system: { proposed: number } }>(rules)).system.proposed).toBe(1);
+    // the agent judges the caller and finds the call unrelated: the bulk dialog flags it
+    const agent = asAgent(t, (await t.createToken(P, ['analyzr:read', 'analyzr:propose'])).secret);
+    const [task] = await claim(agent, { projectId: P, modelKey: AUFTRAG_KEY });
+    if (!task) throw new Error('no task for the caller');
+    const result = await submit(
+      agent,
+      task.taskId,
+      submission(task, [], {
+        noLinks: [
+          {
+            type: 'call',
+            from: CALL,
+            to: PROCESS_RECHNUNG,
+            reason: 'no-evidence: anderer Prozess',
+          },
+        ],
+      }),
+    );
+    expect(result.noLinks?.counts).toMatchObject({ stored: 1 });
+    expect(await relationOf(P, CALL, PROCESS_RECHNUNG)).toMatchObject({
+      status: 'proposed',
+      tier: 'key',
+      attrs: { match: 'derived-caller' },
+      noLinks: [{ reason: 'no-evidence: anderer Prozess' }],
+    });
+    expect((await getJson<{ system: { proposed: number } }>(rules)).system.proposed).toBe(0);
   });
 });
 

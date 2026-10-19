@@ -1,6 +1,6 @@
 {
   "name": "analyzr-integrate",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Interactive skills that bring customer process landscapes from Signavio, ARIS, Visio & co. into analyzr: /analyzr-integrate:integrate-landscape <export> [--workspace <dir>] inspects an export, normalizes BPMN 2.0, keeps model keys stable in the consultant's workspace and writes an import bundle and a German report. The consultant runs the import. Needs a shell and Node 24.",
   "author": {
     "name": "Miragon"

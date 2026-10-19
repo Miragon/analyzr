@@ -19,6 +19,7 @@ describe('constants copied from @analyzr/contracts', () => {
     expect(limits.MAX_QUESTION_CHARS).toBe(contracts.MAX_QUESTION_CHARS);
     expect(limits.MAX_BULK_DECISIONS).toBe(contracts.MAX_BULK_DECISIONS);
     expect(limits.DERIVED_CALL_CONFIDENCE).toBe(contracts.DERIVED_CALL_CONFIDENCE);
+    expect(limits.DERIVED_CALLER_MATCH).toBe(contracts.DERIVED_CALLER_MATCH);
   });
 
   it('match the amendment limits (M6 S5c-2)', async () => {

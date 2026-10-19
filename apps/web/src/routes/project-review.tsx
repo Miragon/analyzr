@@ -2,7 +2,7 @@ import type { Fact, Tier } from '@analyzr/client';
 import { useQuery } from '@tanstack/react-query';
 import { Link, createRoute } from '@tanstack/react-router';
 import { ArrowLeftIcon, CheckCheckIcon, FilterXIcon, SearchCheckIcon, XIcon } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { AgentStart, RetryAgent } from '@/components/agent-start';
 import { ErrorText } from '@/components/error-text';
@@ -10,7 +10,7 @@ import { BulkAcceptDialog } from '@/components/review/bulk-accept-dialog';
 import { HeldList } from '@/components/review/held-list';
 import { NoLinkList } from '@/components/review/no-link-list';
 import { QueueList } from '@/components/review/queue-table';
-import { RelationViews } from '@/components/review/relation-views';
+import { REVIEW_VIEW_ID, RelationViews } from '@/components/review/relation-views';
 import { RelationsEmpty } from '@/components/review/relations-empty';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -29,9 +29,11 @@ import { matchesFilters } from '@/lib/relation-filters';
 import {
   bulkRows,
   heldList,
+  isDerivedCall,
   noLinkList,
   parseQueueFilters,
   reviewQueue,
+  type BulkPreselect,
   type QueueFilters,
 } from '@/lib/review';
 import { useProjectFacts } from '@/lib/use-project-facts';
@@ -44,6 +46,12 @@ interface ReviewSearch extends QueueFilters {
    * the foot link (read-only).
    */
   view?: 'held' | 'no-links';
+  /**
+   * `calls`: the bulk accept opens with the unique calls from derived models
+   * selected (M6 S2c, the „Gesammelt annehmen“ links); closing it drops the
+   * parameter, so a reload does not open it again.
+   */
+  bulk?: 'calls';
 }
 
 export const projectReviewRoute = createRoute({
@@ -52,6 +60,7 @@ export const projectReviewRoute = createRoute({
   validateSearch: (search: Record<string, unknown>): ReviewSearch => ({
     ...parseQueueFilters(search),
     ...(search['view'] === 'held' || search['view'] === 'no-links' ? { view: search['view'] } : {}),
+    ...(search['bulk'] === 'calls' ? { bulk: 'calls' as const } : {}),
   }),
   component: ReviewInbox,
 });
@@ -138,6 +147,10 @@ function StatusLine({
  * agents' no-links (`?view=no-links`, grouped by model). Placements are
  * reviewed on the chain; its badge says how many. While the project has no
  * relation at all, the status line and `RelationsEmpty` only (UX9).
+ * `?bulk=calls` (M6 S2c) opens the bulk accept with the unique calls from
+ * derived models selected, for reviewers, once the flags are known; it stays
+ * open until closed, and the parameter goes when it closes (or when there
+ * is nothing to open).
  */
 function ReviewInbox() {
   const { project } = projectReviewRoute.useParams();
@@ -150,7 +163,16 @@ function ReviewInbox() {
   const { resolve, byModel, loading: factsLoading } = useProjectFacts(project, models.data);
   const autoIndex = useAutoAcceptIndex(project);
   const can = useProjectPermissions(project);
-  const [bulkOpen, setBulkOpen] = useState(false);
+  /**
+   * The open bulk accept: by its button (`unflagged`) or by `?bulk=calls`
+   * (`calls`). Open until closed: the accept's refetches drop its rows before
+   * its toast, which must not unmount it.
+   */
+  const [bulkMode, setBulkMode] = useState<BulkPreselect | null>(null);
+  /** How `?bulk=calls` was handled since the URL got it: the dialog opened, or nothing to open. */
+  const [callsHandled, setCallsHandled] = useState<'opened' | 'nothing' | null>(null);
+  const bulkButton = useRef<HTMLButtonElement>(null);
+  const reviewStart = useRef<HTMLAnchorElement>(null);
 
   const { stage, tier, model } = search;
   const filters = useMemo<QueueFilters>(
@@ -190,6 +212,27 @@ function ReviewInbox() {
   );
   // the flags need every model's facts: no count before they are there (it would only shrink)
   const unremarkable = factsLoading ? 0 : bulk.filter((r) => r.flags.length === 0).length;
+  // `?bulk=calls` (M6 S2c): once the rows and their flags are there, the dialog opens by itself
+  // for reviewers while it has calls to select (the links count the same, `isBulkCall`)
+  if (
+    search.bulk === 'calls' &&
+    callsHandled === null &&
+    landscape.data !== undefined &&
+    !factsLoading &&
+    can.known
+  ) {
+    const open =
+      can.canReview && bulk.some((r) => r.flags.length === 0 && isDerivedCall(r.relation));
+    setCallsHandled(open ? 'opened' : 'nothing');
+    if (open) setBulkMode('calls');
+  }
+  if (search.bulk !== 'calls' && callsHandled !== null) setCallsHandled(null);
+  // nothing to open (any more): the parameter goes, so a later call does not open it by itself
+  // (closing the dialog drops it at once, before a link in it navigates)
+  useEffect(() => {
+    if (search.bulk === 'calls' && callsHandled === 'nothing')
+      void navigate({ search: ({ bulk: _bulk, ...rest }) => rest, replace: true });
+  }, [search.bulk, callsHandled, navigate]);
   const autoCount = can.canReview
     ? relations.filter((r) => matchesFilters(r, { auto: 'any' }, autoIndex)).length
     : null;
@@ -285,6 +328,7 @@ function ReviewInbox() {
             <div className="flex flex-wrap items-center gap-2" data-testid="review-actions">
               <Button asChild>
                 <Link
+                  ref={reviewStart}
                   to="/projects/$project/review/$relation"
                   params={{ project, relation: queue[0]!.relation.id }}
                   search={filters}
@@ -295,7 +339,12 @@ function ReviewInbox() {
                 </Link>
               </Button>
               {unremarkable > 0 ? (
-                <Button variant="outline" onClick={() => setBulkOpen(true)} data-testid="bulk-open">
+                <Button
+                  ref={bulkButton}
+                  variant="outline"
+                  onClick={() => setBulkMode('unflagged')}
+                  data-testid="bulk-open"
+                >
                   <CheckCheckIcon data-icon="inline-start" />
                   {unremarkable} unauffällige annehmen …
                 </Button>
@@ -426,14 +475,29 @@ function ReviewInbox() {
 
       {view === undefined ? noLinksLink : null}
 
-      {bulkOpen && can.canReview ? (
+      {bulkMode !== null && can.canReview ? (
         <BulkAcceptDialog
           project={project}
           rows={bulk}
           resolve={resolve}
           canOwn={can.isOwner}
-          open={bulkOpen}
-          onOpenChange={setBulkOpen}
+          preselect={bulkMode}
+          open
+          onOpenChange={(open) => {
+            if (open) return;
+            setBulkMode(null);
+            if (search.bulk !== undefined) set({ bulk: undefined });
+          }}
+          onCloseAutoFocus={(event) => {
+            // Radix returns the focus to what had it before: nothing when `?bulk=calls` opened
+            // it, and an accept may take the button away. Back to the button while it is
+            // there, else to „Vorschläge prüfen“, else to the view „Zu prüfen“.
+            event.preventDefault();
+            const back = bulkMode === 'unflagged' ? [bulkButton.current] : [];
+            [...back, reviewStart.current, document.getElementById(REVIEW_VIEW_ID)]
+              .find((el) => el?.isConnected)
+              ?.focus();
+          }}
         />
       ) : null}
     </div>

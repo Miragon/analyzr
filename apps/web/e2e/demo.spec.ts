@@ -89,6 +89,8 @@ const WRITE_ACTIONS = [
   /^Zurücknehmen$/,
   /^Jetzt speichern$/,
   /^Alle zurücknehmen$/,
+  // M6 S2c-2: the bulk accept of the unique calls from derived models
+  /^Gesammelt annehmen$/,
 ];
 
 /**

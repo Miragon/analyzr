@@ -32,7 +32,7 @@ import { useProjectPermissions } from '@/lib/permissions';
 import { useProjectCounts } from '@/lib/project-counts';
 import { usePipelineState } from '@/lib/pipeline-state';
 import { amendmentsQuery, landscapeQuery, modelsQuery } from '@/lib/queries';
-import { reviewQueue, stageCounts } from '@/lib/review';
+import { isBulkCall, reviewQueue, stageCounts } from '@/lib/review';
 import { placementQueue } from '@/lib/value-chain';
 
 import { projectRoute } from './project';
@@ -103,6 +103,7 @@ function OverviewTab() {
       expired: pipeline.expired,
       working: pipeline.working,
       reviewItems: counts.reviewItems ?? 0,
+      derivedCalls: relations.filter(isBulkCall).length,
       firstRelation: queue[0]?.relation.id ?? null,
       openPlacements: counts.openPlacements ?? 0,
       firstPlacement: placements[0]?.id ?? null,

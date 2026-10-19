@@ -23,6 +23,7 @@ import { BPMN_FILE_SUFFIXES } from '@analyzr/contracts/paths';
 import {
   BPMN_ACCEPT,
   BPMN_SUFFIX_TEXT,
+  callsWaitingText,
   elementTypeLabel,
   entriesFromFileList,
   fileProblemText,
@@ -481,6 +482,12 @@ describe('upload result (UX7)', () => {
     expect(waitingText(1, false)).toBe('1 Modell wartet auf den Agenten');
     expect(waitingText(5, true)).toBe('5 Modelle und die Platzierungen warten auf den Agenten');
     expect(waitingText(0, true)).toBe('Die Platzierungen warten auf den Agenten');
+  });
+
+  it('says how many unique calls of derived models wait for a human (M6 S2c)', () => {
+    expect(callsWaitingText(0)).toBeNull();
+    expect(callsWaitingText(1)).toBe('1 eindeutiger Aufruf wartet auf deine Bestätigung');
+    expect(callsWaitingText(12)).toBe('12 eindeutige Aufrufe warten auf deine Bestätigung');
   });
 });
 

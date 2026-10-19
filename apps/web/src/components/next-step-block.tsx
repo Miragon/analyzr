@@ -76,7 +76,13 @@ export function NextStepBlock({
           <ul className="flex flex-col gap-1 text-sm text-muted-foreground">
             {step.lines.map((line) => (
               <li key={line.kind} data-testid="next-step-line" data-kind={line.kind}>
-                <Line project={project} line={line} hasChain={hasChain} canWrite={canWrite} />
+                <Line
+                  project={project}
+                  line={line}
+                  hasChain={hasChain}
+                  canWrite={canWrite}
+                  canReview={canReview}
+                />
               </li>
             ))}
           </ul>
@@ -180,11 +186,14 @@ function Line({
   line,
   hasChain,
   canWrite,
+  canReview,
 }: {
   project: string;
   line: NextLine;
   hasChain: boolean;
   canWrite: boolean;
+  /** „Gesammelt annehmen“ (permission `review`); viewers get the text. */
+  canReview: boolean;
 }) {
   switch (line.kind) {
     case 'working':
@@ -213,6 +222,33 @@ function Line({
             </>
           ) : null}
         </span>
+      );
+    case 'calls':
+      // before the agent: „zuerst“; under „Vorschläge prüfen“: part of its count
+      return (
+        <>
+          {line.first
+            ? line.count === 1
+              ? '1 eindeutigen Aufruf zuerst bestätigen'
+              : `${line.count} eindeutige Aufrufe zuerst bestätigen`
+            : line.count === 1
+              ? 'Davon 1 eindeutiger Aufruf'
+              : `Davon ${line.count} eindeutige Aufrufe`}
+          {canReview ? (
+            <>
+              {' · '}
+              <Link
+                to="/projects/$project/review"
+                params={{ project }}
+                search={{ bulk: 'calls' }}
+                className={inline}
+                data-testid="next-step-calls"
+              >
+                Gesammelt annehmen
+              </Link>
+            </>
+          ) : null}
+        </>
       );
     case 'review-too':
       return (

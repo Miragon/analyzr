@@ -982,18 +982,21 @@ describe('the system rule', () => {
     expect(within(card).queryByRole('button')).toBeNull();
   });
 
-  it('names the calls of derived models it only proposed (the trust rule), as text', async () => {
+  it('names the calls of derived models it only proposed (the trust rule), leading to their bulk accept', async () => {
     await renderWithRouter(<SystemRuleCard project="demo" system={{ ...system, proposed: 12 }} />);
     const card = await screen.findByTestId('system-rule');
     expect(card.textContent).toBe(
       'Eindeutige Aufrufe aus Camunda-Modellen nimmt analyzr beim Hochladen an · immer aktiv · 10 angenommen · 12 aus abgeleiteten Modellen vorgeschlagen',
     );
-    // No list shows exactly these rows yet, so the count leads nowhere.
+    // The bulk dialog opens with exactly those calls selected (M6 S2c, `?bulk=calls`).
     expect(
       within(card)
         .getAllByRole('link')
-        .map((l) => l.textContent),
-    ).toEqual(['10 angenommen']);
+        .map((l) => [l.textContent, l.getAttribute('href')]),
+    ).toEqual([
+      ['10 angenommen', '/projects/demo/relations?status=accepted&tier=rule'],
+      ['12 aus abgeleiteten Modellen vorgeschlagen', '/projects/demo/review?bulk=calls'],
+    ]);
     expect(within(card).getByTestId('system-rule-proposed').textContent).toBe(
       '12 aus abgeleiteten Modellen vorgeschlagen',
     );

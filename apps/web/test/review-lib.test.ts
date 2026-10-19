@@ -9,8 +9,10 @@ import {
   nameKey,
   nameUsage,
   nameWords,
+  type GenericFlag,
 } from '../src/lib/generic-names';
 import { procedureText, provenanceOf } from '../src/lib/labels';
+import { MAX_BULK_DECISIONS } from '../src/lib/limits';
 import {
   answersSinceHold,
   conflictOf,
@@ -18,6 +20,9 @@ import {
   evidenceItems,
   finishesModels,
   heldList,
+  bulkPreselection,
+  isBulkCall,
+  isDerivedCall,
   neighbours,
   parseQueueFilters,
   isReviewItem,
@@ -421,6 +426,91 @@ describe('bulk accept flags', () => {
         usage,
       ),
     ).toEqual([]);
+  });
+});
+
+describe('unique calls from derived models (M6 S2c)', () => {
+  const call = relation({
+    id: 'rel_d',
+    type: 'call',
+    from: 'a#Call_Pruefen',
+    to: 'b#Process_Daten',
+    confidence: 0.9,
+    attrs: { calledElement: 'Process_Daten', match: 'derived-caller' },
+  });
+
+  it('isDerivedCall: an open key-tier call proposal with the trust rule’s marker', () => {
+    expect(isDerivedCall(call)).toBe(true);
+    expect(isDerivedCall({ ...call, status: 'accepted' })).toBe(false);
+    expect(isDerivedCall({ ...call, status: 'held' })).toBe(false);
+    expect(isDerivedCall({ ...call, tier: 'semantic' })).toBe(false);
+    expect(isDerivedCall({ ...call, type: 'message' })).toBe(false);
+    expect(isDerivedCall({ ...call, attrs: { calledElement: 'Process_Daten' } })).toBe(false);
+    expect(
+      isDerivedCall({ ...call, attrs: { calledElement: 'P', match: 'duplicate-process-id' } }),
+    ).toBe(false);
+  });
+
+  it('gets no name flag (its target is named by id), but an agent’s question or no-link', () => {
+    // „Daten prüfen“ → „Daten“: generic words only, which would flag a message pair
+    const label = (ref: string) => (ref.endsWith('Call_Pruefen') ? 'Daten prüfen' : 'Daten');
+    expect(bulkFlags(call, label, nameUsage([]))).toEqual([]);
+    expect(
+      bulkFlags({ ...call, type: 'call', attrs: { calledElement: 'P' } }, label, nameUsage([])).map(
+        (f) => f.kind,
+      ),
+    ).toEqual(['generic-word', 'generic-word']);
+    expect(
+      bulkFlags(
+        {
+          ...call,
+          provenance: provenance({ question: 'Ist das der richtige Prozess?' }),
+          noLinks: [noLink({ id: 'nlk_1' })],
+        },
+        label,
+        nameUsage([]),
+      ).map((f) => f.kind),
+    ).toEqual(['agent-question', 'agent-no-link']);
+  });
+
+  it('isBulkCall: such a call without a bulk flag, the numbers behind „Gesammelt annehmen“ (S2c-2)', () => {
+    const asked = {
+      ...call,
+      provenance: provenance({ question: 'Ist das der richtige Prozess?' }),
+    };
+    const blank = { ...call, provenance: provenance({ question: '  ' }) };
+    const objected = { ...call, noLinks: [noLink({ id: 'nlk_1' })] };
+    const cases = [call, asked, blank, objected, { ...call, status: 'accepted' as const }];
+    expect(cases.map(isBulkCall)).toEqual([true, false, true, false, false]);
+    // exactly the derived calls the bulk dialog leaves unflagged, whatever the names
+    const label = () => 'Daten';
+    for (const r of cases)
+      expect(isBulkCall(r), r.id).toBe(
+        isDerivedCall(r) && bulkFlags(r, label, nameUsage([])).length === 0,
+      );
+  });
+
+  it('bulkPreselection: every unflagged pair, or from `?bulk=calls` the unflagged calls, at most 500', () => {
+    const key = relation({ id: 'rel_k', from: 'a#S', to: 'b#C', tier: 'key', confidence: 1 });
+    const many = Array.from({ length: MAX_BULK_DECISIONS + 1 }, (_, i) => ({
+      relation: { ...call, id: `rel_d${i}` },
+      flags: [],
+    }));
+    const rows = [
+      { relation: key, flags: [] },
+      {
+        relation: { ...call, id: 'rel_asked' },
+        flags: [{ kind: 'agent-question' } as GenericFlag],
+      },
+      ...many,
+    ];
+    expect([...bulkPreselection(rows, 'unflagged')]).toEqual([
+      'rel_k',
+      ...many.map((r) => r.relation.id),
+    ]);
+    expect([...bulkPreselection(rows, 'calls')]).toEqual(
+      many.slice(0, MAX_BULK_DECISIONS).map((r) => r.relation.id),
+    );
   });
 });
 

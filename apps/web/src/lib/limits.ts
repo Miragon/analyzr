@@ -25,6 +25,8 @@ export const MAX_IMPORT_BYTES = 25 * 1024 * 1024;
 
 /** Confidence of the rule tier's proposal of a unique call from a derived model (M6 S2c, the trust rule). */
 export const DERIVED_CALL_CONFIDENCE = 0.9;
+/** `attrs.match` of that proposal (M6 S2c): the marker `isDerivedCall` (`lib/review.ts`) reads. */
+export const DERIVED_CALLER_MATCH = 'derived-caller';
 
 /** Largest page the list endpoints serve. */
 export const MAX_PAGE_LIMIT = 200;

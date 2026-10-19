@@ -20,7 +20,16 @@ import { flagLine } from '@/lib/generic-names';
 import { RELATION_TYPES, formatConfidence } from '@/lib/labels';
 import { MAX_BULK_DECISIONS } from '@/lib/limits';
 import type { RefResolver } from '@/lib/refs';
-import { conflictOf, elementsText, sideName, type BulkRow, type Conflict } from '@/lib/review';
+import {
+  bulkPreselection,
+  conflictOf,
+  elementsText,
+  isDerivedCall,
+  sideName,
+  type BulkPreselect,
+  type BulkRow,
+  type Conflict,
+} from '@/lib/review';
 import { useBulkDecide } from '@/lib/review-actions';
 import { toast } from '@/lib/toast';
 
@@ -34,11 +43,17 @@ import { PlainText } from './plain-text';
  * flagged ones (a generic name, a name more than two processes share, an
  * open agent question, an agent's no-link, an ambiguous call target) sit in
  * a closed „Genauer ansehen (n)“, each with its flags and „Vorschlag öffnen“:
- * they are decided one by one and stay in the queue. The request carries
- * ids, versions, the tier and the count, so a list that changed meanwhile
- * fails as a whole (409). After the accept, an owner is offered the rule
- * that would have accepted them („Gleicher Name ab 100 % künftig automatisch
- * annehmen?“).
+ * they are decided one by one and stay in the queue. The unique calls from
+ * derived models (M6 S2c, `isDerivedCall`) come first, under „Eindeutige
+ * Aufrufe aus abgeleiteten Modellen (n)“ (a flagged one stays in that group,
+ * flagged); opened from a „Gesammelt annehmen“ link (`?bulk=calls`), the
+ * dialog selects exactly the unflagged ones (`bulkPreselection`: at most
+ * 500, the rest follow), the others stay listed unselected. The
+ * request carries ids, versions, the tier and the count, so a list that
+ * changed meanwhile fails as a whole (409). After the accept, an owner is
+ * offered the rule that would have accepted them („Gleicher Name ab 100 %
+ * künftig automatisch annehmen?“), unless only such calls were accepted (no
+ * agent rule accepts those).
  */
 
 type Row = BulkRow;
@@ -67,39 +82,127 @@ function PairText({ relation: r, resolve }: { relation: Relation; resolve: RefRe
   );
 }
 
+/** An unflagged pair: a checkbox and the pair. */
+function PlainRow({
+  relation: r,
+  resolve,
+  checked,
+  onCheckedChange,
+}: {
+  relation: Relation;
+  resolve: RefResolver;
+  checked: boolean;
+  onCheckedChange: (on: boolean) => void;
+}) {
+  return (
+    <li
+      data-testid="bulk-row"
+      data-relation-id={r.id}
+      data-flagged={false}
+      className="flex gap-3 border-b py-2 last:border-b-0"
+    >
+      <Checkbox
+        className="mt-1"
+        checked={checked}
+        onCheckedChange={(on) => onCheckedChange(on === true)}
+        aria-label={`${sideName(resolve(r.from))} nach ${sideName(resolve(r.to))} annehmen`}
+      />
+      <PairText relation={r} resolve={resolve} />
+    </li>
+  );
+}
+
+/** A flagged pair: the pair, its flags in one line and „Vorschlag öffnen“; no checkbox. */
+function FlaggedRow({
+  project,
+  row: { relation: r, flags },
+  resolve,
+  onClose,
+  className,
+}: {
+  project: string;
+  row: Row;
+  resolve: RefResolver;
+  onClose: () => void;
+  className: string;
+}) {
+  return (
+    <li
+      data-testid="bulk-row"
+      data-relation-id={r.id}
+      data-flagged
+      className={`flex flex-col gap-1 py-2 ${className}`}
+    >
+      <PairText relation={r} resolve={resolve} />
+      <span className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs">
+        <span
+          className="inline-flex items-center gap-1 text-warning"
+          data-testid="generic-flag"
+          data-flag={flags.map((f) => f.kind).join(' ')}
+        >
+          <TriangleAlertIcon className="size-3.5 shrink-0" aria-hidden />
+          {flagLine(flags)}
+        </span>
+        <Link
+          to="/projects/$project/review/$relation"
+          params={{ project, relation: r.id }}
+          className="text-link hover:underline"
+          onClick={onClose}
+        >
+          Vorschlag öffnen
+        </Link>
+      </span>
+    </li>
+  );
+}
+
 function BulkList({
   project,
   rows,
   resolve,
   canOwn,
+  preselect,
   onClose,
 }: {
   project: string;
   rows: readonly Row[];
   resolve: RefResolver;
   canOwn: boolean;
+  preselect: BulkPreselect;
   onClose: () => void;
 }) {
   const navigate = useNavigate();
   const plain = rows.filter((r) => r.flags.length === 0);
-  const flagged = rows.filter((r) => r.flags.length > 0);
-  const [unchecked, setUnchecked] = useState<ReadonlySet<string>>(new Set());
+  const calls = rows.filter((r) => isDerivedCall(r.relation));
+  const others = plain.filter((r) => !isDerivedCall(r.relation));
+  const flagged = rows.filter((r) => r.flags.length > 0 && !isDerivedCall(r.relation));
+  // The rows whose box differs from what the dialog selects when it opens.
+  const [toggled, setToggled] = useState<ReadonlySet<string>>(new Set());
   const [conflict, setConflict] = useState<Conflict | null>(null);
   const bulk = useBulkDecide(project);
-  const chosen = plain.filter((r) => !unchecked.has(r.relation.id)).map((r) => r.relation);
+  const initial = bulkPreselection(rows, preselect);
+  const preselected = (r: Relation) => initial.has(r.id);
+  const checked = (r: Relation) => preselected(r) !== toggled.has(r.id);
+  // `calls` selects at most MAX_BULK_DECISIONS of them: the rest follow in the next request.
+  const rest =
+    preselect === 'calls' ? calls.filter((r) => r.flags.length === 0).length - initial.size : 0;
+  const chosen = plain.filter((r) => checked(r.relation)).map((r) => r.relation);
   const tooMany = chosen.length > MAX_BULK_DECISIONS;
 
-  const toggle = (id: string, on: boolean) =>
-    setUnchecked((prev) => {
+  const setChecked = (r: Relation, on: boolean) =>
+    setToggled((prev) => {
       const next = new Set(prev);
-      if (on) next.delete(id);
-      else next.add(id);
+      if (on === preselected(r)) next.delete(r.id);
+      else next.add(r.id);
       return next;
     });
 
   function confirm() {
     if (chosen.length === 0 || tooMany) return;
     setConflict(null);
+    // Only unique calls from derived models: no agent rule would have accepted them (M6 S2c).
+    const onlyCalls = chosen.every(isDerivedCall);
+    const offer = canOwn && !onlyCalls;
     bulk.mutate(
       {
         verdict: 'accept',
@@ -115,10 +218,12 @@ function BulkList({
               result.items.length === 1
                 ? '1 Relation angenommen'
                 : `${result.items.length} Relationen angenommen`,
-            description: canOwn
-              ? 'Gleicher Name ab 100 % künftig automatisch annehmen?'
-              : 'Grundlage „Gleicher Name“.',
-            ...(canOwn
+            description: onlyCalls
+              ? 'Eindeutige Aufrufe aus abgeleiteten Modellen.'
+              : offer
+                ? 'Gleicher Name ab 100 % künftig automatisch annehmen?'
+                : 'Grundlage „Gleicher Name“.',
+            ...(offer
               ? {
                   action: {
                     label: 'Annahmeregel anlegen',
@@ -150,6 +255,16 @@ function BulkList({
     );
   }
 
+  const plainRow = ({ relation: r }: Row) => (
+    <PlainRow
+      key={r.id}
+      relation={r}
+      resolve={resolve}
+      checked={checked(r)}
+      onCheckedChange={(on) => setChecked(r, on)}
+    />
+  );
+
   return (
     <>
       {conflict ? (
@@ -163,28 +278,48 @@ function BulkList({
       <p className="text-sm text-muted-foreground" aria-live="polite" data-testid="bulk-summary">
         {chosen.length} von {plain.length} ausgewählt
       </p>
-      <ul
-        aria-label="Unauffällige Paare"
-        className="-mx-1 flex max-h-[min(44vh,440px)] flex-col overflow-y-auto px-1"
-      >
-        {plain.map(({ relation: r }) => (
-          <li
-            key={r.id}
-            data-testid="bulk-row"
-            data-relation-id={r.id}
-            data-flagged={false}
-            className="flex gap-3 border-b py-2 last:border-b-0"
-          >
-            <Checkbox
-              className="mt-1"
-              checked={!unchecked.has(r.id)}
-              onCheckedChange={(on) => toggle(r.id, on === true)}
-              aria-label={`${sideName(resolve(r.from))} nach ${sideName(resolve(r.to))} annehmen`}
-            />
-            <PairText relation={r} resolve={resolve} />
-          </li>
-        ))}
-      </ul>
+      {rest > 0 ? (
+        <p className="text-sm text-muted-foreground" data-testid="bulk-rest">
+          Höchstens {MAX_BULK_DECISIONS} auf einmal; die übrigen {rest} danach.
+        </p>
+      ) : null}
+      <div className="-mx-1 flex max-h-[min(44vh,440px)] flex-col gap-3 overflow-y-auto px-1">
+        {calls.length > 0 ? (
+          <section aria-labelledby="bulk-calls-title" data-testid="bulk-calls">
+            <h3 id="bulk-calls-title" className="text-sm font-medium">
+              Eindeutige Aufrufe aus abgeleiteten Modellen ({calls.length})
+            </h3>
+            <ul aria-labelledby="bulk-calls-title" className="flex flex-col">
+              {calls.map((row) =>
+                row.flags.length === 0 ? (
+                  plainRow(row)
+                ) : (
+                  <FlaggedRow
+                    key={row.relation.id}
+                    project={project}
+                    row={row}
+                    resolve={resolve}
+                    onClose={onClose}
+                    className="border-b last:border-b-0"
+                  />
+                ),
+              )}
+            </ul>
+          </section>
+        ) : null}
+        {others.length > 0 ? (
+          <section aria-labelledby={calls.length > 0 ? 'bulk-key-title' : undefined}>
+            {calls.length > 0 ? (
+              <h3 id="bulk-key-title" className="text-sm font-medium">
+                Gleicher Name ({others.length})
+              </h3>
+            ) : null}
+            <ul aria-label="Unauffällige Paare" className="flex flex-col">
+              {others.map(plainRow)}
+            </ul>
+          </section>
+        ) : null}
+      </div>
 
       {flagged.length > 0 ? (
         <details className="group rounded-lg border" data-testid="bulk-flagged">
@@ -196,34 +331,15 @@ function BulkList({
             Genauer ansehen ({flagged.length})
           </summary>
           <ul aria-label="Markierte Paare" className="flex max-h-60 flex-col overflow-y-auto px-3">
-            {flagged.map(({ relation: r, flags }) => (
-              <li
-                key={r.id}
-                data-testid="bulk-row"
-                data-relation-id={r.id}
-                data-flagged
-                className="flex flex-col gap-1 border-t py-2"
-              >
-                <PairText relation={r} resolve={resolve} />
-                <span className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs">
-                  <span
-                    className="inline-flex items-center gap-1 text-warning"
-                    data-testid="generic-flag"
-                    data-flag={flags.map((f) => f.kind).join(' ')}
-                  >
-                    <TriangleAlertIcon className="size-3.5 shrink-0" aria-hidden />
-                    {flagLine(flags)}
-                  </span>
-                  <Link
-                    to="/projects/$project/review/$relation"
-                    params={{ project, relation: r.id }}
-                    className="text-link hover:underline"
-                    onClick={onClose}
-                  >
-                    Vorschlag öffnen
-                  </Link>
-                </span>
-              </li>
+            {flagged.map((row) => (
+              <FlaggedRow
+                key={row.relation.id}
+                project={project}
+                row={row}
+                resolve={resolve}
+                onClose={onClose}
+                className="border-t"
+              />
             ))}
           </ul>
         </details>
@@ -259,8 +375,23 @@ export interface BulkAcceptDialogProps {
   resolve: RefResolver;
   /** The owner is offered the rule afterwards. */
   canOwn: boolean;
+  /** What it selects when it opens (default: every unflagged pair). */
+  preselect?: BulkPreselect;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Where the focus goes when it closes (Radix: back to what had it before it opened). */
+  onCloseAutoFocus?: (event: Event) => void;
+}
+
+/** The title: what the dialog selects when it opens. */
+function titleOf(selected: number, preselect: BulkPreselect): string {
+  if (preselect === 'calls')
+    return selected === 1
+      ? '1 eindeutigen Aufruf annehmen?'
+      : `${selected} eindeutige Aufrufe annehmen?`;
+  return selected === 1
+    ? '1 unauffälligen Vorschlag annehmen?'
+    : `${selected} unauffällige Vorschläge annehmen?`;
 }
 
 export function BulkAcceptDialog({
@@ -268,21 +399,30 @@ export function BulkAcceptDialog({
   rows,
   resolve,
   canOwn,
+  preselect = 'unflagged',
   open,
   onOpenChange,
+  onCloseAutoFocus,
 }: BulkAcceptDialogProps) {
-  const plain = useMemo(() => rows.filter((r) => r.flags.length === 0).length, [rows]);
+  const { selected, calls } = useMemo(
+    () => ({
+      selected: bulkPreselection(rows, preselect).size,
+      calls: rows.some((r) => isDerivedCall(r.relation)),
+    }),
+    [rows, preselect],
+  );
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl" data-testid="bulk-dialog">
+      <DialogContent
+        className="sm:max-w-2xl"
+        data-testid="bulk-dialog"
+        {...(onCloseAutoFocus ? { onCloseAutoFocus } : {})}
+      >
         <DialogHeader>
-          <DialogTitle>
-            {plain === 1
-              ? '1 unauffälligen Vorschlag annehmen?'
-              : `${plain} unauffällige Vorschläge annehmen?`}
-          </DialogTitle>
+          <DialogTitle>{titleOf(selected, preselect)}</DialogTitle>
           <DialogDescription>
-            Gleicher Name. Markierte mögliche Relationen wählst du bewusst selbst aus.
+            {calls ? 'Gleicher Name und eindeutige Aufrufe.' : 'Gleicher Name.'} Markierte mögliche
+            Relationen wählst du bewusst selbst aus.
           </DialogDescription>
         </DialogHeader>
         {open ? (
@@ -291,6 +431,7 @@ export function BulkAcceptDialog({
             rows={rows}
             resolve={resolve}
             canOwn={canOwn}
+            preselect={preselect}
             onClose={() => onOpenChange(false)}
           />
         ) : null}

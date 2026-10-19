@@ -5,6 +5,7 @@ import {
   getProject,
   importModels,
   listAnalyses,
+  listRelations,
   type Project,
 } from '@analyzr/client';
 import {
@@ -12,7 +13,9 @@ import {
   MAX_PAGE_LIMIT,
   MAX_IMPACT_ITEMS,
   bpmnSuffixOf,
+  isBulkDerivedCall,
   modelKeyFromPath,
+  reviewPath,
   TrustReason,
   type ExtractWarning,
   type ImportFileOutcome,
@@ -648,25 +651,102 @@ export function identitySteps(summary: ImportSummary): string[] {
   return lines;
 }
 
+/** A file of the import whose model is derived (M6 S2c): its stored or kept trust class. */
+const isDerivedFile = (f: ImportFileOutcome): boolean => f.trust?.class === 'derived';
+
+/**
+ * The open unique calls from derived models a bulk accept takes as they
+ * stand (M6 S2c, `GET …/relations`, permission `read`, so any credential
+ * works): every page of the key tier's open call proposals, counted with
+ * `isBulkDerivedCall` as the web counts the selection `?bulk=calls` opens
+ * (no agent's question, no no-link). The project's state, not this
+ * import's effect.
+ */
+export async function waitingCalls(api: Api, project: string): Promise<number> {
+  const what = `list the open call proposals of ${project}`;
+  let count = 0;
+  let cursor: string | undefined;
+  do {
+    const page = await call(
+      api,
+      what,
+      listRelations({
+        client: api.client,
+        path: { project },
+        query: {
+          type: 'call',
+          status: 'proposed',
+          tier: 'key',
+          limit: MAX_PAGE_LIMIT,
+          ...(cursor === undefined ? {} : { cursor }),
+        },
+      }),
+    );
+    count += page.items.filter(isBulkDerivedCall).length;
+    cursor = page.nextCursor ?? undefined;
+  } while (cursor !== undefined);
+  return count;
+}
+
+/**
+ * The next step for the unique calls of derived models (M6 S2c, the trust
+ * rule), two lines or none: while `calls` of them wait ({@link waitingCalls}),
+ * `next: 6 models are derived (no engine 6); 1 unique call is a proposal:
+ * accept it in the web review before the agent runs:` and the web link that
+ * opens the bulk accept with exactly those selected
+ * (`<url>/projects/<p>/review?bulk=calls`). The models are this import's
+ * derived files, `unchanged` ones included (they keep their class), each
+ * under its first reason, so the parts add up; without such files the line
+ * names the calls alone.
+ */
+export function trustSteps(summary: ImportSummary, calls: number, url: string): string[] {
+  if (calls === 0) return [];
+  const derived = summary.files.filter(isDerivedFile);
+  const byReason = new Map<TrustReason, number>();
+  for (const f of derived) {
+    const [first] = f.trust?.reasons ?? [];
+    if (first !== undefined) byReason.set(first, (byReason.get(first) ?? 0) + 1);
+  }
+  const reasons = TrustReason.options
+    .filter((reason) => byReason.has(reason))
+    .map((reason) => `${TRUST_REASONS[reason]} ${byReason.get(reason) ?? 0}`);
+  const n = derived.length;
+  const models =
+    n === 0
+      ? ''
+      : `${n === 1 ? '1 model is' : `${n} models are`} derived${reasons.length > 0 ? ` (${reasons.join(', ')})` : ''}; `;
+  const what =
+    calls === 1
+      ? `1 unique call${n === 0 ? ' from derived models' : ''} is a proposal: accept it`
+      : `${calls} unique calls${n === 0 ? ' from derived models' : ''} are proposals: accept them`;
+  return [
+    `next: ${models}${what} in the web review before the agent runs:`,
+    `  ${url.replace(/\/+$/, '')}${reviewPath(summary.project)}?bulk=calls`,
+  ];
+}
+
 /**
  * The next-step block after a text-mode import: the waiting tasks in the
  * spec's wording (`relations tasks` also for one), the step the identity
- * warnings call for ({@link identitySteps}), then the agent step only when
- * something waits (`then:` after an identity step), each slash command only
- * for its kind.
+ * warnings call for ({@link identitySteps}), the bulk accept of the unique
+ * calls of derived models that wait ({@link trustSteps}), then the agent
+ * step only when something waits (`then:` after another step), each slash
+ * command only for its kind.
  */
 export function formatNextSteps(
   project: string,
   waiting: WaitingTasks,
   identity: readonly string[] = [],
+  trust: readonly string[] = [],
 ): string {
   const lines = [
     `${project}: ${waiting.relations} relations tasks waiting, placement task waiting: ${waiting.placement ? 'yes' : 'no'}`,
     ...identity,
+    ...trust,
   ];
   if (waiting.relations > 0 || waiting.placement) {
     lines.push(
-      `${identity.length > 0 ? 'then' : 'next'}: let an agent work them, e.g. in Claude Code with the plugin analyzr:`,
+      `${identity.length + trust.length > 0 ? 'then' : 'next'}: let an agent work them, e.g. in Claude Code with the plugin analyzr:`,
     );
     if (waiting.relations > 0) lines.push(`  /analyzr:relations ${project}`);
     if (waiting.placement) lines.push(`  /analyzr:placements ${project}`);
@@ -709,6 +789,19 @@ export interface ImportOptions extends CredentialOptions {
 }
 
 /**
+ * Said on stderr before an import or a dry run with an agent token (M6 S2c,
+ * decision 24.2): its revisions count as derived, so their unique calls
+ * become proposals instead of acceptances. It names where the token came
+ * from and how to import with the owner key instead: a token left in
+ * `ANALYZR_TOKEN` would otherwise do that silently to a Camunda bundle, and
+ * a re-import of the same bytes keeps the class (`trust-kept`).
+ */
+export function agentTokenNotice(source: '--token' | 'ANALYZR_TOKEN'): string {
+  const instead = source === '--token' ? 'drop --token' : 'unset ANALYZR_TOKEN';
+  return `importing with an agent token (${source}): unique calls become proposals (trust rule); ${instead} to import with the owner key`;
+}
+
+/**
  * `analyzr import <dir> --project <key> [--create [--name <name>]] [--dry-run] [--verbose] [--json]`.
  * Reads `analyzr-import.json` at `<dir>` when there is one (M6 S2a: pinned
  * keys, declared provenance, import warnings). Text mode ends with the
@@ -719,7 +812,8 @@ export interface ImportOptions extends CredentialOptions {
  * `--dry-run` (M6 S2b) previews into an existing project with any credential
  * (a read-only token too): the same lines, then what the import would change
  * ({@link formatImpact}); nothing is imported, and a file that would fail
- * exits 1 as well.
+ * exits 1 as well. With an agent token, both say {@link agentTokenNotice}
+ * on stderr first (M6 S2c).
  */
 export async function importCommand(io: CliIo, dir: string, opts: ImportOptions): Promise<void> {
   if (opts.dryRun && opts.create) {
@@ -728,6 +822,10 @@ export async function importCommand(io: CliIo, dir: string, opts: ImportOptions)
   // Read and check everything locally first: a refused manifest creates no project.
   const prepared = await prepareImport(path.resolve(io.cwd, dir));
   const credential = opts.create ? await ownerCredential(io, opts) : await anyCredential(io, opts);
+  // M6 S2c: an agent token makes every revision derived, so no unique call is accepted.
+  if (credential.kind === 'agent-token') {
+    io.stderr(`${agentTokenNotice(opts.token === undefined ? 'ANALYZR_TOKEN' : '--token')}\n`);
+  }
   const api = createApi(io, opts.url, credential);
   if (opts.create) {
     const { created } = await ensureProject(api, opts.project, opts.name ?? opts.project);
@@ -759,11 +857,15 @@ export async function importCommand(io: CliIo, dir: string, opts: ImportOptions)
   }
   if (!opts.json && !nothing) {
     try {
+      const waiting = await waitingTasks(api, opts.project);
+      // Only after derived models: their calls are the ones the trust rule only proposed.
+      const calls = summary.files.some(isDerivedFile) ? await waitingCalls(api, opts.project) : 0;
       io.stdout(
         formatNextSteps(
           opts.project,
-          await waitingTasks(api, opts.project),
+          waiting,
           identitySteps(summary),
+          trustSteps(summary, calls, api.url),
         ),
       );
     } catch (err) {

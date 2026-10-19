@@ -7,10 +7,13 @@ import { LockIcon } from 'lucide-react';
  * §3.11 item 6): „Eindeutige Aufrufe aus Camunda-Modellen nimmt analyzr beim
  * Hochladen an · immer aktiv · 10 angenommen“, the count leading to those
  * relations; with the trust rule (M6 S2c, decision 24.2) „ · 12 aus
- * abgeleiteten Modellen vorgeschlagen“ when such proposals are open, as text
- * (a count leads only to a list of exactly those rows). Always on, never
- * stored as an auto-accept rule, not editable; what it matches and its
- * procedure stay out of the text (P2).
+ * abgeleiteten Modellen vorgeschlagen“ when such proposals are open, leading
+ * to the bulk accept with exactly those selected (`?bulk=calls`: the server
+ * counts those a bulk accept takes as they stand, as the web's `isBulkCall`
+ * does; one an agent asks about or objects to is decided one by one and not
+ * counted here). Always on, never stored as
+ * an auto-accept rule, not editable; what it matches and its procedure stay
+ * out of the text (P2).
  */
 export function SystemRuleCard({
   project,
@@ -47,10 +50,15 @@ export function SystemRuleCard({
         {system.proposed > 0 ? (
           <>
             <span className="text-muted-foreground"> · </span>
-            {/* Text only: no list shows exactly these rows yet (the bulk dialog's group, S2c-2). */}
-            <span className="tabular-nums" data-testid="system-rule-proposed">
+            <Link
+              to="/projects/$project/review"
+              params={{ project }}
+              search={{ bulk: 'calls' }}
+              className="text-link tabular-nums hover:underline"
+              data-testid="system-rule-proposed"
+            >
               {system.proposed} aus abgeleiteten Modellen vorgeschlagen
-            </span>
+            </Link>
           </>
         ) : null}
       </span>

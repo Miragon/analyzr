@@ -43,13 +43,22 @@ import {
 import { api, errorDetail, errorMessage, unwrap } from '@/lib/api';
 import type { Tone } from '@/lib/labels';
 import { importWarningText } from '@/lib/provenance';
-import { keys, modelsQuery, openQuestionSummaryQuery, valueChainQuery } from '@/lib/queries';
+import { useProjectPermissions } from '@/lib/permissions';
+import {
+  keys,
+  landscapeQuery,
+  modelsQuery,
+  openQuestionSummaryQuery,
+  valueChainQuery,
+} from '@/lib/queries';
+import { isBulkCall } from '@/lib/review';
 import {
   BPMN_ACCEPT,
   BPMN_SUFFIX_TEXT,
   INTEGRATE_SKILL,
   amendmentCountsText,
   askNowText,
+  callsWaitingText,
   entriesFromDataTransfer,
   entriesFromFileList,
   fileProblemText,
@@ -308,10 +317,13 @@ function FailedText({ outcome }: { outcome: RowOutcome }) {
 
 /**
  * What comes after an import (§3.9 item 2, the web twin of `analyzr
- * import`'s `formatNextSteps`): what waits for the agent with „Agent
- * starten“ (owners; „Agent verbinden“ without a token), the questions there
- * are already, and „Zur Übersicht“. The counts are the shell's queries,
- * fresh once the import's refresh is done (`fresh`).
+ * import`'s `formatNextSteps`): first the unique calls from derived models
+ * waiting for a human (M6 S2c, `isBulkCall` over the landscape, so the
+ * number equals the selection of the bulk dialog „Gesammelt annehmen“
+ * opens; reviewers only), then what waits for the agent with „Agent starten“
+ * (owners; „Agent verbinden“ without a token), the questions there are
+ * already, and „Zur Übersicht“. The counts are the shell's queries, fresh
+ * once the import's refresh is done (`fresh`).
  */
 function NextSteps({
   project,
@@ -326,6 +338,11 @@ function NextSteps({
   const models = useQuery(modelsQuery(project));
   const chain = useQuery(valueChainQuery(project));
   const summary = useQuery(openQuestionSummaryQuery(project));
+  const landscape = useQuery(landscapeQuery(project));
+  const can = useProjectPermissions(project);
+  const calls = can.canReview
+    ? callsWaitingText(landscape.data?.relations.filter(isBulkCall).length ?? 0)
+    : null;
   const waiting = waitingText(
     models.data?.filter((m) => m.stage === 'waiting_for_agent').length ?? 0,
     chain.data?.pipeline.task?.state === 'queued',
@@ -345,6 +362,23 @@ function NextSteps({
         <Skeleton className="h-8 w-72" data-testid="upload-next-loading" />
       ) : (
         <ul className="flex flex-col gap-2 text-sm">
+          {calls ? (
+            <li
+              className="flex flex-wrap items-center gap-x-2 gap-y-1"
+              data-testid="upload-next-calls"
+            >
+              <span>{calls}</span>
+              <span aria-hidden>·</span>
+              <Link
+                to="/projects/$project/review"
+                params={{ project }}
+                search={{ bulk: 'calls' }}
+                className="text-link underline-offset-4 hover:underline"
+              >
+                Gesammelt annehmen
+              </Link>
+            </li>
+          ) : null}
           {waiting ? (
             <li
               className="flex flex-wrap items-center gap-x-2 gap-y-1"

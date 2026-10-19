@@ -29,7 +29,17 @@ export type NextLine =
   | { kind: 'waiting'; count: number }
   | { kind: 'failed'; modelKeys: string[] }
   | { kind: 'expired'; modelKeys: string[] }
-  /** The review offered while the agent rows lead. */
+  /**
+   * Unique calls from derived models wait (M6 S2c, `isBulkCall`): „Gesammelt
+   * annehmen“ before the agent judges their pairs. While an agent row leads
+   * (`first`: „… zuerst bestätigen“), after the failed and expired lines;
+   * under „Vorschläge prüfen“ the first line („Davon …“).
+   */
+  | { kind: 'calls'; count: number; first: boolean }
+  /**
+   * The review offered while the agent rows lead; not when every open review
+   * item is such a call (the `calls` line offers those).
+   */
   | { kind: 'review-too'; count: number; relationId: string }
   /** Relations exist, the chain does not. */
   | { kind: 'no-chain' };
@@ -44,6 +54,12 @@ export interface NextStepInput {
   /** Models in `agent_working` with a running reservation. */
   working: number;
   reviewItems: number;
+  /**
+   * The open unique calls from derived models a bulk accept takes (M6 S2c,
+   * `isBulkCall` over the landscape's relations), part of `reviewItems`: the
+   * selection of the bulk dialog the `calls` line opens.
+   */
+  derivedCalls: number;
   /** The review queue's first relation. */
   firstRelation: string | null;
   openPlacements: number;
@@ -71,7 +87,7 @@ const MAX_LINES = 2;
 export function nextStep(input: NextStepInput): NextStep {
   const stuck = [...input.failed, ...input.expired];
   const agentPending = input.waiting.length + stuck.length > 0;
-  const lines: NextLine[] = [];
+  const status: NextLine[] = [];
   let primary: NextPrimary | null = null;
 
   if (agentPending && input.isOwner) {
@@ -80,13 +96,17 @@ export function nextStep(input: NextStepInput): NextStep {
       primary = { kind: 'start-agent', waiting: input.waiting.length };
     else primary = { kind: 'retry', modelKeys: stuck };
   } else if (input.waiting.length > 0) {
-    lines.push({ kind: 'waiting', count: input.waiting.length });
+    status.push({ kind: 'waiting', count: input.waiting.length });
   } else if (!agentPending && input.working > 0) {
     // The agent works and nothing waits: the agent rows give way.
-    lines.push({ kind: 'working', count: input.working });
+    status.push({ kind: 'working', count: input.working });
   }
 
   const agentRow = primary !== null;
+  const calls: NextLine | null =
+    input.derivedCalls > 0 ? { kind: 'calls', count: input.derivedCalls, first: agentRow } : null;
+  // Under „Vorschläge prüfen“ the bulk shortcut for those calls comes first.
+  const lines: NextLine[] = calls !== null && !agentRow ? [calls, ...status] : status;
   if (primary === null && input.reviewItems > 0 && input.firstRelation !== null) {
     primary = { kind: 'review', count: input.reviewItems, relationId: input.firstRelation };
   } else if (primary === null && input.openPlacements > 0 && input.firstPlacement !== null) {
@@ -103,7 +123,9 @@ export function nextStep(input: NextStepInput): NextStep {
     if (input.failed.length > 0) lines.push({ kind: 'failed', modelKeys: [...input.failed] });
     if (input.expired.length > 0) lines.push({ kind: 'expired', modelKeys: [...input.expired] });
   }
-  if (agentRow && input.reviewItems > 0 && input.firstRelation !== null) {
+  if (agentRow && calls !== null) lines.push(calls);
+  // No second line for the same rows: when every open item is such a call, `calls` offers them.
+  if (agentRow && input.reviewItems > input.derivedCalls && input.firstRelation !== null) {
     lines.push({ kind: 'review-too', count: input.reviewItems, relationId: input.firstRelation });
   }
   if (input.hasRelations && !input.hasChain && input.canReview) lines.push({ kind: 'no-chain' });

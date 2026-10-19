@@ -15,6 +15,7 @@ import {
 } from '../relations.ts';
 import { orNull } from '../zod-utils.ts';
 import { Cursor, MAX_PAGE_LIMIT, DEFAULT_PAGE_LIMIT, Timestamp, pageOf } from './common.ts';
+import { DERIVED_CALLER_MATCH } from './models.ts';
 
 /**
  * Where a relation's current status comes from: the assertion it rests on
@@ -97,6 +98,33 @@ export const Relation = z
   })
   .meta({ id: 'Relation', description: 'A relation between two processes.' });
 export type Relation = z.infer<typeof Relation>;
+
+/**
+ * An open unique call from a derived model that a bulk accept takes as it
+ * stands (M6 S2c, the trust rule): a call the rule tier only proposed
+ * (status `proposed`, tier `key`, `attrs.match` {@link DERIVED_CALLER_MATCH})
+ * with nothing a reviewer must read first, so no agent's question on the
+ * proposal its status rests on and no current no-link (the web's bulk flags
+ * for such a call; no name flag applies to it). Every number behind
+ * „Gesammelt annehmen“ counts these: the web's (mirrored in
+ * apps/web/src/lib/review.ts `isBulkCall`), the system rule card's and
+ * `analyzr import`'s, so each equals the selection the link opens.
+ */
+export function isBulkDerivedCall(
+  relation: Pick<Relation, 'type' | 'status' | 'tier' | 'attrs'> & {
+    provenance: Pick<RelationProvenance, 'question'> | null;
+    noLinks: readonly unknown[];
+  },
+): boolean {
+  return (
+    relation.type === 'call' &&
+    relation.status === 'proposed' &&
+    relation.tier === 'key' &&
+    relation.attrs['match'] === DERIVED_CALLER_MATCH &&
+    !relation.provenance?.question?.trim() &&
+    relation.noLinks.length === 0
+  );
+}
 
 export const RelationPage = pageOf(Relation, 'RelationPage');
 export type RelationPage = z.infer<typeof RelationPage>;

@@ -1,12 +1,12 @@
 import { Blob as NodeBlob, File as NodeFile } from 'node:buffer';
 
-import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { BPMN_FILE_SUFFIXES } from '@analyzr/contracts/paths';
 
 import { UploadPanel } from '../src/components/upload-panel';
-import { model } from './support/fixtures';
+import { model, noLink, provenance, relation } from './support/fixtures';
 import { findToast, json, renderWithRouter, stubApi, type Call } from './support/render';
 
 const IMPORT_PATH = '/api/v1/projects/demo/imports';
@@ -368,6 +368,102 @@ describe('UploadPanel', () => {
       within(next).getByRole('link', { name: 'Offene Fragen ansehen' }).getAttribute('href'),
     ).toBe('/projects/demo/open-questions');
     expect(within(next).getByTestId('upload-overview').getAttribute('href')).toBe('/projects/demo');
+  });
+
+  it('names the unique calls of derived models first, „Gesammelt annehmen“ leading to their bulk accept (M6 S2c)', async () => {
+    const call = (n: number, status: 'proposed' | 'accepted' = 'proposed') =>
+      relation({
+        id: `rel_01CALL${n}`,
+        type: 'call',
+        status,
+        confidence: 0.9,
+        from: `a#Call_${n}`,
+        to: `b#Process_${n}`,
+        attrs: { calledElement: `Process_${n}`, match: 'derived-caller' },
+      });
+    const routes = (role: 'owner' | 'viewer') => ({
+      [`POST ${IMPORT_PATH}`]: (call: Call) =>
+        json({
+          files: (call.body as string[]).map((path) => ({
+            path,
+            modelKey: path.replace(/\.bpmn$/, ''),
+            outcome: 'created',
+            problem: null,
+          })),
+        }),
+      'GET /api/v1/projects/demo': () =>
+        json({
+          id: 'prj_01DEMO',
+          key: 'demo',
+          name: 'Demo',
+          role,
+          lastSeq: 3,
+          createdAt: '2026-10-07T09:00:00.000Z',
+        }),
+      'GET /api/v1/projects/demo/agent-tokens': () => json({ items: [] }),
+      'GET /api/v1/projects/demo/models': () =>
+        json({
+          items: [
+            model({ key: 'a', stage: 'waiting_for_agent' }),
+            model({ key: 'b', stage: 'waiting_for_agent' }),
+          ],
+          nextCursor: null,
+        }),
+      // two such calls open, one accepted already, one an agent asks about and one it objects to
+      // (decided one by one), one message proposal: the dialog selects 2
+      'GET /api/v1/projects/demo/landscape': () =>
+        json({
+          projectId: 'prj_01DEMO',
+          seq: 3,
+          models: [],
+          relations: [
+            call(1),
+            call(2),
+            call(3, 'accepted'),
+            { ...call(4), provenance: provenance({ question: 'Wirklich dieser Prozess?' }) },
+            { ...call(5), noLinks: [noLink()] },
+            relation({ id: 'rel_01MSG', from: 'a#S', to: 'b#C' }),
+          ],
+          findings: [],
+        }),
+    });
+    stubApi(routes('owner'));
+    await render();
+    fireEvent.change(screen.getByTestId('file-input'), {
+      target: { files: [new File(['<x/>'], 'a.bpmn'), new File(['<x/>'], 'b.bpmn')] },
+    });
+    await importNow();
+    const next = await screen.findByTestId('upload-next');
+    await waitFor(() => expect(within(next).queryByTestId('upload-next-loading')).toBeNull());
+    await waitFor(() =>
+      expect(within(next).getByTestId('upload-next-calls').textContent).toBe(
+        '2 eindeutige Aufrufe warten auf deine Bestätigung·Gesammelt annehmen',
+      ),
+    );
+    // before „Agent starten“: accepted calls are settled, no agent judges them
+    await waitFor(() =>
+      expect(
+        within(next)
+          .getAllByRole('listitem')
+          .map((li) => li.dataset['testid']),
+      ).toEqual(['upload-next-calls', 'upload-next-agent']),
+    );
+    expect(
+      within(next).getByRole('link', { name: 'Gesammelt annehmen' }).getAttribute('href'),
+    ).toBe('/projects/demo/review?bulk=calls');
+
+    // only for those who may review („Hochladen“ itself needs `write`, which has review too)
+    cleanup();
+    stubApi(routes('viewer'));
+    await render();
+    fireEvent.change(screen.getByTestId('file-input'), {
+      target: { files: [new File(['<x/>'], 'a.bpmn')] },
+    });
+    await importNow();
+    const viewer = await screen.findByTestId('upload-next');
+    await waitFor(() => expect(within(viewer).queryByTestId('upload-next-loading')).toBeNull());
+    await within(viewer).findByTestId('upload-next-agent');
+    expect(within(viewer).queryByTestId('upload-next-calls')).toBeNull();
   });
 
   it('fails a duplicate key before sending, skips a sidecar .xml and lists a plain .xml that is no BPMN as skipped', async () => {

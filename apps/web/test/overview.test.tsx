@@ -37,7 +37,16 @@ import {
   type OpenQuestionSummary,
 } from '../src/lib/queries';
 import { createAppRouter } from '../src/router';
-import { agentToken, chainDetail, model, placement, relation, step } from './support/fixtures';
+import {
+  agentToken,
+  chainDetail,
+  model,
+  noLink,
+  placement,
+  provenance,
+  relation,
+  step,
+} from './support/fixtures';
 import { stubApi } from './support/render';
 
 // ------------------------------------------------------------------ pure rules
@@ -48,6 +57,7 @@ const base: NextStepInput = {
   expired: [],
   working: 0,
   reviewItems: 0,
+  derivedCalls: 0,
   firstRelation: null,
   openPlacements: 0,
   firstPlacement: null,
@@ -116,6 +126,62 @@ describe('„Als Nächstes“: the priority rules (first match wins)', () => {
     ).toEqual({ kind: 'placements', count: 29, placementId: 'plc_1' });
     expect(nextStep({ ...base, ask: 21 }).primary).toEqual({ kind: 'questions', count: 21 });
     expect(nextStep(base)).toEqual({ primary: null, lines: [] });
+  });
+
+  it('offers the unique calls of derived models after the failed lines while an agent row leads (M6 S2c)', () => {
+    const step = nextStep({
+      ...base,
+      waiting: ['a'],
+      failed: ['f'],
+      reviewItems: 5,
+      derivedCalls: 3,
+      firstRelation: 'rel_1',
+    });
+    expect(step.primary).toEqual({ kind: 'start-agent', waiting: 1 });
+    expect(step.lines).toEqual([
+      { kind: 'failed', modelKeys: ['f'] },
+      { kind: 'calls', count: 3, first: true },
+    ]);
+    // without a failed line, the review of the other two follows
+    expect(
+      nextStep({ ...base, waiting: ['a'], reviewItems: 5, derivedCalls: 3, firstRelation: 'rel_1' })
+        .lines,
+    ).toEqual([
+      { kind: 'calls', count: 3, first: true },
+      { kind: 'review-too', count: 5, relationId: 'rel_1' },
+    ]);
+  });
+
+  it('replaces the review line by the calls line when every open item is such a call', () => {
+    const step = nextStep({
+      ...base,
+      waiting: ['a'],
+      activeToken: false,
+      reviewItems: 1,
+      derivedCalls: 1,
+      firstRelation: 'rel_1',
+      hasChain: false,
+    });
+    expect(step.primary).toEqual({ kind: 'connect-agent' });
+    expect(step.lines).toEqual([{ kind: 'calls', count: 1, first: true }, { kind: 'no-chain' }]);
+  });
+
+  it('puts the calls line first under „Vorschläge prüfen“, within the two lines', () => {
+    const step = nextStep({
+      ...base,
+      isOwner: false,
+      waiting: ['a'],
+      failed: ['f'],
+      reviewItems: 4,
+      derivedCalls: 2,
+      firstRelation: 'rel_1',
+    });
+    expect(step.primary).toEqual({ kind: 'review', count: 4, relationId: 'rel_1' });
+    // part of the primary's count, not before the agent: „Davon …“
+    expect(step.lines).toEqual([
+      { kind: 'calls', count: 2, first: false },
+      { kind: 'waiting', count: 1 },
+    ]);
   });
 
   it('names a missing chain once relations exist, for reviewers only, at most two lines', () => {
@@ -410,6 +476,113 @@ describe('„Übersicht“', () => {
     const nav = screen.getByRole('navigation', { name: 'Projektbereiche' });
     for (const link of within(nav).getAllByRole('link')) expect(link.textContent).not.toMatch(/\d/);
     expect(screen.queryByTestId('export-hub')).toBeNull();
+  });
+
+  it('offers the unique calls of derived models as „Gesammelt annehmen“ instead of the review line (M6 S2c)', async () => {
+    const derived = relation({
+      id: 'rel_01CALL',
+      type: 'call',
+      tier: 'key',
+      confidence: 0.9,
+      from: 'b/review#Call_Rechnung',
+      to: 'a/wait#Process_Rechnung',
+      attrs: { calledElement: 'Process_Rechnung', match: 'derived-caller' },
+    });
+    const { router, user } = setup('/projects/demo', {
+      models: [
+        model({ key: 'a/wait', stage: 'waiting_for_agent', openItems: 1 }),
+        model({ key: 'b/review', stage: 'waiting_for_agent', openItems: 1 }),
+      ],
+      relations: [derived],
+    });
+    const block = await screen.findByTestId('next-step');
+    await within(block).findByRole('link', { name: 'Agent verbinden' });
+    // one line for the one open item, no „Vorschläge prüfen (1)“ besides
+    expect(
+      within(block)
+        .getAllByTestId('next-step-line')
+        .map((l) => [l.dataset['kind'], l.textContent]),
+    ).toEqual([
+      ['calls', '1 eindeutigen Aufruf zuerst bestätigen · Gesammelt annehmen'],
+      ['no-chain', 'Noch keine Wertschöpfungskette · Anlegen oder importieren'],
+    ]);
+    const budget = measure(block);
+    expect(budget.words).toBeLessThanOrEqual(40);
+    expect(budget.controls).toBeLessThanOrEqual(5);
+    await user.click(within(block).getByRole('link', { name: 'Gesammelt annehmen' }));
+    await waitFor(() =>
+      expect(router.state.location.href).toBe('/projects/demo/review?bulk=calls'),
+    );
+  });
+
+  it('gives a viewer the calls line as text, without „Gesammelt annehmen“', async () => {
+    setup('/projects/demo', {
+      role: 'viewer',
+      models: [model({ key: 'b/review', stage: 'waiting_for_review', openItems: 2 })],
+      relations: [
+        relation({
+          id: 'rel_01CALL',
+          type: 'call',
+          from: 'b/review#Call_A',
+          to: 'c/x#Process_A',
+          confidence: 0.9,
+          attrs: { calledElement: 'Process_A', match: 'derived-caller' },
+        }),
+        relation({
+          id: 'rel_01CALL2',
+          type: 'call',
+          from: 'b/review#Call_B',
+          to: 'd/y#Process_B',
+          confidence: 0.9,
+          attrs: { calledElement: 'Process_B', match: 'derived-caller' },
+        }),
+      ],
+    });
+    const primary = await screen.findByTestId('next-step-primary');
+    expect(primary.textContent).toBe('Vorschläge prüfen (2)');
+    const block = screen.getByTestId('next-step');
+    expect(within(block).getAllByTestId('next-step-line')[0]?.textContent).toBe(
+      'Davon 2 eindeutige Aufrufe',
+    );
+    expect(within(block).queryByRole('link', { name: 'Gesammelt annehmen' })).toBeNull();
+  });
+
+  it('counts no call an agent asks about or objects to: the bulk accept would not select it (M6 S2c-2)', async () => {
+    const call = (n: number, extra: Partial<Relation>) =>
+      relation({
+        id: `rel_01CALL${n}`,
+        type: 'call',
+        tier: 'key',
+        confidence: 0.9,
+        from: `b/review#Call_${n}`,
+        to: `a/wait#Process_${n}`,
+        attrs: { calledElement: `Process_${n}`, match: 'derived-caller' },
+        ...extra,
+      });
+    setup('/projects/demo', {
+      models: [
+        model({ key: 'a/wait', stage: 'waiting_for_agent', openItems: 1 }),
+        model({ key: 'b/review', stage: 'waiting_for_agent', openItems: 1 }),
+      ],
+      relations: [
+        call(1, {
+          provenance: provenance({ tier: 'key', confidence: 0.9, question: 'Wirklich?' }),
+        }),
+        call(2, { noLinks: [noLink()] }),
+        call(3, {}),
+      ],
+    });
+    const block = await screen.findByTestId('next-step');
+    await within(block).findByRole('link', { name: 'Agent verbinden' });
+    // one to accept in bulk, and the review of all three (two of them one by one)
+    expect(
+      within(block)
+        .getAllByTestId('next-step-line')
+        .map((l) => [l.dataset['kind'], l.textContent]),
+    ).toEqual([
+      ['calls', '1 eindeutigen Aufruf zuerst bestätigen · Gesammelt annehmen'],
+      ['review-too', expect.stringContaining('Vorschläge prüfen (3)') as unknown],
+    ]);
   });
 
   it('gives a viewer the same text without buttons', async () => {

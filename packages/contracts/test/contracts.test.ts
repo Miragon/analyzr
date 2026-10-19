@@ -92,6 +92,8 @@ import {
   ImportFileOutcome,
   MAX_RESULT_WARNINGS,
   MAX_RESULT_WARNING_COUNT,
+  DERIVED_CALLER_MATCH,
+  isBulkDerivedCall,
 } from '../src/index.ts';
 
 describe('refs', () => {
@@ -1403,5 +1405,40 @@ describe('extractor warnings in import and PUT results (M6 S1)', () => {
     expect(JSON.stringify(schemas['ImportFileOutcome'])).toContain(
       '"warningCount":{"type":"integer","minimum":1,"maximum":101}',
     );
+  });
+});
+
+describe('isBulkDerivedCall (M6 S2c-2: the numbers behind „Gesammelt annehmen“)', () => {
+  const open = {
+    type: 'call',
+    status: 'proposed',
+    tier: 'key',
+    attrs: { calledElement: 'Process_1', match: DERIVED_CALLER_MATCH },
+    provenance: null,
+    noLinks: [],
+  } satisfies Parameters<typeof isBulkDerivedCall>[0];
+  const noLink = {
+    id: 'nlk_01ARZ3NDEKTSV4RRFFQ69G5FAV',
+    handle: 'agent:sim',
+    origin: 'a/b',
+    reason: 'unrelated: x',
+    at: '2026-10-07T09:00:00.000Z',
+  } as Relation['noLinks'][number];
+
+  it('takes an open unique call from a derived model with nothing to read first', () => {
+    expect(isBulkDerivedCall(open)).toBe(true);
+    // an empty question (whitespace) asks nothing
+    const provenance = { question: '  ' } as NonNullable<Relation['provenance']>;
+    expect(isBulkDerivedCall({ ...open, provenance })).toBe(true);
+  });
+
+  it('leaves out a call an agent asks about or objects to, and every other relation', () => {
+    const provenance = { question: 'Wirklich?' } as NonNullable<Relation['provenance']>;
+    expect(isBulkDerivedCall({ ...open, provenance })).toBe(false);
+    expect(isBulkDerivedCall({ ...open, noLinks: [noLink] })).toBe(false);
+    expect(isBulkDerivedCall({ ...open, status: 'accepted' })).toBe(false);
+    expect(isBulkDerivedCall({ ...open, tier: 'semantic' })).toBe(false);
+    expect(isBulkDerivedCall({ ...open, type: 'message' })).toBe(false);
+    expect(isBulkDerivedCall({ ...open, attrs: { match: 'duplicate-process-id' } })).toBe(false);
   });
 });

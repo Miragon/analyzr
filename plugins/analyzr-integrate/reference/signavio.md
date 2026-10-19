@@ -51,7 +51,9 @@ sandbox export yet (M6 §3.8, owner question §10.4); what analyzr itself does i
 - Verified on analyzr's side: the file parses as plain BPMN and `engine` is `null`; unknown
   extension content becomes a `parse-warning`, never an error
   (`packages/bpmn-facts/src/moddle.ts`); a collapsed subprocess yields no fact of its own; a
-  static `calledElement` that matches exactly one process id is accepted at import (owner
-  decision 9) and passes through `normalize-bpmn` unchanged.
+  static `calledElement` that matches exactly one process id passes through `normalize-bpmn`
+  unchanged. Without an engine the model counts as derived (owner decision 24.2): analyzr
+  proposes such a call at 90 % instead of accepting it, and the consultant accepts these calls
+  in one step after the import („Gesammelt annehmen“).
 - Keys: from the tool folders and the diagram's file name; `externalId` is the
   `<definitions id>`, so a folder move in Signavio keeps the key through `keymap.json`.

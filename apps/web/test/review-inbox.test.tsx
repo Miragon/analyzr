@@ -70,7 +70,7 @@ const stuckTask: AnalysisTask = {
   updatedAt: '2026-10-07T09:00:00.000Z',
 };
 
-function setup(path: string, extra: Relation[] = []) {
+function setup(path: string, extra: Relation[] = [], role: 'owner' | 'viewer' = 'owner') {
   const calls = stubApi({
     'POST /api/v1/projects/demo/analyses/requeue': (call) =>
       json({
@@ -95,7 +95,7 @@ function setup(path: string, extra: Relation[] = []) {
     id: 'prj_01DEMO',
     key: 'demo',
     name: 'Demo',
-    role: 'owner',
+    role,
     lastSeq: 1,
     createdAt: '2026-10-07T09:00:00.000Z',
   });
@@ -229,6 +229,125 @@ describe('„Relationen › Zu prüfen“ (UX5)', () => {
     await waitFor(() =>
       expect(router.state.location.pathname).toBe('/projects/demo/review/rel_01K2'),
     );
+  });
+
+  const derived = (id: string, n: number) =>
+    relation({
+      id,
+      type: 'call',
+      tier: 'key',
+      status: 'proposed',
+      confidence: 0.9,
+      from: `c/changed#Call_${n}`,
+      to: `d/partner#Process_${n}`,
+      attrs: { calledElement: `Process_${n}`, match: 'derived-caller' },
+    });
+
+  it('opens the bulk accept by itself for `?bulk=calls`, the unique calls of derived models selected; closing drops the parameter (M6 S2c)', async () => {
+    const { router, user } = setup('/projects/demo/review?bulk=calls', [
+      key('rel_01K1', 'c/changed#A', 'd/partner#A'),
+      derived('rel_01C1', 1),
+      derived('rel_01C2', 2),
+    ]);
+    const dialog = await screen.findByTestId('bulk-dialog');
+    expect(within(dialog).getByText('2 eindeutige Aufrufe annehmen?')).toBeTruthy();
+    expect(within(dialog).getAllByRole('heading', { level: 3 })[0]?.textContent).toBe(
+      'Eindeutige Aufrufe aus abgeleiteten Modellen (2)',
+    );
+    expect(within(dialog).getByTestId('bulk-summary').textContent).toBe('2 von 3 ausgewählt');
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(router.state.location.href).toBe('/projects/demo/review'));
+    expect(screen.queryByTestId('bulk-dialog')).toBeNull();
+    // nothing had the focus before the URL opened it: „Vorschläge prüfen“ gets it, not the body
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByTestId('review-start')));
+    // opened by its button, the dialog selects every unflagged pair
+    await user.click(await screen.findByTestId('bulk-open'));
+    expect((await screen.findByTestId('bulk-summary')).textContent).toBe('3 von 3 ausgewählt');
+  });
+
+  it('opens nothing for `?bulk=calls` without such calls, for a viewer, or for a call an agent asks about; the parameter goes', async () => {
+    const first = setup('/projects/demo/review?bulk=calls', [
+      key('rel_01K1', 'c/changed#A', 'd/partner#A'),
+    ]);
+    await screen.findByTestId('bulk-open');
+    expect(screen.queryByTestId('bulk-dialog')).toBeNull();
+    // a later call would otherwise open it by itself
+    await waitFor(() => expect(first.router.state.location.href).toBe('/projects/demo/review'));
+    cleanup();
+    const viewer = setup('/projects/demo/review?bulk=calls', [derived('rel_01C1', 1)], 'viewer');
+    await screen.findAllByTestId('queue-row');
+    expect(screen.queryByTestId('bulk-dialog')).toBeNull();
+    expect(screen.queryByTestId('bulk-open')).toBeNull();
+    await waitFor(() => expect(viewer.router.state.location.href).toBe('/projects/demo/review'));
+    cleanup();
+    // flagged in the dialog (decided one by one): the links do not count it either (`isBulkCall`)
+    const asked = setup('/projects/demo/review?bulk=calls', [
+      relation({
+        ...derived('rel_01C1', 1),
+        provenance: provenance({ tier: 'key', confidence: 0.9, question: 'Wirklich dieser?' }),
+      }),
+    ]);
+    await screen.findAllByTestId('queue-row');
+    await waitFor(() => expect(asked.router.state.location.href).toBe('/projects/demo/review'));
+    expect(screen.queryByTestId('bulk-dialog')).toBeNull();
+  });
+
+  it('keeps the dialog of `?bulk=calls` through the accept’s refetches: the toast shows, `?bulk` goes, the focus stays on the page (M6 S2c-2)', async () => {
+    const call = derived('rel_01C1', 1);
+    let accepted = false;
+    const landscapeOf = (seq: number): Landscape => ({
+      projectId: 'prj_01DEMO',
+      seq,
+      models: [],
+      relations: [accepted ? { ...call, status: 'accepted', version: 2 } : call],
+      findings: [],
+    });
+    const project = {
+      id: 'prj_01DEMO',
+      key: 'demo',
+      name: 'Demo',
+      role: 'owner' as const,
+      lastSeq: 1,
+      createdAt: '2026-10-07T09:00:00.000Z',
+    };
+    stubApi({
+      'GET /api/v1/projects/demo': () => json(project),
+      'POST /api/v1/projects/demo/decisions': () => {
+        accepted = true;
+        return json({ items: [{ ...call, status: 'accepted', version: 2 }] });
+      },
+      // the landscape answers at once, without the proposal: the dialog's rows are gone …
+      'GET /api/v1/projects/demo/landscape': () => json(landscapeOf(2)),
+      // … while another query of the same refresh is still on its way
+      'GET /api/v1/projects/demo/models': async () => {
+        await new Promise((r) => setTimeout(r, 300));
+        return json({ items: models, nextCursor: null });
+      },
+    });
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { staleTime: Infinity, retry: false } },
+    });
+    queryClient.setQueryData(projectQuery('demo').queryKey, project);
+    queryClient.setQueryData(landscapeQuery('demo').queryKey, landscapeOf(1));
+    queryClient.setQueryData(modelsQuery('demo').queryKey, models);
+    const router = createAppRouter({
+      queryClient,
+      history: createMemoryHistory({ initialEntries: ['/projects/demo/review?bulk=calls'] }),
+    });
+    render(<App queryClient={queryClient} router={router} />);
+    const user = userEvent.setup();
+    const toasts = () =>
+      screen
+        .queryAllByTestId('toast')
+        .filter((t) => t.textContent.includes('Eindeutige Aufrufe aus abgeleiteten Modellen.'))
+        .length;
+    const before = toasts();
+    await user.click(await screen.findByTestId('bulk-confirm'));
+    await waitFor(() => expect(toasts()).toBe(before + 1), { timeout: 3000 });
+    expect(screen.queryByTestId('bulk-dialog')).toBeNull();
+    await waitFor(() => expect(router.state.location.href).toBe('/projects/demo/review'));
+    // nothing left to review: the view „Zu prüfen“ has the focus
+    await waitFor(() => expect(document.activeElement?.id).toBe('relation-view-review'));
   });
 
   it('keeps the filters while a filter is set, and offers „Grundlage“ instead of „Stufe“', async () => {

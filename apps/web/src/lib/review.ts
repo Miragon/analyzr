@@ -3,7 +3,7 @@ import type { Model, ModelStage, Relation, RelationAssertion, Tier } from '@anal
 import { ApiError } from './api';
 import { bulkFlags, nameKey, type GenericFlag, type NameUsage } from './generic-names';
 import { STAGE_ORDER, TIER_ORDER } from './labels';
-import { DERIVED_CALL_CONFIDENCE } from './limits';
+import { DERIVED_CALLER_MATCH, DERIVED_CALL_CONFIDENCE, MAX_BULK_DECISIONS } from './limits';
 import { splitRef, type RefLabel, type RefResolver } from './refs';
 import { touchesModel } from './relation-filters';
 
@@ -222,6 +222,43 @@ export function evidenceItems(
 }
 
 /**
+ * An open unique call from a derived model (M6 S2c, the trust rule): a call
+ * the rule tier only proposed (tier `key`, marked `attrs.match`
+ * `derived-caller`), waiting for a human. The bulk dialog lists these first,
+ * under „Eindeutige Aufrufe aus abgeleiteten Modellen (n)“, flagged ones
+ * included; the numbers behind „Gesammelt annehmen“ count {@link isBulkCall}.
+ */
+export function isDerivedCall(
+  relation: Pick<Relation, 'type' | 'tier' | 'status' | 'attrs'>,
+): boolean {
+  return (
+    relation.type === 'call' &&
+    relation.tier === 'key' &&
+    relation.status === 'proposed' &&
+    relation.attrs['match'] === DERIVED_CALLER_MATCH
+  );
+}
+
+/**
+ * Such a call that the bulk accept takes as it stands (M6 S2c-2): no flag of
+ * the bulk dialog, so no agent's question and no current no-link (no name
+ * flag applies to it, {@link bulkFlags}; it needs no facts). Every number
+ * behind „Gesammelt annehmen“ counts these („Übersicht“, „Hochladen“ › „Als
+ * Nächstes“, and the dialog's selection when `?bulk=calls` opens it), as do
+ * the server's system rule card and `analyzr import` (`isBulkDerivedCall` of
+ * the contracts), so each number equals the selection its link opens.
+ */
+export function isBulkCall(
+  relation: Pick<Relation, 'type' | 'tier' | 'status' | 'attrs' | 'provenance' | 'noLinks'>,
+): boolean {
+  return (
+    isDerivedCall(relation) &&
+    !relation.provenance?.question?.trim() &&
+    relation.noLinks.length === 0
+  );
+}
+
+/**
  * The rule tier's proposal of a unique call from a derived model (M6 S2c,
  * the trust rule), told by the assertion itself: tier `key` at
  * {@link DERIVED_CALL_CONFIDENCE} with a rationale, which no other rule
@@ -372,7 +409,8 @@ export interface BulkRow {
  * The bulk accept's rows (UX5, owner decision 26 (6): „Gleicher Name“ only):
  * the key tier's open proposals with their flags; the unflagged ones are the
  * default selection, and their number is the button's („8 unauffällige
- * annehmen …“).
+ * annehmen …“). The unique calls from derived models (M6 S2c,
+ * {@link isDerivedCall}) are key-tier proposals too, so they are among them.
  */
 export function bulkRows(
   relations: readonly Relation[],
@@ -385,4 +423,25 @@ export function bulkRows(
       relation,
       flags: bulkFlags(relation, (ref) => resolve(ref).label, usage),
     }));
+}
+
+/**
+ * What the bulk accept selects when it opens: every unflagged pair
+ * (`unflagged`, its button), or (`calls`, from a „Gesammelt annehmen“ link,
+ * `?bulk=calls`) the unflagged unique calls from derived models only, at
+ * most {@link MAX_BULK_DECISIONS} (one request takes no more; the rest
+ * follow in the next).
+ */
+export type BulkPreselect = 'unflagged' | 'calls';
+
+/** The ids {@link BulkPreselect} selects among `rows`, in their order. */
+export function bulkPreselection(rows: readonly BulkRow[], preselect: BulkPreselect): Set<string> {
+  const plain = rows.filter((r) => r.flags.length === 0);
+  if (preselect === 'unflagged') return new Set(plain.map((r) => r.relation.id));
+  return new Set(
+    plain
+      .filter((r) => isDerivedCall(r.relation))
+      .slice(0, MAX_BULK_DECISIONS)
+      .map((r) => r.relation.id),
+  );
 }

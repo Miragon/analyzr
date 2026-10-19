@@ -6,10 +6,18 @@ import {
   MAX_IMPORT_FILES,
   MAX_MODEL_BYTES,
   type ImportFileOutcome,
+  type TrustReason,
 } from '@analyzr/contracts';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { amendmentsText, formatNextSteps, formatWarningCounts } from '../../src/commands/import.ts';
+import {
+  agentTokenNotice,
+  amendmentsText,
+  formatNextSteps,
+  formatWarningCounts,
+  trustSteps,
+  type ImportSummary,
+} from '../../src/commands/import.ts';
 import { batches, findBpmnFiles, planImport, type BpmnFile } from '../../src/files.ts';
 import { runCli } from '../../src/program.ts';
 import {
@@ -725,5 +733,218 @@ describe('analyzr import', () => {
     expect(await runCli(['import', 'next', '-p', 'demo'], t.io)).toBe(0);
     expect(t.out()).toContain('demo: 1 files, 1 created');
     expect(t.err()).toContain('cannot list the waiting tasks');
+  });
+
+  describe('the trust rule (M6 S2c)', () => {
+    const URL_BASE = 'http://127.0.0.1:7400';
+    const REVIEW = `  ${URL_BASE}/projects/demo/review?bulk=calls`;
+    const derived =
+      (reasons: TrustReason[]) =>
+      (p: string): ImportFileOutcome => ({ ...created(p), trust: { class: 'derived', reasons } });
+    const summaryOf = (files: ImportFileOutcome[]): ImportSummary => ({
+      project: 'demo',
+      files,
+      counts: { created: files.length, revised: 0, unchanged: 0, failed: 0 },
+    });
+    /** An open call proposal of the key tier (`GET …/relations` answers only those). */
+    const proposal = (n: number, extra: Record<string, unknown> = {}) => ({
+      id: `rel_${n}`,
+      type: 'call',
+      status: 'proposed',
+      tier: 'key',
+      attrs: { calledElement: `P_${n}`, match: 'derived-caller' },
+      provenance: null,
+      noLinks: [],
+      ...extra,
+    });
+    /** `GET …/relations` with these open call proposals on two pages; checks the query. */
+    const relationsRoute = (items: ReturnType<typeof proposal>[]) => ({
+      'GET /api/v1/projects/demo/relations': (_req: Request, url: URL) => {
+        expect(Object.fromEntries(url.searchParams)).toMatchObject({
+          type: 'call',
+          status: 'proposed',
+          tier: 'key',
+        });
+        const second = url.searchParams.get('cursor') === 'c2';
+        const half = Math.ceil(items.length / 2);
+        return json({
+          items: second ? items.slice(half) : items.slice(0, half),
+          nextCursor: second || items.length < 2 ? null : 'c2',
+        });
+      },
+    });
+
+    it('says once on stderr, before sending, that an agent token makes unique calls proposals and where it came from; also for a dry run, never with the owner key', async () => {
+      await put('a.bpmn', '<bpmn/>', path.join(dir, 'trust'));
+      const api = fakeApi({
+        'POST /api/v1/projects/demo/imports': importRoute(derived(['no-engine', 'agent-upload'])),
+        ...NOTHING_WAITING,
+        ...relationsRoute([]),
+      });
+      // stderr as it stands when the first request goes out
+      let atSend: string | null = null;
+      const t = testIo(
+        { ANALYZR_TOKEN: AGENT_TOKEN },
+        (input, init) => {
+          atSend ??= t.err();
+          return api.fetch(input, init);
+        },
+        { cwd: dir },
+      );
+      expect(await runCli(['import', 'trust', '-p', 'demo'], t.io)).toBe(0);
+      expect(atSend).toBe(`${agentTokenNotice('ANALYZR_TOKEN')}\n`);
+      expect(t.err()).toBe(
+        'importing with an agent token (ANALYZR_TOKEN): unique calls become proposals (trust rule); unset ANALYZR_TOKEN to import with the owner key\n',
+      );
+
+      const dry = testIo({ ANALYZR_TOKEN: AGENT_TOKEN }, api.fetch, { cwd: dir });
+      expect(await runCli(['import', 'trust', '-p', 'demo', '--dry-run'], dry.io)).toBe(0);
+      expect(dry.err()).toBe(`${agentTokenNotice('ANALYZR_TOKEN')}\n`);
+
+      // --token names itself, also over a token in the environment
+      const flag = testIo({ ANALYZR_TOKEN: AGENT_TOKEN }, api.fetch, { cwd: dir });
+      expect(await runCli(['import', 'trust', '-p', 'demo', '--token', AGENT_TOKEN], flag.io)).toBe(
+        0,
+      );
+      expect(flag.err()).toBe(
+        'importing with an agent token (--token): unique calls become proposals (trust rule); drop --token to import with the owner key\n',
+      );
+
+      const owner = testIo({ ANALYZR_OWNER_KEY_FILE: keyFile }, api.fetch, { cwd: dir });
+      expect(await runCli(['import', 'trust', '-p', 'demo'], owner.io)).toBe(0);
+      expect(owner.err()).toBe('');
+      // --create takes the owner key even with a token in the environment
+      const create = testIo(
+        { ANALYZR_OWNER_KEY_FILE: keyFile, ANALYZR_TOKEN: AGENT_TOKEN },
+        api.fetch,
+        { cwd: dir },
+      );
+      await runCli(['import', 'trust', '-p', 'demo', '--create'], create.io);
+      expect(create.err()).not.toContain('importing with an agent token');
+    });
+
+    it('keeps --json stdout pure JSON with an agent token: the notice on stderr only, no next step', async () => {
+      await put('a.bpmn', '<bpmn/>', path.join(dir, 'trust-json'));
+      const api = fakeApi({
+        'POST /api/v1/projects/demo/imports': importRoute(derived(['agent-upload'])),
+        ...NOTHING_WAITING,
+        ...relationsRoute([proposal(1)]),
+      });
+      const t = testIo({ ANALYZR_TOKEN: AGENT_TOKEN }, api.fetch, { cwd: dir });
+      expect(await runCli(['import', 'trust-json', '-p', 'demo', '--json'], t.io)).toBe(0);
+      expect(JSON.parse(t.out())).toMatchObject({
+        files: [{ path: 'a.bpmn', trust: { class: 'derived', reasons: ['agent-upload'] } }],
+      });
+      expect(t.out()).not.toContain('next:');
+      expect(t.err()).toBe(`${agentTokenNotice('ANALYZR_TOKEN')}\n`);
+      // no lookup of what waits in JSON mode
+      expect(api.seen.map((s) => `${s.method} ${s.path}`)).toEqual([
+        'POST /api/v1/projects/demo/imports',
+      ]);
+    });
+
+    it('names the waiting unique calls with the web link as the next step, before the agent’s (`then:`)', async () => {
+      await put('a.bpmn', '<bpmn/>', path.join(dir, 'trust-next'));
+      await put('b.bpmn', '<bpmn/>', path.join(dir, 'trust-next'));
+      const task = { id: 'ana_1', kind: 'relations', state: 'queued' };
+      const api = fakeApi({
+        'POST /api/v1/projects/demo/imports': importRoute(derived(['no-engine'])),
+        'GET /api/v1/projects/demo/analyses': (_req, url) =>
+          json({
+            items: url.searchParams.get('kind') === 'relations' ? [task] : [],
+            nextCursor: null,
+          }),
+        // three over two pages; one an agent asks about and one it objects to are not counted
+        ...relationsRoute([
+          proposal(1),
+          proposal(2, { provenance: { question: 'Wirklich?' } }),
+          proposal(3),
+          proposal(4, { noLinks: [{ id: 'nlk_1' }] }),
+          proposal(5),
+          proposal(6, { attrs: { calledElement: 'P_6', match: 'duplicate-process-id' } }),
+        ]),
+      });
+      const t = testIo({ ANALYZR_OWNER_KEY_FILE: keyFile }, api.fetch, { cwd: dir });
+      expect(await runCli(['import', 'trust-next', '-p', 'demo', '--url', URL_BASE], t.io)).toBe(0);
+      expect(t.out()).toContain(
+        [
+          'demo: 1 relations tasks waiting, placement task waiting: no',
+          'next: 2 models are derived (no engine 2); 3 unique calls are proposals: accept them in the web review before the agent runs:',
+          REVIEW,
+          'then: let an agent work them, e.g. in Claude Code with the plugin analyzr:',
+          '  /analyzr:relations demo',
+        ].join('\n'),
+      );
+      expect(t.err()).toBe('');
+    });
+
+    it('says nothing of calls when none waits, and asks only after derived models', async () => {
+      await put('a.bpmn', '<bpmn/>', path.join(dir, 'trust-none'));
+      // engine-less models without a call activity: nothing to accept
+      const none = fakeApi({
+        'POST /api/v1/projects/demo/imports': importRoute(derived(['no-engine'])),
+        ...NOTHING_WAITING,
+        ...relationsRoute([]),
+      });
+      const t = testIo({ ANALYZR_OWNER_KEY_FILE: keyFile }, none.fetch, { cwd: dir });
+      expect(await runCli(['import', 'trust-none', '-p', 'demo'], t.io)).toBe(0);
+      expect(t.out()).not.toContain('next:');
+      expect(none.seen.some((s) => s.path.endsWith('/relations'))).toBe(true);
+      // modelled models: no lookup at all
+      const modelled = fakeApi({
+        'POST /api/v1/projects/demo/imports': importRoute(created),
+        ...NOTHING_WAITING,
+      });
+      const m = testIo({ ANALYZR_OWNER_KEY_FILE: keyFile }, modelled.fetch, { cwd: dir });
+      expect(await runCli(['import', 'trust-none', '-p', 'demo'], m.io)).toBe(0);
+      expect(modelled.seen.some((s) => s.path.endsWith('/relations'))).toBe(false);
+      expect(m.err()).toBe('');
+    });
+
+    it('counts this import’s derived models under their first reason, unchanged ones too; the calls alone without such models', () => {
+      const files: ImportFileOutcome[] = [
+        derived(['no-engine'])('a.bpmn'),
+        derived(['no-engine', 'agent-upload'])('b.bpmn'),
+        { ...derived(['converted'])('c.bpmn'), outcome: 'revised' },
+        derived(['agent-upload'])('d.bpmn'),
+        // identical bytes keep their class: still a derived model of the bundle
+        { ...derived(['no-engine'])('e.bpmn'), outcome: 'unchanged' },
+        created('f.bpmn'),
+      ];
+      expect(trustSteps(summaryOf(files), 1, `${URL_BASE}/`)).toEqual([
+        'next: 5 models are derived (no engine 3, agent token 1, converted 1); 1 unique call is a proposal: accept it in the web review before the agent runs:',
+        REVIEW,
+      ]);
+      expect(trustSteps(summaryOf(files), 0, URL_BASE)).toEqual([]);
+      // calls of an earlier import wait, this one stored modelled models only
+      expect(trustSteps(summaryOf([created('f.bpmn')]), 2, URL_BASE)).toEqual([
+        'next: 2 unique calls from derived models are proposals: accept them in the web review before the agent runs:',
+        REVIEW,
+      ]);
+      // also when nothing waits for an agent; after an identity step, before the agent's `then:`
+      expect(
+        formatNextSteps(
+          'demo',
+          { relations: 0, placement: false },
+          [],
+          trustSteps(summaryOf(files), 1, URL_BASE),
+        ),
+      ).toBe(
+        [
+          'demo: 0 relations tasks waiting, placement task waiting: no',
+          'next: 5 models are derived (no engine 3, agent token 1, converted 1); 1 unique call is a proposal: accept it in the web review before the agent runs:',
+          REVIEW,
+          '',
+        ].join('\n'),
+      );
+      expect(
+        formatNextSteps(
+          'demo',
+          { relations: 2, placement: false },
+          ['next: identity'],
+          ['next: trust'],
+        ),
+      ).toContain('next: identity\nnext: trust\nthen: let an agent work them');
+    });
   });
 });

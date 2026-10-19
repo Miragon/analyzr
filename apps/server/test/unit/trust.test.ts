@@ -2,7 +2,8 @@
  * The trust rule (M6 S2c, owner decisions 24.2, 25.2 and 28), the pure
  * parts: the class of an uploaded revision, a model's trust from its head,
  * the rule tier's output under the trust rule over the real `runRules`, the
- * German rationale and the `trust-kept` warning.
+ * German rationale, the `trust-kept` warning and the system rule's count of
+ * open derived calls.
  */
 import { extractFacts } from '@analyzr/bpmn-facts';
 import {
@@ -21,6 +22,7 @@ import { describe, expect, it } from 'vitest';
 import type { HeadTrustRow } from '../../src/domain/ports.ts';
 import {
   applyTrust,
+  isOpenDerivedCall,
   modelTrust,
   trustKeptWarning,
   trustOf,
@@ -392,5 +394,27 @@ describe('trust-kept', () => {
     expect(trustKeptWarning(NO_ENGINE, MODELLED)?.message).toContain(
       'trust class derived (no-engine); this request would make it modelled',
     );
+  });
+});
+
+describe('isOpenDerivedCall (the rows behind the system rule card’s count, M6 S2c-2)', () => {
+  const open = {
+    type: 'call',
+    status: 'proposed',
+    tier: 'key',
+    attrs: { calledElement: 'Process_Rechnung', match: 'derived-caller' },
+  } as const;
+
+  it('counts an open rule proposal of a unique call from a derived model, as the web does', () => {
+    expect(isOpenDerivedCall(open)).toBe(true);
+  });
+
+  it('counts nothing the bulk dialog’s group would not hold', () => {
+    expect(isOpenDerivedCall({ ...open, status: 'accepted' })).toBe(false);
+    expect(isOpenDerivedCall({ ...open, status: 'held' })).toBe(false);
+    // the bulk dialog lists the key tier only
+    expect(isOpenDerivedCall({ ...open, tier: 'manual' })).toBe(false);
+    expect(isOpenDerivedCall({ ...open, attrs: { match: 'duplicate-process-id' } })).toBe(false);
+    expect(isOpenDerivedCall({ ...open, type: 'message' })).toBe(false);
   });
 });

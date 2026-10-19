@@ -52,7 +52,10 @@ import { userPath } from './user-path';
  * panel's words, the way back on a phone, the watermark); UX6's chain (the
  * primary in view, the panel's and the header's controls and words, the
  * card's controls, „nichts angenommen“ on 4 steps, the selected step's 4 px
- * outline, the panel's toggle, the phone's sheet and project link).
+ * outline, the panel's toggle, the phone's sheet and project link); M6
+ * S2c-2's calls line on `signavio-beispiel` (its number the bulk dialog's
+ * selection behind „Gesammelt annehmen“, closed without a decision; the
+ * accept itself runs in `trust-calls.spec.ts` on projects of its own).
  */
 
 const ROOT = join(import.meta.dirname, '../../..');
@@ -265,6 +268,11 @@ async function measure(page: Page, project: string, screen: string, first: strin
 async function settle(page: Page, path: string, ready: string): Promise<void> {
   await page.goto(path);
   await expect(page.locator(ready).first()).toBeVisible({ timeout: 30_000 });
+  await steady(page);
+}
+
+/** Waits until no skeleton is left and the page's text has not changed for half a second. */
+async function steady(page: Page): Promise<void> {
   let last = '';
   await expect
     .poll(
@@ -657,6 +665,76 @@ test('UX1: the other two projects and the projects list, desktop and mobile', as
   } finally {
     await context.close();
   }
+});
+
+// ------------------------------------------------------------------ the trust rule's fast path (M6 S2c-2)
+
+test('S2c: `signavio-beispiel`’s calls line equals the group „Gesammelt annehmen“ opens selected; nothing decided', async ({
+  page,
+}) => {
+  interface Relation {
+    id: string;
+    type: string;
+    tier: string;
+    status: string;
+    endpointState: string;
+    attrs: Record<string, unknown>;
+    provenance: { question: string | null } | null;
+    noLinks: unknown[];
+  }
+  // The web's `isBulkCall`: the unique calls of derived models (the CLI imported with a token)
+  // with no agent's question and no no-link, what „Gesammelt annehmen“ selects.
+  const isBulkCall = (r: Relation) =>
+    r.type === 'call' &&
+    r.tier === 'key' &&
+    r.status === 'proposed' &&
+    r.attrs['match'] === 'derived-caller' &&
+    !r.provenance?.question?.trim() &&
+    r.noLinks.length === 0;
+  const isReview = (r: Relation) =>
+    r.status === 'proposed' || (r.status === 'accepted' && r.endpointState !== 'ok');
+  const landscape = await json<{ relations: Relation[] }>(`/api/v1/projects/${SIGNAVIO}/landscape`);
+  const derived = landscape.relations.filter(isBulkCall).map((r) => r.id);
+  expect(derived.length, '„Rechnung stellen“ only proposed').toBeGreaterThan(0);
+
+  await settle(page, `/projects/${SIGNAVIO}`, '[data-testid=next-step]');
+  const line = page.locator('[data-testid=next-step-line][data-kind=calls]');
+  await expect(line).toHaveText(
+    new RegExp(`^${derived.length} eindeutigen? Aufrufe? zuerst bestätigen · Gesammelt annehmen$`),
+  );
+  // no second line for the same rows while every open relation is such a call
+  if (landscape.relations.filter(isReview).length === derived.length)
+    await expect(page.locator('[data-testid=next-step-line][data-kind=review-too]')).toHaveCount(0);
+  await line.getByRole('link', { name: 'Gesammelt annehmen' }).click(); // 1
+  await expect(page).toHaveURL(new RegExp(`/projects/${SIGNAVIO}/review\\?bulk=calls$`));
+  const dialog = page.getByTestId('bulk-dialog');
+  await expect(dialog.getByTestId('bulk-calls').getByRole('heading')).toHaveText(
+    `Eindeutige Aufrufe aus abgeleiteten Modellen (${derived.length})`,
+    { timeout: 30_000 },
+  );
+  const selected = await dialog
+    .locator('[data-testid=bulk-row]:has([role=checkbox][aria-checked=true])')
+    .evaluateAll((rows) => rows.map((r) => r.getAttribute('data-relation-id')));
+  expect(new Set(selected), 'the line’s number is the dialog’s selection').toEqual(
+    new Set(derived),
+  );
+  await expect(dialog.getByTestId('bulk-confirm')).toHaveText(
+    derived.length === 1 ? '1 annehmen' : `${derived.length} annehmen`,
+  );
+  // the review page behind the modal settles too (its counts load in parallel)
+  await steady(page);
+  await measure(page, SIGNAVIO, 'Gesammelt annehmen', '[data-testid=bulk-row]');
+  expect(await visibleText(page)).not.toMatch(ID_PATTERN);
+  // closed without a decision (the later tests need the project as imported); `?bulk` goes
+  await page.keyboard.press('Escape');
+  await expect(page).toHaveURL(new RegExp(`/projects/${SIGNAVIO}/review$`));
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByTestId('review-start')).toBeFocused();
+  expect(
+    (
+      await json<{ relations: Relation[] }>(`/api/v1/projects/${SIGNAVIO}/landscape`)
+    ).relations.filter(isBulkCall),
+  ).toHaveLength(derived.length);
 });
 
 // ------------------------------------------------------------------ measured for the next slices
