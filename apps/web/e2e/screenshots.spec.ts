@@ -75,7 +75,9 @@ test('relations: rule acceptances and key-tier proposals', async ({ page }) => {
   await expect(
     page.locator('[data-testid=relation-row][data-status=accepted][data-tier=rule]').first(),
   ).toBeVisible();
-  await expect(page.getByTestId('relation-row').first()).toContainText('analyzr-rules/1.0.0');
+  await expect(page.getByTestId('relation-row').first().getByTestId('decided-by')).toHaveText(
+    'analyzr',
+  );
   await shot(page, '03-relations');
 });
 
@@ -84,9 +86,15 @@ test('model view with a highlighted relation', async ({ page }) => {
   const row = page.locator('[data-testid=relation-row][data-status=accepted]', {
     hasText: 'Mahnwesen',
   });
+  // UX9: „Öffnen“ is the row's one action; the review screen's „Von“ chip leads to the model
   await row
     .first()
-    .getByRole('link', { name: /Relation im Modell/ })
+    .getByRole('link', { name: /öffnen$/ })
+    .click();
+  await page
+    .getByTestId('pane-chip')
+    .filter({ hasText: /^Von/ })
+    .getByRole('link', { name: 'Im Modell' })
     .click();
   await expect(page).toHaveURL(/\/models\/finanzen\/forderungsmanagement\?relation=rel_/);
   await expect(page.getByTestId('bpmn-canvas')).toHaveAttribute('data-imported', 'true');

@@ -106,7 +106,8 @@ test('projects → relations → model view', async ({ page }) => {
   const accepted = page.locator('[data-testid=relation-row][data-status=accepted][data-tier=rule]');
   await expect(accepted).toHaveCount(1);
   await expect(accepted).toContainText('Zahlung abwickeln');
-  await expect(accepted).toContainText('analyzr-rules/1.0.0');
+  // UX9: who decided, not the procedure
+  await expect(accepted.getByTestId('decided-by')).toHaveText('analyzr');
   await expect(
     page.locator('[data-testid=relation-row][data-status=proposed][data-tier=key]').first(),
   ).toBeVisible();
@@ -117,8 +118,17 @@ test('projects → relations → model view', async ({ page }) => {
   await views.getByRole('link', { name: 'Gilt' }).click();
   await expect(page).toHaveURL(/status=accepted/);
 
+  // UX9: a row's one action „Öffnen“ leads to the review screen, its way back to „Gilt“
+  await accepted.getByRole('link', { name: /öffnen$/ }).click();
+  await expect(page).toHaveURL(/\/review\/rel_.*from=relations/);
+  await expect(page.getByTestId('review-back')).toHaveText('Gilt');
+
   // model view: the call's endpoint is highlighted in the caller …
-  await accepted.getByRole('link', { name: /Relation im Modell/ }).click();
+  await page
+    .getByTestId('pane-chip')
+    .filter({ hasText: /^Von/ })
+    .getByRole('link', { name: 'Im Modell' })
+    .click();
   await expect(page).toHaveURL(new RegExp(`/models/${CALL_FROM}\\?relation=rel_`));
   await expect(page.getByTestId('bpmn-canvas')).toHaveAttribute('data-imported', 'true');
   await expect(

@@ -11,6 +11,7 @@ import { HeldList } from '@/components/review/held-list';
 import { NoLinkList } from '@/components/review/no-link-list';
 import { QueueList } from '@/components/review/queue-table';
 import { RelationViews } from '@/components/review/relation-views';
+import { RelationsEmpty } from '@/components/review/relations-empty';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@/components/ui/empty';
@@ -135,7 +136,8 @@ function StatusLine({
  * filters „Grundlage“ and „Modell“ while there is something to filter, the
  * queue, and the foot link „Kein Zusammenhang laut Agent (n)“ to the
  * agents' no-links (`?view=no-links`, grouped by model). Placements are
- * reviewed on the chain; its badge says how many.
+ * reviewed on the chain; its badge says how many. While the project has no
+ * relation at all, the status line and `RelationsEmpty` only (UX9).
  */
 function ReviewInbox() {
   const { project } = projectReviewRoute.useParams();
@@ -216,6 +218,34 @@ function ReviewInbox() {
   const modelKeys = modelList.map((m) => m.key).sort();
   const view = search.view;
   const hasChain = chain.data !== undefined;
+  const noLinksLink =
+    noLinks.data && noLinks.data.length > 0 ? (
+      <Link
+        to="/projects/$project/review"
+        params={{ project }}
+        search={{ ...(model ? { model } : {}), view: 'no-links' as const }}
+        className={`self-start text-sm ${inline}`}
+        data-testid="no-links-link"
+      >
+        Kein Zusammenhang laut Agent ({noLinks.data.length})
+      </Link>
+    ) : null;
+
+  // No relation at all (UX9, §3.10 item 5): no views and filters, what happens next instead; the
+  // status line keeps its actions (then the empty state leaves „Agent starten“ to it).
+  if (relations.length === 0 && view !== 'no-links')
+    return (
+      <div className="flex flex-col gap-4">
+        <StatusLine project={project} pipeline={pipeline} hasChain={hasChain} />
+        <RelationsEmpty
+          project={project}
+          hasModels={modelList.length > 0}
+          hasChain={hasChain}
+          agentStart={pipeline.waiting.length === 0}
+        />
+        {noLinksLink}
+      </div>
+    );
   // the filters while there is something to filter, or one to lift
   const list = view === 'held' ? held : view === 'no-links' ? unlinked : queue;
   const showFilters = list.length > 0 || filtered;
@@ -394,17 +424,7 @@ function ReviewInbox() {
         </Empty>
       )}
 
-      {view === undefined && noLinks.data && noLinks.data.length > 0 ? (
-        <Link
-          to="/projects/$project/review"
-          params={{ project }}
-          search={{ ...(model ? { model } : {}), view: 'no-links' as const }}
-          className={`self-start text-sm ${inline}`}
-          data-testid="no-links-link"
-        >
-          Kein Zusammenhang laut Agent ({noLinks.data.length})
-        </Link>
-      ) : null}
+      {view === undefined ? noLinksLink : null}
 
       {bulkOpen && can.canReview ? (
         <BulkAcceptDialog

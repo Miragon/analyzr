@@ -1,32 +1,23 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link, createRoute } from '@tanstack/react-router';
-import { LocateIcon, SearchCheckIcon } from 'lucide-react';
 
 import { ErrorText } from '@/components/error-text';
 import { RelationsView } from '@/components/relation-table';
-import { RelationViews, type RelationView } from '@/components/review/relation-views';
+import { RelationViews } from '@/components/review/relation-views';
+import { RelationsEmpty } from '@/components/review/relations-empty';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 
 import { ledgerRules } from '@/lib/auto-accept';
 import { useAutoAcceptIndex, useCanReview, useIsOwner } from '@/lib/auto-accept-actions';
-import { autoAcceptRulesQuery, landscapeQuery, modelsQuery } from '@/lib/queries';
-import { splitRef } from '@/lib/refs';
-import { matchesFilters, parseRelationFilters, type RelationFilters } from '@/lib/relation-filters';
-import { reviewQueue } from '@/lib/review';
+import { autoAcceptRulesQuery, landscapeQuery, modelsQuery, valueChainQuery } from '@/lib/queries';
+import type { RefLabel } from '@/lib/refs';
+import { matchesFilters, parseRelationFilters, resultViewOf } from '@/lib/relation-filters';
+import { reviewQueue, sideName } from '@/lib/review';
 import { useProjectFacts } from '@/lib/use-project-facts';
 
 import { projectRoute } from './project';
-
-/** Which view of „Relationen“ a filter set is (UX5): „Gilt“, „Abgelehnt“, „Automatisch angenommen“, else „Alle“. */
-function viewOf(filters: RelationFilters): RelationView {
-  if (filters.auto === 'any' && filters.status === undefined) return 'auto';
-  if (filters.auto !== undefined) return 'all';
-  if (filters.status === 'accepted') return 'accepted';
-  if (filters.status === 'rejected') return 'rejected';
-  return 'all';
-}
 
 export const projectRelationsRoute = createRoute({
   getParentRoute: () => projectRoute,
@@ -35,12 +26,24 @@ export const projectRelationsRoute = createRoute({
   component: RelationsTab,
 });
 
+/** An end's name for the row's „Öffnen“: the element's label, else its process (no ids, P2). */
+const endName = (label: RefLabel) => label.label ?? sideName(label);
+
+/**
+ * The result views of „Relationen“ (UX-SIMPLIFICATION.md §3.10; UX5, UX9):
+ * „Gilt“, „Abgelehnt“, „Automatisch angenommen“ and „Alle“ with their
+ * filters in the URL; each row's „Öffnen“ leads to the review screen with
+ * the list's filters, so J/K walk this list and the way back returns to it.
+ * While the project has no relation at all, `RelationsEmpty` instead of
+ * views and filters.
+ */
 function RelationsTab() {
   const { project } = projectRelationsRoute.useParams();
   const filters = projectRelationsRoute.useSearch();
   const navigate = projectRelationsRoute.useNavigate();
   const landscape = useQuery(landscapeQuery(project));
   const models = useQuery(modelsQuery(project));
+  const chain = useQuery(valueChainQuery(project));
   const { resolve } = useProjectFacts(project, models.data);
   const owner = useIsOwner(project);
   const reviewer = useCanReview(project);
@@ -64,9 +67,17 @@ function RelationsTab() {
       </Alert>
     );
 
-  const modelKeys = landscape.data.models.map((m) => m.key).sort();
-
   const relations = landscape.data.relations;
+  if (relations.length === 0)
+    return (
+      <RelationsEmpty
+        project={project}
+        hasModels={landscape.data.models.length > 0}
+        hasChain={chain.data !== undefined}
+      />
+    );
+
+  const modelKeys = landscape.data.models.map((m) => m.key).sort();
   const autoCount =
     autoRules !== undefined
       ? relations.filter((r) => matchesFilters(r, { auto: 'any' }, autoIndex)).length
@@ -75,13 +86,13 @@ function RelationsTab() {
     <div className="flex flex-col gap-4">
       <RelationViews
         project={project}
-        current={viewOf(filters)}
+        current={resultViewOf(filters)}
         reviewCount={reviewQueue(relations, models.data ?? []).length}
         autoCount={autoCount}
         model={filters.model}
       />
       <RelationsView
-        relations={landscape.data.relations}
+        relations={relations}
         resolve={resolve}
         modelKeys={modelKeys}
         filters={filters}
@@ -89,29 +100,17 @@ function RelationsTab() {
         autoIndex={autoIndex}
         autoRules={autoRules}
         renderActions={(relation) => (
-          <div className="flex items-center gap-1">
-            <Button variant="outline" size="sm" asChild>
-              <Link
-                to="/projects/$project/review/$relation"
-                params={{ project, relation: relation.id }}
-                aria-label={`Relation ${relation.id} prüfen`}
-              >
-                <SearchCheckIcon data-icon="inline-start" />
-                Prüfen
-              </Link>
-            </Button>
-            <Button variant="ghost" size="icon-sm" asChild>
-              <Link
-                to="/projects/$project/models/$"
-                params={{ project, _splat: splitRef(relation.from).modelKey }}
-                search={{ relation: relation.id }}
-                aria-label={`Relation im Modell ${splitRef(relation.from).modelKey} zeigen`}
-                title="Im Modell zeigen"
-              >
-                <LocateIcon />
-              </Link>
-            </Button>
-          </div>
+          <Button variant="outline" size="sm" asChild>
+            <Link
+              to="/projects/$project/review/$relation"
+              params={{ project, relation: relation.id }}
+              search={{ ...filters, from: 'relations' as const }}
+              aria-label={`${endName(resolve(relation.from))} → ${endName(resolve(relation.to))} öffnen`}
+              data-testid="relation-open"
+            >
+              Öffnen
+            </Link>
+          </Button>
         )}
       />
     </div>

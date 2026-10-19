@@ -477,7 +477,8 @@ describe('value chain page', () => {
 
   it('counts the open placements on the chain’s tab, not in the inbox (UX5)', async () => {
     setup('/projects/demo/review');
-    await screen.findByRole('navigation', { name: 'Ansichten' });
+    // no relation in this project: the tab says what comes next, without views (UX9)
+    await screen.findByTestId('relations-empty');
     expect(screen.queryByTestId('placements-callout')).toBeNull();
     const tabs = within(screen.getByRole('navigation', { name: 'Projektbereiche' }));
     await waitFor(() =>

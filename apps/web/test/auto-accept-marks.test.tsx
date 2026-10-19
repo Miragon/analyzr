@@ -75,6 +75,10 @@ describe('marks in the relation views', () => {
       'Regel „Schlüssel ab 95 %“ (Revision 2)',
     );
     expect(within(row!).queryByText('Angenommen')).toBeNull();
+    // the rule decided it, not the owner it is recorded under (UX9)
+    expect(within(row!).getByTestId('decided-by').textContent).toBe('Regel „Schlüssel ab 95 %“');
+    // the rule filter sits behind „Weitere Filter“ (UX9)
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Weitere Filter' }));
     const select = screen.getByLabelText('Annahmeregel');
     expect(
       within(select)
@@ -116,6 +120,8 @@ describe('marks in the relation views', () => {
     );
     await screen.findAllByTestId('relation-row');
     expect(screen.queryByRole('button', { name: /Automatisch angenommen/ })).toBeNull();
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Weitere Filter' }));
+    expect(screen.getByLabelText('Typ')).toBeTruthy();
     expect(screen.queryByLabelText('Annahmeregel')).toBeNull();
     expect(screen.queryByTestId('auto-accept-mark')).toBeNull();
   });

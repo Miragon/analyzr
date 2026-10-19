@@ -1,19 +1,19 @@
 import { Link } from '@tanstack/react-router';
 import { cn } from 'cn';
 
+import type { RelationView } from '@/lib/relation-filters';
+
+const item =
+  'relative -mb-px inline-flex items-center gap-1.5 rounded-md px-1 pt-2 pb-2 text-sm font-medium whitespace-nowrap text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none aria-[current=page]:text-foreground aria-[current=page]:after:absolute aria-[current=page]:after:inset-x-0 aria-[current=page]:after:-bottom-px aria-[current=page]:after:h-0.5 aria-[current=page]:after:bg-primary';
+
 /**
  * The views of the tab „Relationen“ (UX-SIMPLIFICATION.md §3.6 item 4,
  * §3.10 item 1; UX5): „Zu prüfen 42“ and „Vorgemerkt“ on `/review`, the
  * results „Gilt“, „Abgelehnt“, „Automatisch angenommen“ (only above 0) and
  * „Alle“ on `/relations`. Only „Zu prüfen“ carries a number (P7: holds count
  * in „Offene Fragen“, a result view shows its rows); the model filter stays
- * across views.
+ * across views. Hidden while the project has no relation at all (UX9).
  */
-export type RelationView = 'review' | 'held' | 'accepted' | 'rejected' | 'auto' | 'all';
-
-const item =
-  'relative -mb-px inline-flex items-center gap-1.5 rounded-md px-1 pt-2 pb-2 text-sm font-medium whitespace-nowrap text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none aria-[current=page]:text-foreground aria-[current=page]:after:absolute aria-[current=page]:after:inset-x-0 aria-[current=page]:after:-bottom-px aria-[current=page]:after:h-0.5 aria-[current=page]:after:bg-primary';
-
 export function RelationViews({
   project,
   current,

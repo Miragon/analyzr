@@ -381,10 +381,12 @@ test('after the agent run: no model waits for the agent; „Übersicht“ counts
   // the agent's borderline cases carry its question
   await expect(page.getByTestId('queue-row').filter({ hasText: 'Frage' }).first()).toBeVisible();
 
-  // the relations table shows the agent's provenance
+  // the results table names no agent, procedure or model (UX9, P2): the review screen has them
   await page.goto(`/projects/${PROJECT}/relations?status=proposed`);
-  await expect(page.getByText(`agent:${AGENT}`).first()).toBeVisible();
-  await expect(page.getByText('sim-policy-1').first()).toBeVisible();
+  const table = page.getByRole('table', { name: 'Relationen' });
+  await expect(page.getByTestId('relation-row').first()).toBeVisible();
+  await expect(table).not.toContainText(`agent:${AGENT}`);
+  await expect(table).not.toContainText('sim-policy-1');
 });
 
 test('review screen: the agent proposal with rationale, question and provenance; accept', async ({

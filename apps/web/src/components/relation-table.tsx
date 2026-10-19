@@ -1,19 +1,12 @@
 import type { Relation } from '@analyzr/client';
 import { cn } from 'cn';
-import {
-  ArrowRightIcon,
-  ChevronDownIcon,
-  ChevronRightIcon,
-  FilterXIcon,
-  PlugIcon,
-  ScrollTextIcon,
-  UserIcon,
-  type LucideIcon,
-} from 'lucide-react';
-import { Fragment, useMemo, useState, type ReactNode } from 'react';
+import { ArrowRightIcon, FilterIcon, FilterXIcon } from 'lucide-react';
+import { useMemo, useState, type ReactNode } from 'react';
 
 import { AutoAcceptMark } from '@/components/auto-accept-mark';
 import { EndpointStateBadge, StatusBadge, TierBadge, TypeLabel } from '@/components/badges';
+import { LightPopover } from '@/components/light-popover';
+import { PlainText } from '@/components/review/plain-text';
 import { Button } from '@/components/ui/button';
 import {
   Empty,
@@ -32,36 +25,46 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import type { AutoAcceptIndex, AutoFilter } from '@/lib/auto-accept';
 import {
   RELATION_STATUSES,
   RELATION_TYPES,
-  STATUS_ORDER,
   TIERS,
   TIER_ORDER,
   TYPE_ORDER,
   formatConfidence,
-  formatDateTime,
-  provenanceOf,
-  type Provenance,
 } from '@/lib/labels';
-import type { AutoAcceptIndex, AutoFilter } from '@/lib/auto-accept';
-import { filterRelations, type RelationFilters } from '@/lib/relation-filters';
+import {
+  RELATION_PAGE,
+  decidedBy,
+  filterRelations,
+  moreFilterCount,
+  resultViewOf,
+  sameFilters,
+  statusOptions,
+  viewFilters,
+  type RelationFilters,
+  type ResultView,
+} from '@/lib/relation-filters';
 import type { RefLabel, RefResolver } from '@/lib/refs';
 
-const SOURCE_ICONS: Record<Provenance['source'], LucideIcon> = {
-  rule: ScrollTextIcon,
-  agent: PlugIcon,
-  human: UserIcon,
-};
-
-/** One end of a relation: element label (or id), model key and process. */
-export function Endpoint({ label }: { label: RefLabel }) {
+/**
+ * One end of a relation: element label (or id), model key and process. Cut
+ * to one line each, or with `wrap` (the relations table, UX9) wrapped, so a
+ * name shows in full where its column allows.
+ */
+export function Endpoint({ label, wrap = false }: { label: RefLabel; wrap?: boolean }) {
+  const line = wrap ? 'break-words' : 'truncate';
   return (
     <div className="flex min-w-0 flex-col" title={label.ref}>
-      <span className="truncate font-medium">
-        {label.label ?? <span className="font-mono text-[13px]">{label.elementId}</span>}
-      </span>
-      <span className="truncate text-xs text-muted-foreground">
+      {wrap && label.label !== null ? (
+        <PlainText as="span" text={label.label} className="font-medium" />
+      ) : (
+        <span className={cn('font-medium', line)}>
+          {label.label ?? <span className="font-mono text-[13px]">{label.elementId}</span>}
+        </span>
+      )}
+      <span className={cn('text-xs text-muted-foreground', line)}>
         <span className="font-mono">{label.modelKey}</span>
         {label.processName && label.kind !== 'process' ? ` · ${label.processName}` : null}
       </span>
@@ -69,100 +72,44 @@ export function Endpoint({ label }: { label: RefLabel }) {
   );
 }
 
-function ProvenanceCell({ relation }: { relation: Relation }) {
-  const p = provenanceOf(relation);
-  const Icon = SOURCE_ICONS[p.source];
-  return (
-    <div
-      className="flex min-w-0 flex-col"
-      title={
-        relation.provenance
-          ? 'Worauf der Status beruht (Verfahren und LLM-Modell sind vom Agenten angegeben)'
-          : 'Abgeleitet aus Stufe und Attributen der Relation'
-      }
-    >
-      <span className="inline-flex items-center gap-1.5 truncate font-mono text-xs">
-        <Icon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
-        {p.label}
-      </span>
-      <span className="truncate text-xs text-muted-foreground">{p.detail}</span>
-    </div>
-  );
-}
-
-function AttrList({ relation }: { relation: Relation }) {
-  const entries = Object.entries(relation.attrs);
-  return (
-    <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-xs">
-      <dt className="text-muted-foreground">Von</dt>
-      <dd className="font-mono break-all">{relation.from}</dd>
-      <dt className="text-muted-foreground">Nach</dt>
-      <dd className="font-mono break-all">{relation.to}</dd>
-      <dt className="text-muted-foreground">Relation</dt>
-      <dd className="font-mono">
-        {relation.id} · Version {relation.version}
-      </dd>
-      <dt className="text-muted-foreground">Aktualisiert</dt>
-      <dd>{formatDateTime(relation.updatedAt)}</dd>
-      {entries.map(([key, value]) => (
-        <Fragment key={key}>
-          <dt className="text-muted-foreground">{key}</dt>
-          <dd className="font-mono break-all">
-            {typeof value === 'string' ? value : JSON.stringify(value)}
-          </dd>
-        </Fragment>
-      ))}
-    </dl>
-  );
-}
-
 export interface RelationTableProps {
   relations: readonly Relation[];
   resolve: RefResolver;
-  /** Content of the "Aktion" column: the review screen and the model view. */
+  /** The row's action: „Öffnen“, the review screen with the list's filters. */
   renderActions?: (relation: Relation) => ReactNode;
-  /** Highlights a row, e.g. the relation selected in the model view. */
-  selectedId?: string;
   /** The auto-accept ledger (reviewers): marks relations an auto-accept rule accepted. */
   autoIndex?: AutoAcceptIndex;
 }
 
-/** The relation rows: type, endpoints, tier, status, confidence, provenance, actions. */
+/**
+ * The relation rows (UX-SIMPLIFICATION.md §3.10 item 3, UX9): type, both
+ * endpoints in the width the dropped details chevron and the narrower
+ * columns free (wrapped, not cut), tier, status, confidence, „Entschieden
+ * von“ (who: a handle, „analyzr“ or the auto-accept rule, never a procedure
+ * or a model) and one action; refs, id, version and attributes are the
+ * review screen's.
+ */
 export function RelationTable({
   relations,
   resolve,
   renderActions,
-  selectedId,
   autoIndex,
 }: RelationTableProps) {
-  const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
-  const toggle = (id: string) =>
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-
   return (
     <Table aria-label="Relationen" className="min-w-[1056px] table-fixed">
       <colgroup>
-        <col className="w-9" />
         <col className="w-28" />
         <col />
         <col className="w-6" />
         <col />
-        <col className="w-28" />
-        <col className="w-36" />
-        <col className="w-20" />
+        <col className="w-40" />
         <col className="w-44" />
+        <col className="w-20" />
         <col className="w-36" />
+        <col className="w-24" />
       </colgroup>
       <TableHeader>
         <TableRow>
-          <TableHead>
-            <span className="sr-only">Details</span>
-          </TableHead>
           <TableHead>Typ</TableHead>
           <TableHead>Von</TableHead>
           <TableHead>
@@ -172,75 +119,65 @@ export function RelationTable({
           <TableHead>Grundlage</TableHead>
           <TableHead>Status</TableHead>
           <TableHead className="text-right">Konfidenz</TableHead>
-          <TableHead>Herkunft</TableHead>
-          <TableHead>Aktion</TableHead>
+          <TableHead>Entschieden von</TableHead>
+          <TableHead>
+            <span className="sr-only">Aktion</span>
+          </TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
         {relations.map((r) => {
-          const open = expanded.has(r.id);
-          const ruleAccepted = r.status === 'accepted' && r.tier === 'rule';
           const auto = autoIndex?.inForce.get(r.id);
+          const by = decidedBy(r, auto);
           return (
-            <Fragment key={r.id}>
-              <TableRow
-                data-testid="relation-row"
-                data-relation-id={r.id}
-                data-status={r.status}
-                data-tier={r.tier}
-                data-state={selectedId === r.id ? 'selected' : undefined}
-                data-auto={auto ? 'true' : undefined}
-                className={cn(ruleAccepted && 'bg-success-soft/40')}
+            <TableRow
+              key={r.id}
+              data-testid="relation-row"
+              data-relation-id={r.id}
+              data-status={r.status}
+              data-tier={r.tier}
+              data-auto={auto ? 'true' : undefined}
+              className={cn(r.status === 'accepted' && r.tier === 'rule' && 'bg-success-soft/40')}
+            >
+              <TableCell>
+                <TypeLabel type={r.type} />
+              </TableCell>
+              <TableCell className="whitespace-normal">
+                <Endpoint label={resolve(r.from)} wrap />
+              </TableCell>
+              <TableCell className="px-0 text-muted-foreground">
+                <ArrowRightIcon className="size-4" aria-hidden />
+              </TableCell>
+              <TableCell className="whitespace-normal">
+                <Endpoint label={resolve(r.to)} wrap />
+              </TableCell>
+              <TableCell>
+                <TierBadge tier={r.tier} />
+              </TableCell>
+              <TableCell>
+                <div className="flex min-w-0 flex-col items-start gap-1">
+                  {auto ? <AutoAcceptMark entry={auto} /> : <StatusBadge status={r.status} />}
+                  <EndpointStateBadge state={r.endpointState} />
+                </div>
+              </TableCell>
+              <TableCell className="text-right tabular-nums">
+                {formatConfidence(r.confidence)}
+              </TableCell>
+              <TableCell
+                className="whitespace-normal"
+                data-testid="decided-by"
+                data-source={by?.source}
               >
-                <TableCell>
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    aria-expanded={open}
-                    aria-label={open ? 'Details ausblenden' : 'Details anzeigen'}
-                    onClick={() => toggle(r.id)}
-                  >
-                    {open ? <ChevronDownIcon /> : <ChevronRightIcon />}
-                  </Button>
-                </TableCell>
-                <TableCell>
-                  <TypeLabel type={r.type} />
-                </TableCell>
-                <TableCell className="whitespace-normal">
-                  <Endpoint label={resolve(r.from)} />
-                </TableCell>
-                <TableCell className="px-0 text-muted-foreground">
-                  <ArrowRightIcon className="size-4" aria-hidden />
-                </TableCell>
-                <TableCell className="whitespace-normal">
-                  <Endpoint label={resolve(r.to)} />
-                </TableCell>
-                <TableCell>
-                  <TierBadge tier={r.tier} />
-                </TableCell>
-                <TableCell>
-                  <div className="flex min-w-0 flex-col items-start gap-1">
-                    {auto ? <AutoAcceptMark entry={auto} /> : <StatusBadge status={r.status} />}
-                    <EndpointStateBadge state={r.endpointState} />
-                  </div>
-                </TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {formatConfidence(r.confidence)}
-                </TableCell>
-                <TableCell>
-                  <ProvenanceCell relation={r} />
-                </TableCell>
-                <TableCell>{renderActions?.(r)}</TableCell>
-              </TableRow>
-              {open ? (
-                <TableRow className="hover:bg-transparent" data-testid="relation-details">
-                  <TableCell />
-                  <TableCell colSpan={9} className="whitespace-normal pb-4">
-                    <AttrList relation={r} />
-                  </TableCell>
-                </TableRow>
-              ) : null}
-            </Fragment>
+                {by ? (
+                  <PlainText as="span" text={by.text} />
+                ) : (
+                  <span className="text-muted-foreground">
+                    –<span className="sr-only"> noch nicht entschieden</span>
+                  </span>
+                )}
+              </TableCell>
+              <TableCell>{renderActions?.(r)}</TableCell>
+            </TableRow>
           );
         })}
       </TableBody>
@@ -255,15 +192,31 @@ export interface RelationsViewProps extends RelationTableProps {
   onFiltersChange: (filters: RelationFilters) => void;
   /**
    * The relation auto-accept rules (reviewers; owners get every rule, editors
-   * the ones the ledger names): with them the preset „Automatisch
-   * angenommen“ and the rule filter appear (`autoIndex` joins).
+   * the ones the ledger names): with them the filter „Annahmeregel“ appears
+   * behind „Weitere Filter“ (`autoIndex` joins).
    */
   autoRules?: readonly { id: string; name: string }[];
 }
 
 const ALL = '';
 
-/** Quick filters, filter bar and relation table, filtered on the client. */
+/** A result view without a row, before any filter of its own. */
+const EMPTY_VIEW: Record<ResultView, string> = {
+  accepted: 'Noch gilt keine Relation',
+  rejected: 'Keine Relation abgelehnt',
+  auto: 'Keine Relation automatisch angenommen',
+  all: 'Keine Relation',
+};
+
+/**
+ * A result view of „Relationen“ (UX-SIMPLIFICATION.md §3.10 items 2 and 3,
+ * UX9), filtered on the client: „Status“ (in „Alle“ only, the other views
+ * are a status) and „Modell“ in the row, „Grundlage“, „Typ“ and
+ * „Annahmeregel“ behind „Weitere Filter“ (a light disclosure saying how many
+ * of them are set); „Filter zurücksetzen“ returns to the view's own filters.
+ * The first 40 rows, then „Weitere 40 anzeigen“. The tab's routes show
+ * `RelationsEmpty` instead while the project has no relation at all.
+ */
 export function RelationsView({
   relations,
   modelKeys,
@@ -277,83 +230,74 @@ export function RelationsView({
     () => filterRelations(relations, filters, autoIndex),
     [relations, filters, autoIndex],
   );
-  const filtered =
-    filters.status !== undefined ||
-    filters.tier !== undefined ||
-    filters.type !== undefined ||
-    filters.model !== undefined ||
-    filters.auto !== undefined;
+  const view = resultViewOf(filters);
+  const own = viewFilters(view);
+  const filtered = !sameFilters(filters, own);
+  const more = moreFilterCount(filters);
+  const [moreOpen, setMoreOpen] = useState(false);
+  // The rows shown start over with every other filter set (a view link included).
+  const key = JSON.stringify(filters);
+  const [page, setPage] = useState({ key, count: RELATION_PAGE });
+  const limit = page.key === key ? page.count : RELATION_PAGE;
+  const rest = visible.length - limit;
 
   const set = (patch: Partial<RelationFilters>) => {
     const next: RelationFilters = { ...filters, ...patch };
-    for (const key of Object.keys(next) as (keyof RelationFilters)[]) {
-      if (next[key] === undefined) delete next[key];
+    for (const k of Object.keys(next) as (keyof RelationFilters)[]) {
+      if (next[k] === undefined) delete next[k];
     }
     onFiltersChange(next);
   };
+  const reset = () => {
+    onFiltersChange(own);
+    // The reset button leaves with the filters: keep the keyboard focus in the filter row.
+    requestAnimationFrame(() => document.getElementById('filter-model')?.focus());
+  };
+
+  if (relations.length === 0)
+    return (
+      <Empty className="border bg-card">
+        <EmptyHeader>
+          <EmptyTitle>Noch keine Relationen</EmptyTitle>
+        </EmptyHeader>
+      </Empty>
+    );
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-end gap-3" role="search" aria-label="Relationen filtern">
-        <Field className="w-auto">
-          <FieldLabel htmlFor="filter-status">Status</FieldLabel>
-          <NativeSelect
-            id="filter-status"
-            value={filters.status ?? ALL}
-            onChange={(e) =>
-              set({
-                status: e.target.value === ALL ? undefined : (e.target.value as Relation['status']),
-              })
-            }
-          >
-            <NativeSelectOption value={ALL}>Alle Status</NativeSelectOption>
-            {STATUS_ORDER.map((s) => (
-              <NativeSelectOption key={s} value={s}>
-                {RELATION_STATUSES[s].label}
-              </NativeSelectOption>
-            ))}
-          </NativeSelect>
-        </Field>
-        <Field className="w-auto">
-          <FieldLabel htmlFor="filter-tier">Grundlage</FieldLabel>
-          <NativeSelect
-            id="filter-tier"
-            value={filters.tier ?? ALL}
-            onChange={(e) =>
-              set({
-                tier: e.target.value === ALL ? undefined : (e.target.value as Relation['tier']),
-              })
-            }
-          >
-            <NativeSelectOption value={ALL}>Alle Grundlagen</NativeSelectOption>
-            {TIER_ORDER.map((t) => (
-              <NativeSelectOption key={t} value={t}>
-                {TIERS[t].label}
-              </NativeSelectOption>
-            ))}
-          </NativeSelect>
-        </Field>
-        <Field className="w-auto">
-          <FieldLabel htmlFor="filter-type">Typ</FieldLabel>
-          <NativeSelect
-            id="filter-type"
-            value={filters.type ?? ALL}
-            onChange={(e) =>
-              set({
-                type: e.target.value === ALL ? undefined : (e.target.value as Relation['type']),
-              })
-            }
-          >
-            <NativeSelectOption value={ALL}>Alle Typen</NativeSelectOption>
-            {TYPE_ORDER.map((t) => (
-              <NativeSelectOption key={t} value={t}>
-                {RELATION_TYPES[t].label}
-              </NativeSelectOption>
-            ))}
-          </NativeSelect>
-        </Field>
-        <Field className="w-auto min-w-56">
-          <FieldLabel htmlFor="filter-model">Modell</FieldLabel>
+      <div
+        className="flex flex-wrap items-center gap-2"
+        role="search"
+        aria-label="Relationen filtern"
+      >
+        {view === 'all' ? (
+          <Field className="w-auto gap-0">
+            <FieldLabel htmlFor="filter-status" className="sr-only">
+              Status
+            </FieldLabel>
+            <NativeSelect
+              id="filter-status"
+              value={filters.status ?? ALL}
+              onChange={(e) =>
+                set({
+                  status:
+                    e.target.value === ALL ? undefined : (e.target.value as Relation['status']),
+                })
+              }
+            >
+              <NativeSelectOption value={ALL}>Alle Status</NativeSelectOption>
+              {statusOptions(filters.status).map((s) => (
+                <NativeSelectOption key={s} value={s}>
+                  {RELATION_STATUSES[s].label}
+                </NativeSelectOption>
+              ))}
+            </NativeSelect>
+          </Field>
+        ) : null}
+        <Field className="w-auto min-w-56 gap-0">
+          <FieldLabel htmlFor="filter-model" className="sr-only">
+            Modell
+          </FieldLabel>
           <NativeSelect
             id="filter-model"
             className="w-full"
@@ -361,70 +305,134 @@ export function RelationsView({
             onChange={(e) => set({ model: e.target.value === ALL ? undefined : e.target.value })}
           >
             <NativeSelectOption value={ALL}>Alle Modelle</NativeSelectOption>
-            {modelKeys.map((key) => (
-              <NativeSelectOption key={key} value={key}>
-                {key}
+            {modelKeys.map((k) => (
+              <NativeSelectOption key={k} value={k}>
+                {k}
               </NativeSelectOption>
             ))}
           </NativeSelect>
         </Field>
-        {autoRules !== undefined && autoRules.length > 0 ? (
-          <Field className="w-auto min-w-56">
-            <FieldLabel htmlFor="filter-auto">Annahmeregel</FieldLabel>
-            <NativeSelect
-              id="filter-auto"
-              className="w-full"
-              value={filters.auto ?? ALL}
-              onChange={(e) =>
-                set({ auto: e.target.value === ALL ? undefined : (e.target.value as AutoFilter) })
-              }
-            >
-              <NativeSelectOption value={ALL}>Alle Relationen</NativeSelectOption>
-              <NativeSelectOption value="any">
-                Automatisch angenommen (alle Regeln)
-              </NativeSelectOption>
-              {autoRules.map((rule) => (
-                <NativeSelectOption key={rule.id} value={rule.id}>
-                  Regel „{rule.name}“
-                </NativeSelectOption>
-              ))}
-            </NativeSelect>
-          </Field>
-        ) : null}
+        <LightPopover
+          open={moreOpen}
+          onOpenChange={setMoreOpen}
+          label="Weitere Filter"
+          align="start"
+          testId="more-filters"
+          trigger={(props) => (
+            <Button variant="outline" {...props} data-testid="more-filters-toggle">
+              <FilterIcon data-icon="inline-start" />
+              {`Weitere Filter${more > 0 ? ` (${more})` : ''}`}
+            </Button>
+          )}
+        >
+          <div className="flex w-64 flex-col gap-3 p-2">
+            <Field>
+              <FieldLabel htmlFor="filter-tier">Grundlage</FieldLabel>
+              <NativeSelect
+                id="filter-tier"
+                className="w-full"
+                value={filters.tier ?? ALL}
+                onChange={(e) =>
+                  set({
+                    tier: e.target.value === ALL ? undefined : (e.target.value as Relation['tier']),
+                  })
+                }
+              >
+                <NativeSelectOption value={ALL}>Alle Grundlagen</NativeSelectOption>
+                {TIER_ORDER.map((t) => (
+                  <NativeSelectOption key={t} value={t}>
+                    {TIERS[t].label}
+                  </NativeSelectOption>
+                ))}
+              </NativeSelect>
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="filter-type">Typ</FieldLabel>
+              <NativeSelect
+                id="filter-type"
+                className="w-full"
+                value={filters.type ?? ALL}
+                onChange={(e) =>
+                  set({
+                    type: e.target.value === ALL ? undefined : (e.target.value as Relation['type']),
+                  })
+                }
+              >
+                <NativeSelectOption value={ALL}>Alle Typen</NativeSelectOption>
+                {TYPE_ORDER.map((t) => (
+                  <NativeSelectOption key={t} value={t}>
+                    {RELATION_TYPES[t].label}
+                  </NativeSelectOption>
+                ))}
+              </NativeSelect>
+            </Field>
+            {autoRules !== undefined && autoRules.length > 0 ? (
+              <Field>
+                <FieldLabel htmlFor="filter-auto">Annahmeregel</FieldLabel>
+                <NativeSelect
+                  id="filter-auto"
+                  className="w-full"
+                  value={filters.auto ?? ALL}
+                  onChange={(e) =>
+                    set({
+                      auto: e.target.value === ALL ? undefined : (e.target.value as AutoFilter),
+                    })
+                  }
+                >
+                  <NativeSelectOption value={ALL}>Alle Relationen</NativeSelectOption>
+                  <NativeSelectOption value="any">
+                    Automatisch angenommen (alle Regeln)
+                  </NativeSelectOption>
+                  {autoRules.map((rule) => (
+                    <NativeSelectOption key={rule.id} value={rule.id}>
+                      Regel „{rule.name}“
+                    </NativeSelectOption>
+                  ))}
+                </NativeSelect>
+              </Field>
+            ) : null}
+          </div>
+        </LightPopover>
         {filtered ? (
-          <Button variant="ghost" onClick={() => onFiltersChange({})}>
+          <Button variant="ghost" onClick={reset}>
             <FilterXIcon data-icon="inline-start" />
             Filter zurücksetzen
           </Button>
         ) : null}
         <p className="ml-auto text-sm text-muted-foreground" aria-live="polite">
-          {visible.length === relations.length
-            ? `${relations.length} Relationen`
-            : `${visible.length} von ${relations.length} Relationen`}
+          {visible.length === 1 ? '1 Relation' : `${visible.length} Relationen`}
         </p>
       </div>
 
       {visible.length > 0 ? (
-        <div className="rounded-xl border bg-card">
-          <RelationTable relations={visible} {...table} />
-        </div>
+        <>
+          <div className="rounded-xl border bg-card">
+            <RelationTable relations={visible.slice(0, limit)} {...table} />
+          </div>
+          {rest > 0 ? (
+            <Button
+              variant="outline"
+              className="self-center"
+              onClick={() => setPage({ key, count: limit + RELATION_PAGE })}
+              data-testid="relations-more"
+            >
+              {`Weitere ${Math.min(RELATION_PAGE, rest)} anzeigen (${rest} übrig)`}
+            </Button>
+          ) : null}
+        </>
       ) : (
         <Empty className="border bg-card">
           <EmptyHeader>
             <EmptyTitle>
-              {relations.length === 0
-                ? 'Noch keine Relationen'
-                : 'Keine Relation passt zu den Filtern'}
+              {filtered ? 'Keine Relation passt zu den Filtern' : EMPTY_VIEW[view]}
             </EmptyTitle>
-            <EmptyDescription>
-              {relations.length === 0
-                ? 'Lade Modelle hoch: Eindeutige Aufrufe nimmt die Regel sofort an, gleiche Nachrichten- und Signalnamen erscheinen als Vorschläge.'
-                : 'Lockere die Filter oder setze sie zurück.'}
-            </EmptyDescription>
+            {filtered ? (
+              <EmptyDescription>Lockere die Filter oder setze sie zurück.</EmptyDescription>
+            ) : null}
           </EmptyHeader>
           {filtered ? (
             <EmptyContent>
-              <Button variant="outline" onClick={() => onFiltersChange({})}>
+              <Button variant="outline" onClick={reset}>
                 <FilterXIcon data-icon="inline-start" />
                 Filter zurücksetzen
               </Button>

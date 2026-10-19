@@ -42,6 +42,13 @@ import {
 } from '@/lib/queries';
 import { splitRef } from '@/lib/refs';
 import {
+  RESULT_VIEW_LABELS,
+  filterRelations,
+  parseRelationFilters,
+  resultViewOf,
+  type RelationFilters,
+} from '@/lib/relation-filters';
+import {
   heldList,
   neighbours,
   parseQueueFilters,
@@ -64,16 +71,18 @@ const HoldAnswer = lazy(() => import('@/components/open-questions/hold-answer'))
 
 type PaneMode = 'both' | 'from' | 'to';
 
-interface ReviewScreenSearch extends QueueFilters {
+interface ReviewScreenSearch extends QueueFilters, Omit<RelationFilters, 'tier' | 'model'> {
   /** Only one endpoint's model (narrow screens start with `from`). */
   pane?: 'from' | 'to';
   /** `held`: opened from the held list; J/K walk it and „Vorgemerkt“ returns to it. */
   view?: 'held';
   /**
    * Opened from „Offene Fragen“ (a hold's „Jetzt entscheiden“, owner decision 26 Q4): the back
-   * link and the end of the list lead back there (UX5).
+   * link and the end of the list lead back there (UX5). Opened from a result view of
+   * „Relationen“ (a row's „Öffnen“, UX9) with its filters (`status`, `tier`, `type`, `model`,
+   * `auto`): J/K walk that list, the back link returns to it, a decision stays on the relation.
    */
-  from?: 'open-questions';
+  from?: 'open-questions' | 'relations';
 }
 
 /**
@@ -86,10 +95,14 @@ export const reviewRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/projects/$project/review/$relation',
   validateSearch: (search: Record<string, unknown>): ReviewScreenSearch => ({
-    ...parseQueueFilters(search),
+    ...(search['from'] === 'relations'
+      ? { ...parseRelationFilters(search), from: 'relations' as const }
+      : {
+          ...parseQueueFilters(search),
+          ...(search['view'] === 'held' ? { view: 'held' as const } : {}),
+          ...(search['from'] === 'open-questions' ? { from: 'open-questions' as const } : {}),
+        }),
     ...(search['pane'] === 'from' || search['pane'] === 'to' ? { pane: search['pane'] } : {}),
-    ...(search['view'] === 'held' ? { view: 'held' as const } : {}),
-    ...(search['from'] === 'open-questions' ? { from: 'open-questions' as const } : {}),
   }),
   component: ReviewScreen,
 });
@@ -287,7 +300,7 @@ function ReviewScreen() {
   const facts = useMemo<Fact[]>(() => [...byModel.values()].flatMap((f) => f.facts), [byModel]);
   const modelKeys = useMemo(() => new Set((models.data ?? []).map((m) => m.key)), [models.data]);
 
-  const { stage, tier, model: modelFilter } = search;
+  const { stage, tier, model: modelFilter, status, type, auto } = search;
   const filters = useMemo<QueueFilters>(
     () => ({
       ...(stage ? { stage } : {}),
@@ -298,20 +311,39 @@ function ReviewScreen() {
   );
   const held = search.view === 'held';
   const fromQuestions = search.from === 'open-questions';
+  // A result view's filters (UX9): its rows in its order, and its way back.
+  const results = useMemo<RelationFilters | null>(
+    () =>
+      search.from === 'relations'
+        ? {
+            ...(status ? { status } : {}),
+            ...(tier ? { tier } : {}),
+            ...(type ? { type } : {}),
+            ...(modelFilter ? { model: modelFilter } : {}),
+            ...(auto ? { auto } : {}),
+          }
+        : null,
+    [search.from, status, tier, type, modelFilter, auto],
+  );
   const queue = useMemo(
     () =>
-      held
-        ? heldList(landscape.data?.relations ?? [], models.data ?? [], filters).map((relation) => ({
+      results
+        ? filterRelations(landscape.data?.relations ?? [], results, autoIndex).map((relation) => ({
             relation,
             finishes: 0,
           }))
-        : reviewQueue(landscape.data?.relations ?? [], models.data ?? [], filters),
-    [held, landscape.data, models.data, filters],
+        : held
+          ? heldList(landscape.data?.relations ?? [], models.data ?? [], filters).map(
+              (relation) => ({ relation, finishes: 0 }),
+            )
+          : reviewQueue(landscape.data?.relations ?? [], models.data ?? [], filters),
+    [results, autoIndex, held, landscape.data, models.data, filters],
   );
-  const listSearch = useMemo(
+  const queueSearch = useMemo(
     () => ({ ...filters, ...(held ? { view: 'held' as const } : {}) }),
     [filters, held],
   );
+  const listSearch = results ?? queueSearch;
   const nav = neighbours(queue, relationId);
 
   const relation = relationQ.data;
@@ -323,10 +355,12 @@ function ReviewScreen() {
   const modelOf = (key: string | undefined) => models.data?.find((m) => m.key === key);
   /** Models with a pane on this screen: evidence into them is shown there. */
   const paneModels = new Set(from && to ? [from.modelKey, to.modelKey] : []);
-  const keep = {
-    ...(search.pane ? { pane: search.pane } : {}),
-    ...(fromQuestions ? { from: 'open-questions' as const } : {}),
-  };
+  const origin = results
+    ? { from: 'relations' as const }
+    : fromQuestions
+      ? { from: 'open-questions' as const }
+      : {};
+  const keep = { ...(search.pane ? { pane: search.pane } : {}), ...origin };
 
   const goTo = (id: string) => {
     void navigate({
@@ -338,7 +372,11 @@ function ReviewScreen() {
   const toList = () =>
     fromQuestions
       ? void navigate({ to: '/projects/$project/open-questions', params: { project } })
-      : void navigate({ to: '/projects/$project/review', params: { project }, search: listSearch });
+      : void navigate({
+          to: '/projects/$project/review',
+          params: { project },
+          search: queueSearch,
+        });
 
   /** Shows a cited element; switches to its pane when only the other one is shown. */
   const showEvidence = (target: FocusTarget) => {
@@ -358,7 +396,8 @@ function ReviewScreen() {
   });
 
   function onDecided(outcome: DecisionOutcome) {
-    if (nav.index < 0) return; // not from the queue (held, decided): stay and show the result
+    // not from the queue (held, decided) or from a result view: stay and show the result
+    if (nav.index < 0 || results) return;
     if (nav.next) goTo(nav.next.id);
     else {
       toast({
@@ -399,7 +438,17 @@ function ReviewScreen() {
   const loadError = relationQ.error ?? models.error ?? landscape.error;
   const fromName = relation ? sideName(resolve(relation.from)) : '';
   const toName = relation ? sideName(resolve(relation.to)) : '';
-  const back = fromQuestions ? 'Offene Fragen' : held ? 'Vorgemerkt' : 'Zu prüfen';
+  const back = results
+    ? RESULT_VIEW_LABELS[resultViewOf(results)]
+    : fromQuestions
+      ? 'Offene Fragen'
+      : held
+        ? 'Vorgemerkt'
+        : 'Zu prüfen';
+  // J/K walk proposals in the queue, relations in a result view.
+  const [previousLabel, nextLabel] = results
+    ? ['Vorherige Relation (K)', 'Nächste Relation (J)']
+    : ['Vorheriger Vorschlag (K)', 'Nächster Vorschlag (J)'];
 
   const header = (
     <>
@@ -409,7 +458,17 @@ function ReviewScreen() {
         </Link>
       ) : null}
       <Button variant="ghost" size="sm" asChild>
-        {fromQuestions ? (
+        {results ? (
+          <Link
+            to="/projects/$project/relations"
+            params={{ project }}
+            search={results}
+            data-testid="review-back"
+          >
+            <ArrowLeftIcon data-icon="inline-start" />
+            {back}
+          </Link>
+        ) : fromQuestions ? (
           <Link
             to="/projects/$project/open-questions"
             params={{ project }}
@@ -422,7 +481,7 @@ function ReviewScreen() {
           <Link
             to="/projects/$project/review"
             params={{ project }}
-            search={listSearch}
+            search={queueSearch}
             data-testid="review-back"
           >
             <ArrowLeftIcon data-icon="inline-start" />
@@ -433,18 +492,20 @@ function ReviewScreen() {
       <span className="text-muted-foreground tabular-nums" data-testid="queue-position">
         {nav.index >= 0
           ? `${nav.index + 1} von ${queue.length}`
-          : queue.length > 0
-            ? `nicht in der Liste (${queue.length} offen)`
-            : held
-              ? 'nichts vorgemerkt'
-              : 'keine offenen Vorschläge'}
+          : results
+            ? 'nicht in der Liste'
+            : queue.length > 0
+              ? `nicht in der Liste (${queue.length} offen)`
+              : held
+                ? 'nichts vorgemerkt'
+                : 'keine offenen Vorschläge'}
       </span>
       <div className="flex items-center gap-1">
         <Button
           variant="outline"
           size="icon-sm"
-          aria-label="Vorheriger Vorschlag (K)"
-          title="Vorheriger Vorschlag (K)"
+          aria-label={previousLabel}
+          title={previousLabel}
           disabled={!nav.previous}
           onClick={() => nav.previous && goTo(nav.previous.id)}
           data-testid="review-previous"
@@ -454,8 +515,8 @@ function ReviewScreen() {
         <Button
           variant="outline"
           size="icon-sm"
-          aria-label="Nächster Vorschlag (J)"
-          title="Nächster Vorschlag (J)"
+          aria-label={nextLabel}
+          title={nextLabel}
           disabled={!nav.next}
           onClick={() => nav.next && goTo(nav.next.id)}
           data-testid="review-next"
@@ -476,7 +537,7 @@ function ReviewScreen() {
             void navigate({
               search: {
                 ...listSearch,
-                ...(fromQuestions ? { from: 'open-questions' as const } : {}),
+                ...origin,
                 ...(value === 'both' ? {} : { pane: value }),
               },
               replace: true,

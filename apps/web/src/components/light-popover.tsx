@@ -94,7 +94,7 @@ export function LightPopover({
     const first = panel.current?.querySelector<HTMLElement>(
       role === 'menu'
         ? '[role=menuitem]'
-        : 'button, a[href], input, [tabindex]:not([tabindex="-1"])',
+        : 'button, a[href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
     );
     first?.focus();
   }, [open, role]);

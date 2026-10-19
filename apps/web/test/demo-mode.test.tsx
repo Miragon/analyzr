@@ -405,7 +405,9 @@ describe('the review inbox for a viewer', () => {
       modelList: [model({ key: 'w/wait', stage: 'waiting_for_agent', openItems: 0 })],
       relationList: [],
     });
-    await screen.findByText('Keine offenen Vorschläge');
+    // no relation yet: what comes next instead of views and filters (UX9)
+    await screen.findByText('Noch keine Relationen');
+    expect(screen.queryByRole('navigation', { name: 'Ansichten' })).toBeNull();
     // the status line says it (UX5); starting the agent is the owner's
     expect(screen.getByTestId('review-status').textContent).toBe('1 Modell wartet auf den Agenten');
     expect(screen.queryByRole('link', { name: /Agent verbinden/ })).toBeNull();
