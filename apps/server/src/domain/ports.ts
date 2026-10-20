@@ -40,6 +40,7 @@ import type {
   MessageFlowInfo,
   ModelAmendmentId,
   ModelId,
+  ModelIdentity,
   ModelSourceSummary,
   ModelTrustSummary,
   ModelStage,
@@ -129,6 +130,8 @@ export interface ModelView extends ModelRecord {
   processes: ProcessInfo[];
   /** The head's declared provenance in short ({@link ModelSourceSummary}); for an amended head its upstream's. */
   source: ModelSourceSummary | null;
+  /** The model's newest identity row (M6 S2b follow-up step 5); `null` without one. */
+  identity: ModelIdentity | null;
   /** The trust class of the head's uploaded revision (M6 S2c); `null` stored before S2c. */
   trust: ModelTrustSummary | null;
 }
@@ -185,6 +188,22 @@ export interface RevisionTrustReviewRecord {
   clientId: string | null;
   sourceKind: 'human';
   seq: number;
+}
+
+/**
+ * One identity row (`model_identity`, M6 S2b follow-up step 5): what one
+ * import declared of where a model lives in its source tool.
+ */
+export interface ModelIdentityRecord extends ModelIdentity {
+  projectId: ProjectId;
+  modelId: ModelId;
+  /** The revision's `model.revised` seq (`revision`) or the row's own `model.identity_declared` seq (`unchanged`). */
+  seq: number;
+  /** The uploaded revision stored with it, or the one unchanged bytes are kept as. */
+  revisionId: RevisionId;
+  kind: 'revision' | 'unchanged';
+  principalId: PrincipalId;
+  clientId: string | null;
 }
 
 export interface RevisionRecord {
@@ -782,21 +801,22 @@ export interface RevisionRepo {
    */
   amendedContentHashes(projectId: ProjectId, modelId: ModelId): Promise<string[]>;
   /**
-   * The `source` each live model's provenance is read from (M6 S2a, §3.3,
-   * §3.4), by model key: its uploaded head's (the head's own, or for an
-   * amended head, `source.kind` `amendment`, its uploaded revision's,
-   * `source.upstream`), or, when that was stored without a manifest (no
-   * `system`), the newest revision of the model a manifest declared, so an
-   * upload without a manifest never erases a declared identity. A model no
-   * manifest ever declared keeps its head's undeclared source.
+   * The provenance source of each live model, by key, with the model's
+   * newest identity (M6 S2a §3.3, §3.4; M6 S2b follow-up step 5): `system`,
+   * `externalId`, `externalPath` and `url` from its newest identity row
+   * (absent without one, or where the row has none); every other field from
+   * its uploaded head (the head's own, or for an amended head, `source.kind`
+   * `amendment`, its uploaded revision's, `source.upstream`), never another
+   * revision's. An upload without a manifest writes no row, so it never
+   * erases a declared identity.
    */
   uploadedSources(projectId: ProjectId): Promise<Map<string, RevisionSource>>;
   /**
    * What the trust rule reads of every live model (M6 S2c, `modelTrust`):
    * its head's source and, for an amended head, its uploaded revision's
    * (`source.upstream`), with the uploaded revision's engine and the kind of
-   * the principal that stored it. Never the newest-declared fallback of
-   * {@link uploadedSources}, which serves identity only. Ordered by key.
+   * the principal that stored it. Never the identity rows, which
+   * {@link uploadedSources} reads. Ordered by key.
    */
   headTrustRows(projectId: ProjectId): Promise<HeadTrustRow[]>;
   /**
@@ -1393,6 +1413,17 @@ export interface RevisionTrustReviewRepo {
   insert(rows: readonly RevisionTrustReviewRecord[]): Promise<void>;
 }
 
+export interface ModelIdentityRepo {
+  /**
+   * Appends a row (the database refuses a second row of one seq or one
+   * stored revision, and one that does not match its revision, its event or,
+   * for unchanged bytes, the revision the live model keeps them as).
+   */
+  insert(row: ModelIdentityRecord): Promise<void>;
+  /** The newest row of each of the models (live or deleted), by model id; models without one are missing. */
+  newest(projectId: ProjectId, modelIds: readonly ModelId[]): Promise<Map<ModelId, ModelIdentity>>;
+}
+
 export interface FindingRepo {
   replace(projectId: ProjectId, findings: readonly Finding[]): Promise<void>;
   list(projectId: ProjectId): Promise<Finding[]>;
@@ -1428,6 +1459,7 @@ export interface Tx {
   openQuestionAnswers: OpenQuestionAnswerRepo;
   amendments: ModelAmendmentRepo;
   trustReviews: RevisionTrustReviewRepo;
+  identities: ModelIdentityRepo;
   findings: FindingRepo;
   events: EventRepo;
 }

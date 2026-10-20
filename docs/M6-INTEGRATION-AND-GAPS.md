@@ -3,17 +3,17 @@
 Status: in progress (2026-10-15); owner decisions 24, 25, 28 and 29 (§2, HANDOFF §4); S0 (this
 concept, revised after review), S1, S3a, S3b, S4, S5a, S5c-1, S5c-2 (answering by action and model
 amendments, decision 25, §4.8), S2a (provenance, manifest, stable identity; its web parts came
-with the UI simplification's UX8, §8 "S2a as delivered"), S2b (the dry runs) with steps 1 to 4
+with the UI simplification's UX8, §8 "S2a as delivered"), S2b (the dry runs) with steps 1 to 5
 of its follow-up (the agent work in the dry runs, relations side, placements, the surfaces, the
-size of the agents' next run and the integrate plugin 0.1.3, §8 "S2b follow-up step 1 as
-delivered", "S2b follow-up step 2 as delivered", "S2b follow-up step 3 as delivered", "S2b
-follow-up step 3b as delivered" and "S2b follow-up step 4 as delivered"),
+size of the agents' next run, the integrate plugin 0.1.3 and the identity rows of decision 29
+(1), §8 "S2b follow-up step 1 as delivered", "S2b follow-up step 2 as delivered", "S2b follow-up
+step 3 as delivered", "S2b follow-up step 3b as delivered", "S2b follow-up step 4 as delivered"
+and "S2b follow-up step 5 as delivered"),
 S2c-1 (the trust class and the rule tier, §8 "S2c-1 as delivered"), S2c-2 (the fast path for
 derived calls, §8 "S2c-2 as delivered"), S2c-3 (owners' rules for derived calls, §8 "S2c-3 as
 delivered") and S2c-4 („Vor der Vertrauensregel angenommen“, §8 "S2c-4 as delivered"; with it
 all of S2c) done, the „erste Anfänge“ await the owner's review, and the integrate skill's
-pre-approval awaits one live check by the owner (HANDOFF §8); next step 5 of S2b's follow-up (the
-identity rows of decision 29 (1)), then S3c, then S6; after
+pre-approval awaits one live check by the owner (HANDOFF §8); next S3c, then S6; after
 the owner's live runs S5b, S7 and facts v2 · Branch:
 `feat/integration-and-gaps` ·
 Spec: [CONCEPT.md](CONCEPT.md) §1–§7 · Previous: [M4-VALUE-CHAIN.md](M4-VALUE-CHAIN.md) · Paused:
@@ -248,7 +248,8 @@ an append-only identity row per import and model (system, tool id, tool folder, 
 also for an unchanged file whose declaration differs; `external-ids`, the change list,
 „Herkunft“ and the identity warnings read the newest row; no re-analysis, `facts_hash` untouched.
 It is step 5 of S2b's follow-up, its own step after steps 1–4 (migrations 0021/0022), before the first
-customer re-export. (2) **The integrate skill's pre-approved preview** (§3.1, §3.7 step 5) is no
+customer re-export, delivered on 2026-10-20 (§8 "S2b follow-up step 5 as delivered").
+(2) **The integrate skill's pre-approved preview** (§3.1, §3.7 step 5) is no
 CLI pattern but a read-only script bundled with the plugin, `analyzr-read.mjs`, which
 `allowed-tools` pre-approves: it has only `GET …/models`, `GET …/external-ids` and
 `POST …/imports` with `dryRun=true` built in, talks to loopback hosts only and follows no
@@ -382,7 +383,7 @@ so provenance never triggers re-judging.
 | `uploader` (`human` \| `agent`) | server, `sourceKindOf(actor)` at ingest (`apps/server/src/domain/actor.ts`): `human` for the owner key or the web session, `agent` for an agent token; a credential kind, not a person (§3.1) | „Hochgeladen über Owner-Zugang/Agenten-Token“ |
 | `manifestSha256` | server | |
 | `system`, `systemVersion`, `exportedAt`, `importer`, `scope` | manifest (declared) | „Herkunft … (angegeben)“ |
-| `externalId`, `externalPath`, `url` | manifest (declared, not checked beyond the URL scheme) | „Im Quellsystem öffnen“ for an http(s) URL (`rel="noopener noreferrer"`, as M4 links) |
+| `externalId`, `externalPath`, `url` | manifest (declared, not checked beyond the URL scheme); with `system` also recorded per import and model in `model_identity` since S2b's follow-up step 5, whose newest row is the model's identity (§3.4) | „Im Quellsystem“ and „In Signavio öffnen“ (named after the system) for an http(s) URL (`rel="noopener noreferrer"`, as M4 links), from the newest row |
 | `derived {kind, converter, llmModel, from}` | manifest (declared) | badges „Konvertiert“, „KI-rekonstruiert“, „Aus Interview“ |
 | `losses` | manifest (declared) | „Verluste bei der Konvertierung“ |
 | `upstream`, `amendments` (S5c-2, decision 25) | server: `upstream` on an amended revision (`kind: 'amendment'`), the uploaded revision it is computed from; `amendments` on a head with live amendments, each with its outcome (§4.8 c) | „In analyzr ergänzt (aus r3)“ |
@@ -392,12 +393,15 @@ Since decision 24.2 amends decision 9 (§3.10, delivered in S2c-1), declared val
 trust, never raise it. Identical bytes stay `unchanged` and keep the first revision's provenance
 and trust class (append-only; since S2c-1 the warning `trust-kept` says when the request would
 have classified them differently); a
-correction needs new bytes, and the import says so with the warning `provenance-kept` when the
-manifest declares another place in the tool (S2a; a folder move keeps a Signavio export's bytes,
-§10.10; decided as decision 29 (1): an append-only identity row per import and model, which
-`external-ids`, the change list, „Herkunft“ and the identity warnings read, comes as step 5 of
-S2b's follow-up, its own step after steps 1–4). A revision stored without a manifest declares nothing: readers then take the newest
-revision a manifest declared (S2a), so such an upload never erases a declared identity. An amended revision keeps no manifest fields of its own: readers of
+correction needs new bytes. Their identity (system, tool id, tool folder, link) is recorded all the
+same since S2b's follow-up step 5 (decision 29 (1), §10.10: a folder move keeps a Signavio export's
+bytes): an append-only identity row per import and model, written also for an unchanged file whose
+declaration differs, which `external-ids`, the change list, „Herkunft“ and the identity warnings
+read as the newest row; the warning `provenance-kept` now says only that the manifest declares
+another derivation, which stays with the revision (S2a: another place in the tool). A revision
+stored without a manifest declares nothing and writes no row: the newest row stays the identity (S2a
+read the newest revision a manifest declared), so such an upload never erases a declared identity.
+An amended revision keeps no manifest fields of its own: readers of
 provenance (the „Herkunft“ panel, `external-ids`, the trust class of S2c) follow `upstream` to
 the uploaded revision, so S2a extends the uploaded revisions only. Its own `uploader` and
 `principal_id` are those of the request that caused it (the human for an amendment write or a
@@ -419,8 +423,9 @@ fixes a landscape's keys for good, and three rules hold from the first customer 
    a re-export the skill reuses the `externalId → key` mapping of the workspace's `keymap.json`
    (§3.7), so a folder move in the tool keeps the key. analyzr is the record (decision 7): if the
    workspace is lost or a colleague does the re-export, the skill rebuilds `keymap.json` from
-   `GET /projects/{p}/external-ids?system=<s>` (S2a: key, `externalId` and `externalPath` of each
-   live model's head revision, read from its uploaded revision, or from the newest revision a
+   `GET /projects/{p}/external-ids?system=<s>` (key, `externalId` and `externalPath` of each live
+   model as the newest import declared them: its newest identity row since S2b's follow-up step 5,
+   also for unchanged bytes; S2a read the head's uploaded revision, or the newest revision a
    manifest declared when the head came without one; the skill's part since plugin 0.1.3,
    `normalize-bpmn.mjs plan --from-analyzr`, §3.7 step 3).
 2. **Element ids come from tool ids, never regenerated.** A converter derives every id from the
@@ -434,8 +439,10 @@ fixes a landscape's keys for good, and three rules hold from the first customer 
 The import result and the dry run carry two warnings; the import proceeds:
 
 - `external-id-moved`: the same `(system, externalId)` already belongs to another live key (a
-  likely rename in the tool).
-- `external-id-changed`: the key's head revision carries a different `(system, externalId)` than
+  likely rename in the tool); since S2b's follow-up step 5 compared with the keys' newest identity
+  rows, an earlier unchanged file of the request counting too.
+- `external-id-changed`: the key's identity (since S2b's follow-up step 5 its newest identity row;
+  in S2a its head revision) carries a different `(system, externalId)` than
   the incoming file, both present (two systems export the same folder and name, and the second
   would silently revise the first). An as-told draft has no `externalId`, so the real model that
   replaces it does not trigger it. The skill stops on it and asks; when a second system joins, its
@@ -533,6 +540,13 @@ The existing previews compute impact with pure code (`apps/server/src/domain/val
       per-model candidates come from the open questions' whole-project candidate pass (the new
       `projectCandidates` of `@analyzr/relations`), the summary is memoized per project state as
       before, now also until the earliest live lease runs out.
+    - **Step 5, the identity rows (delivered 2026-10-20, §8 "S2b follow-up step 5 as delivered";
+      decision 29 (1)):** an unchanged file the manifest lists whose declared identity differs from
+      its model's newest identity row carries `identityUpdated: true` in its outcome, the same in
+      the dry run and in the import, which records it (REST only, `ImportImpact` unchanged, so the
+      merge across batches and the integrate plugin stay); the absent keys compare the manifest's
+      `source.scope` with the newest rows' folders, so a scoped partial export after a folder move
+      names the right models.
 
   Lists are capped at 100 with counts.
 - **REST:** `POST …/imports?dryRun=true` and `PUT …/models/by-key/{key}?dryRun=true` answer the
@@ -1912,7 +1926,8 @@ draft (after the owner's rated draft run, M4b) are later work.
   withdrawals, amendments and their withdrawals (withdrawn, superseded; carried over by the source
   tool is computed, never written), uploaded and amended revisions, manual relations retired by a
   rejection; migrations 0013 to 0016 add (constraints and tables), 0011 and 0012 stay as they
-  are.
+  are. S2b's follow-up step 5 adds `model_identity` (an identity row per import and model, never
+  changed; 0022's triggers and guard), and the revision keeps its first provenance.
 - **Holdout hygiene.** No agent opens the holdout's `expected.yaml`, `README.md`, `spec/`,
   expected placements, recordings or report sections; tooling reports it in aggregate only.
 - **Privacy.** Customer exports and transcripts never enter the repository or the eval corpus.
@@ -1920,7 +1935,9 @@ draft (after the owner's rated draft run, M4b) are later work.
   hold no personal data. Models and free texts can: customer BPMN bytes (lanes, documentation,
   tool metadata) are stored as immutable revisions; stored extractor warnings (S2) quote
   bpmn-moddle messages, which can contain unknown extension content; the declared `externalPath`
-  and `url` are not checked; human answers and notes (S5a, S5c-1), names and documentation typed
+  and `url` are not checked (since S2b's follow-up step 5 also kept per import in the append-only
+  `model_identity`; its event `model.identity_declared` holds neither); human answers and notes
+  (S5a, S5c-1), names and documentation typed
   into amendments (S5c-2, which end up in amended revisions and the change list) and agent
   `gaps` (S7) are free text behind a warning-only check. M6 is the first milestone that puts customer data into the append-only
   store (principle 5), and there is no erasure path: model deletion is soft (uploading the key
@@ -2292,9 +2309,10 @@ Choices the spec left open (the owner may overrule):
   whose declared system, tool id, tool folder or link differs from the provenance analyzr keeps,
   or for which analyzr keeps none (stored without a manifest), gets this warning (§3.3: identical
   bytes keep their first provenance). The common case is a folder moved in the tool, which leaves
-  a Signavio export's bytes as they were: until the identity rows of decision 29 (1) land (§10.10,
-  decided 2026-10-20; step 5 of S2b's follow-up, not built yet), `external-ids` and the change
-  list keep the old tool folder, and the warning says so. Never next to `external-id-changed`.
+  a Signavio export's bytes as they were: until the identity rows of decision 29 (1) landed
+  (§10.10; S2b's follow-up step 5, 2026-10-20, which narrowed the warning to the derivation, "S2b
+  follow-up step 5 as delivered"), `external-ids` and the change list kept the old tool folder,
+  and the warning said so. Never next to `external-id-changed` (until step 5).
 - **An upload without a manifest keeps a declared identity** (an addition after the review): the
   readers fall back to the newest revision a manifest declared, so a later „Hochladen“ of a
   re-export (the web sends no manifest until its S2a part) or a PUT without the header does not
@@ -2303,8 +2321,8 @@ Choices the spec left open (the owner may overrule):
   bytes again with the CLI cannot add it (`provenance-kept` says so); the skill therefore prefers
   the CLI for a bundle (plugin 0.1.1). Since UX8 „Hochladen“ reads the manifest as well, and
   plugin 0.1.2 (S2c-2) no longer marks the web path „ohne Herkunftsangaben“. Decision 29 (1)
-  will close the gap (step 5 of S2b's follow-up; not built yet): the identity row will be written
-  also for unchanged bytes whose declaration differs.
+  closed the gap (S2b's follow-up step 5, 2026-10-20): the identity row is written also for
+  unchanged bytes whose declaration differs, through the CLI and the web alike.
 - **Informational declared fields are tidied, identity fields refused** (an addition after the
   review): `systemVersion`, `externalPath`, `derived.converter` and `derived.llmModel` accept any
   string within their length; analyzr stores them with lone surrogates replaced by U+FFFD, control
@@ -2959,9 +2977,10 @@ question. Open:
 Left: S2b's follow-up (judgements made non-current, tasks queued or cancelled, the placement task
 due, placements changed or missing; the integrate plugin's next release with the key-map rebuild,
 a pre-approved `--dry-run` and `normalize-bpmn` writing `null` for an empty `exporterVersion`;
-its steps 1 to 4, the relations side, the placements, the surfaces, the size of the agents' next
-run and the plugin 0.1.3, delivered the same day, below; the pre-approved `--dry-run` became a
-read-only script by decision 29 (2), plugin 0.1.3 in step 4); then S3c and S6.
+its steps 1 to 5, the relations side, the placements, the surfaces, the size of the agents' next
+run, the plugin 0.1.3 and the identity rows of decision 29 (1), delivered the same day, below; the
+pre-approved `--dry-run` became a read-only script by decision 29 (2), plugin 0.1.3 in step 4);
+then S3c and S6.
 
 **S2b follow-up step 1 as delivered** (2026-10-20, on the branch, every gate green, with a review
 round's fixes; [DEVELOPMENT.md](DEVELOPMENT.md) "M6 S2b follow-up step 1 (2026-10-20)" and
@@ -3124,7 +3143,8 @@ day, "S2b follow-up step 3 as delivered" below), optionally 3b (`ProjectSummary.
 „Als Nächstes“; delivered the same day, "S2b follow-up step 3b as delivered" below), step 4 (plugin
 0.1.3: the key-map rebuild, `analyzr-read.mjs` by decision 29 (2), `exporterVersion`; delivered the
 same day, "S2b follow-up step 4 as delivered" below), step 5 (the identity rows of decision 29 (1),
-migrations 0021/0022); then S3c and S6.
+migrations 0021/0022; delivered the same day, "S2b follow-up step 5 as delivered" below); then S3c
+and S6.
 
 **S2b follow-up step 2 as delivered** (2026-10-20, on the branch, every gate green, with a review
 round's fixes; [DEVELOPMENT.md](DEVELOPMENT.md) "M6 S2b follow-up step 2 (2026-10-20)" and
@@ -3306,8 +3326,8 @@ CLI's lines, the deletion listing; delivered the same day, "S2b follow-up step 3
 below), optionally 3b (`ProjectSummary.pairsToJudge` in „Als Nächstes“; delivered the same day, "S2b
 follow-up step 3b as delivered" below), step 4 (plugin 0.1.3: the key-map rebuild,
 `analyzr-read.mjs` by decision 29 (2), `exporterVersion`; delivered the same day, "S2b follow-up
-step 4 as delivered" below), step 5 (the identity rows of decision 29 (1), migrations 0021/0022);
-then S3c and S6.
+step 4 as delivered" below), step 5 (the identity rows of decision 29 (1), migrations 0021/0022;
+delivered the same day, "S2b follow-up step 5 as delivered" below); then S3c and S6.
 
 **S2b follow-up step 3 as delivered** (2026-10-20, on the branch, every gate green, with a review
 round's fixes; [DEVELOPMENT.md](DEVELOPMENT.md) "M6 S2b follow-up step 3 (2026-10-20)",
@@ -3497,7 +3517,8 @@ first run's size that a preview in batches cannot give; delivered the same day, 
 3b as delivered" below), step 4 (plugin 0.1.3: the key-map rebuild, `analyzr-read.mjs` by decision
 29 (2), `exporterVersion`; its report can reuse the web texts above, which it does; delivered the
 same day, "S2b follow-up step 4 as delivered" below), step 5 (the identity rows of decision 29 (1),
-migrations 0021/0022); then S3c and S6.
+migrations 0021/0022; delivered the same day, "S2b follow-up step 5 as delivered" below); then S3c
+and S6.
 
 **S2b follow-up step 3b as delivered** (2026-10-20, on the branch, every gate green, with a review
 round's fixes; [DEVELOPMENT.md](DEVELOPMENT.md) "M6 S2b follow-up step 3b (2026-10-20)" and "The
@@ -3657,7 +3678,8 @@ Open:
 
 Left: step 4 (plugin 0.1.3: the key-map rebuild, `analyzr-read.mjs` by decision 29 (2),
 `exporterVersion`; delivered the same day, "S2b follow-up step 4 as delivered" below), step 5 (the
-identity rows of decision 29 (1), migrations 0021/0022); then S3c and S6.
+identity rows of decision 29 (1), migrations 0021/0022; delivered the same day, "S2b follow-up step
+5 as delivered" below); then S3c and S6.
 
 **S2b follow-up step 4 as delivered** (2026-10-20, on the branch, every gate green, with a review
 round's fixes; [DEVELOPMENT.md](DEVELOPMENT.md) "M6 S2b follow-up step 4 (2026-10-20)" and "The
@@ -3893,10 +3915,175 @@ the live checks for the owner are in HANDOFF §8. Open:
   differ; the report says so.
 - **A folder moved in the tool** keeps the old path in `external-ids` until step 5's identity rows
   (decision 29 (1)), so a key map rebuilt after such a re-export plans the file as `moved` again
-  (its key stays) and the skill asks about it once more.
+  (its key stays) and the skill asks about it once more. Closed by step 5 (below) once the
+  consultant has run the import of such a re-export.
 - **The reference notes** stay unverified (§10.4), as does the guard setup (§3.1).
 
-Left: step 5 (the identity rows of decision 29 (1), migrations 0021/0022); then S3c and S6.
+Left: step 5 (the identity rows of decision 29 (1), migrations 0021/0022; delivered the same day,
+"S2b follow-up step 5 as delivered" below); then S3c and S6.
+
+**S2b follow-up step 5 as delivered** (2026-10-20, on the branch, every gate green, with a review
+round's fixes; [DEVELOPMENT.md](DEVELOPMENT.md) "M6 S2b follow-up step 5 (2026-10-20)" and
+"Provenance and the import manifest"; owner decision 29 (1), §2, §10.10): the identity rows.
+analyzr's record of where each model lives in the customer's tool stays current across re-exports
+whose bytes did not change: a moved folder, another tool id or link, a bundle imported over bytes
+first uploaded without one. For the first analysis: once such a re-export is imported, the key-map
+rebuild (§3.4 rule 1, §3.7 step 3) plans its files as known, the absent-key list of a scoped partial
+export names the right models, the change list points to where a model lives now, and no stale
+folder lets a path-derived key create a duplicate model; none of it re-analyses or re-queues.
+Server, contracts, client, CLI and web change; the integrate plugin stays 0.1.3 (nothing it reads
+changes shape), and `packages/procedures`, `tools/integrate/src`, `impact-merge.ts`, `paths.ts`,
+`ImportImpact`, `ManifestSummary`'s JSON, MCP and its snapshots, the claim inputs, facts,
+`facts_hash` and the trust class are untouched.
+
+- **The table** `model_identity` (`apps/server/src/db/schema.ts`; `0021_model_identity.sql`
+  generated, `0022_model_identity_triggers.sql` hand-written): project, model, `seq`, revision,
+  `kind` (`revision` or `unchanged`), `system`, the nullable `external_id`, `external_path` and
+  `url`, principal, client, `created_at`; the primary key `(project_id, model_id, seq)`, a composite
+  foreign key to the revision, a partial unique per stored revision. 0022: the append-only and
+  no-truncate triggers; the guard `analyzr_model_identity_guard` (`check_violation`): a row names an
+  uploaded, not amended, revision of its model; a `revision` row sits at its revision's seq with its
+  revision's principal, system, tool id, folder and link; an `unchanged` row sits on its own
+  `model.identity_declared` event naming the same model, revision, system, tool id, principal and
+  client, and names the revision the live model's unchanged bytes are kept as (the head, or an
+  amended head's `upstream`). The backfill: one `revision` row per uploaded revision a manifest
+  declared, deleted models too, at its seq with its principal and time and its `model.revised`
+  event's client, through the guard, `ON CONFLICT DO NOTHING`; the newest row is then what S2a's
+  readers read (the head's uploaded revision's declaration, else the newest declared revision's).
+- **The writer** (`recordIdentity` in `ingest.ts`, inside the ingest's transaction under the project
+  lock): a stored listed file (`created`, `revised`, a revival) gets a `revision` row at its
+  uploaded revision's `model.revised` seq, right after the uploaded head and before an amended head
+  on top; an unchanged listed file gets an `unchanged` row only when its declaration differs from
+  the newest row (`identityUpdate`, pure, in `provenance.ts`), with its own event
+  `model.identity_declared` (`{modelId, modelKey, revisionId, system, externalId, manifestSha256}`,
+  no folder or link). A file without a manifest entry returns before any query. Amendment writes,
+  withdrawals, deletions and `analyzr value-chain push` write none. An unchanged re-import thus
+  writes no revision, facts, task or recompute; `last_seq` moves by one per recorded unchanged file
+  (and with it the landscape ETag, MCP `get_landscape`'s seq, the change list's „Stand“ and the
+  summary's `lastEventAt`), the ETags of amendments and value chains do not.
+- **The readers**: `uploadedSources` joins the newest row laterally (`newestIdentityOf`, `ORDER BY
+  seq DESC LIMIT 1` served by the primary key) and returns the uploaded head's source with the four
+  identity fields from the row (`withIdentity`; absent without one); its fallback query is gone.
+  `external-ids`, the identity warnings and the dry run's absent keys read it; `identities.newest`
+  (`DISTINCT ON`) serves the ingest's check, the dry run and the change list (live and deleted
+  models); `modelViews` joins the row for `Model.identity`. The trust class (`headTrustRows`),
+  `Model.source` and `Revision.source` read no row.
+- **Contracts**: `ModelIdentity` `{system, externalId, externalPath, url}` and `Model.identity`,
+  required and nullable, REST only (no MCP output carries `Model`);
+  `ImportFileOutcome.identityUpdated: true`, only on an unchanged listed file whose identity the
+  import records (or would: the dry run's `files` equal the import's); `MAX_IMPORT_WARNINGS` = 4
+  (the schema's limit, the OpenAPI unchanged); the docs of `provenance-kept`, `external-id-changed`,
+  `ExternalIdEntry`, `RevisionSource`'s identity fields ("as this revision was declared")
+  and `Revision.contentHash` ("identical uploads store no revision"); the descriptions of
+  `putModelByKey`, `importModels` and `listExternalIds`; the client regenerated.
+- **The warnings** (`identityWarnings` in `provenance.ts`): every listed file takes its identity in
+  the request's sequence, stored or unchanged, as the ingest records it; `external-id-moved` says
+  `two models now carry it (moved or renamed in the tool?)` for both; the unchanged
+  `external-id-changed` reads `this unchanged file (<system> id <id>) now identifies <key>, which
+  held <system> id <id>`. `provenance-kept` compares the derivation only (`derivationOf`:
+  `derived.kind` with an absent one as `none`, plus the converter of `converted`): `unchanged, so
+  its revision keeps the derivation <kept> (this file: <incoming>); tool id, folder and link go by
+  this file; a correction needs changed bytes`, a derivation reading `converted with <converter>`,
+  `converted`, `export`, `reconstructed`, `as-told` or `none declared`; it is raised also next to
+  `external-id-changed`, not next to a `trust-kept` that names the derivation
+  (`trustKeptNamesDerivation` in `trust.ts`: the two classes' reasons differ in `converted`,
+  `reconstructed` or `as-told`), and dropped as a file's fifth warning (`withinWarningLimit`), in
+  the import, the PUT and the PUT dry run.
+- **The web**: „Hochladen“ offers „Importieren“ also when an outcome has `identityUpdated`, and the
+  „Vorschau“'s „Danach:“ names „Ort im Quellsystem für 6 Modelle aktualisiert“
+  (`identityUpdateText`, „für 1 Modell“, de-DE counts) when no file would be created or revised; the
+  headline after the import stays („Kein Modell importiert · 6 unverändert“). „Herkunft“ reads „Im
+  Quellsystem“ from `Model.identity` („Signavio: …“ when the revision declares no system or another
+  one; no line for an identity without a folder) and the link „In Signavio öffnen“, there and in
+  „Mehr“, from `Model.identity.url` (`toolLinkOf(model)`, no longer waiting for the revisions);
+  „Quelle“, „Entstanden“, „Hochgeladen“, the losses and „Aufrufe“ stay the revision's.
+  `provenance-kept` reads „Unverändert: analyzr behält die bisherige Angabe, wie die Datei
+  entstanden ist. Eine Korrektur braucht geänderte Dateien.“ (UX-SIMPLIFICATION.md §7).
+- **The CLI**: the manifest line counts the files with `identityUpdated`, in the import and its dry
+  run alike (`provenance stored for 0; 6 unchanged keep their first revision's, 6 of them record a
+  new tool id, folder or link`; `… 1 of them records …`; `provenance stored for 5; 1 unchanged keeps
+  its first revision's and records a new tool id, folder or link`; still `… 6 unchanged keep what
+  analyzr had` when nothing is recorded); the help and doc of `models external-ids` name the newest
+  import; `ManifestSummary`'s JSON is unchanged.
+
+Deviations from the plan, with reasons:
+
+- **A stronger guard** than planned: the event of an `unchanged` row must name its model, revision,
+  system, tool id, principal and client, the revision must be the one the live model keeps (so no
+  `unchanged` row for a deleted model), and a `revision` row must carry its revision's principal;
+  the writer and the backfill meet it, at one indexed lookup per row.
+- **`model_identity_revision_unique` is redundant** but kept: the guard pins a `revision` row's seq
+  to its revision's, so a second row for one revision fails on the primary key first.
+- **No query for an undeclared file**: `recordIdentity` returns before reading the newest row, so an
+  unchanged re-import without a manifest costs nothing more.
+- **`provenance-kept` beside `trust-kept`**: the plan kept it silent beside every `trust-kept`; the
+  review round showed that this hid a derivation change when only the credential differed (a model
+  stored as an agent upload, the owner declaring `export`: the derivation stays „Ohne Angabe“) and
+  made a read-only token's dry run differ from the owner's; now it is silent only beside a
+  `trust-kept` that names the derivation, and `withinWarningLimit` keeps the limit of four.
+- **The CLI's verb** `record(s)` instead of the plan's "with", so the line says that the identity is
+  recorded.
+- **„Herkunft“'s link** has no fallback to the revision's link: after the backfill every revision
+  that declares one has its row.
+- **The moved manifests of the tests also bump `systemVersion` and `exportedAt`** (19.7.0,
+  2026-11-02) in the CLI e2e and the smoke spec, so the check that „Quelle“ keeps 19.6.0 and
+  14.10.2026 proves something.
+- **Two integration tests on other data**: the amended-head case re-imports the current uploaded
+  bytes (the model's first bytes are no longer known, so they would come back `revised`), and the
+  agent-token case uses a Camunda 7 model (with an engine-less one both classes are `derived`, and
+  `trust-kept` never fires).
+
+The review round (semantics, data and surfaces): 8 distinct findings, 6 fixed, 2 rejected. Fixed:
+(1) `provenance-kept` hidden beside every `trust-kept` (above); (2) the stale description of
+`external-id-changed` in `routes.ts`; (3) the guard too loose for `unchanged` rows (above); (4) the
+CLI line not saying that the identity is recorded; (5) the upload panel's test never reaching the
+branch it named (now it fails without the panel's guard); (6) the bundle history's numbers and the
+placement of `identityUpdateText`'s test. Rejected: the headline after „Importieren“ confirming the
+recorded places (the plan keeps `importHeadline` as it is; HANDOFF §4 asks the owner), and naming
+the owners' rules in the German `provenance-kept` text (the plan's text; it says only that the
+derivation stays).
+
+Tests: server unit `provenance.test.ts` (the helpers, the identity warnings' sequence, every
+`provenance-kept` case with its exact message, the four-warning limit, `originOf` from an identity)
+and `trust.test.ts` (`trustKeptNamesDerivation`); integration `provenance.test.ts` (the moved-folder
+re-import, a bundle over bytes first uploaded without one, another tool id and an entry without one,
+a deletion and revival with the change list, an unchanged PUT and its dry run, the amended head, the
+agent token, both warnings beside `trust-kept` and five candidates kept at four, the dry run's
+`files` equal to the import's, scoped absent keys, append-only and the guard), the new
+`migration-model-identity.test.ts` (eight cases on a database migrated to 0020, the rows exact, the
+readers equal to S2a's, the backfill idempotent) and `value-chain-ingest.test.ts` (an identity-only
+re-import on a live chain moving nothing else); CLI unit `manifest.test.ts` (four new line forms,
+import and dry run, the JSON shape) and e2e `cli.e2e.test.ts` (new, project `m6-s2b5`: the moved
+folders through the dry run, the import, `models external-ids` and the bundled `analyzr-read.mjs
+external-ids`); web `provenance-lib.test.ts`, `provenance-view.test.tsx`, `upload-panel.test.tsx`
+and `lib.test.ts`; Playwright `smoke.spec.ts` (the UX8 bundle test re-imports a copy with moved
+folders).
+
+What it costs and leaves open. Every gate green (server 1,804, web 663, CLI 286 plus 7 skipped,
+contracts 178, bpmn-facts 200, integrate 205, eval/tools 108, relations 91, agent-sim 57, procedures
+37, demo 27, notices 9, client 4; dependency-cruiser 150 modules, no violations; the eval reports
+unchanged). Live-run neutral. The bundle entry 228.1 KB gzip (+99 B). On 496 models imported with a
+manifest, medians of 7: the landscape read 232.4 → 230.5 ms, `models.list` 13.5 → 17.1 ms,
+`models.view` 12.7 → 14.2 ms, `uploadedSources` 2.5 → 3.8 ms, `GET …/external-ids` 3.3 → 4.7 ms, the
+import 40.9 → 38.0 s. Before the review round the implementer's scratch stack `analyzr-s2b5i` ran
+`smoke.spec.ts` with the extended test, 5 of 5, and was removed. The e2e run on the final tree:
+Playwright 111 passed and 21 skipped, the UI load unchanged, the demo check 152 of 152,
+`demo.spec.ts` 14 of 14 (a pixel comparison of the chain page failed in two runs while the machine
+was loaded and passed in nine since, DEVELOPMENT.md "M6 S2b follow-up step 5"). The backfill on
+`analyzr-local`: 0 rows, as none of its 63 revisions declares a system. The readings the owner may
+overrule are in HANDOFF §4 ("Taken during the M6 S2b follow-up step 5"). Open:
+
+- **The skill's report of an identity-only re-export** (plugin 0.1.3): its preview says „keine
+  Änderung an Relationen und Befunden.“ and its `provenance-kept` label reads „Unverändert: analyzr
+  behält die bisherige Herkunft“; the places are recorded once the consultant runs the import it
+  hands over. The list for the next plugin release is in HANDOFF §7 "M6".
+- **The result headline** after „Importieren“ does not name the recorded places (HANDOFF §4).
+- **`Model.source` describes the bytes**: a landscape first uploaded without a manifest shows no
+  subtitle „Aus Signavio“ and no chip after its bundle is imported over it, until its bytes change;
+  „Herkunft“ names the system in „Im Quellsystem“.
+- **A real customer re-export** (§10.4) is still untried.
+
+Left: S3c, then S6; after the owner's live runs S5b, S7 and facts v2.
 
 **S3 "Toolkit".** S3a (part of the „erste Anfänge“): §3.11, report committed, CI drift check,
 and the `get_landscape` size per model of the seeded `nordwind-handel` with the v1 limit in §6.
@@ -4853,7 +5040,8 @@ write-back or sync to the source tools (decision 7).
       unverified assumption.
 
 10. **Provenance of unchanged bytes (amends §3.3, raised by the S2a review). Decided 2026-10-20
-    as recommended (decision 29 (1), §2):** of the options (a) keep the warning
+    as recommended (decision 29 (1), §2), delivered in step 5 of S2b's follow-up the same day (§8
+    "S2b follow-up step 5 as delivered"):** of the options (a) keep the warning
     `provenance-kept`, (b) the append-only identity row and (c) defer until a customer re-export
     shows the problem, the owner chose (b): the identity row per import and model as proposed
     below, as step 5 of S2b's follow-up, its own step after steps 1–4 (migrations 0021/0022), and

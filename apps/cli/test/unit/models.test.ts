@@ -50,6 +50,7 @@ function model(key: string, extra: Partial<Model> = {}): Model {
     stage: 'waiting_for_agent',
     openItems: 0,
     source: null,
+    identity: null,
     trust: null,
     updatedAt: '2026-10-15T10:00:00.000Z',
     ...extra,

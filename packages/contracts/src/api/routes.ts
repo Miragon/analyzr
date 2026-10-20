@@ -499,9 +499,11 @@ export const apiRoutes = withDemoReadOnly({
       'exactly this file (its `key`, if given, equal to `{key}`). The declared fields are stored ' +
       'on the uploaded revision; a checksum mismatch or a known tool id are `importWarnings`, ' +
       'the file is stored all the same. Identical bytes stay `unchanged` and keep the first ' +
-      "revision's provenance (`provenance-kept` when the manifest declares another place in " +
-      'the source tool) and its trust class (M6 S2c; `trust-kept` when this request would ' +
-      'classify the file differently). `dryRun=true` (M6 §3.5) answers the would-be outcome ' +
+      "revision's provenance and its trust class; the identity a manifest declares (system, " +
+      "tool id, tool folder, link) is recorded for them too when it differs from the model's " +
+      '(M6 S2b follow-up step 5; `provenance-kept` when the manifest declares another ' +
+      'derivation, `trust-kept` when this request would classify the file differently, M6 ' +
+      'S2c). `dryRun=true` (M6 §3.5) answers the would-be outcome ' +
       'with its warnings and the `impact` and writes nothing (permission `read`); it ' +
       'classifies the file by its own credential, so `impact.callsProposed` names the unique ' +
       'calls that would only be proposed, and for an owner on an interactive client ' +
@@ -580,11 +582,15 @@ export const apiRoutes = withDemoReadOnly({
       "(M6 §3.2; the CLI sends each batch's subset): a listed file gets the key it pins " +
       '(else its path decides) and the declared provenance on its uploaded revision. A ' +
       'checksum mismatch, a tool id another live key already has (`external-id-moved`) and a ' +
-      "tool id that differs from the one on the key's head (`external-id-changed`) are " +
+      "tool id that differs from the key's identity (its newest identity row, " +
+      'M6 S2b follow-up step 5; `external-id-changed`) are ' +
       '`importWarnings`, and so is an unchanged file whose manifest entry declares another ' +
-      'place in the source tool than analyzr keeps (`provenance-kept`) or that this request ' +
-      'would give another trust class than the one analyzr keeps (`trust-kept`, M6 S2c); the ' +
-      'file is imported all the same. An invalid manifest refuses the request (422 ' +
+      'derivation than its revision keeps (`provenance-kept`) or that this request would give ' +
+      'another trust class than the one analyzr keeps (`trust-kept`, M6 S2c); the file is ' +
+      'imported all the same. Identical bytes keep their first provenance, but the identity ' +
+      'their manifest entry declares (system, tool id, tool folder, link) is recorded as the ' +
+      "model's when it differs from it (M6 S2b follow-up step 5): `identityUpdated` marks such " +
+      'a file. An invalid manifest refuses the request (422 ' +
       '`validation-failed`, reason `invalid-manifest`). `dryRun=true` (M6 §3.5) answers the ' +
       'same outcomes and the `impact` and writes nothing: permission `read`, no project lock, ' +
       'so a read-only token can preview a bundle. A dry run classifies the files by its own ' +
@@ -640,10 +646,11 @@ export const apiRoutes = withDemoReadOnly({
     tags: ['models'],
     summary: 'The source-system identity of every live model (to rebuild a key map)',
     description:
-      'M6 §3.4: per live model whose head declares a source system, its key, the system, the ' +
-      'tool id (`null` when the manifest named none) and the tool folder, as the uploaded ' +
-      'revision declared them (an amended head is followed to its uploaded revision), sorted by ' +
-      "key; `system` keeps one system. The integrate skill rebuilds a lost workspace's " +
+      'M6 §3.4: per live model with a declared identity, its key, the system, the tool id ' +
+      '(`null` when the manifest named none) and the tool folder from its newest identity row ' +
+      '(M6 S2b follow-up step 5): what the newest import or PUT whose manifest listed it ' +
+      'declared, also for unchanged bytes; an upload without a manifest leaves it as it was. ' +
+      "Sorted by key; `system` keeps one system. The integrate skill rebuilds a lost workspace's " +
       '`keymap.json` from it.',
     request: { params: projectParams, query: ExternalIdQuery },
     responses: {

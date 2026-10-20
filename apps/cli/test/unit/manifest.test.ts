@@ -159,6 +159,109 @@ describe('analyzr import with the golden bundle of the integrate plugin', () => 
       'manifest: analyzr-import.json (signavio), 6 of 6 files listed: keys pinned, provenance stored for 0; 6 unchanged keep what analyzr had\n',
     );
   });
+
+  // M6 S2b follow-up step 5: an unchanged file whose declared identity differs is recorded.
+  it.each([
+    {
+      what: 'every unchanged file',
+      revised: [] as string[],
+      recorded: null,
+      line: "provenance stored for 0; 6 unchanged keep their first revision's, 6 of them record a new tool id, folder or link",
+    },
+    {
+      what: 'one of six unchanged files',
+      revised: [],
+      recorded: ['logistik/versand.bpmn'],
+      line: "provenance stored for 0; 6 unchanged keep their first revision's, 1 of them records a new tool id, folder or link",
+    },
+    {
+      what: 'three of four unchanged files beside two stored',
+      revised: ['archiv/auftragsabwicklung-alt.bpmn', 'finanzen/bonitaetspruefung.bpmn'],
+      recorded: [
+        'finanzen/rechnungsstellung.bpmn',
+        'logistik/versand.bpmn',
+        'vertrieb/angebotserstellung.bpmn',
+      ],
+      line: "provenance stored for 2; 4 unchanged keep their first revision's, 3 of them record a new tool id, folder or link",
+    },
+    {
+      what: 'the one unchanged file',
+      revised: [
+        'archiv/auftragsabwicklung-alt.bpmn',
+        'finanzen/bonitaetspruefung.bpmn',
+        'finanzen/rechnungsstellung.bpmn',
+        'vertrieb/angebotserstellung.bpmn',
+        'vertrieb/auftragsabwicklung.bpmn',
+      ],
+      recorded: ['logistik/versand.bpmn'],
+      line: "provenance stored for 5; 1 unchanged keeps its first revision's and records a new tool id, folder or link",
+    },
+  ])(
+    'counts the identities recorded for $what, in the import and its dry run',
+    async ({ revised, recorded, line }) => {
+      const list = (count: number) => ({ count, items: [] });
+      const outcomeOf = (p: string): Partial<ImportFileOutcome> =>
+        revised.includes(p)
+          ? { outcome: 'revised' }
+          : {
+              outcome: 'unchanged',
+              ...(recorded === null || recorded.includes(p) ? { identityUpdated: true } : {}),
+            };
+      const api = fakeApi({
+        'POST /api/v1/projects/demo/imports': async (req, url) => {
+          const answer = await importRoute(modelKeyFromPath, outcomeOf)(req);
+          if (url.searchParams.get('dryRun') !== 'true') return answer;
+          const body = (await answer.json()) as Record<string, unknown>;
+          return json({
+            ...body,
+            impact: {
+              files: [],
+              acceptedCalls: list(0),
+              callsProposed: { ...list(0), wasAccepted: 0, byReason: [] },
+              proposalsAdded: list(0),
+              proposalsWithdrawn: list(0),
+              endpointsChanged: list(0),
+              findingsAdded: list(0),
+              findingsResolved: list(0),
+              absentKeys: list(0),
+              relationsTasks: {
+                queued: list(0),
+                cancelled: list(0),
+                claimed: 0,
+                pairs: 0,
+                rejudged: list(0),
+              },
+            },
+          });
+        },
+        ...NOTHING_WAITING,
+      });
+      const expected = `manifest: analyzr-import.json (signavio), 6 of 6 files listed: keys pinned, ${line}\n`;
+      for (const flags of [[], ['--dry-run']]) {
+        const t = testIo({ ANALYZR_OWNER_KEY_FILE: keyFile }, api.fetch, { cwd: dir });
+        expect(await runCli(['import', BUNDLE, '-p', 'demo', ...flags], t.io)).toBe(0);
+        expect(t.out()).toContain(expected);
+      }
+      // the summary's JSON keeps its shape; the files say which identity was recorded
+      const t = testIo({ ANALYZR_OWNER_KEY_FILE: keyFile }, api.fetch, { cwd: dir });
+      expect(await runCli(['import', BUNDLE, '-p', 'demo', '--json'], t.io)).toBe(0);
+      const summary = JSON.parse(t.out()) as {
+        files: ImportFileOutcome[];
+        manifest: Record<string, unknown>;
+      };
+      expect(summary.manifest).toEqual({
+        system: 'signavio',
+        listed: 6,
+        stored: revised.length,
+        kept: 6 - revised.length,
+        unlisted: [],
+        missing: [],
+      });
+      expect(summary.files.filter((f) => f.identityUpdated).map((f) => f.path)).toEqual(
+        recorded ?? summary.files.map((f) => f.path),
+      );
+    },
+  );
 });
 
 describe('analyzr import with a hand-written manifest', () => {

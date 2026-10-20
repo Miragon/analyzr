@@ -15,7 +15,9 @@
  * events in one process). Every rule proposal of the golden chain
  * is the process's `must` or one of its `may` steps. A placement proposed ad
  * hoc over MCP by an agent token and accepted over REST survives an unchanged
- * re-import and a layout-only re-save (the M4a done criterion, S4). The
+ * re-import and a layout-only re-save (the M4a done criterion, S4). An
+ * identity-only re-import (a manifest over the same bytes, M6 S2b follow-up
+ * step 5) records the identities and moves nothing on the chain. The
  * holdout is never read.
  */
 import { readFile } from 'node:fs/promises';
@@ -429,6 +431,68 @@ describe('no-ops', () => {
     );
     expect(await lastSeq()).toBe(seq);
     expect(await placements()).toEqual(before);
+  });
+
+  it('an identity-only re-import records the identities and moves nothing else (M6 S2b follow-up step 5)', async () => {
+    const before = await placements();
+    /** What the chain's pipeline and the heads hold: task, agent memory, facts. */
+    const chainState = () =>
+      store().read(async (tx) => {
+        const chain = (await tx.valueChains.list(project.id)).find((c) => c.deletedSeq === null);
+        if (!chain) throw new Error('no live chain');
+        return {
+          task: await tx.tasks.latestForChain(project.id, chain.id, [
+            'queued',
+            'claimed',
+            'done',
+            'failed',
+            'cancelled',
+          ]),
+          inputs: await tx.placementInputs.forChain(project.id, chain.id),
+          heads: await tx.revisions.headHashes(project.id),
+        };
+      });
+    const state = await chainState();
+    const form = (folder: string) => {
+      const fd = importForm(files);
+      fd.append(
+        'manifest',
+        JSON.stringify({
+          format: 'analyzr-import/1',
+          source: { system: 'signavio' },
+          files: files.map((f, i) => ({
+            path: f.path,
+            externalId: `sid-${i}`,
+            externalPath: `${folder}/${f.key}`,
+          })),
+        }),
+      );
+      return fd;
+    };
+    // The first declaration of models uploaded without one, then a moved folder.
+    for (const folder of ['Gemeinsame Dokumente', 'Verschoben']) {
+      const seq = await lastSeq();
+      const preview = await json<ImportResult>(
+        await t.asOwner(`/api/v1/projects/${P}/imports?dryRun=true`, {
+          method: 'POST',
+          body: form(folder),
+        }),
+      );
+      expect(await lastSeq()).toBe(seq);
+      expect(preview.impact?.placementsChanged).toEqual({ count: 0, items: [] });
+      expect(preview.impact?.placementTask).toMatchObject({ outcome: 'not-triggered' });
+      const result = await json<ImportResult>(
+        await t.asOwner(`/api/v1/projects/${P}/imports`, { method: 'POST', body: form(folder) }),
+      );
+      expect(result.files).toEqual(preview.files);
+      expect(result.files.every((f) => f.outcome === 'unchanged' && f.identityUpdated)).toBe(true);
+      // No value_chain.*, placement.* or analysis.* event: one identity event per file.
+      expect((await events(seq)).map((e) => e.type)).toEqual(
+        files.map(() => 'model.identity_declared'),
+      );
+      expect(await placements()).toEqual(before);
+      expect(await chainState()).toEqual(state);
+    }
   });
 
   it('a layout-only model revision moves no placement', async () => {

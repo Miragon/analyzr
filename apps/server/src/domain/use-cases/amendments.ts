@@ -1182,21 +1182,16 @@ export function amendmentUseCases(deps: AmendmentDeps) {
             origin: ChangeListOrigin | null;
           }
         >();
-        // Where each live model lives in its source tool (M6 S2a, §3.3): its uploaded
-        // revision's provenance, or the newest declared one (`uploadedSources`).
-        const provenance = await tx.revisions.uploadedSources(project.id);
-        for (const modelId of new Set(views.map((a) => a.modelId))) {
+        // Where each model lives in its source tool, live or deleted: its newest identity row
+        // (M6 S2b follow-up step 5; a deleted model's names where it last lived).
+        const modelIds = [...new Set(views.map((a) => a.modelId))];
+        const identities = await tx.identities.newest(project.id, modelIds);
+        for (const modelId of modelIds) {
           const model = await tx.models.findIncludingDeleted(project.id, modelId);
           if (!model?.headRevisionId) continue;
           const head = await tx.revisions.findInProject(project.id, modelId, model.headRevisionId);
           const sourceId = head ? uploadedOf(head).revisionId : model.headRevisionId;
           const facts = await tx.revisions.facts(project.id, modelId, sourceId);
-          // A deleted model is read from its own uploaded revision.
-          const live = model.deletedSeq === null ? provenance.get(model.key) : undefined;
-          const uploaded =
-            live === undefined && head && sourceId !== head.id
-              ? await tx.revisions.findInProject(project.id, modelId, sourceId)
-              : head;
           const needsDoc = views.some((a) => a.modelId === modelId && a.op === 'message-name');
           const bytes = needsDoc
             ? await tx.revisions.content(project.id, modelId, model.headRevisionId)
@@ -1206,7 +1201,7 @@ export function amendmentUseCases(deps: AmendmentDeps) {
             facts: facts?.facts ?? [],
             processes: facts?.processes ?? [],
             doc: bytes ? await amendableOf(deps, bytes, model.key) : null,
-            origin: originOf(live ?? uploaded?.source),
+            origin: originOf(identities.get(modelId)),
           });
         }
         const entries = views.map((a): ChangeListEntry => {

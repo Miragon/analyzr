@@ -1,5 +1,15 @@
-import { readFileSync, readdirSync, statSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import {
+  copyFileSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join, relative } from 'node:path';
 
 import { expect, test } from '@playwright/test';
 
@@ -217,6 +227,7 @@ test('upload: a bundle folder with its manifest imports as `analyzr import` does
     '../../../tools/integrate/test/fixtures/signavio/bundle',
   );
   const manifest = JSON.parse(readFileSync(join(bundle, 'analyzr-import.json'), 'utf8')) as {
+    source: Record<string, unknown>;
     files: { path: string; key: string; externalId: string; externalPath: string }[];
   };
   const key = `${PROJECT}-bundle`;
@@ -276,6 +287,50 @@ test('upload: a bundle folder with its manifest imports as `analyzr import` does
   await expect(panel).toContainText('Aus Signavio 19.6.0 · exportiert am 14.10.2026 (angegeben)');
   await expect(panel).toContainText(first?.externalPath ?? '');
   await expect(panel).toContainText('über den Owner-Zugang');
+
+  // M6 S2b follow-up step 5: the customer moved every model below „Verschoben“ and exported
+  // the same bytes again; „Importieren“ records the new folders, nothing is analysed again.
+  const moved = mkdtempSync(join(tmpdir(), 'analyzr-e2e-moved-'));
+  try {
+    for (const f of manifest.files) {
+      mkdirSync(dirname(join(moved, f.path)), { recursive: true });
+      copyFileSync(join(bundle, f.path), join(moved, f.path));
+    }
+    writeFileSync(
+      join(moved, 'analyzr-import.json'),
+      JSON.stringify({
+        ...manifest,
+        source: { ...manifest.source, systemVersion: '19.7.0', exportedAt: '2026-11-02T00:00:00Z' },
+        files: manifest.files.map((f) => ({ ...f, externalPath: `Verschoben/${f.externalPath}` })),
+      }),
+    );
+    await page.goto(`/projects/${key}/upload`);
+    await page.getByTestId('folder-input').setInputFiles(moved);
+    await expect(page.getByTestId('import-headline')).toHaveText('Vorschau: 6 unverändert');
+    await expect(page.getByTestId('preview-impact')).toHaveText(
+      'Danach: Ort im Quellsystem für 6 Modelle aktualisiert',
+    );
+    await page.getByTestId('preview-import').click();
+    // no identity hint: a moved folder decides nothing
+    await expect(page.getByTestId('import-headline')).toHaveText(
+      'Kein Modell importiert · 6 unverändert',
+    );
+    const after = (await (await request.get(`/api/v1/projects/${key}/external-ids`)).json()) as {
+      items: { key: string; externalPath: string }[];
+    };
+    expect(after.items.map((i) => [i.key, i.externalPath]).sort()).toEqual(
+      manifest.files.map((f) => [f.key, `Verschoben/${f.externalPath}`]).sort(),
+    );
+    // „Herkunft“: the new place in the tool, the source still the bytes' first export
+    await page.goto(`/projects/${key}/models/${first?.key ?? ''}`);
+    await page.getByTestId('model-more').click();
+    await page.getByTestId('menu-provenance').click();
+    const again = page.getByTestId('model-provenance');
+    await expect(again).toContainText(`Verschoben/${first?.externalPath ?? ''}`);
+    await expect(again).toContainText('Aus Signavio 19.6.0 · exportiert am 14.10.2026 (angegeben)');
+  } finally {
+    rmSync(moved, { recursive: true, force: true });
+  }
 });
 
 test('findings behind „Offene Fragen“ and the connect page behind „Einstellungen“', async ({

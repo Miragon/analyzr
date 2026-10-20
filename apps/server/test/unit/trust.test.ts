@@ -30,6 +30,7 @@ import {
   modelTrust,
   preTrustAcceptances,
   storedTrust,
+  trustKeptNamesDerivation,
   trustKeptWarning,
   trustOf,
   trustRationale,
@@ -405,6 +406,22 @@ describe('trust-kept', () => {
     expect(trustKeptWarning(NO_ENGINE, MODELLED)?.message).toContain(
       'trust class derived (no-engine); this request would make it modelled',
     );
+  });
+
+  it('names the derivation only when the derivation is part of the class change (M6 S2b follow-up step 5)', () => {
+    const derived = (...reasons: TrustReason[]) => ({ class: 'derived' as const, reasons });
+    // the request declares a conversion of a modelled file, or none for a converted one
+    expect(trustKeptNamesDerivation(MODELLED, derived('converted'))).toBe(true);
+    expect(trustKeptNamesDerivation(null, derived('reconstructed'))).toBe(true);
+    expect(trustKeptNamesDerivation(derived('agent-upload', 'converted'), MODELLED)).toBe(true);
+    expect(trustKeptNamesDerivation(MODELLED, derived('agent-upload', 'as-told'))).toBe(true);
+    // only the credential differs: an agent's upload, a read-only token's dry run
+    expect(trustKeptNamesDerivation(derived('agent-upload'), MODELLED)).toBe(false);
+    expect(trustKeptNamesDerivation(MODELLED, derived('agent-upload'))).toBe(false);
+    expect(trustKeptNamesDerivation(null, derived('agent-upload'))).toBe(false);
+    // no trust-kept at all: the same class
+    expect(trustKeptNamesDerivation(NO_ENGINE, derived('no-engine', 'converted'))).toBe(false);
+    expect(trustKeptNamesDerivation(MODELLED, MODELLED)).toBe(false);
   });
 });
 

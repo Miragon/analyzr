@@ -1053,6 +1053,115 @@ describe('UploadPanel', () => {
     expect(within(preview).queryByTestId('preview-details')).toBeNull();
   });
 
+  it('offers „Importieren“ for unchanged files whose bundle records a new place in the tool (S2b follow-up step 5)', async () => {
+    const list = <T,>(count: number, items: T[] = []) => ({ count, items });
+    const manifest = {
+      format: 'analyzr-import/1',
+      source: { system: 'signavio' },
+      files: [
+        {
+          path: 'Finanzen/Bonität.bpmn',
+          key: 'finanzen/bonitaet',
+          externalId: 'sid-B',
+          externalPath: 'Verschoben/Finanzen/Bonität',
+        },
+        { path: 'Lager/Kommission.bpmn', key: 'lager/kommission', externalId: 'sid-K' },
+      ],
+    };
+    /** Whether the bundle's first file would be a new model (the test changes it between drops). */
+    let created = false;
+    const calls = stubApi({
+      [`POST ${IMPORT_PATH}`]: (call) =>
+        json({
+          files: (call.body as string[]).map((path) =>
+            path === 'Finanzen/Bonität.bpmn'
+              ? created
+                ? { path, modelKey: 'finanzen/bonitaet', outcome: 'created', problem: null }
+                : {
+                    path,
+                    modelKey: 'finanzen/bonitaet',
+                    outcome: 'unchanged',
+                    problem: null,
+                    identityUpdated: true,
+                  }
+              : {
+                  path,
+                  modelKey: 'lager/kommission',
+                  outcome: 'unchanged',
+                  problem: null,
+                  // beside the new model below, its recorded place goes unnamed
+                  ...(created ? { identityUpdated: true } : {}),
+                },
+          ),
+          impact: {
+            files: [],
+            acceptedCalls: list(0),
+            callsProposed: { ...list(0), wasAccepted: 0, byReason: [] },
+            proposalsAdded: list(0),
+            proposalsWithdrawn: list(0),
+            endpointsChanged: list(0),
+            findingsAdded: list(0),
+            findingsResolved: list(0),
+            absentKeys: list(0),
+            relationsTasks: {
+              queued: created ? list(1, ['finanzen/bonitaet']) : list(0),
+              cancelled: list(0),
+              claimed: 0,
+              pairs: created ? 12 : 0,
+              rejudged: list(0),
+            },
+          },
+        }),
+    });
+    await render();
+    const drop = () =>
+      fireEvent.change(screen.getByTestId('folder-input'), {
+        target: {
+          files: [
+            Object.defineProperty(
+              new File([JSON.stringify(manifest)], 'analyzr-import.json'),
+              'webkitRelativePath',
+              { value: 'bundle/analyzr-import.json' },
+            ),
+            withRelativePath('Bonität.bpmn', 'bundle/Finanzen/Bonität.bpmn'),
+            withRelativePath('Kommission.bpmn', 'bundle/Lager/Kommission.bpmn'),
+          ],
+        },
+      });
+    drop();
+    let preview = await screen.findByTestId('upload-preview');
+    expect(screen.getByTestId('import-headline').textContent).toBe('Vorschau: 2 unverändert');
+    expect(within(preview).getByTestId('preview-impact').textContent).toBe(
+      'Danach: Ort im Quellsystem für 1 Modell aktualisiert',
+    );
+    // „Importieren“ records it, as `analyzr import` does
+    await importNow();
+    await waitFor(() =>
+      expect(screen.getByTestId('import-headline').textContent).toBe(
+        'Kein Modell importiert · 2 unverändert',
+      ),
+    );
+    const [post] = imports(calls);
+    expect(post!.body).toEqual(['Finanzen/Bonität.bpmn', 'Lager/Kommission.bpmn']);
+    expect(JSON.parse(post!.manifest ?? 'null')).toMatchObject({ files: manifest.files });
+    expect(await findToast('2 Dateien importiert')).toBeTruthy();
+
+    // beside a new model a recorded place (Kommission's now) goes along unnamed: the agent work
+    // is the news
+    created = true;
+    drop();
+    await waitFor(() =>
+      expect(screen.getByTestId('import-headline').textContent).toBe(
+        'Vorschau: 1 Modell neu · 1 unverändert',
+      ),
+    );
+    preview = screen.getByTestId('upload-preview');
+    expect(within(preview).getByTestId('preview-impact').textContent).toBe(
+      'Danach: 12 mögliche Relationen zu beurteilen',
+    );
+    expect(within(preview).getByTestId('preview-import')).toBeTruthy();
+  });
+
   it('marks the drop zone while files are dragged over it', async () => {
     stubApi({});
     await render();

@@ -2,8 +2,9 @@
  * S2a's web parts in the views (UX8, UX-SIMPLIFICATION.md §6): the project's
  * subtitle when every model comes from one system, the derived chip in the
  * models table (never a column), and the model view's derived chip,
- * „Herkunft“ (an amended head through its upstream) and its line about
- * elements lost on import.
+ * „Herkunft“ (an amended head through its upstream; the place in the tool
+ * and its link from the newest import, M6 S2b follow-up step 5) and its line
+ * about elements lost on import.
  */
 import type { Landscape, Model, Project, Revision } from '@analyzr/client';
 import { QueryClient } from '@tanstack/react-query';
@@ -27,8 +28,19 @@ const PROJECT: Project = {
   createdAt: '2026-10-07T09:00:00.000Z',
 };
 const SIGNAVIO = { system: 'signavio', exportedAt: '2026-10-14T00:00:00Z' };
+const LINK = 'https://editor.signavio.com/p/hub/model/sid-B';
 const models: Model[] = [
-  model({ key: 'finanzen/bonitaet', source: { ...SIGNAVIO, derived: 'converted' } }),
+  model({
+    key: 'finanzen/bonitaet',
+    source: { ...SIGNAVIO, derived: 'converted' },
+    // as the import that stored the uploaded revision declared it
+    identity: {
+      system: 'signavio',
+      externalId: 'sid-B',
+      externalPath: 'Finanzen/Bonitätsprüfung',
+      url: LINK,
+    },
+  }),
   model({ key: 'vertrieb/auftrag', source: { ...SIGNAVIO, derived: 'export' } }),
 ];
 const HASH = 'a'.repeat(64);
@@ -87,7 +99,8 @@ const loss = openQuestion({
   actions: [{ type: 'note', primary: false, label: 'Notiz hinzufügen' }],
 });
 
-function setup(path: string, list = models) {
+/** The app at `path`; the model's revisions are answered once `revisionsAnswered` resolves. */
+function setup(path: string, list = models, revisionsAnswered: Promise<void> = Promise.resolve()) {
   const landscape: Landscape = {
     projectId: 'prj_01DEMO',
     seq: 9,
@@ -101,8 +114,10 @@ function setup(path: string, list = models) {
     'GET /api/v1/projects/demo/landscape': () => json(landscape),
     'GET /api/v1/projects/demo/open-questions': (call) =>
       json(openQuestionPage([loss], call.search)),
-    'GET /api/v1/projects/demo/models/mdl_FINANZENBONITAET/revisions': () =>
-      json({ items: revisions, nextCursor: null }),
+    'GET /api/v1/projects/demo/models/mdl_FINANZENBONITAET/revisions': async () => {
+      await revisionsAnswered;
+      return json({ items: revisions, nextCursor: null });
+    },
   });
   const queryClient = new QueryClient({
     defaultOptions: { queries: { staleTime: Infinity, retry: false } },
@@ -182,14 +197,60 @@ describe('provenance in the model view (UX8)', () => {
     );
     const link = within(panel).getByTestId('provenance-tool-link');
     expect(link.textContent).toBe('In Signavio öffnen');
-    expect(link.getAttribute('href')).toBe('https://editor.signavio.com/p/hub/model/sid-B');
+    expect(link.getAttribute('href')).toBe(LINK);
     expect(link.getAttribute('rel')).toBe('noopener noreferrer');
     // „In Signavio öffnen“ is also a direct entry of „Mehr“ (§6)
     await user.keyboard('{Escape}');
     await user.click(within(view).getByTestId('model-more'));
     expect(
       (await screen.findByRole('menuitem', { name: 'In Signavio öffnen' })).getAttribute('href'),
-    ).toBe('https://editor.signavio.com/p/hub/model/sid-B');
+    ).toBe(LINK);
     expect(calls.filter((c) => c.path.endsWith('/revisions'))).toHaveLength(1);
+  });
+
+  it('reads the place in the tool and its link from the newest import, the link before the revisions (M6 S2b follow-up step 5)', async () => {
+    // the customer moved the model in Signavio and re-exported the same bytes
+    const moved: Model = {
+      ...models[0]!,
+      identity: {
+        system: 'signavio',
+        externalId: 'sid-B',
+        externalPath: 'Verschoben/Finanzen/Bonitätsprüfung',
+        url: `${LINK}-neu`,
+      },
+    };
+    let answer = () => {};
+    const answered = new Promise<void>((resolve) => {
+      answer = resolve;
+    });
+    const { calls, user } = setup(
+      '/projects/demo/models/finanzen/bonitaet',
+      [moved, models[1]!],
+      answered,
+    );
+    const view = await screen.findByTestId('model-view');
+    await user.click(await within(view).findByTestId('model-more', {}, { timeout: 10_000 }));
+    await waitFor(() => expect(calls.filter((c) => c.path.endsWith('/revisions'))).toHaveLength(1));
+    // the revisions are still on their way: the link is the model's own
+    expect(
+      (await screen.findByRole('menuitem', { name: 'In Signavio öffnen' })).getAttribute('href'),
+    ).toBe(`${LINK}-neu`);
+    answer();
+    await user.click(screen.getByRole('menuitem', { name: 'Herkunft …' }));
+    const panel = await screen.findByTestId('model-provenance');
+    await waitFor(() => expect(within(panel).getAllByTestId('provenance-line')).toHaveLength(6));
+    // „Quelle“ stays the uploaded revision's: the bytes are the ones exported on 14.10.
+    expect(
+      within(panel)
+        .getAllByTestId('provenance-line')
+        .slice(1, 3)
+        .map((l) => l.textContent),
+    ).toEqual([
+      'QuelleAus Signavio 19.6.0 · exportiert am 14.10.2026 (angegeben)',
+      'Im QuellsystemVerschoben/Finanzen/Bonitätsprüfung',
+    ]);
+    expect(within(panel).getByTestId('provenance-tool-link').getAttribute('href')).toBe(
+      `${LINK}-neu`,
+    );
   });
 });

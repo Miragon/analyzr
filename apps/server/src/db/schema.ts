@@ -15,7 +15,8 @@
  *   are `auto_accept_rule` and `auto_accept_rule_revision` (0010),
  *   `open_question_answer` (0012), `open_question_answer_withdrawal`
  *   (0014), `model_amendment` and `model_amendment_withdrawal` (0016),
- *   `revision_trust_review` (0020, M6 S2c-4);
+ *   `revision_trust_review` (0020, M6 S2c-4), `model_identity` (0022, M6 S2b
+ *   follow-up step 5);
  *   0018 (M6 S2c-3) adds three columns to `auto_accept_rule_revision`
  *   (`ADD COLUMN … DEFAULT` fires no row trigger, so 0010's stay);
  *   `value_chain_step` only ever takes its tombstone (0007); `placement_input`
@@ -156,6 +157,12 @@ export const AMENDMENT_OPS = values(AmendmentOp.options);
 export const AMENDMENT_WITHDRAWAL_REASONS = ['withdrawn', 'superseded'] as const;
 /** The class an owner's review of a revision stored before the trust rule records (M6 S2c-4). */
 export const TRUST_CLASSES = values(TrustClass.options);
+/**
+ * How an identity row came (M6 S2b follow-up step 5): with a new uploaded
+ * revision (`revision`, also every backfilled row), or for unchanged bytes
+ * whose declaration differs (`unchanged`).
+ */
+export const IDENTITY_KINDS = ['revision', 'unchanged'] as const;
 
 export const project = pgTable('project', {
   id: text().primaryKey(),
@@ -1507,6 +1514,56 @@ export const revisionTrustReview = pgTable(
     }),
     check('revision_trust_review_class_check', oneOf(t.class, TRUST_CLASSES)),
     check('revision_trust_review_humans_only', sql`${t.sourceKind} = 'human'`),
+  ],
+);
+
+/**
+ * The identity a manifest declared per import and model (M6 S2b follow-up
+ * step 5, owner decision 29 (1)): system, tool id, tool folder and link.
+ * Append-only (triggers in 0022, whose guard also checks each row against
+ * its revision, its event and, for unchanged bytes, the model's head); the
+ * newest row (highest `seq`) is the model's
+ * identity, which `external-ids`, the identity warnings, the absent keys,
+ * the change list and `Model.identity` read. A `revision` row is written
+ * with each uploaded revision a manifest declared, at its `model.revised`
+ * seq; an `unchanged` row for identical bytes whose declaration differs
+ * from the newest row, at its own `model.identity_declared` seq. The
+ * revision named is an uploaded one (for unchanged bytes the one they are
+ * kept as); the trust rule never reads this table.
+ */
+export const modelIdentity = pgTable(
+  'model_identity',
+  {
+    projectId: text().notNull(),
+    modelId: text().notNull(),
+    /** `model.revised` of the revision (kind `revision`) or `model.identity_declared` (`unchanged`). */
+    seq: seqColumn().notNull(),
+    revisionId: text().notNull(),
+    kind: text({ enum: IDENTITY_KINDS }).notNull(),
+    system: text().notNull(),
+    externalId: text(),
+    /** Stored tidied, as on the revision. */
+    externalPath: text(),
+    url: text(),
+    /** The credential that declared it: who declared, not who is trusted. */
+    principalId: text()
+      .notNull()
+      .references(() => principal.id),
+    clientId: text(),
+    createdAt: createdAt(),
+  },
+  (t): PgTableExtraConfigValue[] => [
+    primaryKey({ name: 'model_identity_pk', columns: [t.projectId, t.modelId, t.seq] }),
+    foreignKey({
+      name: 'model_identity_revision_fk',
+      columns: [t.projectId, t.modelId, t.revisionId],
+      foreignColumns: [modelRevision.projectId, modelRevision.modelId, modelRevision.id],
+    }),
+    // One row per stored revision.
+    uniqueIndex('model_identity_revision_unique')
+      .on(t.projectId, t.revisionId)
+      .where(sql`${t.kind} = 'revision'`),
+    check('model_identity_kind_check', oneOf(t.kind, IDENTITY_KINDS)),
   ],
 );
 

@@ -68,6 +68,7 @@ import {
   fileProblemText,
   filesOf,
   groupWarnings,
+  identityUpdateText,
   importHeadline,
   impactLines,
   isSkippedXml,
@@ -523,13 +524,15 @@ function impactLists(impact: ImportImpact): { title: string; count: number; item
 /**
  * The preview's box (UX-SIMPLIFICATION.md §6, M6 S2b): at most three lines of
  * what the import would change (since S2b's follow-up the last one the agent
- * work it sets off), the capped lists behind „Was ändert sich?“ (only when
- * one has items: the cost line's pairs have none), the hint when every key
- * starts with one folder (keys are fixed for good), the note for a preview
- * of several batches, the warning when the import cancels relations tasks
- * an agent holds (then without the „keine Änderung“ fallback), then
- * „Importieren“ (while that warning shows, `armed` after the first click:
- * „Trotzdem importieren“) and „Abbrechen“.
+ * work it sets off; when no file would be new or revised, since its step 5
+ * the unchanged files whose bundle records a new place in the tool), the
+ * capped lists behind „Was ändert sich?“ (only when one has items: the cost
+ * line's pairs have none), the hint when every key starts with one folder
+ * (keys are fixed for good), the note for a preview of several batches, the
+ * warning when the import cancels relations tasks an agent holds (then
+ * without the „keine Änderung“ fallback), then „Importieren“ (while that
+ * warning shows, `armed` after the first click: „Trotzdem importieren“) and
+ * „Abbrechen“.
  */
 function PreviewBox({
   run,
@@ -550,7 +553,12 @@ function PreviewBox({
 }) {
   const claimedId = useId();
   const impact = run.impact;
-  const lines = impact ? impactLines(impact, batches) : [];
+  // Beside a new or revised file the recorded places go along unnamed, as stored provenance does.
+  const stored = run.outcomes.some((o) => o.outcome === 'created' || o.outcome === 'revised');
+  const identities = stored ? 0 : run.outcomes.filter((o) => o.identityUpdated).length;
+  const lines = impact
+    ? [...impactLines(impact, batches), ...(identities > 0 ? [identityUpdateText(identities)] : [])]
+    : [];
   const lists = impact ? impactLists(impact).filter((l) => l.count > 0) : [];
   const warning = impact ? claimedImportWarning(impact.relationsTasks) : null;
   const keys = run.outcomes.flatMap((o) =>
@@ -732,7 +740,12 @@ export function UploadPanel({
       impact: preview.impact,
       ...base,
     });
-    if (preview.outcomes.some((o) => o.outcome === 'created' || o.outcome === 'revised'))
+    // Also for unchanged files whose bundle records a new place in the tool (S2b follow-up step 5).
+    if (
+      preview.outcomes.some(
+        (o) => o.outcome === 'created' || o.outcome === 'revised' || o.identityUpdated,
+      )
+    )
       setPending({ plan, manifest, bundle, total });
     else if (preview.outcomes.length === 0) {
       // Every file was a plain .xml that the server found to be no BPMN: nothing to import.

@@ -6,16 +6,22 @@
  * informational fields tidied), the warnings about a file against its
  * manifest (`manifest-sha-mismatch`) and the landscape (`external-id-moved`,
  * `external-id-changed`, `provenance-kept`), and the identities `GET
- * …/external-ids` lists. Readers take a model's provenance from
- * `RevisionRepo.uploadedSources`: its head's uploaded revision (an amended
- * head's `source.upstream`), or, when that was stored without a manifest, the
- * newest revision that had one, so an upload without a manifest never erases
- * a declared identity. Provenance never enters facts or `facts_hash`.
+ * …/external-ids` lists. Since M6 S2b follow-up step 5 (owner decision 29
+ * (1)) where a model lives in its source tool (system, tool id, tool
+ * folder, link) is its newest identity row (`model_identity`), written by
+ * every import or PUT whose manifest lists the file, also for unchanged
+ * bytes whose declaration differs ({@link identityUpdate}); an upload
+ * without a manifest writes none, so it never erases a declared identity.
+ * Readers take a model's provenance from `RevisionRepo.uploadedSources`: the
+ * identity from the newest row ({@link withIdentity}), everything else from
+ * its head's uploaded revision (an amended head's `source.upstream`), which
+ * keeps its first provenance. Provenance never enters facts or `facts_hash`.
  */
 import { createHash } from 'node:crypto';
 
 import {
   ImportManifest,
+  MAX_IMPORT_WARNINGS,
   MAX_MANIFEST_BYTES,
   MAX_WARNING_OTHER_KEYS,
   tidyDeclared,
@@ -24,6 +30,7 @@ import {
   type ImportWarning,
   type ManifestDerived,
   type ManifestFile,
+  type ModelIdentity,
   type ModelSourceSummary,
   type RevisionSource,
 } from '@analyzr/contracts';
@@ -153,6 +160,64 @@ export function sourceSummary(
   };
 }
 
+/** The identity a source declares (system, tool id, folder, link); `null` without a manifest entry. */
+export function declaredIdentity(source: RevisionSource | undefined): ModelIdentity | null {
+  if (source?.system === undefined) return null;
+  return {
+    system: source.system,
+    externalId: source.externalId ?? null,
+    externalPath: source.externalPath ?? null,
+    url: source.url ?? null,
+  };
+}
+
+/** Whether two identities are the same declaration (all four fields, `null` for undeclared). */
+export function sameModelIdentity(a: ModelIdentity, b: ModelIdentity): boolean {
+  return (
+    a.system === b.system &&
+    a.externalId === b.externalId &&
+    a.externalPath === b.externalPath &&
+    a.url === b.url
+  );
+}
+
+/**
+ * The identity an unchanged file records (M6 S2b follow-up step 5): what its
+ * manifest entry declares when that differs from the model's newest row (or
+ * the model has none); `null` when the file declares nothing or the same.
+ * The ingest and its dry run share it. A declaration replaces the identity
+ * whole: an entry without a tool id, folder or link sets them `null`.
+ */
+export function identityUpdate(
+  newest: ModelIdentity | null | undefined,
+  source: RevisionSource,
+): ModelIdentity | null {
+  const declared = declaredIdentity(source);
+  if (declared === null) return null;
+  return newest && sameModelIdentity(newest, declared) ? null : declared;
+}
+
+/**
+ * A provenance source with the model's newest identity row in place of
+ * `system`, `externalId`, `externalPath` and `url` (absent where the row has
+ * `null`, and all four absent without a row: identity is read from rows
+ * only); every other field stays the uploaded revision's.
+ */
+export function withIdentity(
+  source: RevisionSource,
+  identity: ModelIdentity | null | undefined,
+): RevisionSource {
+  const { system: _system, externalId: _id, externalPath: _path, url: _url, ...rest } = source;
+  if (!identity) return rest;
+  return {
+    ...rest,
+    system: identity.system,
+    ...(identity.externalId === null ? {} : { externalId: identity.externalId }),
+    ...(identity.externalPath === null ? {} : { externalPath: identity.externalPath }),
+    ...(identity.url === null ? {} : { url: identity.url }),
+  };
+}
+
 /** `(system, externalId)` of a source, or `null` when it lacks either (no manifest, an as-told draft). */
 export function identityOf(source: RevisionSource | undefined): ExternalIdentity | null {
   if (source?.system === undefined || source.externalId === undefined) return null;
@@ -185,75 +250,83 @@ export interface IdentityCandidate {
   source: RevisionSource;
   /** True when the file became its model's head (`created` or `revised`). */
   stored: boolean;
+  /**
+   * True for an unchanged file whose `trust-kept` (it follows) names the
+   * derivation (`trustKeptNamesDerivation`: the class change comes from
+   * it): that warning speaks for the derivation, so `provenance-kept` stays
+   * silent. Not for one where only the credential differs.
+   */
+  trustKeptNamesDerivation?: boolean;
 }
 
-/** The fields `provenance-kept` compares: where the model lives in its source tool. */
-const KEPT_FIELDS = [
-  ['system', 'system'],
-  ['externalId', 'tool id'],
-  ['externalPath', 'tool folder'],
-  ['url', 'link'],
-] as const;
+/**
+ * What `provenance-kept` compares: the derivation owners' rules for derived
+ * calls match (`derived.kind`, absent counted as its own kind `none`, and
+ * the converter of a conversion).
+ */
+function derivationOf(s: RevisionSource | undefined): { kind: string; converter: string | null } {
+  const kind = s?.derived?.kind ?? 'none';
+  return { kind, converter: kind === 'converted' ? (s?.derived?.converter ?? null) : null };
+}
+
+/** `converted with normalize-bpmn@0.1.0`, `converted`, `export`, `reconstructed`, `none declared`. */
+function derivationText(s: RevisionSource | undefined): string {
+  const { kind, converter } = derivationOf(s);
+  if (kind === 'none') return 'none declared';
+  return converter === null ? kind : `${kind} with ${converter}`;
+}
 
 /**
  * `provenance-kept` for an unchanged file whose manifest entry declares
- * another place in the source tool than the provenance analyzr keeps for the
- * model (`kept`), or when analyzr keeps none; `null` when they agree.
+ * another derivation than the uploaded revision analyzr keeps for the model
+ * (`kept`; identical bytes keep their first revision's provenance, while
+ * their tool id, folder and link are recorded); `null` when they agree.
  */
 function keptWarning(
   kept: RevisionSource | undefined,
   incoming: RevisionSource,
 ): ImportWarning | null {
+  const [a, b] = [derivationOf(kept), derivationOf(incoming)];
+  if (a.kind === b.kind && a.converter === b.converter) return null;
   const id = identityOf(incoming);
-  const fields = {
-    ...(incoming.system === undefined ? {} : { system: incoming.system }),
-    ...(id === null ? {} : { externalId: id.externalId }),
-  };
-  if (!isDeclared(kept)) {
-    return {
-      code: 'provenance-kept',
-      message:
-        'unchanged, so analyzr keeps what it has for this model: no declared provenance ' +
-        '(stored without a manifest); a correction needs changed bytes',
-      ...fields,
-    };
-  }
-  const differences = KEPT_FIELDS.flatMap(([field, label]) => {
-    const before = kept?.[field];
-    const now = incoming[field];
-    return before === now ? [] : [`${label} ${before ?? '-'} (this file: ${now ?? '-'})`];
-  });
-  if (differences.length === 0) return null;
   return {
     code: 'provenance-kept',
     message: cutText(
-      `unchanged, so analyzr keeps its provenance: ${differences.join(', ')}; ` +
+      `unchanged, so its revision keeps the derivation ${derivationText(kept)} ` +
+        `(this file: ${derivationText(incoming)}); tool id, folder and link go by this file; ` +
         'a correction needs changed bytes',
       500,
     ),
-    ...fields,
+    ...(incoming.system === undefined ? {} : { system: incoming.system }),
+    ...(id === null ? {} : { externalId: id.externalId }),
   };
 }
 
 /**
  * The identity warnings of a request's files (M6 §3.4), in order; the files
  * of the request that failed are left out by the caller. `heads` are the
- * live models' provenance sources before the request (`uploadedSources`).
+ * live models' provenance sources before the request (`uploadedSources`:
+ * the identity from the newest identity row, the rest from the uploaded
+ * head).
  *
  * - `external-id-moved`: the incoming `(system, externalId)` already belongs
- *   to another live key, before the request or through an earlier stored file
- *   of it (a likely rename or move in the tool);
- * - `external-id-changed`: the key's head carried another `(system,
- *   externalId)`, both present; a head without a tool id (an as-told draft)
- *   never triggers it;
+ *   to another live key, before the request or through an earlier file of it
+ *   the manifest lists (a likely rename or move in the tool): two models now
+ *   carry it;
+ * - `external-id-changed`: the key's identity carried another `(system,
+ *   externalId)`, both present; an identity without a tool id (an as-told
+ *   draft) never triggers it;
  * - `provenance-kept`: an unchanged file the manifest lists declares another
- *   system, tool id, tool folder or link than analyzr keeps, or analyzr keeps
- *   none (§3.3: identical bytes keep their first provenance); not next to
- *   `external-id-changed`.
+ *   derivation than its revision keeps (§3.3: identical bytes keep their
+ *   first provenance; their identity is recorded, M6 S2b follow-up step 5);
+ *   never for a file whose `trust-kept` names the derivation
+ *   (`trustKeptNamesDerivation`: that warning speaks for it), and dropped
+ *   as a file's fifth warning ({@link withinWarningLimit}).
  *
  * A file without both a system and a tool id gets neither identity warning.
- * A stored file without a manifest leaves its key's identity as it was (the
- * readers fall back to the newest declared revision).
+ * Every file the manifest lists, stored or unchanged, takes its identity in
+ * the request's sequence, as the ingest records it; a file without a
+ * manifest entry leaves its key's identity as it was.
  */
 export function identityWarnings(
   files: readonly IdentityCandidate[],
@@ -280,14 +353,11 @@ export function identityWarnings(
       const [first] = others;
       if (first !== undefined) {
         const more = others.length > 1 ? ` and ${others.length - 1} more` : '';
-        const consequence = f.stored
-          ? 'two models now carry it'
-          : 'this unchanged file declares it too';
         warnings.push({
           code: 'external-id-moved',
           message: cutText(
             `${incoming.system} id ${incoming.externalId} already belongs to ${first}${more}: ` +
-              `${consequence} (moved or renamed in the tool?)`,
+              'two models now carry it (moved or renamed in the tool?)',
             500,
           ),
           system: incoming.system,
@@ -303,8 +373,8 @@ export function identityWarnings(
             f.stored
               ? `this file (${incoming.system} id ${incoming.externalId}) revised ${f.key}, ` +
                   `which held ${previous.system} id ${previous.externalId}`
-              : `${f.key} holds ${previous.system} id ${previous.externalId}; this unchanged ` +
-                  `file declares ${incoming.system} id ${incoming.externalId}`,
+              : `this unchanged file (${incoming.system} id ${incoming.externalId}) now ` +
+                  `identifies ${f.key}, which held ${previous.system} id ${previous.externalId}`,
             500,
           ),
           system: incoming.system,
@@ -313,12 +383,11 @@ export function identityWarnings(
         });
       }
     }
-    const changed = warnings.some((w) => w.code === 'external-id-changed');
-    if (!f.stored && isDeclared(f.source) && !changed) {
+    if (!f.stored && isDeclared(f.source) && f.trustKeptNamesDerivation !== true) {
       const kept = keptWarning(heads.get(f.key), f.source);
       if (kept) warnings.push(kept);
     }
-    if (f.stored && isDeclared(f.source)) {
+    if (isDeclared(f.source)) {
       const old = current.get(f.key);
       if (old !== undefined) holders.get(identityKey(old))?.delete(f.key);
       if (incoming === null) current.delete(f.key);
@@ -334,10 +403,23 @@ export function identityWarnings(
 }
 
 /**
- * The identities of `GET …/external-ids` (M6 §3.4): every live model whose
- * provenance source (`uploadedSources`: the uploaded head, or the newest
- * revision with a manifest) declares a source system (`system` keeps one),
- * with its tool id and folder (`null` when not declared), sorted by key.
+ * A file's import warnings within {@link MAX_IMPORT_WARNINGS} (M6 S2b
+ * follow-up step 5): only an unchanged file with all five,
+ * `manifest-sha-mismatch`, both identity warnings, `provenance-kept` and a
+ * `trust-kept` for another credential, has one too many; `provenance-kept`
+ * goes then, while `trust-kept` says that this request's classification is
+ * not taken.
+ */
+export function withinWarningLimit(warnings: readonly ImportWarning[]): ImportWarning[] {
+  if (warnings.length <= MAX_IMPORT_WARNINGS) return [...warnings];
+  return warnings.filter((w) => w.code !== 'provenance-kept').slice(0, MAX_IMPORT_WARNINGS);
+}
+
+/**
+ * The identities of `GET …/external-ids` (M6 §3.4): every live model with a
+ * declared identity (`uploadedSources`: its newest identity row, M6 S2b
+ * follow-up step 5; `system` keeps one system), with its tool id and folder
+ * (`null` when not declared), sorted by key.
  */
 export function externalIdEntries(
   sources: ReadonlyMap<string, RevisionSource>,

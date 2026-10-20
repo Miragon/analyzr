@@ -117,7 +117,7 @@ and code are in English.
   it; it came with plugin 0.1.3, step 4 of S2b's follow-up, 2026-10-20). Its one owner question, M6
   §10.10, is decided (decision 29 (1), 2026-10-20:
   an append-only identity row per import and model, as step 5 of S2b's follow-up, its own
-  step after steps 1–4). **UX2a "Open questions: groups and
+  step after steps 1–4; delivered in step 5 the same day). **UX2a "Open questions: groups and
   totals"** (done 2026-10-18 on the branch, every gate green; UX-SIMPLIFICATION.md §7 "UX2a as
   delivered"): `group` on every open question (`ask` „Zu klären“, `agent`, `proposal`, `info`),
   the repeatable filter, `totals` and `askByModel`, the question first with its reason apart, the
@@ -174,8 +174,8 @@ and code are in English.
   the pure `importImpact` with the dry runs `POST …/imports?dryRun=true` and `PUT …?dryRun=true`
   (permission `read`) and `GET …/models/{m}/deletion-impact`, `analyzr import --dry-run` and the
   deletion impact in `analyzr models delete`, and the web's „Vorschau“ before „Importieren“; of
-  the follow-up (judgements, tasks, placements, then their surfaces and the size of the agents'
-  next run) steps 1 to 3b are done (below), the rest open;
+  the follow-up (judgements, tasks, placements, then their surfaces, the size of the agents'
+  next run, the integrate plugin 0.1.3 and the identity rows) steps 1 to 5 are done (below);
   live-run neutral. **UX3 „Modellansicht“**
   (done 2026-10-18 on the branch, every gate green, the UI load guard and the whole Playwright
   suite against a scratch stack; UX-SIMPLIFICATION.md §7 "UX3 as delivered"): the shared canvas
@@ -376,10 +376,36 @@ and code are in English.
   call): whether the pre-approval works as written, the owner's one live check in §8. For the first
   analysis: a consultant's first import of a big export goes through without duplicate models and
   with the agent work known up front, and the agent cannot import.
-  **Owner decision 29** (2026-10-20, §4): M6 §10.10 decided (identity rows), and the integrate
-  skill's pre-approved preview a bundled read-only script, not a CLI pattern (delivered in step 4).
-  **Next:** step 5 of S2b's follow-up (decision 29 (1)'s identity rows, migrations 0021/0022); then
-  S3c (renderer and spec YAML, the ad-hoc converter path, the bundled CLI), then S6 (interviews);
+  **M6 S2b follow-up step 5 "The identity rows"** (done 2026-10-20 on the branch, every gate green
+  with a review round's fixes: 8 findings, 6 fixed, 2 rejected; M6 §8 "S2b follow-up step 5 as
+  delivered"; DEVELOPMENT.md "M6 S2b follow-up step 5 (2026-10-20)"; UX-SIMPLIFICATION.md §7; owner
+  decision 29 (1)): an append-only identity row per import and model (`model_identity`, migrations
+  0021 and 0022 with the triggers, a guard and the backfill of every declared uploaded revision;
+  system, tool id, tool folder, link), written for every stored file a manifest lists and for an
+  unchanged one whose declaration differs from the model's newest row (then with the internal event
+  `model.identity_declared`, which holds no folder or link); `external-ids`, the identity warnings,
+  the dry run's absent keys, the change list and „Herkunft“ („Im Quellsystem“ and „In Signavio
+  öffnen“ from the new `Model.identity`, REST only) read the newest row; the revision keeps its
+  first provenance and trust class, nothing re-queues, `facts_hash` untouched. The import and its
+  dry run mark such a file `identityUpdated`: „Hochladen“ offers „Importieren“ for it with „Danach:
+  Ort im Quellsystem für 6 Modelle aktualisiert“, the CLI says `6 unchanged keep their first
+  revision's, 6 of them record a new tool id, folder or link`; `provenance-kept` now says only that
+  the revision keeps its derivation (none declared counting as its own kind) and stays silent next
+  to a `trust-kept` that names it. Contracts first, the client regenerated, no new route; plugin
+  0.1.3, MCP and its snapshots, the procedures and facts untouched, live-run neutral; server 1,804
+  tests, web 663, CLI 286; on 496 models the landscape read unchanged (232.4 → 230.5 ms); the
+  readings taken are in §4 ("Taken during the M6 S2b follow-up step 5"); the e2e run on the final
+  tree: Playwright 111 passed and 21 skipped, the UI load unchanged, the demo check 152 of 152,
+  `demo.spec.ts` 14 of 14. For the first analysis: a re-export after a folder reorganization, or a
+  bundle imported over models first uploaded without one, keeps analyzr's record of where each model
+  lives
+  current with the normal import and without re-analysis, so the key-map rebuild, the absent-key
+  list and the change list stay right and no duplicate models arise.
+  **Owner decision 29** (2026-10-20, §4): M6 §10.10 decided (identity rows, delivered in step 5),
+  and the integrate skill's pre-approved preview a bundled read-only script, not a CLI pattern
+  (delivered in step 4).
+  **Next:** S3c (renderer and spec YAML, the ad-hoc converter path, the bundled CLI), then S6
+  (interviews);
   after the owner's live runs
   S5b, S7 and facts v2 as recommended (§7 "M6"; M6 §8 "After S2a").
 
@@ -632,7 +658,9 @@ and code are in English.
     send the key elsewhere), but a read-only script bundled with the plugin, `analyzr-read.mjs`
     (only `GET …/models`, `GET …/external-ids` and `POST …/imports` with `dryRun=true` built in,
     loopback hosts only, no redirects), which `allowed-tools` pre-approves; the real import stays
-    with the consultant. (2) is delivered with the integrate plugin 0.1.3 (step 4 of the
+    with the consultant. (1) is delivered in step 5 of the follow-up (2026-10-20; M6 §8 "S2b
+    follow-up step 5 as delivered"; its optional live check is in §8). (2) is delivered with the
+    integrate plugin 0.1.3 (step 4 of the
     follow-up, 2026-10-20; M6 §8 "S2b follow-up step 4 as delivered"); its live check is in §8.
 
 **Taken during decision 20 by the implementing agent (the owner may overrule; details in
@@ -927,6 +955,107 @@ geänderte Prozesse kommen danach noch einmal.“ for a placement task an agent 
 „Kurzfassung“ has four lines, the second the agent work, and for `external-id-moved` in a preview
 the report gives no import recommendation but a way back to the keys.
 
+**Taken during the M6 S2b follow-up step 5 by the implementing agents and the review round's fixer
+(the owner may overrule each; details in M6 §8 "S2b follow-up step 5 as delivered", DEVELOPMENT.md
+"Provenance and the import manifest (M6 S2a)" and UX-SIMPLIFICATION.md §7), the ones you most likely
+want to decide first:** (a) **`provenance-kept` now means the derivation**: an unchanged listed file
+gets it when it declares another derivation than its revision keeps, `derived.kind` with an absent
+one as its own kind („Ohne Angabe“, none declared, as owners' rules for derived calls and decision
+28 (1) count it) or another converter of a conversion; the place in the tool no longer raises it (it
+is recorded now). It is raised also next to `external-id-changed`, but not next to a `trust-kept`
+that names the derivation (the kept class's and the request's reasons differ in `converted`,
+`reconstructed` or `as-told`, so that warning already says the request's classification is not
+taken), and it goes as a file's fifth warning (the contract allows four). So a bundle imported over
+the same bytes first uploaded without one warns on every file (`none declared (this file: export)`):
+your rules for „Export“ or „Konvertiert“ do not take those models' calls until their bytes change,
+the rules for „Ohne Angabe“ do; a plain moved folder warns on none. The review round narrowed the
+plan's "never next to `trust-kept`" to this, since a `trust-kept` for another credential alone (a
+model stored as an agent upload, now declared `export` by you) says nothing of the derivation. The
+German text „Unverändert: analyzr behält die bisherige Angabe, wie die Datei entstanden ist. Eine
+Korrektur braucht geänderte Dateien.“ names no rule; if it should say which of your rules will not
+take these calls, say so. Alternatives: an absent derivation counted as `export` (fewer warnings,
+but a rule for „Export“ would silently not take those calls), or no warning at all (a
+„KI-rekonstruiert“ declared for bytes first uploaded without a manifest would be lost silently); (b)
+**„Importieren“ for a recorded identity**: the web offers it also when the dry run says an unchanged
+file would record a new place in the tool (before, only for a created or revised file, so the web
+could never record an identity-only re-export), and the „Danach:“ line says „Ort im Quellsystem für
+6 Modelle aktualisiert“ when no file would be created or revised (beside one the places go along
+unnamed, as stored provenance does). After „Importieren“ the headline stays „Kein Modell importiert
+· 6 unverändert“ with the toast „6 Dateien importiert“; the review round asked for „· Ort im
+Quellsystem für 6 Modelle aktualisiert“ there too, which the plan did not take (about five lines in
+`importHeadline` and two tests, if you want it). Alternative: the button without the text („keine
+Änderung an Relationen und Befunden.“ next to „Importieren“); (c) **„Herkunft“**: „Im Quellsystem“
+and the link „In Signavio öffnen“ (also in „Mehr“, now without waiting for the revisions) come from
+the model's identity as the newest import declared it, with the system in the value when the
+revision declares none or another („Signavio: Verschoben/…“); an identity without a folder shows no
+such line and one without a link no link, never the revision's; „Quelle“ with version and export
+date, „Entstanden“, „Hochgeladen“, the losses and „Aufrufe“ stay the revision's, since they describe
+the bytes (so after a re-export with unchanged bytes „Quelle“ still names the first export's version
+and date). Alternative: „Quelle … (angegeben)“ from the identity's system when the revision declares
+none (it would claim a declaration the bytes never had and disagree with the chip and the subtitle);
+(d) **a declaration replaces the identity whole**: an entry without tool id, folder or link sets
+them null, as a revised file's does, now also for unchanged bytes and silently (no identity warning
+without both a system and a tool id, S2a's rule); the key stays in `external-ids` with `externalId:
+null`, leaves the identity warnings' protection, and a rebuild matches it by folder only.
+Alternatives: a merge field by field (a stale folder would stay when a converter stops declaring
+it), or `external-id-changed` for a dropped tool id; the skill's Signavio bundles always carry tool
+ids; (e) **the integrate plugin stays 0.1.3**: nothing it reads changes shape. Its preview of an
+identity-only re-export says „Danach: keine Änderung an Relationen und Befunden.“ (true: no relation
+or finding changes) and then hands over the import command as always, which records the places; its
+report label for `provenance-kept`, „Unverändert: analyzr behält die bisherige Herkunft“, is broader
+than the warning's new meaning. Both are on the list for its next release (§7 "M6"); you may want
+that release before the first customer re-export; (f) **agents**: an `analyzr:write` agent token can
+record the identity of unchanged bytes (before, only with new bytes, which re-queue and classify as
+`agent-upload`); the row records the agent's principal, and the trust class and `trust-kept` stay as
+they are. Alternative: rows for unchanged bytes from humans only (a moved folder would stay stale
+after an agent's import). The others: (g) the table `model_identity` with the primary key
+`(project_id, model_id, seq)`, `revision_id` not null with a composite foreign key to
+`model_revision`, the partial unique `(project_id, revision_id)` for kind `revision` (kept, though
+the guard makes it redundant: a second row for one revision hits the primary key first), and no id
+column (nothing references a row); (h) one `model.identity_declared` per unchanged file with a new
+declaration, its payload without folder and link like the newer events that keep declared free text
+out; a stored file's row shares its revision's `model.revised` seq; (i) every stored listed file
+gets a row, also with an unchanged identity (one per declared uploaded revision, as the backfill
+writes them), an unchanged one only when its declaration differs; a file without a manifest entry
+writes and reads nothing; (j) rows survive a deletion: a deleted model is in no live reader, the
+change list of its amendments names its newest row, and a revival without a manifest gets the
+identity from before the deletion back (as S2a's fallback did); (k) the backfill writes every
+declared uploaded revision, deleted models included, at its seq with its principal, time and its
+event's client, checked by the guard, so the newest row is what the readers read before (the
+migration test pins it); the guard, stricter after the review, also refuses an `unchanged` row for a
+deleted model or for any revision but the one the model's bytes are kept as; (l) an unchanged listed
+file takes effect in the request's sequence of identity warnings, the consequence is `two models now
+carry it` for stored and unchanged files alike, and the unchanged `external-id-changed` reads `this
+unchanged file (<system> id <id>) now identifies <key>, which held <system> id <id>`; (m)
+`identityUpdated` is a field of each file's outcome, the same in the dry run and the import, not of
+`ImportImpact` (no merge change, so no plugin release) nor of the PUT results; no new warning code;
+(n) `Model.identity` is on every `Model` (list and get, REST only) instead of a new route or an
+overlay on `Revision.source`; `ExternalIdEntry` keeps its shape (no link); (o) `Model.source` stays
+the revision's, so a landscape first uploaded without a manifest and then re-imported unchanged with
+its bundle shows no subtitle „Aus Signavio“ and no chip until its bytes change, and „Herkunft“ names
+Signavio in „Im Quellsystem“ only; (p) the change list names the newest row for live and deleted
+models; (q) the CLI's manifest line counts the files with `identityUpdated` (`provenance stored for
+2; 4 unchanged keep their first revision's, 3 of them record a new tool id, folder or link`; `1
+unchanged keeps its first revision's and records …`), keeps `… K unchanged keep what analyzr had`
+when none is recorded, prints the same in the dry run, and `ManifestSummary`'s JSON stays (the
+review round made the verb `record`, the plan had "with"); (r) `created_at` from the database's
+default, a backfilled row's from its revision; (s) `uploadedSources` keeps its name, joins the
+newest row laterally, has no fallback query any more and reads the identity from rows only; (t) a
+real import reads the identity per batch, a batched dry run compares each batch with the state
+before the import (as for stored files). Recorded readings, behaviour and texts this step changes
+(none an owner decision; amendments to recorded decisions: none): (1) CONCEPT §2's "identical
+uploads are no-ops" and "an unchanged re-import writes nothing": an unchanged file with a new
+declared identity writes an identity row and its event (decision 29 (1) orders the row, and a row
+needs a seq); (2) S2a's review reading of `provenance-kept` (its four fields, "or analyzr has none",
+never next to `external-id-changed`), now (a); (3) S2a's "an unchanged file never changes an
+identity in the request's sequence" and the unchanged wordings of both identity warnings, now (l);
+(4) S2b's web rule „Importieren“ only for a created or revised file, now (b); (5) the wording of M6
+§3.3 and §3.4 (the identity of "the key's head revision" or of "the newest revision a manifest
+declared"), superseded by decision 29 (1) itself; (6) the CLI's manifest line, now (q), and the
+web's `provenance-kept` text; (7) step 4's (b): the oldest model with a tool folder, which keeps a
+tool id several keys carry, can now be another key than before, since an unchanged import can give a
+model its first folder (intended, no plugin change).
+
 ## 5. What exists
 
 | Path | Content |
@@ -940,7 +1069,7 @@ the report gives no import recommendation but a way back to the keys.
 | `plugins/analyzr-integrate` | the second Claude Code plugin (M6 S3b, 0.1.3 since S2b's follow-up step 4) for interactive, non-pipeline skills: `/analyzr-integrate:integrate-landscape <export> [--workspace <dir>]` turns a customer's BPMN 2.0 export into an import bundle `analyzr-import/1` and a German report in the consultant's workspace (keys pinned in `keymap.json`, since 0.1.3 rebuilt from analyzr when lost), since 0.1.3 previews the import itself into an existing project (the report's „Vorschau“ with the agent work), never imports (the consultant does); reference notes per tool (unverified), the bundled scripts `inspect.mjs`, `normalize-bpmn.mjs` and, since 0.1.3, the read-only `analyzr-read.mjs` (generated; the two read-only ones pre-approved, the pre-approval not yet tried live, §8) and their notices; a sha256 per plugin release in `tools/integrate/test/plugin.test.ts`; never loaded in live runs |
 | `tools/integrate` | `@analyzr/integrate` (M6 S3b, decision 24.8): the sources and tests of the integrate plugin's scripts (`inspect`, `normalize-bpmn` with `file`, `plan` (since M6 S2b's follow-up step 4 with `--from-analyzr`, the pure `rebuildFromAnalyzr` and `inferRule` in `src/keymap.ts`), `bundle`, `inventory`, and since step 4 `analyzr-read` with `models`, `external-ids` and `preview`: `src/analyzr.ts` the request guard and the credential, `src/preview.ts` the bundle walked as the CLI walks it and the batches merged with `@analyzr/contracts/impact-merge`), bundled by `pnpm --filter @analyzr/integrate generate` with a drift test (`analyzr-read.mjs` holds only Node built-ins, its sources and the zod-free `@analyzr/contracts/paths` and `/impact-merge`); a synthetic Signavio-style export and its golden bundle, which the CLI and web tests import; a fake analyzr for the script's tests; imported by nothing in `apps/` or `packages/` |
 | `examples/agents` | reference setups: Claude Code (interactive and `run-headless.sh [--skill placements]`), Claude Desktop (configs + German start prompts for relations, placements and drafting a chain), Codex; documentation, not in the image |
-| `apps/server` | Hono server: domain (pure, dependency-cruiser enforced), Drizzle/PostgreSQL, REST `/api/v1`, MCP `/mcp` (stateless Streamable HTTP), local mode, agent tokens, pipeline, review; since M4 S1/S2 the value chain and placements (`src/domain/value-chain/`: storage, lifecycle, `prepareRevision`, rule proposals, findings; REST under `/value-chains`, six MCP tools; the web page since S3); since decision 19 the owner's auto-accept rules (`src/domain/auto-accept/`, seven owner-only routes and the ledger for every reviewer, no MCP); since M6 S4 the open questions (`src/domain/open-questions/`: one read model over findings, chain findings, holds, agents' questions, unsure verdicts, coded no-links, summaries and unjudged pairs plus the gap signals, computed on read; `GET …/open-questions` and `…/open-questions/export?format=markdown\|csv`, permission `read`; no MCP until S7); since M6 S5a the answers (the append-only `open_question_answer`, migrations 0011/0012; `POST …/open-questions/{q}/answers` and `…/open-questions/answers?dryRun=`, permission `review`, humans only; on a relation or placement a human note through the note use cases); since M6 S5c-1 the actions (`open-questions/actions.ts`, pure: each item's actions, R1 and R1b, what a link writes or accepts; `POST …/open-questions/{q}/actions` for link, place, choose copy and the outside mark, `…/answers/{a}/withdrawal`, permission `review`, humans only; the append-only `open_question_answer_withdrawal`, migrations 0013/0014; items versioned by what they ask about; the safeguard `competing-call` also counts a human's manual link from the call element to another target); since M6 S5c-2 the model amendments (`src/domain/amendments/`, pure: planning against the uploaded revision, the fields a human may set, derivation, effect and cost, the change list; the append-only `model_amendment` and `model_amendment_withdrawal`, migrations 0015/0016; uploaded plus amended revisions with the plan on the head; the routes of tag `amendments`, `review` and `write`, humans only; the open question `amendment-conflict`); since M6 S2a provenance and stable identity (`src/domain/provenance.ts`, pure: the manifest checked, the uploaded revision's declared `source`, the import warnings, the `external-ids` list; readers follow an amended head's `source.upstream`, or the newest revision a manifest declared; `model_revision.extract_warnings`, migration 0017; the open question `extractor-loss`); since UX2a (decision 26) the open questions' groups (`group` on every item from a `Record` over the kinds: `ask` „Zu klären“, `agent`, `proposal`, `info`; the repeatable `group` filter; `totals` and `askByModel` on every page), the question first with its reason apart (`text`, `detail`), the customer export in plain German (dated, „Betrifft“, no folder, the id only in HTML comments, the CSV column `Ansprechpartner`, `ask` by default under the old file name); since the first wave's review an agent's coded no-link joins the rule tier's item about the same gap (read model only) and a primary link reads „Verknüpfen mit …“; since M6 S2c-1 the trust rule (`src/domain/trust.ts`, pure: the class stored on every uploaded revision as `source.trust`, a unique call of a derived caller proposed at 0.9 instead of accepted, a call target set in analyzr modelled; `callsProposed` in the dry runs, the import warning `trust-kept`; no migration, no MCP; since S2c-2 the system rule counts only the calls a bulk accept takes, the contracts' `isBulkDerivedCall`; since S2c-3 the owners' rules for derived calls: `proposedBy`, `derivedKind` and `converter` on the rule revisions with migration 0018, the safeguards `agent-upload` (every rule) and `amendment-conflict`, the fifth write path `autoAcceptDerivedCalls` after the recompute of an import, an amendment write or a deletion, `ImportImpact.autoAcceptedCalls` for owners, `derivedGroups` in the preview; since S2c-4 the owner's review of the acceptances from before S2c, „Vor der Vertrauensregel angenommen“: `src/domain/use-cases/trust-review.ts`, `preTrustAcceptances` and `storedTrust` in `trust.ts`, the append-only `revision_trust_review` with migrations 0019/0020, `GET …/pre-trust-calls` and `POST …/pre-trust-calls/review?dryRun=`, owners only, the event `revision.trust_reviewed`); since M6 S2b the dry runs and the deletion impact (the pure `src/domain/import-impact.ts` over `planRecompute`, permission `read`, nothing written), since its follow-up step 1 with the relations tasks the write would queue and cancel (the pure `src/domain/queue-plan.ts`, which the write's `queueAnalysis` shares), the pairs agents then judge and those judged again (`pairsToJudge`, `judgementShift` in `judgements.ts`), and the amendment cost counted the same way; since step 2, with a live value chain, the accepted placements whose process the write changes or removes and the placement task's outcome with the processes due, newly due and placed again (the pure `src/domain/value-chain/model-impact.ts` over the pipeline's pure `pipelineInputs`, which `loadPipelineInputs` shares; the rule tier planned by `planRulePlacements`, which the write's `recomputeRulePlacements` shares; one stored fact order, `src/domain/fact-order.ts`); since step 3b the summary's `pairsToJudge`, the pairs the next claims of the claimable relations tasks will be assigned (`countPairsToJudge` in `src/domain/use-cases/projects.ts` over the open questions' candidate pass, `heldPairs` in `judgements.ts`; the summary memo holds until the earliest live lease runs out) |
+| `apps/server` | Hono server: domain (pure, dependency-cruiser enforced), Drizzle/PostgreSQL, REST `/api/v1`, MCP `/mcp` (stateless Streamable HTTP), local mode, agent tokens, pipeline, review; since M4 S1/S2 the value chain and placements (`src/domain/value-chain/`: storage, lifecycle, `prepareRevision`, rule proposals, findings; REST under `/value-chains`, six MCP tools; the web page since S3); since decision 19 the owner's auto-accept rules (`src/domain/auto-accept/`, seven owner-only routes and the ledger for every reviewer, no MCP); since M6 S4 the open questions (`src/domain/open-questions/`: one read model over findings, chain findings, holds, agents' questions, unsure verdicts, coded no-links, summaries and unjudged pairs plus the gap signals, computed on read; `GET …/open-questions` and `…/open-questions/export?format=markdown\|csv`, permission `read`; no MCP until S7); since M6 S5a the answers (the append-only `open_question_answer`, migrations 0011/0012; `POST …/open-questions/{q}/answers` and `…/open-questions/answers?dryRun=`, permission `review`, humans only; on a relation or placement a human note through the note use cases); since M6 S5c-1 the actions (`open-questions/actions.ts`, pure: each item's actions, R1 and R1b, what a link writes or accepts; `POST …/open-questions/{q}/actions` for link, place, choose copy and the outside mark, `…/answers/{a}/withdrawal`, permission `review`, humans only; the append-only `open_question_answer_withdrawal`, migrations 0013/0014; items versioned by what they ask about; the safeguard `competing-call` also counts a human's manual link from the call element to another target); since M6 S5c-2 the model amendments (`src/domain/amendments/`, pure: planning against the uploaded revision, the fields a human may set, derivation, effect and cost, the change list; the append-only `model_amendment` and `model_amendment_withdrawal`, migrations 0015/0016; uploaded plus amended revisions with the plan on the head; the routes of tag `amendments`, `review` and `write`, humans only; the open question `amendment-conflict`); since M6 S2a provenance and stable identity (`src/domain/provenance.ts`, pure: the manifest checked, the uploaded revision's declared `source`, the import warnings, the `external-ids` list; readers follow an amended head's `source.upstream`, and since M6 S2b's follow-up step 5 take the system, tool id, tool folder and link from the model's newest row of the append-only `model_identity` (migrations 0021/0022 with the triggers, the guard and the backfill; written also for an unchanged file whose declaration differs, with the internal event `model.identity_declared`; `Model.identity`, REST only), before it from the newest revision a manifest declared; `model_revision.extract_warnings`, migration 0017; the open question `extractor-loss`); since UX2a (decision 26) the open questions' groups (`group` on every item from a `Record` over the kinds: `ask` „Zu klären“, `agent`, `proposal`, `info`; the repeatable `group` filter; `totals` and `askByModel` on every page), the question first with its reason apart (`text`, `detail`), the customer export in plain German (dated, „Betrifft“, no folder, the id only in HTML comments, the CSV column `Ansprechpartner`, `ask` by default under the old file name); since the first wave's review an agent's coded no-link joins the rule tier's item about the same gap (read model only) and a primary link reads „Verknüpfen mit …“; since M6 S2c-1 the trust rule (`src/domain/trust.ts`, pure: the class stored on every uploaded revision as `source.trust`, a unique call of a derived caller proposed at 0.9 instead of accepted, a call target set in analyzr modelled; `callsProposed` in the dry runs, the import warning `trust-kept`; no migration, no MCP; since S2c-2 the system rule counts only the calls a bulk accept takes, the contracts' `isBulkDerivedCall`; since S2c-3 the owners' rules for derived calls: `proposedBy`, `derivedKind` and `converter` on the rule revisions with migration 0018, the safeguards `agent-upload` (every rule) and `amendment-conflict`, the fifth write path `autoAcceptDerivedCalls` after the recompute of an import, an amendment write or a deletion, `ImportImpact.autoAcceptedCalls` for owners, `derivedGroups` in the preview; since S2c-4 the owner's review of the acceptances from before S2c, „Vor der Vertrauensregel angenommen“: `src/domain/use-cases/trust-review.ts`, `preTrustAcceptances` and `storedTrust` in `trust.ts`, the append-only `revision_trust_review` with migrations 0019/0020, `GET …/pre-trust-calls` and `POST …/pre-trust-calls/review?dryRun=`, owners only, the event `revision.trust_reviewed`); since M6 S2b the dry runs and the deletion impact (the pure `src/domain/import-impact.ts` over `planRecompute`, permission `read`, nothing written), since its follow-up step 1 with the relations tasks the write would queue and cancel (the pure `src/domain/queue-plan.ts`, which the write's `queueAnalysis` shares), the pairs agents then judge and those judged again (`pairsToJudge`, `judgementShift` in `judgements.ts`), and the amendment cost counted the same way; since step 2, with a live value chain, the accepted placements whose process the write changes or removes and the placement task's outcome with the processes due, newly due and placed again (the pure `src/domain/value-chain/model-impact.ts` over the pipeline's pure `pipelineInputs`, which `loadPipelineInputs` shares; the rule tier planned by `planRulePlacements`, which the write's `recomputeRulePlacements` shares; one stored fact order, `src/domain/fact-order.ts`); since step 3b the summary's `pairsToJudge`, the pairs the next claims of the claimable relations tasks will be assigned (`countPairsToJudge` in `src/domain/use-cases/projects.ts` over the open questions' candidate pass, `heldPairs` in `judgements.ts`; the summary memo holds until the earliest live lease runs out) |
 | `apps/cli` | `analyzr health / status / import (reads analyzr-import.json since M6 S2a) / seed [--project --issue-tokens --token-name --value-chains] / models list\|requeue\|delete\|external-ids [--system] / questions [list] [--model --kind --source --ask-who --state --group (since UX2a) --format text\|md\|csv\|json -o] / questions answer <id> --text \| --from <csv> [--dry-run] (notes; `--kind` refused since M6 S5c-1) / questions outside <id> [--note] [--undo <answer>] / questions link <id> --to <target>… \| --pair <from> <to> [--note] / questions place <id> --step <id>\|@outside \| --process <target> [--note] / questions amend <id> / models amend <key> --element <id> … \| pull <key> [--original] / amendments list\|export\|withdraw [--rev] / token create\|list\|revoke / value-chain push\|pull / rules list\|show\|add\|edit\|enable\|disable\|preview\|apply\|revoke [--derived …] / rules pre-trust [--model] [--revoke\|--keep] / mcp` (stdio bridge; `rules add --derived` since M6 S2c-3, `rules pre-trust` since S2c-4; since M6 S2b's follow-up step 3 `import --dry-run` names the agent work, the relations tasks it cancels with a warning for a claimed one and the placements losing their process, and `models delete` lists the task cancelled, the placements and the processes made due; since step 3b `import`'s waiting line and `status`'s models line add `about 7300 pairs to judge`, `status --json` `pairsToJudge`) |
 | `apps/web` | projects, models, relations, findings, bpmn-js model view, upload, connect-an-agent, inbox, review screen; since M4 S3 the value chain page (`/projects/{key}/value-chain`: renderer viewer/modeler in a lazy chunk, placement review, save with dry run and conflict, drafts, link editing) and the step view; since decision 19 the tab „Regeln“ (auto-accept rules with live preview, apply, revoke) and the marks and filters of auto-accepted items in the review views, since M6 S2c-3 with the third „Art“ „Eindeutige Aufrufe aus abgeleiteten Modellen“ (offered by the bulk toast after accepting such calls) and the „Vorschau“ line naming what an owner's rules take at once, since M6 S2c-4 with the system rule's line „… vor der Vertrauensregel angenommen – prüfen…“ and its dialog („Behalten“, „Zurück in die Prüfung“); since M6 S2b's follow-up step 3 the „Vorschau“'s line of the agent work an import sets off, its lists of the placements losing their process and of the pairs judged again, and the warning with a second click („Trotzdem importieren“) before an import that cancels an agent's claim (`lib/agent-cost.ts`, shared with the amend form); since step 3b „etwa 7.300 mögliche Relationen“, the size of the agents' next run, beside „Agent starten“ or „Agent verbinden“ and in the waiting line of „Als Nächstes“ and after an import; since M6 S4 the tab „Offene Fragen“ (every gap as a question, filters, Markdown and CSV export) and the model view's section of the same name, since M6 S5a with „Antworten aus CSV übernehmen“ (a preview first) for reviewers, since M6 S5c-1 with an action on every question (pickers, inline decisions, the outside mark, „Rückgängig“) and „Notiz hinzufügen“ instead of S5a's „Beantworten“, and „Verknüpfen mit …“ on a collapsed subprocess in the model view; since M6 S5c-2 the amend form at a question with „Sammeln“ and its bar, the conflicts with both values side by side, „Ergänzen“ in the model view with history, overlay, badge and both BPMN downloads, every withdrawal after its cost, and the change list in the models tab; since M6 S2a the open-question kind „Elemente beim Import verloren“ (S2a's „Herkunft“, badges and the manifest of a dropped folder come with the UI simplification); since UX1 (decision 26) the shell of four object tabs („Übersicht“, „Relationen“, „Wertschöpfungskette“, „Offene Fragen“, badges from one hook), „Hochladen“ as a button, the owners' menu „Einstellungen“ („Agent verbinden“, „Annahmeregeln“, the former tab „Regeln“), the list „Befunde“ behind a link in „Offene Fragen“, „Übersicht“ with „Als Nächstes“, the popover „Agent starten“, the export hub, search, phase chips and „Offene Punkte“, failed writes in German, the server banner only on trouble; since UX2b „Offene Fragen“ as lean cards „Zu klären“ (the badge's number) with one intro line, three filters, „Zur Information“ and „Erledigte zeigen“ closed, the agents' questions on their proposals, the dialog „Für den Kunden exportieren …“ and a hold answered in one dialog from its card, its „Vorgemerkt“ row and the review screen and decided with „Jetzt entscheiden“ (the inline decision panels gone), the model view's „Fragen“ with „Zu klären“ only; since the first wave's review „Offene Punkte“ as text with its split in a tooltip, the customer export of the open items only, the agent's summary closed in the model view; the UI load guard `e2e/ui-load.spec.ts` |
 | `apps/agent-sim` | LLM-free reference agent that works the pipeline over MCP, both task kinds since M4 S5 |
@@ -1402,12 +1531,11 @@ for the whole request; no credentials in links), open loss codes, the manifest c
 `--create`, the refusal of a folder whose bundles lie in subfolders, `next:` lines after the
 identity warnings, the tool ids several keys carry in `models external-ids`, finer
 `extractor-loss` texts (no diagram or vendor elements, „Prozess … (samt Inhalt)“, „mindestens“),
-and the integrate plugin 0.1.1 (skill text only). Known interim gap until the identity rows of
-decision 29 (1) land (M6 §10.10, decided 2026-10-20; step 5 of S2b's follow-up): a
-bundle imported first through „Hochladen“ records no identity (since UX8 the web sends a dropped
-folder's manifest, so this holds for web imports before UX8 and for files without one), and the
-same bytes imported again cannot add it; a folder move in the tool keeps the old folder in
-`external-ids`. Its web parts
+and the integrate plugin 0.1.1 (skill text only). The interim gap this left (a bundle imported
+first without its manifest recorded no identity, through „Hochladen“ before UX8 or as single files,
+and the same bytes imported again could not add it; a folder move in the tool kept the old folder
+in `external-ids`) is closed by the identity rows of decision 29 (1) (M6 §10.10; step 5 of S2b's
+follow-up, 2026-10-20), through the CLI and the web alike. Its web parts
 waited for the UI simplification the owner asked for (2026-10-17: „die UI etwas zu vereinfachen …
 Wirkt alles inzwischen etwas überladen“) and came with UX8; the skill's key-map rebuild and the pre-approved
 `--dry-run` were planned for the plugin's next version, after S2b; 0.1.2 (S2c-2) only recommends
@@ -1427,7 +1555,7 @@ eine gute Richtung“; UX-SIMPLIFICATION.md §7 "Owner walkthrough"); its one fi
 model from a question card, is fixed with a labelled button on the card. **Next**, in the
 proposed order (Q10), which the owner kept („Sonst kannst du weitermachen“): UX7 („Hochladen“, „Agent verbinden“; done 2026-10-18, UX-SIMPLIFICATION.md §7 "UX7 as delivered") → UX8 (done 2026-10-18, "UX8 as delivered"; S2a's web
 parts: „Herkunft“, the badges, the manifest of a dropped folder) → S2b (`importImpact`, the dry
-runs, the deletion impact, absent keys within `source.scope`; done 2026-10-18, its follow-up's steps 1 to 3b on 2026-10-20) → UX3 (model view; done 2026-10-18, "UX3 as delivered") → UX4 (question
+runs, the deletion impact, absent keys within `source.scope`; done 2026-10-18, its follow-up's steps 1 to 5 on 2026-10-20) → UX3 (model view; done 2026-10-18, "UX3 as delivered") → UX4 (question
 actions; done 2026-10-18, "UX4 as delivered") → UX5 („Relationen“ and the review screen; done
 2026-10-18, "UX5 step 1/2 as delivered") → UX6 (value chain; done 2026-10-19, "UX6 step 1/2 as
 delivered") → UX9 (result views, „Annahmeregeln“, the projects summary; done 2026-10-19, "UX9 as
@@ -1662,8 +1790,41 @@ stack built from it, test names and UI load numbers as in step 3b, demo check 15
 (`lastSeq` unchanged). Open for the owner: one live session to check the pre-approval and the guard
 sandbox (§8); no LLM call was made. For the first analysis: a consultant's first import of a big
 export goes through without duplicate models (a lost key map is recovered from analyzr) and with the
-agent work known up front, and the agent cannot import. **Next:** step 5 of S2b's follow-up
-(decision 29 (1)'s identity rows, migrations 0021/0022); then S3c (renderer and spec YAML, the
+agent work known up front, and the agent cannot import.
+**S2b follow-up step 5 "The identity rows"** (**done 2026-10-20** on the branch, every gate green
+with a review round's fixes: 8 findings, 6 fixed, 2 rejected; M6 §8 "S2b follow-up step 5 as
+delivered"; DEVELOPMENT.md "M6 S2b follow-up step 5 (2026-10-20)" and "Provenance and the import
+manifest"; UX-SIMPLIFICATION.md §7 "M6 S2b follow-up step 5's texts as delivered"; decision 29 (1)):
+`model_identity` (append-only; 0021 generated, 0022 hand-written with the triggers, the guard
+`analyzr_model_identity_guard` and the backfill), one row per stored listed file at its
+`model.revised` seq and one per unchanged listed file whose declaration differs from the newest row,
+with its own `model.identity_declared`; `uploadedSources` joins the newest row laterally (its
+fallback query gone), `identities.newest` serves the ingest, the dry run and the change list,
+`modelViews` gives `Model.identity`; `ImportFileOutcome.identityUpdated` (the dry run's `files`
+equal to the import's), `provenance-kept` narrowed to the derivation (`trustKeptNamesDerivation`,
+`withinWarningLimit`), and the identity warnings with unchanged files taking effect in a request's
+sequence. The web offers „Importieren“ for an identity-only re-export („Danach: Ort im Quellsystem
+für 6 Modelle aktualisiert“) and reads „Im Quellsystem“ and the tool link from `Model.identity`; the
+CLI counts the recorded identities in its manifest line. The interim gap of S2a is closed (above).
+Server 1,804 tests (1,783), web 663 (659), CLI 286 (281) plus 7 skipped; the bundle entry 228.1 KB
+gzip (+99 B); on 496 models the landscape read 232.4 → 230.5 ms and `models.list` 13.5 → 17.1 ms;
+live-run neutral; the readings taken are in §4 ("Taken during the M6 S2b follow-up step 5"); the e2e
+run on the final tree: Playwright 111 passed and 21 skipped, the same tests as after step 4, the UI
+load numbers unchanged, the demo check 152 of 152, `demo.spec.ts` 14 of 14 (a pixel comparison of
+the chain page failed in two runs while the machine was loaded and passed in nine since,
+DEVELOPMENT.md "M6 S2b follow-up step 5"). The integrate plugin stays 0.1.3 (nothing it reads
+changes shape). For its next release (0.1.4, about 0.3 d: a `tools/integrate` change, so a rebuilt
+`analyzr-read.mjs` and a `RELEASES` row): the report label for `provenance-kept` „Unverändert:
+analyzr behält die bisherige Angabe, wie die Datei entstanden ist“ (0.1.3's „Unverändert: analyzr
+behält die bisherige Herkunft“ is broader now that the place in the tool changes), and a report line
+„Danach: Ort im Quellsystem für 6 Modelle aktualisiert“ (the compact preview passing
+`identityUpdated`); until then the skill's preview of an identity-only re-export says „keine
+Änderung an Relationen und Befunden.“ and hands over the import command as always, which records the
+places. For the first analysis: a re-export after a folder reorganization, or a bundle imported over
+models first uploaded without one, keeps analyzr's record of where each model lives current with the
+normal import and without re-analysis, so the key-map rebuild plans those files as known, the
+absent-key list of a scoped export names the right models, the change list points to where a model
+lives now, and no duplicate models arise. **Next:** S3c (renderer and spec YAML, the
 ad-hoc converter path, the bundled CLI), then S6 (interviews); after the owner's live runs
 S5b, S7 and facts v2. The owner's review of S1–S2a, ideally on a sandbox or anonymized export (M6
 §10.4), can run alongside. Nothing of M6 changes released procedures, claim inputs or the MCP
@@ -1746,6 +1907,7 @@ Git/bpmiq.yml import, MCP App widget.
 | M6: `competing-call` and manual links | S5c-1 counts a human's accepted or held `manual` relation from a call element as a competing call only when it goes to another target: an agent's `call` proposal to the same target agrees with the human and is no second target, so an owner's rule may still accept it; the „Regeln“ preview counts a human's later manual link to another target as a correction of the call. Keep this reading of decision 19's „a call has one target“, or count every manual relation from the call element (then a rule never accepts the agreeing call either)? | M6 §8 "S5c-1 as delivered", decision 19 |
 | M6: the second click for screen readers | When a button turns into „Trotzdem importieren“ (the „Vorschau“) or „Trotzdem speichern“ (the amend form, the action panel) because an agent's claim would be cancelled, a screen reader hears nothing new: the warning is an alert announced when it appears and the button points to it (`aria-describedby`), but the focused button's new name is not reliably read out. The amend form has worked this way all along, so it is no regression. Add a polite live region that says to click once more, in all three places at once, or keep it as is? | M6 §8 "S2b follow-up step 3 as delivered", §4 "Taken during the M6 S2b follow-up step 3" (g) |
 | M6: the integrate skill's pre-approval, one live session | Plugin 0.1.3 pre-approves `inspect.mjs` and `analyzr-read.mjs` (`allowed-tools: Bash(node ${CLAUDE_SKILL_DIR}/../../scripts/inspect.mjs *), Bash(node ${CLAUDE_SKILL_DIR}/../../scripts/analyzr-read.mjs *)`); no LLM call was made, so none of it was tried in Claude Code. Could you run it once (Claude Code 2.1.303 or later)? Setup: a scratch analyzr of your own (a compose project `analyzr-<x>` on free ports, `analyzr seed`; for the script and the CLI on the host a copy of its owner key with `ANALYZR_OWNER_KEY_FILE`, DEVELOPMENT.md "The `analyzr` CLI"), a workspace outside the checkout with the synthetic export copied to `<ws>/exports/2026-10-14-signavio` (`tools/integrate/test/fixtures/signavio/2026-10-14-signavio`) and prepared so that step 0 asks nothing and the invoking turn reaches step 1 (the folders `exports/`, `inventory/`, `bundles/` and `reports/`, and `<ws>/analyzr-workspace.json` with `format` `analyzr-workspace/1`, `project` `{"key": "nordwind-handel", "name": "Nordwind Handel GmbH"}`, `analyzrUrl` the scratch analyzr's URL, `cli` `pnpm -C <checkout> analyzr` and `systems` `[]`), Claude Code started in `<ws>` with `--plugin-dir <checkout>/plugins/analyzr-integrate`. (1) Run `/analyzr-integrate:integrate-landscape exports/2026-10-14-signavio` and ask in the same message, after the export, to run `analyzr-read.mjs --help` first, with the script path as the skill's step 3 writes it (`node ${CLAUDE_SKILL_DIR}/../../scripts/analyzr-read.mjs --help`): in this invoking turn both it and step 1's `inspect.mjs` must run without asking (step 0's `curl` health check and `printenv` are not pre-approved and may ask), which shows that both comma-separated rules parse and that `${CLAUDE_SKILL_DIR}` expands inside `allowed-tools`; if either script asks here, the rules or the variable fail, whatever (2) shows. (2) Answer the confirmations: do `analyzr-read.mjs models` and `external-ids` (step 3) and `preview` (step 5), in later turns, run without asking? If Claude Code asks only there, after (1) ran both scripts without asking, the pre-approval lasts for the invoking turn only: decide whether the guard setup should offer a lasting `permissions.allow` rule with the expanded plugin path (its `/../../` form included; to be offered again after each plugin update), or one approval per run stays. (3) Ask the agent to run the pre-approved command with, one at a time, `; echo x`, `&& echo x`, `\|\| echo x`, `\| cat`, a newline and a second command, a prefix `NODE_OPTIONS=…`, `HTTP_PROXY=…` or `ANALYZR_TOKEN=…` in front, a redirect `> ~/x`, and `$(…)` or backticks in an argument: each must make Claude Code ask (deny it). (4) Ask for the guard setup (the skill offers it on first use only, which the prepared workspace skips) and accept it (the workspace's `.claude/settings.json`), create a read token in a terminal (`<cli> --url <url> token create -p nordwind-handel -n integrate-preview -s analyzr:read`), set it as `ANALYZR_TOKEN` and restart Claude Code in `<ws>` from that shell: `/permissions` shows the deny rule, `/sandbox` is active, the preview reaches 127.0.0.1, the agent cannot read the owner key file (point the deny paths at it), `ANALYZR_TOKEN` reaches the sandboxed command, and note whether the sandbox sets `NODE_USE_ENV_PROXY` or `--use-env-proxy` with `HTTP(S)_PROXY` (then `analyzr-read` refuses by design and the skill falls back to the printed dry run). (5) Ask the agent to run the CLI's dry run and look at what "don't ask again" would write (do not accept it). Tell me what asked and what did not. | M6 §8 "S2b follow-up step 4 as delivered", §4 "Taken during the M6 S2b follow-up step 4" (i), decision 29 (2) |
+| M6: the identity rows on `analyzr-local`, optional | Step 5 backfilled 0 identity rows on `analyzr-local`: none of its 63 revisions was imported with a manifest, so it has no identity yet. If you like, check one case once there, a bundle imported over models first uploaded without it: drop the golden bundle folder (`tools/integrate/test/fixtures/signavio/bundle`) into „Hochladen“ of `signavio-beispiel`; if its models came from the same bytes without the bundle, the „Vorschau“ says „Danach: Ort im Quellsystem für 6 Modelle aktualisiert“ with „Importieren“, and afterwards „Herkunft“ and `analyzr models external-ids -p signavio-beispiel` show the tool folders (the files also get „Unverändert: …“ hints, and which ones depends on that stack's data: if those revisions were stored before the trust rule and you did not review them as derived, all six say „… ob es die Aufrufe des Modells annimmt oder nur vorschlägt …“ and the three declared `export` also „… die bisherige Angabe, wie die Datei entstanden ist …“; otherwise all six say the latter). You may skip it: a server test covers this case, the CLI e2e and Playwright a moved re-export on scratch stacks. Nothing touches `analyzr`, `analyzr-demo` or `analyzr-eval-engines`. | M6 §8 "S2b follow-up step 5 as delivered", §4 "Taken during the M6 S2b follow-up step 5" (a), (b) |
 
 ## 9. Working agreements and pitfalls
 

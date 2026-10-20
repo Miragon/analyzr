@@ -202,7 +202,7 @@ export function buildProgram(io: CliIo = processIo): Command {
   models
     .command('external-ids')
     .description(
-      "list each live model's identity in its source system (key, tool id, tool folder) as the import's manifest declared it, to rebuild a key map (any credential)",
+      "list each live model's identity in its source system (key, tool id, tool folder) as the newest import declared it, to rebuild a key map (any credential)",
     )
     .requiredOption('-p, --project <project>', 'project key or id')
     .option('--system <system>', 'only this source system, e.g. signavio')

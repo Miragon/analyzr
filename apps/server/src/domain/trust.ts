@@ -86,6 +86,34 @@ export function trustKeptWarning(
   };
 }
 
+/** The trust reasons a declared derivation gives. */
+const DERIVATION_REASONS: ReadonlySet<TrustReason> = new Set([
+  'converted',
+  'reconstructed',
+  'as-told',
+]);
+
+/**
+ * Whether `trust-kept` names the derivation (M6 S2b follow-up step 5): it
+ * is raised ({@link trustKeptWarning}) and the kept class's reasons and the
+ * request's differ in a derivation (`converted`, `reconstructed`,
+ * `as-told`), so its message says the declared derivation is not taken
+ * either; not when only the credential differs (`agent-upload`), which
+ * says nothing of the derivation.
+ */
+export function trustKeptNamesDerivation(
+  stored: RevisionTrust | null,
+  incoming: RevisionTrust,
+): boolean {
+  if (trustKeptWarning(stored, incoming) === null) return false;
+  const derivations = (t: RevisionTrust | null) =>
+    (t?.reasons ?? [])
+      .filter((r) => DERIVATION_REASONS.has(r))
+      .sort(byCodePoint)
+      .join();
+  return derivations(stored) !== derivations(incoming);
+}
+
 /** What the trust rule knows of a live model. */
 export interface ModelTrust {
   /**

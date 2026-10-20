@@ -385,7 +385,8 @@ function inScope(path: string | undefined, scope: readonly string[] | undefined)
  * (M6 §3.5): only those whose declared tool folder lies in the manifest's
  * `source.scope` (the whole system without one), so a partial export does
  * not list every other area. Information only (decision 7). `sources` are
- * the live models' uploaded sources by key (`uploadedSources`).
+ * the live models' identities by key (`uploadedSources`: system and tool
+ * folder from each model's newest identity row, M6 S2b follow-up step 5).
  */
 export function absentKeys(
   sources: ReadonlyMap<string, RevisionSource>,

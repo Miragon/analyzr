@@ -17,7 +17,8 @@
  * skipped plain XML and sidecars, extractor warnings, the waiting tasks) with
  * `analyzr models list|requeue|delete`, and the manifest of M6 S2a (the
  * integrate plugin's golden bundle under its pinned keys, `analyzr models
- * external-ids`, unchanged bytes, the import warnings).
+ * external-ids`, unchanged bytes, the import warnings), with the identities
+ * unchanged bytes record since M6 S2b follow-up step 5 (moved folders).
  */
 import { execFile } from 'node:child_process';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
@@ -1780,6 +1781,77 @@ describe("the integrate plugin's analyzr-read.mjs against the server (M6 S2b fol
       counts: { models: 6, known: 6, new: 0, moved: 0 },
       written: null,
     });
+  });
+
+  // M6 S2b follow-up step 5 (owner decision 29 (1)), on a project of its own (the tests above
+  // read m6-s2a's folders): the same bytes re-exported from moved folders record the new ones.
+  it('records the moved folders of a re-export with unchanged bytes, which external-ids then gives', async () => {
+    const manifest = JSON.parse(
+      await readFile(path.join(bundle, 'analyzr-import.json'), 'utf8'),
+    ) as { source: Record<string, unknown>; files: { path: string; externalPath: string }[] };
+    const created = await analyzr(['import', bundle, '-p', 'm6-s2b5', '--create']);
+    expect(created.code).toBe(0);
+    expect(created.out).toContain('keys pinned, provenance stored for 6\n');
+    // the customer moved every model below „Verschoben“ and exported again: the same bytes
+    const moved = path.join(dir, 'm6-s2b5-moved');
+    for (const f of manifest.files) {
+      await mkdir(path.dirname(path.join(moved, f.path)), { recursive: true });
+      await writeFile(path.join(moved, f.path), await readFile(path.join(bundle, f.path)));
+    }
+    await writeFile(
+      path.join(moved, 'analyzr-import.json'),
+      JSON.stringify({
+        ...manifest,
+        source: { ...manifest.source, systemVersion: '19.7.0', exportedAt: '2026-11-02T00:00:00Z' },
+        files: manifest.files.map((f) => ({ ...f, externalPath: `Verschoben/${f.externalPath}` })),
+      }),
+    );
+    const line =
+      "manifest: analyzr-import.json (signavio), 6 of 6 files listed: keys pinned, provenance stored for 0; 6 unchanged keep their first revision's, 6 of them record a new tool id, folder or link\n";
+    const seq = await seqOf('m6-s2b5');
+    const dry = await analyzr(['import', moved, '-p', 'm6-s2b5', '--dry-run']);
+    expect(dry.code).toBe(0);
+    expect(dry.out).toContain(line);
+    expect(dry.out).toContain('m6-s2b5: dry run, nothing imported; the import would\n');
+    expect(await seqOf('m6-s2b5')).toBe(seq);
+
+    const r = await analyzr(['import', moved, '-p', 'm6-s2b5']);
+    expect(r.err).toBe('');
+    expect(r.code).toBe(0);
+    expect(r.out).toContain(line);
+    expect(r.out).toContain('m6-s2b5: 6 files, 0 created, 0 revised, 6 unchanged, 0 failed\n');
+    expect(r.out).not.toContain('import warning');
+    // one event per recorded identity, nothing else
+    expect(await seqOf('m6-s2b5')).toBe((seq ?? 0) + 6);
+    const folders = manifest.files.map((f) => `Verschoben/${f.externalPath}`);
+    const ids = await analyzr(['models', 'external-ids', '-p', 'm6-s2b5', '--json']);
+    expect(
+      (JSON.parse(ids.out) as { items: { externalPath: string | null }[] }).items.map(
+        (i) => i.externalPath,
+      ),
+    ).toEqual(folders);
+    // … and so does the integrate skill's read, which rebuilds the key map from it
+    const out = path.join(ws(), 'reports', 'm6-s2b5.external-ids.json');
+    expect(
+      (
+        await plugin('analyzr-read.mjs', [
+          'external-ids',
+          '-p',
+          'm6-s2b5',
+          '--url',
+          server.url,
+          '--json-out',
+          out,
+        ])
+      ).code,
+    ).toBe(0);
+    expect(JSON.parse(await readFile(out, 'utf8'))).toEqual(JSON.parse(ids.out));
+    // the same declaration again records nothing
+    const again = await analyzr(['import', moved, '-p', 'm6-s2b5']);
+    expect(again.out).toContain(
+      'keys pinned, provenance stored for 0; 6 unchanged keep what analyzr had\n',
+    );
+    expect(await seqOf('m6-s2b5')).toBe((seq ?? 0) + 6);
   });
 });
 

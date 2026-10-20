@@ -66,6 +66,31 @@ export const ModelSourceSummary = z
 export type ModelSourceSummary = z.infer<typeof ModelSourceSummary>;
 
 /**
+ * Where a model lives in its source tool, as the newest import declared it
+ * (M6 S2b follow-up step 5, owner decision 29 (1)): the model's newest
+ * identity row, written by every import or PUT whose manifest lists the
+ * file, also for unchanged bytes whose declaration differs; an upload
+ * without a manifest leaves it as it is. REST only. Its `system` is the
+ * newest declaration's; `Model.source` and the revision's `source` describe
+ * the head's bytes, which keep their first provenance.
+ */
+export const ModelIdentity = z
+  .object({
+    system: SourceSystem,
+    /** `null`: the manifest named no tool id. */
+    externalId: z.string().nullable(),
+    /** Folder and name in the tool (declared, not checked); `null` when none. */
+    externalPath: z.string().nullable(),
+    /** An http(s) link into the tool (declared); `null` when none. */
+    url: z.string().nullable(),
+  })
+  .meta({
+    id: 'ModelIdentity',
+    description: 'Where a model lives in its source tool, as the newest import declared it.',
+  });
+export type ModelIdentity = z.infer<typeof ModelIdentity>;
+
+/**
  * The trust class of an uploaded revision (M6 S2c, owner decisions 24.2 and
  * 25.2): `modelled` when the file targets Camunda 7 or 8, a human uploaded
  * it (the owner key or the web) and its manifest declares no derivation or
@@ -145,10 +170,18 @@ export const Model = z
     /** Relations touching the model that are proposed, held, or accepted with `endpointState` ≠ ok. */
     openItems: z.number().int().min(0),
     /**
-     * The head's declared provenance in short (M6 S2a's web parts); `null`
-     * when it declares no source system (a plain upload, a seed).
+     * The head's declared provenance in short (M6 S2a's web parts): the
+     * head's bytes as declared; `null` when it declares no source system (a
+     * plain upload, a seed). Where the model lives in its tool now is
+     * `identity`.
      */
     source: orNull(ModelSourceSummary),
+    /**
+     * Where the model lives in its source tool, as the newest import or PUT
+     * whose manifest listed it declared (M6 S2b follow-up step 5); `null`
+     * when no manifest ever declared the model.
+     */
+    identity: orNull(ModelIdentity),
     /**
      * The trust class of the head's uploaded revision (M6 S2c); for a
      * revision stored before S2c the owner's review (M6 S2c-4, „Vor der
@@ -197,11 +230,14 @@ export const RevisionSource = z
     importer: orNull(ManifestImporter).optional(),
     /** Tool folders the partial export covered (absent: the whole system). */
     scope: z.array(z.string()).optional(),
-    /** The tool's model id (declared, opaque). */
+    /**
+     * The tool's model id (declared, opaque), as this revision was declared;
+     * the model's current one is `Model.identity`.
+     */
     externalId: z.string().optional(),
-    /** Folder and name in the tool (declared, not checked). */
+    /** Folder and name in the tool (declared, not checked), as this revision was declared. */
     externalPath: z.string().optional(),
-    /** A link into the source tool (declared, http(s) only). */
+    /** A link into the source tool (declared, http(s) only), as this revision was declared. */
     url: z.string().optional(),
     /** How the file was derived (declared). */
     derived: ManifestDerived.optional(),
@@ -233,7 +269,7 @@ export const Revision = z
     id: RevisionId,
     modelId: ModelId,
     rev: z.number().int().min(1),
-    /** SHA-256 of the raw bytes; identical uploads are no-ops. */
+    /** SHA-256 of the raw bytes; identical uploads store no revision. */
     contentHash: Sha256Hex,
     /** SHA-256 over the facts; ignores layout. */
     factsHash: Sha256Hex,
@@ -327,13 +363,19 @@ const resultAmendments = {
 };
 
 /**
+ * Most `importWarnings` of one file: one of each code, and never
+ * `provenance-kept` beside the other four (M6 S2b follow-up step 5).
+ */
+export const MAX_IMPORT_WARNINGS = 4;
+
+/**
  * Warnings about the file against its manifest or the landscape (M6 S2a,
  * §3.2, §3.4: `manifest-sha-mismatch`, `external-id-moved`,
  * `external-id-changed`), present only when there is one, so results
  * without a manifest keep their shape. The file was imported all the same.
  */
 const resultImportWarnings = {
-  importWarnings: z.array(ImportWarning).max(4).optional(),
+  importWarnings: z.array(ImportWarning).max(MAX_IMPORT_WARNINGS).optional(),
 };
 
 /**
@@ -390,6 +432,14 @@ export const ImportFileOutcome = z
      * results keep their shape.
      */
     trust: RevisionTrust.optional(),
+    /**
+     * Only on an `unchanged` file the manifest lists whose declared identity
+     * (system, tool id, tool folder, link) differs from the model's newest
+     * one (M6 S2b follow-up step 5): the import records it as the model's
+     * identity, a dry run would. Absent otherwise, so results keep their
+     * shape.
+     */
+    identityUpdated: z.literal(true).optional(),
   })
   .meta({ id: 'ImportFileOutcome', description: 'Outcome of one file of an import.' });
 export type ImportFileOutcome = z.infer<typeof ImportFileOutcome>;

@@ -44,11 +44,12 @@ import {
   parseManifest,
   shaMismatch,
   uploadedSource,
+  withinWarningLimit,
   type IdentityCandidate,
   type ReceivedManifest,
 } from '../provenance.ts';
 import type { Tx } from '../ports.ts';
-import { trustKeptWarning } from '../trust.ts';
+import { trustKeptNamesDerivation, trustKeptWarning } from '../trust.ts';
 import { toModel, toRevision } from '../views.ts';
 import { cutWarning } from '../warnings.ts';
 import type { UseCaseDeps } from './deps.ts';
@@ -127,7 +128,8 @@ function onlyEntry(received: ReceivedManifest, key: string): ManifestFile {
 
 /**
  * The live models' provenance sources before an import (M6 §3.4,
- * `uploadedSources`), for the identity warnings and `provenance-kept`;
+ * `uploadedSources`: the identity from the newest identity row, the rest
+ * from the uploaded head), for the identity warnings and `provenance-kept`;
  * checks `write` as the import will (`read` for a dry run).
  */
 async function uploadedHeads(
@@ -212,14 +214,21 @@ export function modelUseCases(deps: UseCaseDeps, ingestDeps: IngestDeps) {
         const r = preview.results[0];
         if (!r) throw new Error('previewIngest returned no result');
         if (r.outcome === 'failed') throw r.error;
-        const warned = [
-          shaMismatch(entry, contentHash(bytes)),
-          ...(heads
-            ? (identityWarnings([{ key, source, stored: r.outcome !== 'unchanged' }], heads)[0] ??
-              [])
-            : []),
-          r.outcome === 'unchanged' ? trustKeptWarning(r.trust.stored, r.trust.incoming) : null,
-        ].filter((w) => w !== null);
+        const unchanged = r.outcome === 'unchanged';
+        const kept = unchanged ? trustKeptWarning(r.trust.stored, r.trust.incoming) : null;
+        const names = unchanged && trustKeptNamesDerivation(r.trust.stored, r.trust.incoming);
+        const warned = withinWarningLimit(
+          [
+            shaMismatch(entry, contentHash(bytes)),
+            ...(heads
+              ? (identityWarnings(
+                  [{ key, source, stored: !unchanged, trustKeptNamesDerivation: names }],
+                  heads,
+                )[0] ?? [])
+              : []),
+            kept,
+          ].filter((w) => w !== null),
+        );
         return {
           outcome: r.outcome,
           modelKey: key,
@@ -239,11 +248,20 @@ export function modelUseCases(deps: UseCaseDeps, ingestDeps: IngestDeps) {
       const view = await deps.store.read((tx) => tx.models.view(project.id, result.model.id));
       if (!view) throw new Error(`model ${key} not found after ingest`);
       const stored = result.outcome !== 'unchanged';
-      const warnings = [
-        shaMismatch(entry, contentHash(bytes)),
-        ...(heads ? (identityWarnings([{ key, source, stored }], heads)[0] ?? []) : []),
-        stored ? null : trustKeptWarning(result.trust.stored, result.trust.incoming),
-      ].filter((w) => w !== null);
+      const kept = stored ? null : trustKeptWarning(result.trust.stored, result.trust.incoming);
+      const names = !stored && trustKeptNamesDerivation(result.trust.stored, result.trust.incoming);
+      const warnings = withinWarningLimit(
+        [
+          shaMismatch(entry, contentHash(bytes)),
+          ...(heads
+            ? (identityWarnings(
+                [{ key, source, stored, trustKeptNamesDerivation: names }],
+                heads,
+              )[0] ?? [])
+            : []),
+          kept,
+        ].filter((w) => w !== null),
+      );
       return {
         outcome: result.outcome,
         model: toModel(view),
@@ -263,7 +281,9 @@ export function modelUseCases(deps: UseCaseDeps, ingestDeps: IngestDeps) {
      * carry the extractor's warnings ({@link resultWarnings}). A file the
      * manifest lists gets its declared provenance on its uploaded revision,
      * and its warnings against the manifest and the landscape as
-     * `importWarnings` (a checksum mismatch also on a failed file).
+     * `importWarnings` (a checksum mismatch also on a failed file). An
+     * unchanged listed file records the identity it declares when that
+     * differs from the model's (M6 S2b follow-up step 5): `identityUpdated`.
      *
      * @throws {DomainError} `validation-failed` (no or too many files, `invalid-manifest`), `payload-too-large`, policy errors
      */
@@ -356,12 +376,18 @@ export function modelUseCases(deps: UseCaseDeps, ingestDeps: IngestDeps) {
           if (r.amendments) outcome.amendments = r.amendments;
           // Only for a derived model (M6 S2c), so a corpus result keeps its shape.
           if (r.trust.stored?.class === 'derived') outcome.trust = r.trust.stored;
+          const unchanged = r.outcome === 'unchanged';
+          // Only when an unchanged file records a new identity (M6 S2b follow-up step 5).
+          if (unchanged && r.identityUpdated) outcome.identityUpdated = true;
           candidates.push({
             at: a.index,
             candidate: {
               key: a.file.key,
               source: a.file.source,
-              stored: r.outcome !== 'unchanged',
+              stored: !unchanged,
+              // `trust-kept` follows (below); when it names the derivation it speaks for it.
+              trustKeptNamesDerivation:
+                unchanged && trustKeptNamesDerivation(r.trust.stored, r.trust.incoming),
             },
           });
         }
@@ -381,13 +407,14 @@ export function modelUseCases(deps: UseCaseDeps, ingestDeps: IngestDeps) {
           }
         }
       }
-      // Unchanged bytes keep their class (M6 S2c); the warning comes last.
+      // Unchanged bytes keep their class (M6 S2c); the warning comes last, a fifth never.
       for (const [i, a] of accepted.entries()) {
         const r = results[i];
         const outcome = outcomes[a.index];
         if (!r || !outcome || r.outcome !== 'unchanged') continue;
         const kept = trustKeptWarning(r.trust.stored, r.trust.incoming);
-        if (kept) outcome.importWarnings = [...(outcome.importWarnings ?? []), kept];
+        if (kept)
+          outcome.importWarnings = withinWarningLimit([...(outcome.importWarnings ?? []), kept]);
       }
       return { files: outcomes, ...(preview ? { impact: preview.impact } : {}) };
     },
@@ -408,8 +435,8 @@ export function modelUseCases(deps: UseCaseDeps, ingestDeps: IngestDeps) {
 
     /**
      * `GET …/external-ids?system=` (M6 §3.4): the source-system identity of
-     * every live model whose uploaded head declares a system, for rebuilding
-     * a key map.
+     * every live model with a declared identity (its newest identity row, M6
+     * S2b follow-up step 5), for rebuilding a key map.
      */
     async listExternalIds(
       actor: Actor,

@@ -7,8 +7,9 @@ delivered on it on 2026-10-18, §7; the owner's walkthrough the same day, §7 "O
 walkthrough"; UX7, UX8, S2b's „Vorschau“, UX3, UX4 and UX5 delivered the same day, UX6 and
 UX9 on 2026-10-19: every slice delivered; M6 S2c-1's texts on these screens the same day, S2c-2's
 fast path for derived calls, S2c-3's rules for derived calls, S2c-4's „Vor der Vertrauensregel
-angenommen“, S2b follow-up step 3's agent work in the „Vorschau“ and step 3b's size of the
-agents' next run in „Als Nächstes“ on 2026-10-20, §7) ·
+angenommen“, S2b follow-up step 3's agent work in the „Vorschau“, step 3b's size of the
+agents' next run in „Als Nächstes“ and step 5's place in the tool in the „Vorschau“ and „Herkunft“
+on 2026-10-20, §7) ·
 Source: four user-need audits of the web UI on the agent-created scratch stack
 `analyzr-uxaudit` (seeded `nordwind-handel` with its chain and a simulation agent run,
 `signavio-beispiel` from the CLI bundle import, two projects made from the raw synthetic Signavio
@@ -1132,7 +1133,12 @@ delivered"). They fit without a new column, tab or panel:
   analyzr ergänzt (aus r3)“. „Im Quellsystem öffnen“ is also a direct „Mehr“ entry. Only a
   `derived` kind other than `export` becomes a header chip („Konvertiert“, „KI-rekonstruiert“, „Aus
   Interview“), since it changes how far to trust the diagram; no chip for a plain export. The word
-  „Herkunft“ is free for this because relations and placements no longer use it (§4).
+  „Herkunft“ is free for this because relations and placements no longer use it (§4). Since M6
+  S2b's follow-up step 5 „Im Quellsystem“ and „In Signavio öffnen“ (in the panel and in „Mehr“)
+  come from where the newest import says the model lives (`Model.identity`), with the system named
+  when the revision declares none or another („Signavio: Verschoben/…“), while „Aus Signavio 17.2 ·
+  exportiert am 14.10.2026 (angegeben)“ and the rest stay the revision's: they describe the bytes
+  (§7 "M6 S2b follow-up step 5's texts as delivered").
 - **Badges in the models table**: the same derived chip in the name cell (the system repeated in
   its tooltip), never a column; when every model has the same `system`, the muted header subtitle
   „Aus Signavio · exportiert am 14.10.2026“ instead (§3.1 item 3). Both need each model's
@@ -1193,7 +1199,10 @@ delivered"). They fit without a new column, tab or panel:
   fehlen in der Zahl.“ (§7 "M6 S2b follow-up step 3's texts as delivered"), since step 3b „…; die
   ganze Zahl steht nach dem Import unter „Als Nächstes“.“, where the waiting text then names it
   („5 Modelle warten auf den Agenten · etwa 7.300 mögliche Relationen“; §7 "M6 S2b follow-up step
-  3b's texts as delivered").
+  3b's texts as delivered"). Since step 5 „Importieren“ is also offered when unchanged files would
+  record a new place in the tool (a re-export after a folder move), and when no file would be
+  created or revised the impact line says so: „Danach: Ort im Quellsystem für 6 Modelle
+  aktualisiert“ (§7 "M6 S2b follow-up step 5's texts as delivered").
 - **Deletion impact** (S2b): stays in `analyzr models delete`; the web has no model deletion. If
   the owner wants it, it goes into the model view's „Mehr“ as „Modell löschen …“ with the impact as
   the confirmation dialog, in the chain save's pattern (only non-zero lines, „Weiter bearbeiten“ /
@@ -2378,6 +2387,49 @@ the suffix beside „Agent verbinden“: 22 words and 4 controls (≤ 40, ≤ 5)
 M6 S2b follow-up step 3b"): „etwa“ from 2 on, the suffix without „zu beurteilen“, and the suffix
 beside „Agent verbinden“. Not verified: a real phone, a screen reader, the suffix beside „Agent
 starten“ in a browser (a web unit test covers it).
+
+**M6 S2b follow-up step 5's texts as delivered** (2026-10-20, on the branch, every gate green; M6 §8
+"S2b follow-up step 5 as delivered", DEVELOPMENT.md "M6 S2b follow-up step 5"). analyzr now records
+where a model lives in the tool also when a re-export brings unchanged bytes (owner decision 29
+(1)). That reaches „Hochladen“'s „Vorschau“ (§6) as one short text and the button „Importieren“ in
+one more case, and „Herkunft“ (§6) as other values in its existing lines; no new control, nothing
+else on the screens changes. So a re-export after a folder move, or a bundle dropped over models
+first uploaded without it, is one import away from the current places, with a text that says what
+„Importieren“ does. Texts in `src/lib/upload.ts` (`identityUpdateText`),
+`components/upload-panel.tsx` and `src/lib/provenance.ts`.
+
+- **The „Vorschau“** of unchanged files whose bundle records a new place in the tool: „Vorschau: 6
+  unverändert“, „Danach: Ort im Quellsystem für 6 Modelle aktualisiert“ („für 1 Modell“; German
+  numbers, „1.214 Modelle“), then „Importieren“ (before, a preview without a created or revised file
+  offered no „Importieren“, so the web could not record such a re-export). The part stands only when
+  no file would be created or revised; beside one the places go along unnamed and the agent work
+  keeps the line. Unchanged files with the same places keep „Danach: keine Änderung an Relationen
+  und Befunden.“ and no „Importieren“.
+- **After „Importieren“**: unchanged, „Kein Modell importiert · 6 unverändert“ and the toast „6
+  Dateien importiert“ (the review round asked to add the places to the headline; not taken, HANDOFF
+  §4).
+- **„Herkunft“**: „Im Quellsystem: Verschoben/Gemeinsame Dokumente/Logistik/Versand“ from the newest
+  import, „Im Quellsystem: Signavio: Gemeinsame Dokumente/Logistik/Versand“ when the revision
+  declares no system (a model first uploaded without its bundle) or another one; no such line when
+  the newest import names no folder; „In Signavio öffnen“ from the newest import's link, in „Mehr“
+  now without waiting for the revisions. „Aus Signavio 19.6.0 · exportiert am 14.10.2026
+  (angegeben)“, „Entstanden“, „Hochgeladen“, the losses and „Aufrufe“ stay the revision's, so after
+  a re-export with unchanged bytes „Quelle“ still names the first export.
+- **`provenance-kept`** in a file's disclosure, now only for another declared derivation:
+  „Unverändert: analyzr behält die bisherige Angabe, wie die Datei entstanden ist. Eine Korrektur
+  braucht geänderte Dateien.“ (before: „Unverändert: analyzr behält die Herkunft, die es für das
+  Modell schon hat. …“, which the recorded place now contradicts). A plain moved folder shows no
+  hint any more.
+
+`analyzr import`'s manifest line says the same in English (`6 unchanged keep their first revision's,
+6 of them record a new tool id, folder or link`; M6 §8). The integrate skill's report (plugin 0.1.3)
+keeps „Danach: keine Änderung an Relationen und Befunden.“ and „Unverändert: analyzr behält die
+bisherige Herkunft“ until its next release (HANDOFF §7 "M6"). The UI load guard: every screen as
+after step 4 (the „Vorschau“'s new part appears only for an identity-only re-export, and „Herkunft“
+is a dialog the
+guard does not measure). Open for the owner (HANDOFF §4 "Taken during the M6 S2b follow-up step 5"):
+„Importieren“ with its text, the headline without the places, „Herkunft“'s system in the value, and
+the `provenance-kept` text, which names no rule. Not verified: a real phone, a screen reader.
 
 ## 8. Keep as is
 

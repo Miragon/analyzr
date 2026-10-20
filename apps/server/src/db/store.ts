@@ -16,6 +16,7 @@ import {
   type ModelAmendmentId,
   type ModelFacts,
   type ModelId,
+  type ModelIdentity,
   type ModelStage,
   type NoLinkId,
   type OpenQuestionAnswerId,
@@ -90,7 +91,7 @@ import type {
   ValueChainStepRecord,
 } from '../domain/ports.ts';
 import { compareStoredFacts } from '../domain/fact-order.ts';
-import { sourceSummary } from '../domain/provenance.ts';
+import { sourceSummary, withIdentity } from '../domain/provenance.ts';
 import { trustSummary } from '../domain/trust.ts';
 import type { Db } from './client.ts';
 import * as s from './schema.ts';
@@ -478,6 +479,55 @@ const toRuleRevision = (r: RuleRevisionRow, handle: string): StoredAutoAcceptRul
   };
 };
 
+/** The four identity columns of a query that joins {@link newestIdentityOf}; all null without a row. */
+interface IdentityColumns {
+  identitySystem: string | null;
+  identityExternalId: string | null;
+  identityExternalPath: string | null;
+  identityUrl: string | null;
+}
+
+/** A model's newest identity row from the columns {@link newestIdentityOf} gives; `null` without one. */
+const toIdentity = (r: IdentityColumns): ModelIdentity | null =>
+  r.identitySystem === null
+    ? null
+    : {
+        system: r.identitySystem,
+        externalId: r.identityExternalId,
+        externalPath: r.identityExternalPath,
+        url: r.identityUrl,
+      };
+
+/**
+ * The newest identity row of the outer query's `model` row (M6 S2b
+ * follow-up step 5), for a `LEFT JOIN LATERAL … ON true`: one primary-key
+ * lookup per model (`model_identity_pk` ends in `seq`), so a single model's
+ * read never sorts the project's rows.
+ */
+function newestIdentityOf(db: Conn) {
+  return db
+    .select({
+      identitySystem: sql<string>`${s.modelIdentity.system}`.as('identity_system'),
+      identityExternalId: sql<string | null>`${s.modelIdentity.externalId}`.as(
+        'identity_external_id',
+      ),
+      identityExternalPath: sql<string | null>`${s.modelIdentity.externalPath}`.as(
+        'identity_external_path',
+      ),
+      identityUrl: sql<string | null>`${s.modelIdentity.url}`.as('identity_url'),
+    })
+    .from(s.modelIdentity)
+    .where(
+      and(
+        eq(s.modelIdentity.projectId, s.model.projectId),
+        eq(s.modelIdentity.modelId, s.model.id),
+      ),
+    )
+    .orderBy(desc(s.modelIdentity.seq))
+    .limit(1)
+    .as('newest_identity');
+}
+
 // ------------------------------------------------------------- repositories
 
 function repos(db: Conn): Tx {
@@ -485,6 +535,7 @@ function repos(db: Conn): Tx {
     eq(s.model.projectId, s.modelRevision.projectId),
     eq(s.model.headRevisionId, s.modelRevision.id),
   );
+  const newestIdentity = newestIdentityOf(db);
 
   // An amended head declares no provenance of its own: its uploaded revision `upstream` does.
   const upstreamRevision = alias(s.modelRevision, 'upstream_revision');
@@ -505,6 +556,10 @@ function repos(db: Conn): Tx {
           review: s.revisionTrustReview.class,
           stage: s.modelPipeline.stage,
           openItems: s.modelPipeline.openItems,
+          identitySystem: newestIdentity.identitySystem,
+          identityExternalId: newestIdentity.identityExternalId,
+          identityExternalPath: newestIdentity.identityExternalPath,
+          identityUrl: newestIdentity.identityUrl,
         })
         .from(s.model)
         .innerJoin(s.modelRevision, liveHead)
@@ -534,23 +589,27 @@ function repos(db: Conn): Tx {
           ),
         )
         .innerJoin(s.modelPipeline, eq(s.modelPipeline.modelId, s.model.id))
+        // Where the model lives in its source tool (M6 S2b follow-up step 5).
+        .leftJoinLateral(newestIdentity, sql`true`)
         .where(and(eq(s.model.projectId, projectId), isNull(s.model.deletedSeq), ...where))
     );
   }
 
-  const toView = (r: {
-    model: ModelRow;
-    rev: number;
-    engine: ModelView['engine'];
-    processes: ModelView['processes'];
-    source: RevisionSource;
-    upstreamSource: RevisionSource | null;
-    upstreamEngine: ModelView['engine'];
-    uploaderKind: PrincipalKind;
-    review: TrustClass | null;
-    stage: string;
-    openItems: number;
-  }): ModelView => ({
+  const toView = (
+    r: {
+      model: ModelRow;
+      rev: number;
+      engine: ModelView['engine'];
+      processes: ModelView['processes'];
+      source: RevisionSource;
+      upstreamSource: RevisionSource | null;
+      upstreamEngine: ModelView['engine'];
+      uploaderKind: PrincipalKind;
+      review: TrustClass | null;
+      stage: string;
+      openItems: number;
+    } & IdentityColumns,
+  ): ModelView => ({
     ...toModel(r.model),
     headRevisionId: r.model.headRevisionId as RevisionId,
     headRev: r.rev,
@@ -559,6 +618,7 @@ function repos(db: Conn): Tx {
     openItems: r.openItems,
     processes: r.processes,
     source: sourceSummary(r.source, r.upstreamSource),
+    identity: toIdentity(r),
     trust: trustSummary({
       head: r.source,
       upstream: r.upstreamSource,
@@ -1082,13 +1142,18 @@ function repos(db: Conn): Tx {
         return rows.map((r) => r.contentHash);
       },
       async uploadedSources(projectId) {
-        // An amended head's provenance lives on its uploaded revision (`source.upstream`).
+        // An amended head's provenance lives on its uploaded revision (`source.upstream`); where
+        // the model lives in its source tool on its newest identity row (M6 S2b follow-up step
+        // 5), which an upload without a manifest leaves as it was.
         const rows = await db
           .select({
             key: s.model.key,
-            modelId: s.model.id,
             head: s.modelRevision.source,
             uploaded: uploadedRevision.source,
+            identitySystem: newestIdentity.identitySystem,
+            identityExternalId: newestIdentity.identityExternalId,
+            identityExternalPath: newestIdentity.identityExternalPath,
+            identityUrl: newestIdentity.identityUrl,
           })
           .from(s.model)
           .innerJoin(s.modelRevision, liveHead)
@@ -1100,37 +1165,9 @@ function repos(db: Conn): Tx {
               sql`${uploadedRevision.id} = ${s.modelRevision.source}->'upstream'->>'revisionId'`,
             ),
           )
+          .leftJoinLateral(newestIdentity, sql`true`)
           .where(and(eq(s.model.projectId, projectId), isNull(s.model.deletedSeq)));
-        const sources = new Map(rows.map((r) => [r.key, r.uploaded ?? r.head]));
-        // Stored without a manifest: the newest revision a manifest declared keeps the
-        // identity (an upload without one never erases it).
-        const undeclared = rows
-          .filter((r) => (r.uploaded ?? r.head).system === undefined)
-          .map((r) => r.modelId);
-        if (undeclared.length === 0) return sources;
-        const declared = await db
-          .selectDistinctOn([s.modelRevision.modelId], {
-            key: s.model.key,
-            source: s.modelRevision.source,
-          })
-          .from(s.modelRevision)
-          .innerJoin(
-            s.model,
-            and(
-              eq(s.model.projectId, s.modelRevision.projectId),
-              eq(s.model.id, s.modelRevision.modelId),
-            ),
-          )
-          .where(
-            and(
-              eq(s.modelRevision.projectId, projectId),
-              inArray(s.modelRevision.modelId, undeclared),
-              sql`${s.modelRevision.source}->>'system' is not null`,
-            ),
-          )
-          .orderBy(s.modelRevision.modelId, desc(s.modelRevision.rev));
-        for (const d of declared) sources.set(d.key, d.source);
-        return sources;
+        return new Map(rows.map((r) => [r.key, withIdentity(r.uploaded ?? r.head, toIdentity(r))]));
       },
       async headTrustRows(projectId) {
         // An amended head's uploaded revision (`source.upstream`) carries the class and signals,
@@ -2589,6 +2626,42 @@ function repos(db: Conn): Tx {
     trustReviews: {
       async insert(rows) {
         if (rows.length > 0) await db.insert(s.revisionTrustReview).values([...rows]);
+      },
+    },
+
+    identities: {
+      async insert(row) {
+        await db.insert(s.modelIdentity).values(row);
+      },
+      async newest(projectId, modelIds) {
+        if (modelIds.length === 0) return new Map();
+        const rows = await db
+          .selectDistinctOn([s.modelIdentity.modelId], {
+            modelId: s.modelIdentity.modelId,
+            system: s.modelIdentity.system,
+            externalId: s.modelIdentity.externalId,
+            externalPath: s.modelIdentity.externalPath,
+            url: s.modelIdentity.url,
+          })
+          .from(s.modelIdentity)
+          .where(
+            and(
+              eq(s.modelIdentity.projectId, projectId),
+              inArray(s.modelIdentity.modelId, [...new Set(modelIds)]),
+            ),
+          )
+          .orderBy(s.modelIdentity.modelId, desc(s.modelIdentity.seq));
+        return new Map(
+          rows.map((r): [ModelId, ModelIdentity] => [
+            r.modelId as ModelId,
+            {
+              system: r.system,
+              externalId: r.externalId,
+              externalPath: r.externalPath,
+              url: r.url,
+            },
+          ]),
+        );
       },
     },
 

@@ -421,6 +421,7 @@ export type Model = {
   stage: ModelStage;
   openItems: number;
   source: ModelSourceSummary | null;
+  identity: ModelIdentity | null;
   trust: ModelTrustSummary | null;
   updatedAt: Timestamp;
 };
@@ -474,6 +475,16 @@ export type DerivedKind = 'export' | 'converted' | 'reconstructed' | 'as-told';
  * ISO 8601 date-time of the export (declared).
  */
 export type ExportedAt = string;
+
+/**
+ * Where a model lives in its source tool, as the newest import declared it.
+ */
+export type ModelIdentity = {
+  system: SourceSystem;
+  externalId: string | null;
+  externalPath: string | null;
+  url: string | null;
+};
 
 /**
  * A model's trust class in short.
@@ -982,6 +993,7 @@ export type ImportFileOutcome = {
   amendments?: AmendmentCounts;
   importWarnings?: Array<ImportWarning>;
   trust?: RevisionTrust;
+  identityUpdated?: true;
 };
 
 export type ImportModelsBody = {

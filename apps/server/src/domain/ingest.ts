@@ -25,6 +25,13 @@
  * proposals of unique calls from derived models it recorded (M6 S2c-3, the
  * fifth auto-accept write path, `auto-accept/apply.ts`
  * `autoAcceptDerivedCalls`), caused by the request's actor.
+ *
+ * The identity rows (M6 S2b follow-up step 5, owner decision 29 (1)): a
+ * file the manifest lists records where its model lives in the source tool
+ * (`model_identity`, {@link recordIdentity}): with every uploaded revision it
+ * stores, and for unchanged bytes when the declaration differs from the
+ * model's newest row, with an event of its own; nothing else changes for
+ * them (no revision, no facts, no recompute, no task).
  */
 import { createHash } from 'node:crypto';
 
@@ -65,6 +72,7 @@ import {
 import { linkJudgements, noLinkJudgement } from './judgements.ts';
 import { touchNoLinkRelations } from './no-links.ts';
 import { evaluate, policy, roleIn } from './policy.ts';
+import { declaredIdentity, identityUpdate, isDeclared } from './provenance.ts';
 import { needsDoneTask, planQueue } from './queue-plan.ts';
 import { byRelation, naturalKey } from './relation-state.ts';
 import type {
@@ -117,6 +125,11 @@ export type IngestResult =
       amendments?: AmendmentCounts;
       /** The trust of the model's uploaded revision afterwards, and what this request would give it. */
       trust: FileTrust;
+      /**
+       * Only for `unchanged`: the file's manifest entry recorded a new
+       * identity of the model (M6 S2b follow-up step 5, {@link recordIdentity}).
+       */
+      identityUpdated?: true;
     }
   | { outcome: 'failed'; error: DomainError };
 
@@ -141,7 +154,7 @@ export interface IngestDeps {
   expectedPlacementProcedure: () => DeclaredProcedure;
 }
 
-/** sha256 (hex) of the raw bytes: identical uploads are no-ops. */
+/** sha256 (hex) of the raw bytes: identical uploads store no revision. */
 export function contentHash(bytes: Uint8Array): string {
   return createHash('sha256').update(bytes).digest('hex');
 }
@@ -189,9 +202,10 @@ interface Seen {
 
 /**
  * Ingests `files` into the project. Files are processed in order; a file
- * whose bytes equal its model's head is `unchanged` (no revision, no event);
- * a file the extractor rejects is `failed` and does not affect the others.
- * The rule tier runs once for all changes.
+ * whose bytes equal its model's head is `unchanged` (no revision; an event
+ * only for a new declared identity, {@link recordIdentity}); a file the
+ * extractor rejects is `failed` and does not affect the others. The rule
+ * tier runs once for all changes.
  *
  * @throws {DomainError} from the policy (`write` on the project)
  */
@@ -453,11 +467,71 @@ export function amendedSource(
 }
 
 /**
+ * Records the identity a file the manifest lists declares (M6 S2b follow-up
+ * step 5, decision 29 (1)): with a new uploaded revision always, at its
+ * `model.revised` seq; for unchanged bytes only when it differs from the
+ * model's newest row, with a `model.identity_declared` event of its own
+ * (model, key, revision, system, tool id and manifest checksum; the folder
+ * and the link stay in the row). A file the manifest does not list declares
+ * nothing and leaves the identity as it is.
+ *
+ * @returns true when it recorded the identity of unchanged bytes
+ */
+async function recordIdentity(
+  tx: Tx,
+  actor: Actor,
+  projectId: ProjectId,
+  file: Pick<IngestFile, 'key' | 'source'>,
+  modelId: ModelId,
+  revision: Pick<RevisionRecord, 'id' | 'seq'>,
+  kind: 'revision' | 'unchanged',
+): Promise<boolean> {
+  if (!isDeclared(file.source)) return false;
+  const declared =
+    kind === 'revision'
+      ? declaredIdentity(file.source)
+      : identityUpdate(
+          (await tx.identities.newest(projectId, [modelId])).get(modelId),
+          file.source,
+        );
+  if (declared === null) return false;
+  const seq =
+    kind === 'revision'
+      ? revision.seq
+      : await tx.events.append(projectId, {
+          type: 'model.identity_declared',
+          principalId: actor.principalId,
+          clientId: actor.clientId,
+          subjectRef: file.key,
+          payload: {
+            modelId,
+            modelKey: file.key,
+            revisionId: revision.id,
+            system: declared.system,
+            externalId: declared.externalId,
+            manifestSha256: file.source.manifestSha256 ?? null,
+          },
+        });
+  await tx.identities.insert({
+    projectId,
+    modelId,
+    seq,
+    revisionId: revision.id,
+    kind,
+    ...declared,
+    principalId: actor.principalId,
+    clientId: actor.clientId,
+  });
+  return kind === 'unchanged';
+}
+
+/**
  * Stores one file as the model's new head unless its bytes are known (the
  * head's, its uploaded revision's or an amended revision's). For a model
  * with live amendments the file is the uploaded revision, and the
  * amendments the plan marks `applied` make an amended head on top of it;
  * when none applies, the uploaded revision is the head and carries the plan.
+ * A file the manifest lists records its identity ({@link recordIdentity}).
  *
  * @returns the outcome and the `facts_hash` of the previous live head (`null`
  *   for a new or revived model)
@@ -489,6 +563,16 @@ async function storeFile(
       ? await tx.revisions.findInProject(projectId, existing.id, upstream.revisionId)
       : previous;
     if (!uploaded) throw new Error(`uploaded revision of ${f.key} missing`);
+    // Their identity goes by the manifest (M6 S2b follow-up step 5); everything else stays.
+    const identityUpdated = await recordIdentity(
+      tx,
+      actor,
+      projectId,
+      f,
+      existing.id,
+      uploaded,
+      'unchanged',
+    );
     return {
       result: {
         outcome: 'unchanged',
@@ -500,6 +584,7 @@ async function storeFile(
           stored: await keptTrust(tx, projectId, uploaded),
           incoming: trustOf(uploaded.engine, f.source),
         },
+        ...(identityUpdated ? { identityUpdated: true as const } : {}),
       },
       previousFactsHash,
     };
@@ -544,6 +629,8 @@ async function storeFile(
     },
     name,
   });
+  // The uploaded revision's identity row, before an amended head (which declares none).
+  await recordIdentity(tx, actor, projectId, f, modelId, uploaded, 'revision');
   const revision =
     derivation && amended
       ? await storeHead(tx, deps.analysis, actor, projectId, {
@@ -752,6 +839,8 @@ export type PreviewResult =
       warnings: ExtractWarning[];
       amendments?: AmendmentCounts;
       trust: FileTrust;
+      /** Only for `unchanged`: the ingest would record the file's declared identity (M6 S2b follow-up step 5). */
+      identityUpdated?: true;
     }
   | { outcome: 'failed'; error: DomainError };
 
@@ -971,7 +1060,10 @@ function incomingTrust(
  * relations tasks (S2b follow-up) are planned from the open tasks, and for a
  * model without one from its latest done task, read in the same snapshot;
  * with a live value chain the impact also names the accepted placements
- * whose process changes and the placement task (`readChain`).
+ * whose process changes and the placement task (`readChain`). An unchanged
+ * file says whether the ingest would record its declared identity
+ * (`identityUpdated`, M6 S2b follow-up step 5), compared with the same rows
+ * by the same helper as the ingest.
  *
  * @throws {DomainError} from the policy (`read` on the project)
  */
@@ -1025,6 +1117,11 @@ export async function previewIngest(
       head: await readHead(tx, project.id),
       tasks,
       sources: await tx.revisions.uploadedSources(project.id),
+      // The newest identity rows an unchanged file compares with (M6 S2b follow-up step 5).
+      identities: await tx.identities.newest(
+        project.id,
+        seen.flatMap((x) => (x.model ? [x.model.id] : [])),
+      ),
       auto: await derivedCallRulesFor(tx, actor, project),
       chain: await readChain(tx, project.id, deps.expectedPlacementProcedure()),
     };
@@ -1039,6 +1136,7 @@ export async function previewIngest(
     if (!s) throw new Error('previewIngest: a file without its read');
     if (s.previous && s.known?.has(hashes[i] ?? '')) {
       const kept = read.head.trust.get(f.key);
+      const identity = s.model ? identityUpdate(read.identities.get(s.model.id), f.source) : null;
       results.push({
         outcome: 'unchanged',
         warnings: [],
@@ -1047,6 +1145,7 @@ export async function previewIngest(
           stored: kept?.trust ?? null,
           incoming: trustOf(kept?.engine ?? s.previous.engine, f.source),
         },
+        ...(identity === null ? {} : { identityUpdated: true as const }),
       });
       continue;
     }

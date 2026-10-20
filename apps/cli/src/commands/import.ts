@@ -71,8 +71,10 @@ export interface ManifestSummary {
   /** Listed files that became a new revision (`created`, `revised`): their provenance was stored. */
   stored: number;
   /**
-   * Listed files that were `unchanged`: identical bytes keep the provenance
-   * analyzr already has (M6 §3.3); `provenance-kept` says where it differs.
+   * Listed files that were `unchanged`: identical bytes keep their first
+   * revision's provenance (M6 §3.3); the identity they declare is recorded
+   * when it differs (M6 S2b follow-up step 5, `identityUpdated` on the
+   * file); `provenance-kept` says when the declared derivation differs.
    */
   kept: number;
   /** BPMN files picked up that the manifest does not list: their keys come from their paths. */
@@ -466,20 +468,34 @@ export function importWarningCounts(summary: ImportSummary): { total: number; te
 }
 
 /**
- * `provenance stored for 6` or `provenance stored for 0; 6 unchanged keep
- * what analyzr had`: what became of the declared provenance (identical bytes
- * keep their first revision's, M6 §3.3).
+ * `provenance stored for 6`, `provenance stored for 0; 6 unchanged keep
+ * what analyzr had`, or with identities recorded for unchanged bytes (M6 S2b
+ * follow-up step 5, the files with `identityUpdated`) `provenance stored for
+ * 2; 4 unchanged keep their first revision's, 3 of them record a new tool
+ * id, folder or link`: what became of the declared provenance (identical bytes
+ * keep their first revision's, M6 §3.3). A dry run says what the import
+ * would do.
  */
-function provenanceText(m: ManifestSummary): string {
-  const kept =
-    m.kept > 0 ? `; ${m.kept} unchanged keep${m.kept === 1 ? 's' : ''} what analyzr had` : '';
-  return `provenance stored for ${m.stored}${kept}`;
+function provenanceText(m: ManifestSummary, recorded: number): string {
+  const stored = `provenance stored for ${m.stored}`;
+  if (m.kept === 0) return stored;
+  if (recorded === 0)
+    return `${stored}; ${m.kept} unchanged keep${m.kept === 1 ? 's' : ''} what analyzr had`;
+  const keep =
+    m.kept === 1
+      ? "1 unchanged keeps its first revision's and records"
+      : `${m.kept} unchanged keep their first revision's, ${recorded} of them record${recorded === 1 ? 's' : ''}`;
+  return `${stored}; ${keep} a new tool id, folder or link`;
 }
 
-/** The lines about the manifest: what it declares, files it does not list, files it names that are missing. */
-function manifestLines(m: ManifestSummary): string[] {
+/**
+ * The lines about the manifest: what it declares (with `recorded`, the files
+ * whose identity was recorded for unchanged bytes), files it does not list,
+ * files it names that are missing.
+ */
+function manifestLines(m: ManifestSummary, recorded: number): string[] {
   const lines = [
-    `manifest: ${IMPORT_MANIFEST_FILE} (${m.system}), ${m.listed} of ${m.listed + m.unlisted.length} files listed: keys pinned, ${provenanceText(m)}`,
+    `manifest: ${IMPORT_MANIFEST_FILE} (${m.system}), ${m.listed} of ${m.listed + m.unlisted.length} files listed: keys pinned, ${provenanceText(m, recorded)}`,
   ];
   const sample = (paths: readonly string[]) =>
     `${paths.slice(0, 5).join(', ')}${paths.length > 5 ? `, … ${paths.length - 5} more` : ''}`;
@@ -602,7 +618,8 @@ function skippedWhy(s: SkippedFile): string {
  * also lists every warning entry the result carries (≤ 20 per file).
  */
 export function formatImport(summary: ImportSummary, opts: { verbose?: boolean } = {}): string {
-  const lines: string[] = summary.manifest ? manifestLines(summary.manifest) : [];
+  const recorded = summary.files.filter((f) => f.identityUpdated === true).length;
+  const lines: string[] = summary.manifest ? manifestLines(summary.manifest, recorded) : [];
   for (const f of summary.files) {
     const name = f.modelKey ?? f.path;
     const why = f.problem

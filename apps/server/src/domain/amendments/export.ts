@@ -16,7 +16,7 @@ import {
   type AmendmentExportFormat,
   type AmendmentFilter,
   type ModelAmendment,
-  type RevisionSource,
+  type ModelIdentity,
 } from '@analyzr/contracts';
 import { quoteDe } from '@analyzr/relations';
 
@@ -30,8 +30,9 @@ export interface ChangeListTarget {
 }
 
 /**
- * Where a model lives in its source tool, as its uploaded revision declares
- * it (M6 S2a, §3.3: the manifest's system, tool folder and link).
+ * Where a model lives in its source tool, as the model's newest identity row
+ * declares it (M6 S2a, §3.3; M6 S2b follow-up step 5: the manifest's system,
+ * tool folder and link).
  */
 export interface ChangeListOrigin {
   system: string | null;
@@ -40,11 +41,11 @@ export interface ChangeListOrigin {
   url: string | null;
 }
 
-/** The origin of a model from its uploaded revision's `source`; `null` without a declared system or folder. */
-export function originOf(source: RevisionSource | undefined): ChangeListOrigin | null {
-  if (!source || (source.system === undefined && source.externalPath === undefined)) return null;
-  const url = source.url !== undefined && /^https?:\/\//i.test(source.url) ? source.url : null;
-  return { system: source.system ?? null, externalPath: source.externalPath ?? null, url };
+/** The origin of a model from its newest identity row; `null` without one. */
+export function originOf(identity: ModelIdentity | undefined): ChangeListOrigin | null {
+  if (!identity) return null;
+  const url = identity.url !== null && /^https?:\/\//i.test(identity.url) ? identity.url : null;
+  return { system: identity.system, externalPath: identity.externalPath, url };
 }
 
 /** A link destination safe in Markdown: spaces, angle brackets and parentheses percent-encoded. */
@@ -59,7 +60,7 @@ function markdownUrl(url: string): string {
 export interface ChangeListEntry {
   amendment: ModelAmendment;
   modelName: string | null;
-  /** Where the model lives in its source tool (M6 S2a), when its uploaded revision declares it. */
+  /** Where the model lives in its source tool (M6 S2a), as its newest identity row declares it. */
   origin?: ChangeListOrigin;
   /** „Prozess „Auftragsabwicklung““ or „Pool „Kunde““; `null` for a message or signal. */
   place: string | null;

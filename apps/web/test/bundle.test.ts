@@ -139,7 +139,12 @@ const BUDGET = 40 * 1024;
  * click the amend form now shares. 227.9 KB after its step 3b: the size of
  * the agents' next run beside the agent row of „Als Nächstes“ and in the
  * waiting text after an import (`pairsToJudgeText`, the summary's query on
- * „Übersicht“ and „Hochladen“).
+ * „Übersicht“ and „Hochladen“). 228.1 KB after its step 5 (233,528 B, +99 B
+ * over the same build of step 3b's web sources, 233,429 B): „Importieren“
+ * and the „Vorschau“'s „Ort im Quellsystem … aktualisiert“ for unchanged
+ * files whose bundle records a new place in the tool, and the place and
+ * link of „Herkunft“ and „Mehr“ from `Model.identity` (`lib/provenance.ts`;
+ * both dialogs stay lazy).
  */
 const ENTRY_CEILING = 240 * 1024;
 

@@ -1,6 +1,7 @@
 import type {
   ImportWarning,
   Model,
+  ModelIdentity,
   OpenQuestion,
   ModelSourceSummary,
   Revision,
@@ -121,7 +122,7 @@ export function trustReasonLabel(reason: string): string {
 }
 
 /** A link into the source tool, only http(s) (declared, never followed by analyzr). */
-export function toolUrl(url: string | undefined): string | null {
+export function toolUrl(url: string | null | undefined): string | null {
   if (!url) return null;
   try {
     const parsed = new URL(url);
@@ -144,11 +145,16 @@ export interface ProvenanceLine {
  * uploaded it, for an amended head that analyzr amended it, and for a
  * derived revision that its unique calls are only proposed (M6 S2c; none
  * for a modelled one or one stored before). `declared` is the revision that
- * carries the provenance: the head, or for an amended head its upstream.
+ * carries the bytes' provenance: the head, or for an amended head its
+ * upstream. Where the model lives in the tool is the model's `identity`, as
+ * the newest import declared it (M6 S2b follow-up step 5), with its system
+ * named when the revision declares none or another one („Signavio: …“); the
+ * revision's folder only for a model without one.
  */
 export function provenanceLines(
   head: Pick<Revision, 'rev' | 'source'>,
   declared: Pick<Revision, 'rev' | 'source'> | null,
+  identity: ModelIdentity | null,
 ): ProvenanceLine[] {
   const s: RevisionSource | null = declared?.source ?? null;
   const lines: ProvenanceLine[] = [];
@@ -162,7 +168,13 @@ export function provenanceLines(
       text: `Aus ${systemLabel(s.system)}${version}${date} (angegeben)`,
     });
   }
-  if (s?.externalPath) lines.push({ label: 'Im Quellsystem', text: s.externalPath });
+  const place = identity
+    ? identity.externalPath &&
+      (s?.system === identity.system
+        ? identity.externalPath
+        : `${systemLabel(identity.system)}: ${identity.externalPath}`)
+    : s?.externalPath;
+  if (place) lines.push({ label: 'Im Quellsystem', text: place });
   const chip = s?.derived ? DERIVED_CHIPS[s.derived.kind] : undefined;
   if (s?.derived && chip)
     lines.push({
@@ -219,7 +231,7 @@ export function importWarningText(w: ImportWarning): string {
     case 'manifest-sha-mismatch':
       return 'Die Datei passt nicht zur Prüfsumme im Bundle; vermutlich wurde sie nach dem Umwandeln geändert. Importiert ist sie trotzdem.';
     case 'provenance-kept':
-      return 'Unverändert: analyzr behält die Herkunft, die es für das Modell schon hat. Eine Korrektur braucht geänderte Dateien.';
+      return 'Unverändert: analyzr behält die bisherige Angabe, wie die Datei entstanden ist. Eine Korrektur braucht geänderte Dateien.';
     case 'trust-kept':
       return 'Unverändert: analyzr behält, ob es die Aufrufe des Modells annimmt oder nur vorschlägt. Eine neue Einstufung braucht geänderte Dateien.';
   }
@@ -256,14 +268,12 @@ export function importLossOf(
   };
 }
 
-/** The link into the source tool of a head, for „Mehr“'s own entry; `null` without one. */
-export function toolLinkOf(
-  model: Pick<Model, 'headRevisionId'>,
-  revisions: readonly Pick<Revision, 'id' | 'source'>[],
-): { url: string; system: string } | null {
-  const head = revisions.find((r) => r.id === model.headRevisionId);
-  const upstream = head?.source.upstream;
-  const declared = upstream ? revisions.find((r) => r.id === upstream.revisionId) : head;
-  const url = toolUrl(declared?.source.url);
-  return url && declared?.source.system ? { url, system: declared.source.system } : null;
+/**
+ * The link into the source tool of a model, as the newest import declared it
+ * (M6 S2b follow-up step 5, `Model.identity`), for „Mehr“'s own entry and
+ * „Herkunft“; `null` without one.
+ */
+export function toolLinkOf(model: Pick<Model, 'identity'>): { url: string; system: string } | null {
+  const url = toolUrl(model.identity?.url);
+  return url && model.identity ? { url, system: model.identity.system } : null;
 }

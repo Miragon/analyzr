@@ -38,6 +38,7 @@ import {
   fileProblemText,
   filesOf,
   groupWarnings,
+  identityUpdateText,
   importHeadline,
   impactLines,
   isSkippedXml,
@@ -493,6 +494,12 @@ describe('upload result (UX7)', () => {
     expect(sharedTopFolder(['gemeinsam/a', 'anders/b'])).toBeNull();
     expect(sharedTopFolder(['a', 'b'])).toBeNull();
     expect(sharedTopFolder(['gemeinsam/a'])).toBeNull();
+  });
+
+  it('names the places in the tool a preview of unchanged files would record (S2b follow-up step 5)', () => {
+    expect(identityUpdateText(1)).toBe('Ort im Quellsystem für 1 Modell aktualisiert');
+    expect(identityUpdateText(6)).toBe('Ort im Quellsystem für 6 Modelle aktualisiert');
+    expect(identityUpdateText(1214)).toBe('Ort im Quellsystem für 1.214 Modelle aktualisiert');
   });
 
   it('notes what a preview of several batches cannot see, the pairs between new models of two batches too, and where their whole number shows (S2b follow-up, step 3b)', () => {

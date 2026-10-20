@@ -572,6 +572,7 @@ export type {
   ModelAmendmentWithdrawal,
   ModelFacts,
   ModelId,
+  ModelIdentity,
   ModelKey,
   ModelPage,
   ModelSourceSummary,

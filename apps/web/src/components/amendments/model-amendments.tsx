@@ -442,18 +442,19 @@ export function ModelAmendBadge({
 
 /**
  * „Mehr“ of the model view's header (UX3, UX-SIMPLIFICATION.md §3.5 item 4):
- * „Herkunft …“ (S2a, a dialog), „Im Quellsystem öffnen“ when the head names
- * an http(s) link, „Revisionen (n) …“ (uploaded and amended, a dialog),
- * „BPMN herunterladen“, „Original herunterladen“ (an amended head's uploaded
- * revision), the change list for the source tool (Markdown, CSV) while
- * amendments live, and an info line with engine and revision.
+ * „Herkunft …“ (S2a, a dialog), „Im Quellsystem öffnen“ when the newest
+ * import declared an http(s) link (`Model.identity`, M6 S2b follow-up step
+ * 5: no wait for the revisions), „Revisionen (n) …“ (uploaded and amended, a
+ * dialog), „BPMN herunterladen“, „Original herunterladen“ (an amended head's
+ * uploaded revision), the change list for the source tool (Markdown, CSV)
+ * while amendments live, and an info line with engine and revision.
  */
 export function ModelMore({
   project,
   model,
 }: {
   project: string;
-  model: Pick<Model, 'id' | 'key' | 'headRevisionId' | 'headRev' | 'engine'>;
+  model: Pick<Model, 'id' | 'key' | 'headRevisionId' | 'headRev' | 'engine' | 'identity'>;
 }) {
   const revisions = useQuery(modelRevisionsQuery(project, model.id));
   const head = revisions.data?.find((r) => r.id === model.headRevisionId);
@@ -461,7 +462,7 @@ export function ModelMore({
   const live = (head?.source.amendments ?? []).length > 0;
   const download = useDownload();
   const [dialog, setDialog] = useState<'provenance' | 'revisions' | null>(null);
-  const tool = revisions.data ? toolLinkOf(model, revisions.data) : null;
+  const tool = toolLinkOf(model);
   const count = revisions.data?.length ?? 0;
   return (
     <>

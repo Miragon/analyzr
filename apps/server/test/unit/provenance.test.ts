@@ -7,7 +7,12 @@
  * (never for an as-told draft without a tool id), the list of
  * `GET …/external-ids`; `extractor-loss` (§4.3) on synthetic fixtures with
  * duplicate and illegal ids and unknown elements, stable when an amendment
- * elsewhere shifts lines; the change list's origin line.
+ * elsewhere shifts lines; the change list's origin line. Since M6 S2b
+ * follow-up step 5 the identity rows' helpers (`declaredIdentity`,
+ * `identityUpdate`, `withIdentity`), unchanged files taking their identity
+ * in the request's sequence and `provenance-kept` narrowed to the
+ * derivation (absent its own kind, never next to a `trust-kept` that names
+ * the derivation, at most four warnings per file).
  */
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
@@ -15,6 +20,7 @@ import { fileURLToPath } from 'node:url';
 
 import {
   tidyDeclared,
+  type ImportWarning,
   type ModelAmendment,
   type PrincipalId,
   type RevisionSource,
@@ -27,12 +33,17 @@ import { DomainError } from '../../src/domain/errors.ts';
 import { buildOpenQuestions } from '../../src/domain/open-questions/read-model.ts';
 import { describeLoss } from '../../src/domain/open-questions/signals.ts';
 import {
+  declaredIdentity,
   externalIdEntries,
   identityOf,
+  identityUpdate,
   identityWarnings,
   parseManifest,
+  sameModelIdentity,
   shaMismatch,
   uploadedSource,
+  withIdentity,
+  withinWarningLimit,
 } from '../../src/domain/provenance.ts';
 import { storedWarnings } from '../../src/domain/warnings.ts';
 import { libraryInput } from '../support/open-questions.ts';
@@ -379,14 +390,26 @@ describe('identityWarnings', () => {
         'this file (signavio id sid-9) revised vertrieb/alt, which held signavio id sid-1',
       ],
     ]);
-    // Unchanged: nothing was revised, and no provenance-kept next to it.
+    // Unchanged: nothing was revised, but the file's declaration is the key's identity now.
     expect(other?.map((w) => [w.code, w.previous, w.message])).toEqual([
       [
         'external-id-changed',
         { system: 'signavio', externalId: 'sid-2' },
-        'vertrieb/zwei holds signavio id sid-2; this unchanged file declares aris id sid-2',
+        'this unchanged file (aris id sid-2) now identifies vertrieb/zwei, which held signavio id sid-2',
       ],
     ]);
+    // Another derivation as well: provenance-kept follows external-id-changed.
+    const [both] = identityWarnings(
+      [
+        {
+          key: 'vertrieb/zwei',
+          source: { ...src('aris', 'sid-2'), derived: { kind: 'export' } },
+          stored: false,
+        },
+      ],
+      heads,
+    );
+    expect(both?.map((w) => w.code)).toEqual(['external-id-changed', 'provenance-kept']);
   });
 
   it('stays silent for the same id, an as-told draft, a head without a manifest and a file without a tool id', () => {
@@ -412,7 +435,8 @@ describe('identityWarnings', () => {
         { key: 'vertrieb/zwei', source: src('signavio', 'sid-5'), stored: true },
         // … and once vertrieb/zwei has sid-5, sid-2 belongs to vertrieb/drei only.
         { key: 'vertrieb/vier', source: src('signavio', 'sid-2'), stored: true },
-        // An unchanged file (not stored) keeps its head: sid-6 belongs to nobody after it.
+        // An unchanged file records its identity too (M6 S2b follow-up step 5): sid-6 belongs
+        // to ohne/manifest after it (no provenance-kept: none declared on both sides).
         { key: 'ohne/manifest', source: src('signavio', 'sid-6'), stored: false },
         { key: 'vertrieb/sechs', source: src('signavio', 'sid-6'), stored: true },
         // A stored file without a manifest leaves the key's identity as it was.
@@ -425,14 +449,89 @@ describe('identityWarnings', () => {
       [['external-id-moved', ['vertrieb/zwei']]],
       [['external-id-changed', { system: 'signavio', externalId: 'sid-2' }]],
       [['external-id-moved', ['vertrieb/drei']]],
-      [['provenance-kept', undefined]],
       [],
+      [['external-id-moved', ['ohne/manifest']]],
       [],
-      [['external-id-moved', ['vertrieb/sechs']]],
+      [['external-id-moved', ['ohne/manifest', 'vertrieb/sechs']]],
     ]);
   });
 
-  it('says when an unchanged file keeps a provenance its manifest no longer declares (provenance-kept)', () => {
+  it('says "two models now carry it" for an unchanged file too', () => {
+    const [w] = identityWarnings(
+      [{ key: 'vertrieb/neu', source: src('signavio', 'sid-1'), stored: false }],
+      heads,
+    );
+    expect(w?.map((x) => [x.code, x.message])).toEqual([
+      [
+        'external-id-moved',
+        'signavio id sid-1 already belongs to vertrieb/alt: two models now carry it (moved or renamed in the tool?)',
+      ],
+    ]);
+  });
+
+  it('stays silent for an unchanged file that drops the tool id of its key', () => {
+    // Case (i): the declaration replaces the identity whole; neither identity warning.
+    expect(
+      identityWarnings(
+        [
+          {
+            key: 'vertrieb/alt',
+            source: { ...src('signavio'), externalPath: 'Vertrieb/Alt' },
+            stored: false,
+          },
+          // … and the key no longer holds sid-1 afterwards.
+          { key: 'vertrieb/neu', source: src('signavio', 'sid-1'), stored: true },
+        ],
+        heads,
+      ),
+    ).toEqual([[], []]);
+  });
+
+  it('keeps a file at four warnings: no provenance-kept next to a trust-kept that names the derivation', () => {
+    const file = {
+      key: 'vertrieb/zwei',
+      // Another key's tool id, which differs from its own, and another derivation.
+      source: { ...src('signavio', 'sid-1'), derived: { kind: 'converted' as const } },
+      stored: false,
+    };
+    const [named] = identityWarnings([{ ...file, trustKeptNamesDerivation: true }], heads);
+    // The use case puts manifest-sha-mismatch first and trust-kept last: four in all.
+    expect(named?.map((w) => w.code)).toEqual(['external-id-moved', 'external-id-changed']);
+    const [notNamed] = identityWarnings([file], heads);
+    expect(notNamed?.map((w) => w.code)).toEqual([
+      'external-id-moved',
+      'external-id-changed',
+      'provenance-kept',
+    ]);
+  });
+
+  it('drops provenance-kept as a fifth warning, and only then (withinWarningLimit)', () => {
+    const warning = (code: ImportWarning['code']): ImportWarning => ({ code, message: code });
+    const four = [
+      warning('manifest-sha-mismatch'),
+      warning('external-id-moved'),
+      warning('external-id-changed'),
+      warning('provenance-kept'),
+    ];
+    // A trust-kept for another credential beside the other four: provenance-kept goes.
+    expect(withinWarningLimit([...four, warning('trust-kept')]).map((w) => w.code)).toEqual([
+      'manifest-sha-mismatch',
+      'external-id-moved',
+      'external-id-changed',
+      'trust-kept',
+    ]);
+    expect(withinWarningLimit(four)).toEqual(four);
+    expect(
+      withinWarningLimit([warning('provenance-kept'), warning('trust-kept')]).map((w) => w.code),
+    ).toEqual(['provenance-kept', 'trust-kept']);
+    expect(withinWarningLimit([])).toEqual([]);
+  });
+
+  it('says when an unchanged file declares another derivation than its revision keeps (provenance-kept)', () => {
+    const converted = (converter?: string): RevisionSource['derived'] => ({
+      kind: 'converted',
+      ...(converter === undefined ? {} : { converter }),
+    });
     const kept = new Map<string, RevisionSource>([
       [
         'vertrieb/angebot',
@@ -440,64 +539,185 @@ describe('identityWarnings', () => {
           ...src('signavio', 'sid-A'),
           externalPath: 'Vertrieb/Angebot',
           url: 'https://t.example/A',
+          derived: converted('normalize-bpmn@0.1.0'),
         },
       ],
+      ['vertrieb/export', { ...src('signavio', 'sid-X'), derived: { kind: 'export' } }],
       ['web/zuerst', { kind: 'upload', uploader: 'human' }],
     ]);
-    const [moved, same, undeclared, stored] = identityWarnings(
+    const unchanged = (key: string, extra: Partial<RevisionSource> = {}, id = 'sid-A') => ({
+      key,
+      source: { ...src('signavio', id), ...extra },
+      stored: false,
+    });
+    const messages = (files: Parameters<typeof identityWarnings>[0]) =>
+      identityWarnings(files, kept).map((ws) => ws.map((w) => w.message));
+    const keeps = (kept: string, now: string) =>
+      `unchanged, so its revision keeps the derivation ${kept} (this file: ${now}); tool id, ` +
+      'folder and link go by this file; a correction needs changed bytes';
+    // A moved folder, another link, another tool id: recorded, no provenance-kept.
+    expect(
+      messages([
+        unchanged('vertrieb/angebot', {
+          externalPath: 'Angebote/Angebot',
+          derived: converted('normalize-bpmn@0.1.0'),
+        }),
+        unchanged('vertrieb/angebot', {
+          url: 'https://t.example/B',
+          derived: converted('normalize-bpmn@0.1.0'),
+        }),
+        unchanged('vertrieb/export', { derived: { kind: 'export' } }, 'sid-Y'),
+        // none declared on both sides
+        unchanged('web/zuerst', {}, 'sid-W'),
+      ]),
+    ).toEqual([
+      [],
+      [],
       [
-        {
-          key: 'vertrieb/angebot',
-          source: {
-            ...src('signavio', 'sid-A'),
-            externalPath: 'Angebote/Angebot',
-            url: 'https://t.example/A',
-          },
-          stored: false,
-        },
-        {
-          key: 'vertrieb/angebot',
-          source: {
-            ...src('signavio', 'sid-A'),
-            externalPath: 'Vertrieb/Angebot',
-            url: 'https://t.example/A',
-          },
-          stored: false,
-        },
-        { key: 'web/zuerst', source: src('signavio', 'sid-W'), stored: false },
-        { key: 'neu/modell', source: src('signavio', 'sid-N'), stored: true },
+        'this unchanged file (signavio id sid-Y) now identifies vertrieb/export, which held ' +
+          'signavio id sid-X',
       ],
+      [],
+    ]);
+    // Another derivation does.
+    expect(
+      messages([
+        unchanged('vertrieb/export', { derived: converted('normalize-bpmn@0.1.0') }, 'sid-X'),
+        unchanged('vertrieb/angebot', { derived: converted('normalize-bpmn@0.2.0') }),
+        unchanged('vertrieb/angebot', {
+          derived: { kind: 'reconstructed', llmModel: 'claude' },
+        }),
+        unchanged('web/zuerst', { derived: { kind: 'export' } }, 'sid-W'),
+        unchanged('vertrieb/export', {}, 'sid-X'),
+        unchanged('vertrieb/angebot', { derived: converted() }),
+      ]),
+    ).toEqual([
+      [keeps('export', 'converted with normalize-bpmn@0.1.0')],
+      [keeps('converted with normalize-bpmn@0.1.0', 'converted with normalize-bpmn@0.2.0')],
+      [keeps('converted with normalize-bpmn@0.1.0', 'reconstructed')],
+      [keeps('none declared', 'export')],
+      [keeps('export', 'none declared')],
+      [keeps('converted with normalize-bpmn@0.1.0', 'converted')],
+    ]);
+    const [full] = identityWarnings(
+      [unchanged('web/zuerst', { derived: { kind: 'export' } }, 'sid-W')],
       kept,
     );
-    expect(moved).toEqual([
+    expect(full).toEqual([
       {
         code: 'provenance-kept',
-        message:
-          'unchanged, so analyzr keeps its provenance: tool folder Vertrieb/Angebot (this file: ' +
-          'Angebote/Angebot); a correction needs changed bytes',
+        message: keeps('none declared', 'export'),
         system: 'signavio',
-        externalId: 'sid-A',
+        externalId: 'sid-W',
       },
     ]);
-    expect(same).toEqual([]);
-    expect(undeclared?.map((w) => [w.code, w.message])).toEqual([
-      [
-        'provenance-kept',
-        'unchanged, so analyzr keeps what it has for this model: no declared provenance (stored ' +
-          'without a manifest); a correction needs changed bytes',
-      ],
-    ]);
-    expect(stored).toEqual([]);
-    // A file without a manifest entry never gets it.
+    // Absent vs absent and export vs export are quiet; a stored file and a file whose class is
+    // kept (trust-kept speaks for it) never get it; nor a file without a manifest entry.
     expect(
-      identityWarnings([{ key: 'web/zuerst', source: { kind: 'import' }, stored: false }], kept),
-    ).toEqual([[]]);
+      messages([
+        unchanged('vertrieb/export', { derived: { kind: 'export' } }, 'sid-X'),
+        { ...unchanged('vertrieb/export', {}, 'sid-X'), stored: true },
+        {
+          ...unchanged('web/zuerst', { derived: { kind: 'export' } }, 'sid-W'),
+          trustKeptNamesDerivation: true,
+        },
+        { key: 'web/zuerst', source: { kind: 'import' }, stored: false },
+      ]),
+    ).toEqual([[], [], [], []]);
   });
 
   it('reads the identity only from a system and a tool id', () => {
     expect(identityOf(undefined)).toBeNull();
     expect(identityOf(src('signavio'))).toBeNull();
     expect(identityOf(src('signavio', 'x'))).toEqual({ system: 'signavio', externalId: 'x' });
+  });
+});
+
+describe('the identity rows’ helpers (M6 S2b follow-up step 5)', () => {
+  const declared: RevisionSource = {
+    kind: 'import',
+    system: 'signavio',
+    systemVersion: '19.6.0',
+    externalId: 'sid-1',
+    externalPath: 'Vertrieb/Auftrag',
+    url: 'https://t.example/1',
+    derived: { kind: 'export' },
+    trust: { class: 'derived', reasons: ['no-engine'] },
+  };
+  const identity = {
+    system: 'signavio',
+    externalId: 'sid-1',
+    externalPath: 'Vertrieb/Auftrag',
+    url: 'https://t.example/1',
+  };
+
+  it('reads the declared identity with nulls for undeclared fields', () => {
+    expect(declaredIdentity(declared)).toEqual(identity);
+    expect(declaredIdentity({ kind: 'import', system: 'aris' })).toEqual({
+      system: 'aris',
+      externalId: null,
+      externalPath: null,
+      url: null,
+    });
+    expect(declaredIdentity({ kind: 'upload', externalPath: 'x' })).toBeNull();
+    expect(declaredIdentity(undefined)).toBeNull();
+    expect(sameModelIdentity(identity, { ...identity })).toBe(true);
+    expect(sameModelIdentity(identity, { ...identity, url: null })).toBe(false);
+  });
+
+  it('records an unchanged file’s declaration only when it differs from the newest row', () => {
+    expect(identityUpdate(undefined, declared)).toEqual(identity);
+    expect(identityUpdate(null, declared)).toEqual(identity);
+    expect(identityUpdate(identity, declared)).toBeNull();
+    for (const change of [
+      { externalPath: 'Verschoben/Vertrieb/Auftrag' },
+      { url: 'https://t.example/2' },
+      { externalId: 'sid-2' },
+      { system: 'aris' },
+    ]) {
+      expect(identityUpdate(identity, { ...declared, ...change }), JSON.stringify(change)).toEqual({
+        ...identity,
+        ...change,
+      });
+    }
+    // A tool id dropped: the declaration replaces the identity whole.
+    const { externalId: _id, ...withoutId } = declared;
+    expect(identityUpdate(identity, withoutId)).toEqual({ ...identity, externalId: null });
+    // An undeclared source records nothing.
+    expect(identityUpdate(identity, { kind: 'upload' })).toBeNull();
+    expect(identityUpdate(undefined, { kind: 'upload' })).toBeNull();
+  });
+
+  it('puts the newest row in place of the revision’s identity and keeps every other field', () => {
+    expect(
+      withIdentity(declared, {
+        system: 'signavio',
+        externalId: 'sid-1',
+        externalPath: 'Verschoben/Auftrag',
+        url: null,
+      }),
+    ).toEqual({
+      kind: 'import',
+      system: 'signavio',
+      systemVersion: '19.6.0',
+      externalId: 'sid-1',
+      externalPath: 'Verschoben/Auftrag',
+      derived: { kind: 'export' },
+      trust: { class: 'derived', reasons: ['no-engine'] },
+    });
+    // Without a row: no identity at all, the rest as stored.
+    expect(withIdentity(declared, undefined)).toEqual({
+      kind: 'import',
+      systemVersion: '19.6.0',
+      derived: { kind: 'export' },
+      trust: { class: 'derived', reasons: ['no-engine'] },
+    });
+    // An undeclared revision with a row: the row's identity.
+    expect(withIdentity({ kind: 'upload', uploader: 'human' }, identity)).toEqual({
+      kind: 'upload',
+      uploader: 'human',
+      ...identity,
+    });
   });
 });
 
@@ -684,10 +904,10 @@ describe('extractor-loss', () => {
 // ------------------------------------------------------------ change list
 
 describe('the change list names where a model lives in its source tool', () => {
-  it('adds the tool folder and the link from the uploaded revision', () => {
+  it('adds the tool folder and the link from the newest identity row', () => {
     const origin = originOf({
-      kind: 'import',
       system: 'signavio',
+      externalId: 'sid-1',
       externalPath: 'Vertrieb/Auftrag_(neu)',
       url: 'https://tool.example/a b(c)',
     });
@@ -696,8 +916,15 @@ describe('the change list names where a model lives in its source tool', () => {
       externalPath: 'Vertrieb/Auftrag_(neu)',
       url: 'https://tool.example/a b(c)',
     });
-    expect(originOf({ kind: 'import' })).toBeNull();
-    expect(originOf({ kind: 'import', system: 's', url: 'javascript:x' })?.url).toBeNull();
+    expect(originOf(undefined)).toBeNull();
+    expect(originOf({ system: 's', externalId: null, externalPath: null, url: null })).toEqual({
+      system: 's',
+      externalPath: null,
+      url: null,
+    });
+    expect(
+      originOf({ system: 's', externalId: null, externalPath: null, url: 'javascript:x' })?.url,
+    ).toBeNull();
     const amendment = {
       id: 'mam_01J9Z3N4X5Q6R7S8T9V0W1X2M1',
       modelKey: 'vertrieb/auftrag',

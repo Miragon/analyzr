@@ -23,9 +23,11 @@
  *   and, with a value chain, the accepted placements losing their process
  *   and the processes it makes due for placement.
  * - **external-ids** (any credential, M6 S2a, §3.4) lists the source-system
- *   identity of every live model whose uploaded head declares one
- *   (`GET …/external-ids`, optionally one `--system`): key, tool id and tool
- *   folder, from which a lost workspace's `keymap.json` is rebuilt.
+ *   identity of every live model whose newest identity row declares one (M6
+ *   S2b follow-up step 5: what the newest import whose manifest listed it
+ *   declared, also for unchanged bytes; `GET …/external-ids`, optionally one
+ *   `--system`): key, tool id and tool folder, from which a lost workspace's
+ *   `keymap.json` is rebuilt.
  * - **pull** (any credential) writes a live model's BPMN bytes verbatim
  *   (`GET …/revisions/{revision}/content`, read as bytes, so a byte order
  *   mark and line endings stay): the head, which is the amended revision

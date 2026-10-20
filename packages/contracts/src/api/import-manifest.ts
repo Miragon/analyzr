@@ -298,14 +298,19 @@ export type ImportManifest = z.infer<typeof ImportManifest>;
  *   `sha256` (`manifestSha256` declared, `fileSha256` received);
  * - `external-id-moved`: the same `(system, externalId)` already belongs to
  *   another live key (`otherKeys`): likely a rename in the tool;
- * - `external-id-changed`: the key's head (its uploaded revision) carries a
- *   different `(system, externalId)` (`previous`) than the incoming file,
- *   both present: two systems may export the same folder and name;
- * - `provenance-kept`: the file is `unchanged`, so analyzr keeps the
- *   provenance it has for the model (identical bytes keep their first
- *   revision's, §3.3), while the manifest declares another system, tool id,
- *   tool folder or link (a folder moved in the tool), or analyzr has none
- *   (stored without a manifest). Not raised next to `external-id-changed`;
+ * - `external-id-changed`: the key's identity (its newest identity row, M6
+ *   S2b follow-up step 5) carries a different `(system, externalId)`
+ *   (`previous`) than the incoming file, both present: two systems may
+ *   export the same folder and name;
+ * - `provenance-kept`: the file is `unchanged`, so its revision keeps the
+ *   derivation analyzr stored with it (identical bytes keep their first
+ *   revision's provenance, §3.3; their tool id, folder and link are
+ *   recorded, M6 S2b follow-up step 5), while the manifest declares another
+ *   one (`derived.kind`, absent counting as none declared, or the converter
+ *   of a conversion). Not raised next to a `trust-kept` that names the
+ *   derivation (the kept class's and the request's trust reasons differ in
+ *   `converted`, `reconstructed` or `as-told`), which then speaks for it, nor
+ *   as a file's fifth warning;
  * - `trust-kept` (M6 S2c): the file is `unchanged`, so analyzr keeps the
  *   trust class of the model's uploaded revision, while this request would
  *   classify the file differently (another credential or derivation); a
@@ -338,9 +343,9 @@ export const ImportWarning = z
     /** `external-id-moved`, `external-id-changed`, `provenance-kept`: the incoming file's identity, as far as declared. */
     system: SourceSystem.optional(),
     externalId: z.string().optional(),
-    /** `external-id-moved`: the live keys whose head carries the same identity (sorted). */
+    /** `external-id-moved`: the live keys whose identity is the same (sorted). */
     otherKeys: z.array(ModelKey).max(MAX_WARNING_OTHER_KEYS).optional(),
-    /** `external-id-changed`: the identity the key's head carried. */
+    /** `external-id-changed`: the identity the key carried. */
     previous: ExternalIdentity.optional(),
     /** `manifest-sha-mismatch`: the declared and the received SHA-256. */
     manifestSha256: Sha256Hex.optional(),
@@ -352,7 +357,7 @@ export const ImportWarning = z
   });
 export type ImportWarning = z.infer<typeof ImportWarning>;
 
-/** One live model's identity in its source system, from its head's uploaded revision. */
+/** One live model's identity in its source system, from its newest identity row (M6 S2b follow-up step 5). */
 export const ExternalIdEntry = z
   .object({
     key: ModelKey,

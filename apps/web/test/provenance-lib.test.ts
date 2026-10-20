@@ -8,7 +8,7 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 
-import type { Revision } from '@analyzr/client';
+import type { ModelIdentity, Revision } from '@analyzr/client';
 import { TRUST_REASON_LABELS as CONTRACT_TRUST_REASON_LABELS } from '@analyzr/contracts';
 import { modelKeyFromPath } from '@analyzr/contracts/paths';
 import { describe, expect, it } from 'vitest';
@@ -23,6 +23,7 @@ import {
   provenanceLines,
   sourceLine,
   systemLabel,
+  toolLinkOf,
   toolUrl,
 } from '../src/lib/provenance';
 import { planUpload, stripRoot } from '../src/lib/upload';
@@ -85,7 +86,14 @@ describe('provenance in German (UX8)', () => {
       uploader: 'human',
       upstream: { revisionId: 'rev_3', rev: 3, contentHash: 'a'.repeat(64) },
     });
-    expect(provenanceLines(amended, uploaded)).toEqual([
+    // the model's identity, as the import that stored r3 declared it (M6 S2b follow-up step 5)
+    const identity: ModelIdentity = {
+      system: 'signavio',
+      externalId: null,
+      externalPath: 'Finanzen/Forderungsmanagement',
+      url: null,
+    };
+    expect(provenanceLines(amended, uploaded, identity)).toEqual([
       { label: 'Stand', text: 'In analyzr ergänzt (aus r3)' },
       { label: 'Quelle', text: 'Aus Signavio 19.6.0 · exportiert am 14.10.2026 (angegeben)' },
       { label: 'Im Quellsystem', text: 'Finanzen/Forderungsmanagement' },
@@ -93,7 +101,7 @@ describe('provenance in German (UX8)', () => {
       { label: 'Hochgeladen', text: 'über den Owner-Zugang' },
     ]);
     const plain = revision(1, { kind: 'upload', uploader: 'agent' });
-    expect(provenanceLines(plain, plain)).toEqual([
+    expect(provenanceLines(plain, plain, null)).toEqual([
       { label: 'Hochgeladen', text: 'über ein Agenten-Token' },
       { label: 'Quelle', text: 'Ohne Angabe eines Quellsystems hochgeladen' },
     ]);
@@ -106,13 +114,67 @@ describe('provenance in German (UX8)', () => {
     expect(toolUrl('no url')).toBeNull();
   });
 
+  it('says where the model lives in the tool as the newest import declared it (M6 S2b follow-up step 5)', () => {
+    const uploaded = revision(1, {
+      kind: 'import',
+      uploader: 'human',
+      system: 'signavio',
+      systemVersion: '19.6.0',
+      exportedAt: '2026-10-14T00:00:00Z',
+      externalPath: 'Gemeinsame Dokumente/Logistik/Versand',
+      url: 'https://editor.signavio.com/p/hub/model/alt',
+    });
+    const identity: ModelIdentity = {
+      system: 'signavio',
+      externalId: 'sid-5F0E',
+      externalPath: 'Verschoben/Gemeinsame Dokumente/Logistik/Versand',
+      url: 'https://editor.signavio.com/p/hub/model/sid-5F0E',
+    };
+    const lines = (r: typeof uploaded, i: ModelIdentity | null) =>
+      provenanceLines(r, r, i).map((l) => `${l.label}: ${l.text}`);
+    // the identity's folder over the revision's; „Quelle“ stays the revision's (the bytes')
+    expect(lines(uploaded, identity)).toEqual([
+      'Quelle: Aus Signavio 19.6.0 · exportiert am 14.10.2026 (angegeben)',
+      'Im Quellsystem: Verschoben/Gemeinsame Dokumente/Logistik/Versand',
+      'Hochgeladen: über den Owner-Zugang',
+    ]);
+    // an identity without a folder shows none, never the revision's
+    expect(lines(uploaded, { ...identity, externalPath: null })).not.toContainEqual(
+      expect.stringMatching(/^Im Quellsystem/),
+    );
+    // bytes uploaded without a manifest, the identity from a later bundle: the system named
+    const plain = revision(2, { kind: 'upload', uploader: 'human' });
+    expect(lines(plain, identity)).toEqual([
+      'Im Quellsystem: Signavio: Verschoben/Gemeinsame Dokumente/Logistik/Versand',
+      'Hochgeladen: über den Owner-Zugang',
+      'Quelle: Ohne Angabe eines Quellsystems hochgeladen',
+    ]);
+    // a revision of another system: the identity's named too
+    const aris = revision(3, { kind: 'import', uploader: 'human', system: 'aris' });
+    expect(lines(aris, identity)).toContain(
+      'Im Quellsystem: Signavio: Verschoben/Gemeinsame Dokumente/Logistik/Versand',
+    );
+    // the link into the tool is the identity's, without the revisions
+    expect(toolLinkOf({ identity })).toEqual({
+      url: 'https://editor.signavio.com/p/hub/model/sid-5F0E',
+      system: 'signavio',
+    });
+    expect(toolLinkOf({ identity: { ...identity, url: null } })).toBeNull();
+    expect(toolLinkOf({ identity: { ...identity, url: 'javascript:alert(1)' } })).toBeNull();
+    expect(toolLinkOf({ identity: null })).toBeNull();
+    // identical bytes keep the derivation they were stored with
+    expect(importWarningText({ code: 'provenance-kept', message: 'x' })).toBe(
+      'Unverändert: analyzr behält die bisherige Angabe, wie die Datei entstanden ist. Eine Korrektur braucht geänderte Dateien.',
+    );
+  });
+
   it('says that a derived revision’s calls are only proposed (the trust rule, M6 S2c)', () => {
     const uploaded = revision(1, {
       kind: 'import',
       uploader: 'human',
       trust: { class: 'derived', reasons: ['no-engine', 'converted'] },
     });
-    expect(provenanceLines(uploaded, uploaded).at(-1)).toEqual({
+    expect(provenanceLines(uploaded, uploaded, null).at(-1)).toEqual({
       label: 'Aufrufe',
       text: 'nur als Vorschlag (ohne Camunda-Engine; als konvertiert angegeben)',
     });
@@ -123,14 +185,14 @@ describe('provenance in German (UX8)', () => {
       upstream: { revisionId: 'rev_1', rev: 1, contentHash: 'a'.repeat(64) },
       amendments: [{ id: 'mam_1', elementId: 'Call_A', op: 'call-target', outcome: 'applied' }],
     });
-    expect(provenanceLines(amended, uploaded).at(-1)).toEqual({
+    expect(provenanceLines(amended, uploaded, null).at(-1)).toEqual({
       label: 'Aufrufe',
       text: 'nur als Vorschlag (ohne Camunda-Engine; als konvertiert angegeben) · von dir gesetzte Aufrufziele gelten als modelliert',
     });
     // Modelled and stored before S2c: no line, to keep the view lean.
     for (const trust of [{ class: 'modelled' as const, reasons: [] }, undefined]) {
       const r = revision(1, { kind: 'upload', uploader: 'human', ...(trust ? { trust } : {}) });
-      expect(provenanceLines(r, r).map((l) => l.label)).not.toContain('Aufrufe');
+      expect(provenanceLines(r, r, null).map((l) => l.label)).not.toContain('Aufrufe');
     }
     expect(TRUST_REASON_LABELS).toEqual(CONTRACT_TRUST_REASON_LABELS);
     expect(importWarningText({ code: 'trust-kept', message: 'x' })).toBe(

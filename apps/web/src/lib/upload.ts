@@ -832,6 +832,15 @@ export function impactLines(impact: ImportImpact, batches = 1): string[] {
   return cost ? [...lines.slice(0, 2), cost] : lines.slice(0, 3);
 }
 
+/**
+ * The „Vorschau“'s part for unchanged files whose bundle records a new place
+ * in the tool (M6 S2b follow-up step 5, `identityUpdated`): „Ort im
+ * Quellsystem für 6 Modelle aktualisiert“, „für 1 Modell“.
+ */
+export function identityUpdateText(count: number): string {
+  return `Ort im Quellsystem für ${count === 1 ? '1 Modell' : `${de(count)} Modelle`} aktualisiert`;
+}
+
 /** A pair judged again in „Was ändert sich?“: „Aufruf a#Call_X → b#Process_Y“. */
 export function rejudgedText(
   r: ImportImpact['relationsTasks']['rejudged']['items'][number],
