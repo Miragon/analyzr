@@ -8,6 +8,9 @@
  * A batch is previewed against the head, so the merge adds up what the
  * batches count and concatenates their items up to the server's cap; a pair
  * between models of two batches counts in both (the surfaces say „etwa“).
+ * The placement task's counts (a project with a value chain) are
+ * approximate across batches too: each batch counts the processes due after
+ * its own files against the head.
  */
 import type { ImportImpact } from './api/models.ts';
 
@@ -148,6 +151,72 @@ function mergeRelationsTasks(
   };
 }
 
+type PlacementOutcome = NonNullable<ImportImpact['placementTask']>['outcome'];
+
+/**
+ * The rank of each placement task outcome, weakest first: the merge keeps
+ * the strongest of the batches. Every outcome of the contract has one (the
+ * record's type checks it).
+ */
+const PLACEMENT_OUTCOME_RANK: Readonly<Record<PlacementOutcome, number>> = {
+  'not-triggered': 0,
+  'nothing-due': 1,
+  queued: 2,
+  open: 3,
+  deferred: 4,
+};
+
+const outcomeRanks: ReadonlyMap<string, number> = new Map(Object.entries(PLACEMENT_OUTCOME_RANK));
+
+/** The rank of an outcome as the client types it (a string). */
+const outcomeRank = (outcome: string): number => outcomeRanks.get(outcome) ?? -1;
+
+/**
+ * The value chain's part (S2b follow-up), absent when no batch has it (a
+ * project without a live chain): the accepted placements whose process
+ * changes concatenated and sorted again as the server sorts them, by
+ * process, then step (a process belongs to one batch, so the count is
+ * exact); the placement task with the strongest outcome (deferred, open,
+ * queued, nothing-due, not-triggered: the write that queues tells), the
+ * most processes due of a batch (approximate, the largest batch's count:
+ * each batch counts against the head, so another batch's revert or removed
+ * process is not seen) and the newly due and placed-again ones added up
+ * (approximate: a process two batches make due counts in both).
+ */
+function mergePlacements(
+  impacts: readonly MergeableImpact[],
+): Pick<MergeableImpact, 'placementsChanged' | 'placementTask'> {
+  const changed = impacts.flatMap((i) => (i.placementsChanged ? [i.placementsChanged] : []));
+  const tasks = impacts.flatMap((i) => (i.placementTask ? [i.placementTask] : []));
+  const [first, ...rest] = tasks;
+  return {
+    ...(changed.length > 0
+      ? {
+          placementsChanged: {
+            count: sum(changed.map((l) => l.count)),
+            items: changed
+              .flatMap((l) => l.items)
+              .sort((a, b) => byCodePoint(a.process, b.process) || byCodePoint(a.step, b.step))
+              .slice(0, MAX_IMPACT_ITEMS),
+          },
+        }
+      : {}),
+    ...(first
+      ? {
+          placementTask: {
+            outcome: rest.reduce(
+              (best, t) => (outcomeRank(t.outcome) > outcomeRank(best) ? t.outcome : best),
+              first.outcome,
+            ),
+            due: Math.max(...tasks.map((t) => t.due)),
+            newlyDue: sum(tasks.map((t) => t.newlyDue)),
+            again: sum(tasks.map((t) => t.again)),
+          },
+        }
+      : {}),
+  };
+}
+
 /**
  * The impacts of a dry run's batches as one: the files concatenated, the
  * counts added up, the items concatenated up to the cap; the absent keys are
@@ -167,6 +236,7 @@ export function mergeImpacts<T extends MergeableImpact>(impacts: readonly T[]): 
     findingsResolved: mergeList(impacts.map((i) => i.findingsResolved)),
     absentKeys: impacts[0]?.absentKeys ?? { count: 0, items: [] },
     relationsTasks: mergeRelationsTasks(impacts),
+    ...mergePlacements(impacts),
   };
   return merged as T;
 }

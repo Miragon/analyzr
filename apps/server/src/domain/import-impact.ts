@@ -10,7 +10,9 @@
  * S2b follow-up it also plans the relations tasks the write queues and
  * cancels (`planQueue`, as `queueAnalysis` does) and the pairs agents judge
  * around the queued models (`pairsToJudge`), with the judgements the write
- * makes non-current (`judgementShift`).
+ * makes non-current (`judgementShift`), and for a project with a live value
+ * chain the accepted placements whose process changes and the placement
+ * task (`placementImpact`, over the relations the write leaves).
  */
 import {
   MAX_IMPACT_ITEMS,
@@ -31,6 +33,7 @@ import {
   type ImpactRelationsTasks,
   type ImportImpact,
   type ProcessInfo,
+  type ProjectFacts,
   type RelationStatus,
   type RevisionSource,
   type RevisionTrust,
@@ -48,6 +51,7 @@ import type { ModelTaskDetail, RelationRecord } from './ports.ts';
 import { planQueue } from './queue-plan.ts';
 import { planRecompute, type RecomputeInput, type RecomputePlan } from './recompute.ts';
 import { naturalKey } from './relation-state.ts';
+import { placementImpact, type ChainRead } from './value-chain/model-impact.ts';
 
 /** The first {@link MAX_IMPACT_ITEMS} with their count. */
 function capped<T>(items: readonly T[]): { count: number; items: T[] } {
@@ -509,8 +513,22 @@ function relationsTasks(
 }
 
 /**
+ * What the value chain's part of an impact reads (S2b follow-up): the live
+ * chain, the stored head facts, whether the write changes a model's head
+ * (and so syncs the chain: a created or revised file, a deletion), and
+ * whether it queues the placement task (a created or revised file with
+ * other facts; never a deletion).
+ */
+export interface ChainInput extends ChainRead {
+  headFacts: Pick<ProjectFacts, 'models'>;
+  headChange: boolean;
+  triggered: boolean;
+}
+
+/**
  * The whole impact (`ImportImpact`), from its parts, planning the recompute
- * once; `auto` only for an owner (M6 S2c-3).
+ * once; `auto` only for an owner (M6 S2c-3); `chain` only for a project with
+ * a live value chain (its fields are absent otherwise).
  */
 export function importImpact(
   input: RecomputeInput,
@@ -519,13 +537,30 @@ export function importImpact(
   absent: readonly string[],
   auto: DerivedCallRules | undefined,
   tasks: TaskInput,
+  chain?: ChainInput,
 ): ImportImpact {
   const plan = planRecompute(input);
   const relations = relationsAfter(input, plan);
+  // Marks the calls an owner's rules accept in `relations`, which the tasks and the chain read.
+  const relationPart = plannedRelationImpact(
+    input,
+    plan,
+    relations,
+    findingsBefore,
+    auto,
+    'proposed',
+  );
   return {
     files: fileImpact(files),
-    ...plannedRelationImpact(input, plan, relations, findingsBefore, auto, 'proposed'),
+    ...relationPart,
     absentKeys: capped(absent),
     relationsTasks: relationsTasks(files, tasks, relations),
+    ...(chain
+      ? placementImpact({
+          ...chain,
+          before: { projectFacts: chain.headFacts, relations: input.relations },
+          after: { projectFacts: input.projectFacts, relations: [...relations.values()] },
+        })
+      : {}),
   };
 }

@@ -89,6 +89,7 @@ import type {
   ValueChainRevisionRecord,
   ValueChainStepRecord,
 } from '../domain/ports.ts';
+import { compareStoredFacts } from '../domain/fact-order.ts';
 import { sourceSummary } from '../domain/provenance.ts';
 import { trustSummary } from '../domain/trust.ts';
 import type { Db } from './client.ts';
@@ -313,9 +314,6 @@ const toFact = (r: FactRow, modelKey: string): Fact => ({
   fingerprint: r.fingerprint,
   attrs: r.attrs,
 });
-
-const compareFacts = (a: Fact, b: Fact): number =>
-  byCodePoint(a.kind, b.kind) || byCodePoint(a.elementId, b.elementId);
 
 const revisionColumns = {
   id: s.modelRevision.id,
@@ -607,7 +605,7 @@ function repos(db: Conn): Tx {
       );
     return rows
       .map((r) => ({ ...toFact(r.fact, r.modelKey), processName: r.processName || null }))
-      .sort((a, b) => byCodePoint(a.modelKey, b.modelKey) || compareFacts(a, b));
+      .sort(compareStoredFacts);
   }
 
   /** The stored submissions of these tasks, with the submitting principal's handle. */
@@ -1053,7 +1051,10 @@ function repos(db: Conn): Tx {
           .select()
           .from(s.fact)
           .where(and(eq(s.fact.projectId, projectId), eq(s.fact.revisionId, id)));
-        return { ...head, facts: facts.map((f) => toFact(f, head.modelKey)).sort(compareFacts) };
+        return {
+          ...head,
+          facts: facts.map((f) => toFact(f, head.modelKey)).sort(compareStoredFacts),
+        };
       },
       async maxRev(projectId, modelId) {
         const rows = await db

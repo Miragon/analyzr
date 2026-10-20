@@ -12,6 +12,7 @@
 import {
   newId,
   type DeclaredProcedure,
+  type Fact,
   type PlacementId,
   type ProjectId,
 } from '@analyzr/contracts';
@@ -41,8 +42,9 @@ import {
   type InputHashContext,
 } from './pipeline.ts';
 import { byPlacement } from './placement-state.ts';
+import type { ChainStructure } from './structure.ts';
 import { acceptedNeighbours, acceptedSteps, processOfRefs } from './tiers.ts';
-import { factsByProcess, processOwnFields } from './unplaced.ts';
+import { factsByProcess, processOwnFields, type OwnFact } from './unplaced.ts';
 
 /** Why a placement task is queued (the `reason` of `analysis.queued`). */
 export type PlacementQueueReason =
@@ -60,20 +62,10 @@ const DEFERRED: ReadonlySet<PlacementQueueReason> = new Set([
   'judgement withdrawn',
 ]);
 
-/** What the pipeline needs to know about a live chain to tell which processes are due. */
-export interface PipelineInputs {
-  state: ChainState;
-  /** Every placement of the chain, obsolete ones included. */
-  placements: PlacementRecord[];
-  histories: Map<PlacementId, StoredPlacementAssertion[]>;
-  /** Every head fact of the project. */
-  facts: HeadFact[];
-  /** The head facts of each process, by process ref (`factsByProcess`). */
-  byProcess: Map<string, HeadFact[]>;
-  /** Every relation of the project. */
-  relations: RelationRecord[];
-  /** The agent's last verdict per process. */
-  rows: Map<string, StoredPlacementInput>;
+/** What tells which open processes are due ({@link pipelineInputs}), pure. */
+export interface DueInputs<F> {
+  /** The facts of each process, by process ref (`factsByProcess`). */
+  byProcess: Map<string, F[]>;
   hashContext: InputHashContext;
   /** The current input hash of a process. */
   hashOf(processRef: string): string;
@@ -83,13 +75,29 @@ export interface PipelineInputs {
   due: DueProcess[];
 }
 
+/** What the pipeline needs to know about a live chain to tell which processes are due. */
+export interface PipelineInputs extends DueInputs<HeadFact> {
+  state: ChainState;
+  /** Every placement of the chain, obsolete ones included. */
+  placements: PlacementRecord[];
+  histories: Map<PlacementId, StoredPlacementAssertion[]>;
+  /** Every head fact of the project. */
+  facts: HeadFact[];
+  /** Every relation of the project. */
+  relations: RelationRecord[];
+  /** The agent's last verdict per process. */
+  rows: Map<string, StoredPlacementInput>;
+}
+
 /**
  * {@link chainInputDigest} of a chain state: its steps as a claim lists them
  * (links resolved against the head processes) and its live generations.
  */
-export function chainDigestOf(
-  state: Pick<ChainState, 'structure' | 'live' | 'processFacts'>,
-): string {
+export function chainDigestOf(state: {
+  structure: ChainStructure;
+  live: ReadonlyMap<string, number>;
+  processFacts: readonly Pick<Fact, 'ref'>[];
+}): string {
   return chainInputDigest(
     state.structure,
     new Set(state.processFacts.map((f) => f.ref)),
@@ -98,27 +106,34 @@ export function chainDigestOf(
 }
 
 /**
- * Loads what the input hashes rest on and computes the open and due
- * processes of a live chain.
+ * The input hashes and the open and due processes of a live chain, pure:
+ * from its structure, live generations and head processes, its placements
+ * with their histories, every head fact (in the order `facts.head` lists
+ * them: a process's first start and end labels count), every relation (the
+ * accepted ones give the neighbours) and the agent's last verdicts. The
+ * write and claim paths call it over what they read
+ * ({@link loadPipelineInputs}); a dry run (S2b follow-up) over the head and
+ * over the would-be head.
  *
  * @param procedure the procedure placement claims name
  */
-export async function loadPipelineInputs(
-  tx: Tx,
-  state: ChainState,
+export function pipelineInputs<F extends Pick<Fact, 'ref' | 'modelKey' | 'processId'> & OwnFact>(
+  state: {
+    structure: ChainStructure;
+    live: ReadonlyMap<string, number>;
+    processFacts: readonly Pick<Fact, 'ref' | 'label' | 'attrs'>[];
+  },
+  placements: readonly Pick<
+    PlacementRecord,
+    'id' | 'elementId' | 'generation' | 'processRef' | 'status'
+  >[],
+  histories: Parameters<typeof lastNonAgentSeqs>[1],
+  facts: readonly F[],
+  relations: readonly Pick<RelationRecord, 'status' | 'fromRef' | 'toRef'>[],
+  rows: ReadonlyMap<string, Pick<StoredPlacementInput, 'inputHash'>>,
   procedure: DeclaredProcedure,
-): Promise<PipelineInputs> {
-  const projectId = state.chain.projectId;
-  const placements = await tx.placements.forChain(projectId, state.chain.id);
-  const histories = byPlacement(
-    await tx.placementAssertions.listForChain(projectId, state.chain.id),
-  );
-  const facts = await tx.facts.head(projectId);
+): DueInputs<F> {
   const byProcess = factsByProcess(facts);
-  const relations = await tx.relations.all(projectId);
-  const rows = new Map(
-    (await tx.placementInputs.forChain(projectId, state.chain.id)).map((r) => [r.processRef, r]),
-  );
   const hashContext: InputHashContext = {
     procedure,
     chainDigest: chainDigestOf(state),
@@ -147,18 +162,38 @@ export async function loadPipelineInputs(
     state.live,
   );
   const due = dueProcesses(open, new Map(open.map((ref) => [ref, hashOf(ref)])), rows);
+  return { byProcess, hashContext, hashOf, open, due };
+}
+
+/**
+ * Loads what the input hashes rest on and computes the open and due
+ * processes of a live chain ({@link pipelineInputs}).
+ *
+ * @param procedure the procedure placement claims name
+ */
+export async function loadPipelineInputs(
+  tx: Tx,
+  state: ChainState,
+  procedure: DeclaredProcedure,
+): Promise<PipelineInputs> {
+  const projectId = state.chain.projectId;
+  const placements = await tx.placements.forChain(projectId, state.chain.id);
+  const histories = byPlacement(
+    await tx.placementAssertions.listForChain(projectId, state.chain.id),
+  );
+  const facts = await tx.facts.head(projectId);
+  const relations = await tx.relations.all(projectId);
+  const rows = new Map(
+    (await tx.placementInputs.forChain(projectId, state.chain.id)).map((r) => [r.processRef, r]),
+  );
   return {
     state,
     placements,
     histories,
     facts,
-    byProcess,
     relations,
     rows,
-    hashContext,
-    hashOf,
-    open,
-    due,
+    ...pipelineInputs(state, placements, histories, facts, relations, rows, procedure),
   };
 }
 

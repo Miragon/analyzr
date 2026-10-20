@@ -5,7 +5,11 @@
  * batch; the calls only proposed by reason in their order, an owner's rules
  * by rule; the relations tasks concatenated and sorted as the server sorts
  * them (the queued by key, the cancelled claimed first, then by key),
- * `claimed` and `pairs` added up, the pairs judged again deduplicated.
+ * `claimed` and `pairs` added up, the pairs judged again deduplicated; the
+ * value chain's part only when a batch has it: the accepted placements
+ * concatenated and sorted by process, then step, the placement task's
+ * strongest outcome, the most processes due, the newly due and placed-again
+ * ones added up.
  */
 import { readFileSync } from 'node:fs';
 
@@ -271,5 +275,71 @@ describe('mergeImpacts', () => {
         { ...empty, relationsTasks: { ...empty.relationsTasks, rejudged: list(1, [ab]) } },
       ]).relationsTasks.rejudged,
     ).toEqual(list(150, [ab]));
+  });
+
+  it('merges the value chain’s part only when a batch has it, the placements sorted and capped', () => {
+    expect(Object.keys(mergeImpacts([empty, empty]))).toEqual(Object.keys(empty));
+    const changed = (process: string, step: string, endpointState: 'changed' | 'missing') => ({
+      step,
+      stepName: step === '@outside' ? null : `Schritt ${step}`,
+      process: process as `${string}#${string}`,
+      endpointState,
+    });
+    const task = { outcome: 'queued' as const, due: 4, newlyDue: 2, again: 1 };
+    const merged = mergeImpacts([
+      {
+        ...empty,
+        placementsChanged: list(2, [
+          changed('z/m#P', 's1', 'changed'),
+          changed('z/m#P', 's2', 'missing'),
+        ]),
+        placementTask: task,
+      },
+      {
+        ...empty,
+        placementsChanged: list(1, [changed('a/m#P', '@outside', 'missing')]),
+        placementTask: task,
+      },
+    ]);
+    expect(merged.placementsChanged).toEqual(
+      list(3, [
+        changed('a/m#P', '@outside', 'missing'),
+        changed('z/m#P', 's1', 'changed'),
+        changed('z/m#P', 's2', 'missing'),
+      ]),
+    );
+    const many = (prefix: string) =>
+      Array.from({ length: MAX_IMPACT_ITEMS }, (_, i) =>
+        changed(`${prefix}/m${String(i).padStart(3, '0')}#P`, 's', 'changed'),
+      );
+    const capped = mergeImpacts([
+      { ...empty, placementsChanged: list(130, many('z')) },
+      { ...empty, placementsChanged: list(110, many('a')) },
+    ]).placementsChanged;
+    expect(capped).toEqual(list(240, many('a')));
+  });
+
+  it('keeps the placement task’s strongest outcome, the most processes due, and adds the rest up', () => {
+    type Outcome = 'queued' | 'open' | 'deferred' | 'nothing-due' | 'not-triggered';
+    const task = (outcome: Outcome, due = 0, newlyDue = 0, again = 0): ImportImpact => ({
+      ...empty,
+      placementTask: { outcome, due, newlyDue, again },
+    });
+    const outcome = (...outcomes: Outcome[]) =>
+      mergeImpacts(outcomes.map((o) => task(o))).placementTask?.outcome;
+    expect(outcome('not-triggered', 'nothing-due')).toBe('nothing-due');
+    expect(outcome('nothing-due', 'queued', 'not-triggered')).toBe('queued');
+    expect(outcome('queued', 'open')).toBe('open');
+    expect(outcome('open', 'deferred', 'queued')).toBe('deferred');
+    expect(outcome('not-triggered')).toBe('not-triggered');
+    // Each batch counts against the head: the most due (the largest batch's count) and the sums
+    // are approximate.
+    expect(
+      mergeImpacts([
+        task('queued', 7, 3, 1),
+        task('not-triggered', 5, 0, 0),
+        task('queued', 6, 2, 2),
+      ]).placementTask,
+    ).toEqual({ outcome: 'queued', due: 7, newlyDue: 5, again: 3 });
   });
 });

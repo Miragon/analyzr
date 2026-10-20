@@ -7,7 +7,12 @@
  * `ok` with the original model; a rule proposal whose process name changes
  * is withdrawn and comes back with it; unchanged re-imports and layout-only
  * re-saves (model and chain) move nothing; the relations and findings stay
- * exactly those of `eval:candidates`. Every rule proposal of the golden chain
+ * exactly those of `eval:candidates`. Before each model write its dry run
+ * (S2b follow-up: `PUT …?dryRun=true`, the import's, the deletion impact)
+ * names exactly the accepted placements the write then turns `changed` or
+ * `missing` (`placement.endpoint_changed`) and writes nothing, and orders
+ * the would-be facts as the head lists them (message and plain start
+ * events in one process). Every rule proposal of the golden chain
  * is the process's `must` or one of its `may` steps. A placement proposed ad
  * hoc over MCP by an agent token and accepted over REST survives an unchanged
  * re-import and a layout-only re-save (the M4a done criterion, S4). The
@@ -19,12 +24,14 @@ import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/cli
 import type {
   Finding,
   FindingList,
+  ImportImpact,
   ImportResult,
   Placement,
   PlacementPage,
   PlacementAssertionList,
   PostPlacementsResult,
   Project,
+  PutModelDryRunResult,
   PutModelResult,
   Ref,
   Relation,
@@ -36,8 +43,15 @@ import { parse } from 'yaml';
 
 import { libraryAnalysis } from '../../src/analysis.ts';
 import { createStore } from '../../src/db/store.ts';
+import { headFactOrder } from '../../src/domain/value-chain/model-impact.ts';
 import { startTestApp, type TestApp } from '../support/app.ts';
-import { corpusFiles, importAll, libraryView, type CorpusFile } from '../support/corpus.ts';
+import {
+  corpusFiles,
+  importAll,
+  importForm,
+  libraryView,
+  type CorpusFile,
+} from '../support/corpus.ts';
 import { createTestDatabase, type TestDatabase } from '../support/db.ts';
 import { listen } from '../support/http.ts';
 import { NORDWIND_CHAIN, NORDWIND_PLACEMENTS, chainPath } from '../support/value-chain.ts';
@@ -110,6 +124,59 @@ async function putModel(key: string, bytes: Uint8Array | string): Promise<PutMod
   });
   expect([200, 201]).toContain(res.status);
   return (await res.json()) as PutModelResult;
+}
+
+/** The dry run of `PUT …/models/by-key/{key}`: its impact; it writes nothing. */
+async function putDryRun(key: string, bytes: Uint8Array | string): Promise<ImportImpact> {
+  const seq = await lastSeq();
+  const body = await json<PutModelDryRunResult>(
+    await t.asOwner(`/api/v1/projects/${P}/models/by-key/${encodeURIComponent(key)}?dryRun=true`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/xml' },
+      body: bytes,
+    }),
+  );
+  expect(await lastSeq()).toBe(seq);
+  return body.impact;
+}
+
+/** The dry run of importing `batch` (at most 50 files): its impact; it writes nothing. */
+async function importDryRun(batch: readonly CorpusFile[]): Promise<ImportImpact> {
+  const seq = await lastSeq();
+  const body = await json<ImportResult>(
+    await t.asOwner(`/api/v1/projects/${P}/imports?dryRun=true`, {
+      method: 'POST',
+      body: importForm(batch),
+    }),
+  );
+  expect(await lastSeq()).toBe(seq);
+  if (!body.impact) throw new Error('a dry run without an impact');
+  return body.impact;
+}
+
+/**
+ * The `placement.endpoint_changed` events after `seq` that turned an
+ * accepted placement `changed` or `missing`, as an impact names them.
+ */
+async function acceptedEndpointChanges(seq: number): Promise<ImportImpact['placementsChanged']> {
+  const byId = new Map(
+    [...(await placements()), ...(await placements('&status=obsolete'))].map((p) => [p.id, p]),
+  );
+  const items = (await events(seq))
+    .filter((e) => e.type === 'placement.endpoint_changed')
+    .flatMap((e) => {
+      const p = byId.get(e.subjectRef as Placement['id']);
+      const endpointState = e.payload['endpointState'];
+      if (p?.status !== 'accepted') return [];
+      if (endpointState !== 'changed' && endpointState !== 'missing') return [];
+      return [
+        { step: p.elementId, stepName: p.stepName, process: p.process, endpointState } as const,
+      ];
+    })
+    .sort((a, b) =>
+      a.process === b.process ? (a.step < b.step ? -1 : 1) : a.process < b.process ? -1 : 1,
+    );
+  return { count: items.length, items };
 }
 
 function edited(key: string, from: string, to: string): string {
@@ -224,16 +291,29 @@ describe('the golden dev chain on the dev landscape', () => {
 describe('model changes', () => {
   it('a renamed process turns its accepted placement changed; the original makes it ok', async () => {
     const before = await on('step-rechnungsstellung', GUTSCHRIFT);
-    const seq = await lastSeq();
-    const renamed = await putModel(
+    const bytes = edited(
       'finanzen/gutschrift',
-      edited(
-        'finanzen/gutschrift',
-        'id="Process_Gutschrift" name="Gutschrift erstellen"',
-        'id="Process_Gutschrift" name="Gutschrift anlegen"',
-      ),
+      'id="Process_Gutschrift" name="Gutschrift erstellen"',
+      'id="Process_Gutschrift" name="Gutschrift anlegen"',
     );
+    const preview = await putDryRun('finanzen/gutschrift', bytes);
+    expect(preview.placementsChanged).toEqual({
+      count: 1,
+      items: [
+        {
+          step: 'step-rechnungsstellung',
+          stepName: before?.stepName,
+          process: GUTSCHRIFT,
+          endpointState: 'changed',
+        },
+      ],
+    });
+    // The chain's first task waits for an agent: the import leaves it open.
+    expect(preview.placementTask?.outcome).toBe('open');
+    const seq = await lastSeq();
+    const renamed = await putModel('finanzen/gutschrift', bytes);
     expect(renamed.outcome).toBe('revised');
+    expect(preview.placementsChanged).toEqual(await acceptedEndpointChanges(seq));
     const changed = await on('step-rechnungsstellung', GUTSCHRIFT);
     expect(changed).toMatchObject({
       id: before?.id,
@@ -249,6 +329,10 @@ describe('model changes', () => {
       ['placement.endpoint_changed', before?.id, await t.useCases.rulesPrincipal(), null],
     ]);
 
+    // Back to ok: nothing turns changed or missing.
+    const back = await putDryRun('finanzen/gutschrift', original('finanzen/gutschrift'));
+    expect(back.placementsChanged).toEqual({ count: 0, items: [] });
+    const seqBack = await lastSeq();
     expect((await putModel('finanzen/gutschrift', original('finanzen/gutschrift'))).outcome).toBe(
       'revised',
     );
@@ -256,23 +340,39 @@ describe('model changes', () => {
       status: 'accepted',
       endpointState: 'ok',
     });
+    expect(await acceptedEndpointChanges(seqBack)).toEqual(back.placementsChanged);
   });
 
   it('a deleted model turns its accepted placement missing; uploading it again makes it ok', async () => {
     const model = await store().read((tx) => tx.models.findByKey(project.id, 'logistik/shipping'));
+    let seq = await lastSeq();
+    const impact = await json<ImportImpact>(
+      await t.asOwner(`/api/v1/projects/${P}/models/${model?.id ?? ''}/deletion-impact`),
+    );
+    expect(await lastSeq()).toBe(seq);
+    expect(impact.placementsChanged?.items).toEqual([
+      expect.objectContaining({ process: SHIPPING, endpointState: 'missing' }),
+    ]);
+    // A deletion never queues the placement task.
+    expect(impact.placementTask?.outcome).toBe('not-triggered');
     const del = await t.asOwner(`/api/v1/projects/${P}/models/${model?.id ?? ''}`, {
       method: 'DELETE',
     });
     expect(del.status).toBe(204);
+    expect(impact.placementsChanged).toEqual(await acceptedEndpointChanges(seq));
     expect(await on('step-paketversand', SHIPPING)).toMatchObject({
       status: 'accepted',
       endpointState: 'missing',
       endpoints: { step: 'ok', process: 'missing' },
       processName: null,
     });
+    const revived = await putDryRun('logistik/shipping', original('logistik/shipping'));
+    expect(revived.placementsChanged).toEqual({ count: 0, items: [] });
+    seq = await lastSeq();
     expect((await putModel('logistik/shipping', original('logistik/shipping'))).outcome).toBe(
       'created',
     );
+    expect(await acceptedEndpointChanges(seq)).toEqual(revived.placementsChanged);
     expect(await on('step-paketversand', SHIPPING)).toMatchObject({
       status: 'accepted',
       endpointState: 'ok',
@@ -282,19 +382,26 @@ describe('model changes', () => {
 
   it('a rule proposal whose process loses the step’s name is withdrawn and comes back', async () => {
     const before = await on('step-wareneingang', WARENEINGANG);
-    await putModel(
+    const bytes = edited(
       'lager/wareneingang',
-      edited(
-        'lager/wareneingang',
-        'id="Process_Wareneingang" name="Wareneingang"',
-        'id="Process_Wareneingang" name="Warenannahme"',
-      ),
+      'id="Process_Wareneingang" name="Wareneingang"',
+      'id="Process_Wareneingang" name="Warenannahme"',
     );
+    // A rule proposal is no accepted placement: nothing to name.
+    const preview = await putDryRun('lager/wareneingang', bytes);
+    expect(preview.placementsChanged).toEqual({ count: 0, items: [] });
+    let seq = await lastSeq();
+    await putModel('lager/wareneingang', bytes);
+    expect(await acceptedEndpointChanges(seq)).toEqual(preview.placementsChanged);
     expect(await on('step-wareneingang', WARENEINGANG)).toBeUndefined();
     expect(await on('step-wareneingang', WARENEINGANG, '&status=obsolete')).toMatchObject({
       id: before?.id,
     });
+    const back = await putDryRun('lager/wareneingang', original('lager/wareneingang'));
+    expect(back.placementsChanged).toEqual({ count: 0, items: [] });
+    seq = await lastSeq();
     await putModel('lager/wareneingang', original('lager/wareneingang'));
+    expect(await acceptedEndpointChanges(seq)).toEqual(back.placementsChanged);
     expect(await on('step-wareneingang', WARENEINGANG)).toMatchObject({
       id: before?.id,
       status: 'proposed',
@@ -307,6 +414,14 @@ describe('model changes', () => {
 describe('no-ops', () => {
   it('an unchanged re-import writes nothing', async () => {
     const before = await placements();
+    expect(files.length).toBeLessThanOrEqual(50);
+    const preview = await importDryRun(files);
+    expect(preview.placementsChanged).toEqual({ count: 0, items: [] });
+    expect(preview.placementTask).toMatchObject({
+      outcome: 'not-triggered',
+      newlyDue: 0,
+      again: 0,
+    });
     const seq = await lastSeq();
     const outcomes = await importAll((path, init) => t.asOwner(path, init), P, files);
     expect(outcomes.every((o: ImportResult['files'][number]) => o.outcome === 'unchanged')).toBe(
@@ -318,11 +433,20 @@ describe('no-ops', () => {
 
   it('a layout-only model revision moves no placement', async () => {
     const before = await placements();
-    const seq = await lastSeq();
-    const moved = await putModel(
+    const bytes = edited(
       'finanzen/gutschrift',
-      edited('finanzen/gutschrift', '<dc:Bounds x="200" y="142"', '<dc:Bounds x="210" y="142"'),
+      '<dc:Bounds x="200" y="142"',
+      '<dc:Bounds x="210" y="142"',
     );
+    const preview = await putDryRun('finanzen/gutschrift', bytes);
+    expect(preview.placementsChanged).toEqual({ count: 0, items: [] });
+    expect(preview.placementTask).toMatchObject({
+      outcome: 'not-triggered',
+      newlyDue: 0,
+      again: 0,
+    });
+    const seq = await lastSeq();
+    const moved = await putModel('finanzen/gutschrift', bytes);
     expect(moved.outcome).toBe('revised');
     expect((await events(seq)).filter((e) => e.type.startsWith('placement.'))).toEqual([]);
     expect(await placements()).toEqual(before);
@@ -343,6 +467,27 @@ describe('no-ops', () => {
     expect(saved).toMatchObject({ outcome: 'revised', impact: { structureChanged: false } });
     expect((await events(seq)).map((e) => e.type)).toEqual(['value_chain.revised']);
     expect(await placements()).toEqual(before);
+  });
+});
+
+describe('the dry run’s fact order', () => {
+  it('is the head’s: headFactOrder over the head’s models lists the facts as facts.head does', async () => {
+    const { head, ordered } = await store().read(async (tx) => ({
+      head: await tx.facts.head(project.id),
+      ordered: headFactOrder(await tx.facts.headProjectFacts(project.id)),
+    }));
+    // Message and plain start events in one process: the extractor lists their kinds in the
+    // enum's order, the head in code point order, and a claim shows the first labels.
+    const startKinds = new Map<string, Set<string>>();
+    for (const f of head) {
+      if (f.attrs.elementType !== 'bpmn:StartEvent' || f.processId === null) continue;
+      const key = `${f.modelKey}#${f.processId}`;
+      startKinds.set(key, new Set([...(startKinds.get(key) ?? []), f.kind]));
+    }
+    expect([...startKinds.values()].some((k) => k.has('msg_catch') && k.has('evt_start'))).toBe(
+      true,
+    );
+    expect(ordered).toEqual(head.map(({ processName: _processName, ...f }) => f));
   });
 });
 

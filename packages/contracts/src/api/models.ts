@@ -567,6 +567,73 @@ export const ImpactRelationsTasks = z
 export type ImpactRelationsTasks = z.infer<typeof ImpactRelationsTasks>;
 
 /**
+ * An accepted placement whose process an import or a model's deletion would
+ * change or remove (M6 S2b follow-up), as the write's refresh then records
+ * `placement.endpoint_changed`: the placement keeps its decision's anchor,
+ * so a renamed process turns it `changed` and a removed one `missing`, and
+ * a human confirms it again. `step` is the element id (`@outside` included),
+ * `stepName` its name in the chain's head (`null` for `@outside`).
+ */
+export const ImpactPlacement = z
+  .object({
+    step: z.string(),
+    stepName: z.string().nullable(),
+    process: Ref,
+    endpointState: z.enum(['changed', 'missing']),
+  })
+  .meta({
+    id: 'ImpactPlacement',
+    description:
+      'An accepted placement whose process would change or go missing: `step` is the element id (`@outside` included), `stepName` its name in the head (null for `@outside`).',
+  });
+export type ImpactPlacement = z.infer<typeof ImpactPlacement>;
+
+/**
+ * The value chain's placement task after an import or a model's deletion
+ * (M6 S2b follow-up), as the write's `queuePlacementTask` then decides:
+ * `outcome` is `queued` (no task was open and a process is due),
+ * `open` (a queued task waits; its claim shows the new head), `deferred`
+ * (an agent holds the task; it is never cancelled, its submission queues
+ * the follow-up for the processes the write makes due), `nothing-due`
+ * (triggered, but no process is due) or `not-triggered` (no file changes
+ * facts, or a deletion: deletions never queue, the due processes wait for
+ * the next trigger or a requeue). `due`: the open processes due after the
+ * write; `newlyDue`: those of them not due before; `again`: those of
+ * `newlyDue` whose input an agent had judged (they are placed again).
+ * Counted per request against the head, with what the write's rule tier
+ * records on placements. While an agent holds the task, the processes its
+ * claim shows count as judged on the input the claim showed (its
+ * submission records those verdicts): `due` is what the follow-up offers,
+ * and a process the write changes under the claim is newly due and placed
+ * again. A non-owner's preview leaves out the neighbours an owner's rules
+ * for derived calls would add.
+ */
+export const ImpactPlacementTask = z
+  .object({
+    outcome: z.enum(['queued', 'open', 'deferred', 'nothing-due', 'not-triggered']).meta({
+      description:
+        'queued: the write queues the task; open: a queued task waits and its claim shows the new head; deferred: an agent holds the task, its submission queues the follow-up; nothing-due: no process is due; not-triggered: no file changes facts, or a deletion (deletions never queue).',
+    }),
+    due: z.number().int().min(0).meta({
+      description:
+        'Open processes that are due for placement after the write (while an agent holds the task: those its follow-up offers).',
+    }),
+    newlyDue: z.number().int().min(0).meta({
+      description: 'Of the due processes, those that were not due before the write.',
+    }),
+    again: z.number().int().min(0).meta({
+      description:
+        'Of the newly due processes, those whose input an agent had judged (or judges in the claim it holds): they are placed again.',
+    }),
+  })
+  .meta({
+    id: 'ImpactPlacementTask',
+    description:
+      'Only with a live value chain: the chain’s placement task after the write (whether it is queued) and how many processes are due, newly due and placed again.',
+  });
+export type ImpactPlacementTask = z.infer<typeof ImpactPlacementTask>;
+
+/**
  * What an import or a model's deletion would change (M6 §3.5, slice S2b),
  * computed by the pure `importImpact` over the stored head and the would-be
  * head facts; nothing is written. `files`: the created and revised files.
@@ -588,7 +655,11 @@ export type ImpactRelationsTasks = z.infer<typeof ImpactRelationsTasks>;
  * `relationsTasks` (S2b follow-up): the relations tasks the write queues and
  * cancels and the pairs agents judge around the queued models
  * ({@link ImpactRelationsTasks}), the agent work an import sets off, repeats
- * or destroys.
+ * or destroys. Only for a project with a live value chain (M4), absent
+ * otherwise: `placementsChanged`, the accepted placements whose process
+ * would turn `changed` or `missing` ({@link ImpactPlacement}), sorted by
+ * process, then step; `placementTask`, the chain's placement task after the
+ * write ({@link ImpactPlacementTask}).
  */
 export const ImportImpact = z
   .object({
@@ -603,6 +674,11 @@ export const ImportImpact = z
     findingsResolved: impactList(Finding),
     absentKeys: impactList(ModelKey),
     relationsTasks: ImpactRelationsTasks,
+    placementsChanged: impactList(ImpactPlacement).optional().meta({
+      description:
+        'Only with a live value chain: accepted placements whose process would turn changed or missing, sorted by process, then step.',
+    }),
+    placementTask: ImpactPlacementTask.optional(),
   })
   .meta({ id: 'ImportImpact', description: 'What an import or a deletion would change.' });
 export type ImportImpact = z.infer<typeof ImportImpact>;

@@ -12,8 +12,16 @@
  * what a claim shows moving an input hash (notes on open proposals, also
  * as answers to open questions (M6 S5a), org units, sibling processes), the
  * `inTask` marker of `list_unplaced_processes`,
- * the first task at server start, and the stage of the chain. Synthetic
- * models and chains only.
+ * the first task at server start, and the stage of the chain. The dry runs
+ * of model writes (S2b follow-up) name the placement task's outcome and its
+ * due processes as the write then queues them (`queued` with the event's
+ * `due`, also for a batch with a layout-only file; `not-triggered` for a
+ * layout-only upload or a deletion, whose due processes the chain then
+ * shows; `deferred` while an agent holds the task, which then gets
+ * `requeue_after`, with the follow-up's processes), and the newly due
+ * processes are exactly those whose input changes (an own field, a newly
+ * accepted call, a rule proposal, also one a revoked auto-acceptance no
+ * longer suppresses). Synthetic models and chains only.
  */
 import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
 import type {
@@ -21,6 +29,8 @@ import type {
   AnswerOpenQuestionResult,
   ClaimedPlacementAnalysis,
   CreatedAgentToken,
+  ImportImpact,
+  ImportResult,
   OpenQuestionPage,
   PendingAnalyses,
   Placement,
@@ -28,6 +38,7 @@ import type {
   PlacementPage,
   PostPlacementsResult,
   Project,
+  PutModelDryRunResult,
   RequeueResult,
   SaveValueChainResult,
   UnplacedProcessPage,
@@ -38,6 +49,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { createStore } from '../../src/db/store.ts';
 import { startTestApp, testClock, type TestApp } from '../support/app.ts';
+import { importForm } from '../support/corpus.ts';
 import { createTestDatabase, type TestDatabase } from '../support/db.ts';
 import { fakeBpmn, type FakeProcess } from '../support/fake-analysis.ts';
 import { listen } from '../support/http.ts';
@@ -126,6 +138,44 @@ class Fixture {
       fakeBpmn({ processes, ...(layout ? { layout } : {}) }),
     );
     expect([200, 201], await res.clone().text()).toContain(res.status);
+  }
+
+  /** The dry run of {@link put}: its impact; it writes nothing. */
+  async dryPut(model: string, processes: FakeProcess[], layout?: string): Promise<ImportImpact> {
+    const seq = await this.lastSeq();
+    const body = await json<PutModelDryRunResult>(
+      await t.asOwner(
+        `/api/v1/projects/${this.key}/models/by-key/${encodeURIComponent(model)}?dryRun=true`,
+        {
+          method: 'PUT',
+          headers: { 'content-type': 'application/xml' },
+          body: fakeBpmn({ processes, ...(layout ? { layout } : {}) }),
+        },
+      ),
+    );
+    expect(await this.lastSeq()).toBe(seq);
+    return body.impact;
+  }
+
+  /** `GET …/deletion-impact` of a model by key; it writes nothing. */
+  async deletionImpact(model: string): Promise<{ modelId: string; impact: ImportImpact }> {
+    const seq = await this.lastSeq();
+    const { items } = (await (
+      await t.asOwner(`/api/v1/projects/${this.key}/models?limit=200`)
+    ).json()) as { items: { id: string; key: string }[] };
+    const modelId = items.find((m) => m.key === model)?.id ?? '';
+    const impact = await json<ImportImpact>(
+      await t.asOwner(`/api/v1/projects/${this.key}/models/${modelId}/deletion-impact`),
+    );
+    expect(await this.lastSeq()).toBe(seq);
+    return { modelId, impact };
+  }
+
+  /** The `due` of the `analysis.queued` placement events after `seq`. */
+  async queuedDue(after: number): Promise<unknown[]> {
+    return (await this.events(after))
+      .filter((e) => e.type === 'analysis.queued' && e.payload['kind'] === 'placement')
+      .map((e) => e.payload['due']);
   }
 
   async createChain(steps: StepSpec[] = STEPS): Promise<SaveValueChainResult> {
@@ -355,11 +405,27 @@ describe('queue triggers', () => {
   });
 
   it('queues for new or changed processes, never for a layout-only upload or a deletion', async () => {
+    const layout = await f.dryPut(
+      'verwaltung/antrag',
+      [{ id: 'P_Antrag', name: 'Antrag stellen' }],
+      'moved',
+    );
+    expect(layout.placementTask).toEqual({
+      outcome: 'not-triggered',
+      due: 0,
+      newlyDue: 0,
+      again: 0,
+    });
     let before = await f.lastSeq();
     await f.put('verwaltung/antrag', [{ id: 'P_Antrag', name: 'Antrag stellen' }], 'moved');
     expect(await f.chainEvents(before)).toEqual([]);
+    const created = await f.dryPut('studium/einschreibung', [
+      { id: 'P_Einschreibung', name: 'Einschreibung' },
+    ]);
+    expect(created.placementTask).toEqual({ outcome: 'queued', due: 1, newlyDue: 1, again: 0 });
     before = await f.lastSeq();
     await f.put('studium/einschreibung', [{ id: 'P_Einschreibung', name: 'Einschreibung' }]);
+    expect(await f.queuedDue(before)).toEqual([created.placementTask?.due]);
     const events = await f.events(before);
     // After the relation task of the new model, so relation events keep their order.
     expect(
@@ -369,15 +435,18 @@ describe('queue triggers', () => {
     const c = await only(f.agent, f.key);
     expect(c.input.processes.map((p) => p.process)).toEqual([C]);
     await submitPlacement(f.agent, c.taskId, placementSubmission(c, [item('step-lehre', C)]));
+    // A deletion never queues (its proposal is no accepted placement).
+    const { modelId, impact } = await f.deletionImpact('studium/einschreibung');
+    expect(impact.placementTask).toEqual({
+      outcome: 'not-triggered',
+      due: 0,
+      newlyDue: 0,
+      again: 0,
+    });
+    expect(impact.placementsChanged).toEqual({ count: 0, items: [] });
     before = await f.lastSeq();
-    const model = (
-      (await (await t.asOwner(`/api/v1/projects/${f.key}/models`)).json()) as {
-        items: { id: string; key: string }[];
-      }
-    ).items.find((m) => m.key === 'studium/einschreibung');
     expect(
-      (await t.asOwner(`/api/v1/projects/${f.key}/models/${model?.id}`, { method: 'DELETE' }))
-        .status,
+      (await t.asOwner(`/api/v1/projects/${f.key}/models/${modelId}`, { method: 'DELETE' })).status,
     ).toBe(204);
     expect(await f.chainEvents(before)).toEqual([]);
   });
@@ -991,6 +1060,45 @@ describe('a save during the lease', () => {
   });
 });
 
+describe('an import during the lease', () => {
+  it('is deferred in the dry run, and the import sets requeue_after on the claimed task', async () => {
+    const P1 = 'i/eins#P_Eins';
+    const P2 = 'i/zwei#P_Zwei';
+    const f = await Fixture.create('pl-import-lease', {
+      'i/eins': [{ id: 'P_Eins', name: 'Erfassung' }],
+      'i/zwei': [{ id: 'P_Zwei', name: 'Versand' }],
+    });
+    const c = await only(f.agent, f.key);
+    const renamed = [{ id: 'P_Eins', name: 'Erfassung neu' }];
+    const preview = await f.dryPut('i/eins', renamed);
+    // The claim judges both on the input it showed; P1's changes under it: its follow-up places
+    // P1 again.
+    expect(preview.placementTask).toEqual({ outcome: 'deferred', due: 1, newlyDue: 1, again: 1 });
+    const requeueAfter = async () => {
+      const r = await database.db.execute(
+        sql`SELECT requeue_after FROM analysis_task WHERE id = ${c.taskId}`,
+      );
+      return (r.rows[0] as { requeue_after: boolean } | undefined)?.requeue_after;
+    };
+    expect(await requeueAfter()).toBe(false);
+    let before = await f.lastSeq();
+    await f.put('i/eins', renamed);
+    expect(await f.chainEvents(before)).toEqual([]);
+    expect(await requeueAfter()).toBe(true);
+    before = await f.lastSeq();
+    const r = await submitPlacement(
+      f.agent,
+      c.taskId,
+      placementSubmission(c, [item('step-pruefung', P1), item('step-ausgabe', P2)]),
+    );
+    // P1's input changed under the claim: the follow-up offers it again, as the dry run said.
+    expect(r.followUp).toBe(true);
+    expect(await f.queuedDue(before)).toEqual([preview.placementTask?.due]);
+    const next = await only(f.agent, f.key);
+    expect(next.input.processes.map((p) => p.process)).toEqual([P1]);
+  });
+});
+
 // ---------------------------------------------------------------- truncation
 
 describe('truncation', () => {
@@ -1408,10 +1516,13 @@ describe('only what a claim shows moves an input hash', () => {
       c1.taskId,
       placementSubmission(c1, [item('step-pruefung', X), item('step-ausgabe', Y)]),
     );
-    // P_X's documentation changes: only P_X is due.
+    // P_X's documentation changes: only P_X is due, judged before, so placed again.
+    const preview = await f.dryPut('s/beide', model('Neu.'));
+    expect(preview.placementTask).toEqual({ outcome: 'queued', due: 1, newlyDue: 1, again: 1 });
     let before = await f.lastSeq();
     await f.put('s/beide', model('Neu.'));
     expect(await f.chainEvents(before)).toEqual(['analysis.queued models changed']);
+    expect(await f.queuedDue(before)).toEqual([1]);
     expect((await f.detail()).pipeline.due).toBe(1);
     const c2 = await only(f.agent, f.key);
     expect(c2.input.processes.map((p) => p.process)).toEqual([X]);
@@ -1424,10 +1535,293 @@ describe('only what a claim shows moves an input hash', () => {
     // P_Y's proposal rests on its unchanged input: it stays.
     expect((await f.placementOn('step-ausgabe', Y))?.status).toBe('proposed');
     // A task label inside P_Y changes the model's facts, but nothing a claim shows.
+    expect((await f.dryPut('s/beide', model('Neu.', 'Versenden'))).placementTask).toEqual({
+      outcome: 'nothing-due',
+      due: 0,
+      newlyDue: 0,
+      again: 0,
+    });
     before = await f.lastSeq();
     await f.put('s/beide', model('Neu.', 'Versenden'));
     expect(await f.chainEvents(before)).toEqual([]);
     expect((await f.detail()).pipeline.due).toBe(0);
+  });
+
+  it('counts a process the rule tier proposes or withdraws on after a rename, as the write does', async () => {
+    // The dry run plans the rule tier's writes over the would-be head (`planRulePlacements`).
+    const X = 'r/regel#P_X';
+    const f = await Fixture.create('pl-rule', {
+      'r/regel': [{ id: 'P_X', name: 'Eingang' }],
+      'r/rest': [{ id: 'P_R', name: 'Rest' }],
+    });
+    const judge = async () => {
+      const c = await only(f.agent, f.key);
+      await submitPlacement(
+        f.agent,
+        c.taskId,
+        placementSubmission(c, [], {
+          unsure: c.input.processes.map((p) => ({ process: p.process, reason: 'Unklar.' })),
+        }),
+      );
+    };
+    await judge();
+    const rename = async (name: string, ruleEvent: string) => {
+      const processes = [{ id: 'P_X', name }];
+      const preview = await f.dryPut('r/regel', processes);
+      expect(preview.placementTask).toEqual({ outcome: 'queued', due: 1, newlyDue: 1, again: 1 });
+      const before = await f.lastSeq();
+      await f.put('r/regel', processes);
+      // The rule tier recorded on the process (a new non-agent seq in its input hash) …
+      expect(
+        (await f.events(before))
+          .filter((e) => e.type.startsWith('placement.') && e.payload['process'] === X)
+          .map((e) => e.type),
+      ).toEqual([ruleEvent]);
+      // … and the write queues what the dry run said.
+      expect(await f.queuedDue(before)).toEqual([preview.placementTask?.due]);
+      await judge();
+    };
+    // Named like the step „Antragsprüfung“: a rule proposal; renamed again: withdrawn.
+    await rename('Antragsprüfung', 'placement.proposed');
+    await rename('Eingang', 'placement.withdrawn');
+  });
+
+  it('names an accepted placement the rule tier re-proposes on its renamed process as changed', async () => {
+    const X = 'r/akzeptiert#P_X';
+    const f = await Fixture.create('pl-rule-accepted', {
+      'r/akzeptiert': [{ id: 'P_X', name: 'Eingang' }],
+    });
+    const placed = await json<PostPlacementsResult>(
+      await post((p, i) => t.asOwner(p, i), chainPath(f.key, '/placements'), {
+        kind: 'manual',
+        step: 'step-pruefung',
+        process: X,
+        rationale: 'Gehört zur Prüfung.',
+      }),
+    );
+    const id = placed.kind === 'manual' ? placed.placement.id : '';
+    const endpointChanges = async (after: number) =>
+      (await f.events(after))
+        .filter((e) => e.type === 'placement.endpoint_changed' && e.subjectRef === id)
+        .map((e) => e.payload['endpointState']);
+    // Named like its step: the rule tier proposes it there, the human's anchor stays.
+    const renamed = [{ id: 'P_X', name: 'Antragsprüfung' }];
+    const preview = await f.dryPut('r/akzeptiert', renamed);
+    expect(preview.placementsChanged).toEqual({
+      count: 1,
+      items: [
+        { step: 'step-pruefung', stepName: 'Antragsprüfung', process: X, endpointState: 'changed' },
+      ],
+    });
+    let before = await f.lastSeq();
+    await f.put('r/akzeptiert', renamed);
+    expect(
+      (await f.events(before))
+        .filter((e) => e.type === 'placement.proposed')
+        .map((e) => e.subjectRef),
+    ).toEqual([id]);
+    expect(await endpointChanges(before)).toEqual(['changed']);
+    expect((await f.placementOn('step-pruefung', X))?.status).toBe('accepted');
+    // Back: the rule proposal is withdrawn and the placement ok again, nothing to name.
+    const back = await f.dryPut('r/akzeptiert', [{ id: 'P_X', name: 'Eingang' }]);
+    expect(back.placementsChanged).toEqual({ count: 0, items: [] });
+    before = await f.lastSeq();
+    await f.put('r/akzeptiert', [{ id: 'P_X', name: 'Eingang' }]);
+    expect(await endpointChanges(before)).toEqual(['ok']);
+  });
+
+  it('re-offers both ends of a newly accepted call (neighbours), as the dry run says', async () => {
+    const A = 'c/ruf#P_Ruf';
+    const B = 'c/ziel#P_Ziel';
+    const f = await Fixture.create('pl-call', {
+      'c/ruf': [{ id: 'P_Ruf', name: 'Aufrufer' }],
+      'c/ziel': [{ id: 'P_Ziel', name: 'Gerufen' }],
+      'c/rest': [{ id: 'P_Rest', name: 'Unbeteiligt' }],
+    });
+    const c = await only(f.agent, f.key);
+    await submitPlacement(
+      f.agent,
+      c.taskId,
+      placementSubmission(c, [], {
+        unsure: c.input.processes.map((p) => ({ process: p.process, reason: 'Unklar.' })),
+      }),
+    );
+    // A call activity is nothing of A's own fields; the rule tier accepts the unique call.
+    const calling = [
+      {
+        id: 'P_Ruf',
+        name: 'Aufrufer',
+        elements: [{ kind: 'call' as const, id: 'Call_Ziel', ref: 'P_Ziel' }],
+      },
+    ];
+    const preview = await f.dryPut('c/ruf', calling);
+    expect(preview.acceptedCalls.items).toEqual([{ type: 'call', from: 'c/ruf#Call_Ziel', to: B }]);
+    expect(preview.placementTask).toEqual({ outcome: 'queued', due: 2, newlyDue: 2, again: 2 });
+    const before = await f.lastSeq();
+    await f.put('c/ruf', calling);
+    expect(await f.queuedDue(before)).toEqual([2]);
+    const next = await only(f.agent, f.key);
+    expect(next.input.processes.map((p) => p.process)).toEqual([A, B]);
+  });
+});
+
+// ------------------------------------------------- dry runs equal the writes
+
+describe('a model write’s dry run names the placement task the write leaves', () => {
+  /** Judges every process of the next claim `unsure`. */
+  const judgeUnsure = async (f: Fixture, expected?: string[]) => {
+    const c = await only(f.agent, f.key);
+    if (expected) expect(c.input.processes.map((p) => p.process)).toEqual(expected);
+    await submitPlacement(
+      f.agent,
+      c.taskId,
+      placementSubmission(c, [], {
+        unsure: c.input.processes.map((p) => ({ process: p.process, reason: 'Unklar.' })),
+      }),
+    );
+  };
+
+  it('counts the rule proposal a revoked auto-acceptance no longer suppresses', async () => {
+    // The rule tier records it at the next head change, on a process whose own fields stay.
+    const A = 'z/antrag#P_A';
+    const R = 'z/rest#P_R';
+    const rest = (task: string): FakeProcess[] => [
+      { id: 'P_R', name: 'Rest', elements: [{ kind: 'task', id: 'T_R', name: task }] },
+    ];
+    const f = await Fixture.create(
+      'pl-dry-revoked',
+      { 'z/antrag': [{ id: 'P_A', name: 'Antrag' }], 'z/rest': rest('Prüfen') },
+      null,
+    );
+    for (const tier of ['lexical', 'semantic'] as const) {
+      await json(
+        await post((p, i) => t.asOwner(p, i), `/api/v1/projects/${f.key}/auto-accept-rules`, {
+          name: `Platzierung ${tier}`,
+          kind: 'placement',
+          tier,
+          minConfidence: 0.9,
+          enabled: true,
+        }),
+        201,
+      );
+    }
+    await f.createChain();
+    // The agent places A, which the owner's rule accepts; R is unsure.
+    const c1 = await only(f.agent, f.key);
+    await submitPlacement(
+      f.agent,
+      c1.taskId,
+      placementSubmission(c1, [item('step-pruefung', A, { confidence: 0.95 })], {
+        unsure: [{ process: R, reason: 'Unklar.' }],
+      }),
+    );
+    expect((await f.placementOn('step-pruefung', A))?.status).toBe('accepted');
+    // A link to A on the step: the rule tier derives (step, A), suppressed by the acceptance.
+    let before = await f.lastSeq();
+    const linked = STEPS.map((s) =>
+      s.id === 'step-pruefung' ? { ...s, link: `analyzr:process/${A}` } : s,
+    );
+    await f.save(linked);
+    expect(
+      (await f.events(before)).filter(
+        (e) => e.type === 'placement.proposed' && e.payload['sourceKind'] === 'rule',
+      ),
+    ).toEqual([]);
+    await judgeUnsure(f, [R]);
+    // The owner revokes the acceptance (no rule tier runs): A is open again and judged.
+    const ledger = await json<{ items: { ruleId: string }[] }>(
+      await t.asOwner(`/api/v1/projects/${f.key}/auto-accepted?kind=placement`),
+    );
+    await json(
+      await post((p, i) => t.asOwner(p, i), `/api/v1/projects/${f.key}/auto-accept-revocations`, {
+        kind: 'placement',
+        ruleId: ledger.items[0]?.ruleId,
+        expectedCount: 1,
+      }),
+    );
+    await judgeUnsure(f, [A]);
+    expect((await f.detail()).pipeline.due).toBe(0);
+
+    // A task label inside R: nothing a claim shows, but the rule tier now records on A.
+    const preview = await f.dryPut('z/rest', rest('Versenden'));
+    expect(preview.placementTask).toEqual({ outcome: 'queued', due: 1, newlyDue: 1, again: 1 });
+    before = await f.lastSeq();
+    await f.put('z/rest', rest('Versenden'));
+    expect(
+      (await f.events(before))
+        .filter((e) => e.type === 'placement.proposed')
+        .map((e) => [e.payload['process'], e.payload['sourceKind']]),
+    ).toEqual([[A, 'rule']]);
+    expect(await f.queuedDue(before)).toEqual([preview.placementTask?.due]);
+    await judgeUnsure(f, [A]);
+  });
+
+  it('counts the processes a deletion makes due, as the chain then shows them', async () => {
+    // The step links to the deleted process: the steps a claim shows change, so every open
+    // process is due; a deletion queues no task.
+    const Z = 'd/ziel#P_Ziel';
+    const f = await Fixture.create(
+      'pl-dry-deletion',
+      {
+        'd/ziel': [{ id: 'P_Ziel', name: 'Ziel' }],
+        'd/rest': [{ id: 'P_Rest', name: 'Rest' }],
+        'd/dritt': [{ id: 'P_Dritt', name: 'Dritt' }],
+      },
+      STEPS.map((s) => (s.id === 'step-lehre' ? { ...s, link: `analyzr:process/${Z}` } : s)),
+    );
+    await judgeUnsure(f);
+    expect((await f.detail()).pipeline.due).toBe(0);
+    const { modelId, impact } = await f.deletionImpact('d/ziel');
+    expect(impact.placementTask).toEqual({
+      outcome: 'not-triggered',
+      due: 2,
+      newlyDue: 2,
+      again: 2,
+    });
+    const before = await f.lastSeq();
+    expect(
+      (await t.asOwner(`/api/v1/projects/${f.key}/models/${modelId}`, { method: 'DELETE' })).status,
+    ).toBe(204);
+    expect(await f.chainEvents(before)).toEqual([]);
+    expect((await f.detail()).pipeline.due).toBe(impact.placementTask?.due);
+  });
+
+  it('queues for a batch with a layout-only file and a renamed process, as the import does', async () => {
+    const f = await Fixture.create('pl-dry-batch', {
+      'b/eins': [{ id: 'P_Eins', name: 'Erfassung' }],
+      'b/zwei': [{ id: 'P_Zwei', name: 'Versand' }],
+    });
+    await judgeUnsure(f);
+    const batch = [
+      { key: 'b/eins', processes: [{ id: 'P_Eins', name: 'Erfassung' }], layout: 'moved' },
+      { key: 'b/zwei', processes: [{ id: 'P_Zwei', name: 'Versand neu' }] },
+    ].map((m) => ({
+      path: `${m.key}.bpmn`,
+      bytes: new TextEncoder().encode(
+        fakeBpmn({ processes: m.processes, ...(m.layout ? { layout: m.layout } : {}) }),
+      ),
+    }));
+    const importBatch = async (dryRun: boolean) =>
+      json<ImportResult>(
+        await t.asOwner(`/api/v1/projects/${f.key}/imports${dryRun ? '?dryRun=true' : ''}`, {
+          method: 'POST',
+          body: importForm(batch),
+        }),
+      );
+    let before = await f.lastSeq();
+    const preview = await importBatch(true);
+    expect(await f.lastSeq()).toBe(before);
+    expect(preview.files.map((r) => r.outcome)).toEqual(['revised', 'revised']);
+    expect(preview.impact?.placementTask).toEqual({
+      outcome: 'queued',
+      due: 1,
+      newlyDue: 1,
+      again: 1,
+    });
+    before = await f.lastSeq();
+    await importBatch(false);
+    expect(await f.queuedDue(before)).toEqual([preview.impact?.placementTask?.due]);
+    await judgeUnsure(f, ['b/zwei#P_Zwei']);
   });
 });
 

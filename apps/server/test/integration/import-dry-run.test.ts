@@ -18,7 +18,8 @@
  * claims are then assigned (the other models' tasks done) and those judged
  * again; a layout-only re-import
  * queues nothing; the PUT dry run counts as the import's; the deletion
- * impact names the task `DELETE` cancels.
+ * impact names the task `DELETE` cancels. A project without a value chain
+ * gets no placement fields.
  */
 import type {
   AnalysisTaskPage,
@@ -114,6 +115,9 @@ describe('POST …/imports?dryRun=true', () => {
       files.map((f) => f.key).sort(),
     );
     expect(preview.impact.files.every((f) => f.factsChanged)).toBe(true);
+    // No value chain: no placement fields (S2b follow-up).
+    expect(preview.impact).not.toHaveProperty('placementsChanged');
+    expect(preview.impact).not.toHaveProperty('placementTask');
 
     const real = await importFiles(P, files, false);
     expect(real.impact).toBeUndefined();
@@ -333,6 +337,8 @@ describe('PUT …?dryRun=true and the deletion impact', () => {
     );
     expect(impact.files).toEqual([]);
     expect(impact.absentKeys.count).toBe(0);
+    expect(impact).not.toHaveProperty('placementsChanged');
+    expect(impact).not.toHaveProperty('placementTask');
 
     // the deletion does what the impact said
     expect(

@@ -8,7 +8,8 @@
  * dry run names the derived calls an owner's rule for derived calls would
  * accept in the write (M6 S2c-3), only the proposals the write records; a
  * trust review's dry run counts `ofProposed` among the calls accepted
- * before (M6 S2c-4).
+ * before (M6 S2c-4). Such an acceptance settles its pair for the relations
+ * tasks and makes both ends due for placement (S2b follow-up).
  */
 import { extractFacts } from '@analyzr/bpmn-facts';
 import {
@@ -30,9 +31,14 @@ import type { AssertionRecord, RelationRecord, Tx } from '../../src/domain/ports
 import { planRecompute, writeRecompute, type RecomputeInput } from '../../src/domain/recompute.ts';
 import { naturalKey } from '../../src/domain/relation-state.ts';
 import { trustRationale, type ModelTrust } from '../../src/domain/trust.ts';
+import { prepareRevision } from '../../src/domain/value-chain/document.ts';
+import { headFactOrder } from '../../src/domain/value-chain/model-impact.ts';
+import { pipelineInputs } from '../../src/domain/value-chain/queue.ts';
+import { OUTSIDE } from '../../src/domain/value-chain/steps.ts';
 import { AUFTRAG_KEY, RECHNUNG_KEY, auftrag, rechnung } from '../support/amend-fixtures.ts';
 import { AT, PROJECT, RULES, assertionId } from '../support/open-questions.ts';
 import { NO_ENGINE, trustOfModels } from '../support/trust.ts';
+import { chain } from '../support/value-chain.ts';
 
 const HUMAN = `prn_${'0'.repeat(21)}HUMAN` as PrincipalId;
 const AGENT = `prn_${'0'.repeat(21)}AGENT` as PrincipalId;
@@ -550,6 +556,72 @@ describe('the dry run’s acceptances by an owner’s rule for derived calls (M6
     expect(pairs({ rules: [], liveNoLinks: none })).toBe(pairs());
     // relationsAfter alone is the plan's: the call proposed
     expect(relationsAfter(input, planRecompute(input)).get(CALL_KEY)?.status).toBe('proposed');
+  });
+
+  it('makes both ends of a call the rule accepts due for placement (neighbours, S2b follow-up)', async () => {
+    const facts = await landscape(true);
+    const m = memory();
+    const input = m.input(facts, exported(facts));
+    const structure = prepareRevision(
+      chain({ steps: [{ id: 'step-a', name: 'Vertrieb' }] }),
+    ).structure;
+    const live = new Map([
+      ['step-a', 1],
+      [OUTSIDE, 1],
+    ]);
+    const procedure = { id: 'analyzr-placements', version: '0.1.0' };
+    // Every process judged on the head before (no relation yet): nothing due.
+    const ordered = headFactOrder(facts);
+    const before = pipelineInputs(
+      { structure, live, processFacts: ordered.filter((f) => f.kind === 'process') },
+      [],
+      new Map(),
+      ordered,
+      [],
+      new Map(),
+      procedure,
+    );
+    const chainInput = {
+      valueChainId: 'vch_X' as const,
+      structure,
+      live,
+      placements: [],
+      histories: new Map(),
+      rows: new Map(before.open.map((ref) => [ref, { inputHash: before.hashOf(ref) }])),
+      openTask: null,
+      claimed: new Map(),
+      procedure,
+      rulesPrincipalId: RULES,
+      headFacts: facts,
+      headChange: true,
+      triggered: true,
+    };
+    const task = (auto?: { rules: AutoAcceptRuleRev[]; liveNoLinks: Map<string, number> }) =>
+      importImpact(
+        input,
+        [],
+        [],
+        [],
+        auto,
+        {
+          judgements: [],
+          before: new Map(),
+          procedure: { id: 'analyzr-relations', version: '0.2.0' },
+          open: new Map(),
+          doneFactsHash: () => null,
+          candidatesOf: () => [],
+        },
+        chainInput,
+      ).placementTask;
+    // Only proposed without the owner's rules (a non-owner's preview): no neighbours.
+    expect(task()).toEqual({ outcome: 'nothing-due', due: 0, newlyDue: 0, again: 0 });
+    // The rule accepts it in the write: the caller's process and the callee are neighbours.
+    expect(task({ rules: [rule()], liveNoLinks: none })).toEqual({
+      outcome: 'queued',
+      due: 2,
+      newlyDue: 2,
+      again: 2,
+    });
   });
 
   it('is not retroactive: a proposal written before is not recorded again', async () => {

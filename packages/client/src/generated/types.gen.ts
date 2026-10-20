@@ -530,6 +530,14 @@ export type ImportImpact = {
     items: Array<ModelKey>;
   };
   relationsTasks: ImpactRelationsTasks;
+  /**
+   * Only with a live value chain: accepted placements whose process would turn changed or missing, sorted by process, then step.
+   */
+  placementsChanged?: {
+    count: number;
+    items: Array<ImpactPlacement>;
+  };
+  placementTask?: ImpactPlacementTask;
 };
 
 /**
@@ -690,6 +698,38 @@ export type ImpactCancelledTask = {
   state: 'queued' | 'claimed';
   claimedBy: string | null;
   assigned: number | null;
+};
+
+/**
+ * An accepted placement whose process would change or go missing: `step` is the element id (`@outside` included), `stepName` its name in the head (null for `@outside`).
+ */
+export type ImpactPlacement = {
+  step: string;
+  stepName: string | null;
+  process: Ref;
+  endpointState: 'changed' | 'missing';
+};
+
+/**
+ * Only with a live value chain: the chain’s placement task after the write (whether it is queued) and how many processes are due, newly due and placed again.
+ */
+export type ImpactPlacementTask = {
+  /**
+   * queued: the write queues the task; open: a queued task waits and its claim shows the new head; deferred: an agent holds the task, its submission queues the follow-up; nothing-due: no process is due; not-triggered: no file changes facts, or a deletion (deletions never queue).
+   */
+  outcome: 'queued' | 'open' | 'deferred' | 'nothing-due' | 'not-triggered';
+  /**
+   * Open processes that are due for placement after the write (while an agent holds the task: those its follow-up offers).
+   */
+  due: number;
+  /**
+   * Of the due processes, those that were not due before the write.
+   */
+  newlyDue: number;
+  /**
+   * Of the newly due processes, those whose input an agent had judged (or judges in the claim it holds): they are placed again.
+   */
+  again: number;
 };
 
 /**

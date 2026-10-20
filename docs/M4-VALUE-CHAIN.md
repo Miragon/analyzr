@@ -290,9 +290,10 @@ placements; §9 "S5 as delivered" lists the decisions):
 - **Queued** (`value-chain/queue.ts`) when no placement task of the chain is open and some
   process is due: creating or reviving the chain, a save whose `chainInputDigest` differs from
   the head's (saves that keep the claim's steps, such as layout or org units, `unchanged` saves
-  and dry runs do not), an upload with new or changed processes (after the relation tasks, so
-  their events keep their order), `POST …/analyses/requeue {valueChain: true}` (also from the
-  chain page and `analyzr value-chain requeue`), a lost judgement (a revoked token, a withdrawn
+  and dry runs do not), an upload that changes a model's facts (a created or revised file with
+  another `facts_hash`, not a layout-only re-save; after the relation tasks, so their events keep
+  their order), `POST …/analyses/requeue {valueChain: true}` (also from the chain page and
+  `analyzr value-chain requeue`), a lost judgement (a revoked token, a withdrawn
   pipeline proposal, an agent withdrawing its own ad-hoc proposal), and the server start for a
   live chain that never had a placement task (the chains of M4a that migration 0008 finds;
   reason `server start`, recorded under `analyzr-rules`). A trigger while the task is claimed sets

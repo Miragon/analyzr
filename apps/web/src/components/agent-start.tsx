@@ -1,6 +1,6 @@
 import { Link } from '@tanstack/react-router';
 import { ExternalLinkIcon, PlayIcon, PlugIcon, RotateCcwIcon } from 'lucide-react';
-import { useState, type ComponentProps } from 'react';
+import { useEffect, useRef, useState, type ComponentProps } from 'react';
 
 import { CopyButton } from '@/components/copy-button';
 import { LightPopover } from '@/components/light-popover';
@@ -156,12 +156,14 @@ export function AgentStart({
  * „Nochmal versuchen“: requeues the models' analyses, or with `chain` the
  * chain's placement task (permission `write`), and, since a requeue alone
  * runs nothing, opens the popover for owners (clicked again while it is
- * open, it closes it and requeues nothing); editors get a toast and a plain
- * button without a popup. With `chain` and the label „Agent starten“ it is
- * the chain's „3 Prozesse fällig · Agent starten“ (§2.6); with `requeue`
- * off it only opens the popover (a task is queued already), so the chain's
- * line keeps one button, and its open popover, while a requeue moves the
- * line from „fällig“ to „Wartet auf den Agenten“.
+ * open, it closes it and requeues nothing; when the owner's agent tokens
+ * are not known yet as the requeue answers, a toast, and the popover once
+ * they are); editors get a toast and a plain button without a popup. With
+ * `chain` and the label „Agent starten“ it is the chain's „3 Prozesse
+ * fällig · Agent starten“ (§2.6); with `requeue` off it only opens the
+ * popover (a task is queued already), so the chain's line keeps one button,
+ * and its open popover, while a requeue moves the line from „fällig“ to
+ * „Wartet auf den Agenten“.
  */
 export function RetryAgent({
   project,
@@ -188,11 +190,16 @@ export function RetryAgent({
   align?: 'start' | 'end';
   testId?: string;
 } & ButtonLook) {
-  const { canWrite } = useProjectPermissions(project);
+  const { canWrite, isOwner } = useProjectPermissions(project);
   const state = useAgentState(project);
   const requeue = useRequeue(project);
   const requeueChain = useRequeueChain(project);
   const [open, setOpen] = useState(false);
+  // The agent state when the requeue answers, not when it was clicked.
+  const known = useRef(state);
+  useEffect(() => {
+    known.current = state;
+  }, [state]);
   if (!canWrite || (!requeueFirst && state === null)) return null;
   const failed = (error: unknown) =>
     toast({
@@ -201,9 +208,11 @@ export function RetryAgent({
       description: errorMessage(error),
       error,
     });
+  // An owner gets the popover also when their agent tokens arrive after the click (the plain
+  // button turns into its open trigger); a toast while they are not known, and for editors.
   const queued = (title: string, description: string) => {
-    if (state !== null) setOpen(true);
-    else toast({ tone: 'success', title, description });
+    if (isOwner) setOpen(true);
+    if (known.current === null) toast({ tone: 'success', title, description });
   };
   const run = () =>
     !requeueFirst

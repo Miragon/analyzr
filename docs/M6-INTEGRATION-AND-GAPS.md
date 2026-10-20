@@ -3,13 +3,14 @@
 Status: in progress (2026-10-15); owner decisions 24, 25, 28 and 29 (§2, HANDOFF §4); S0 (this
 concept, revised after review), S1, S3a, S3b, S4, S5a, S5c-1, S5c-2 (answering by action and model
 amendments, decision 25, §4.8), S2a (provenance, manifest, stable identity; its web parts came
-with the UI simplification's UX8, §8 "S2a as delivered"), S2b (the dry runs) with step 1 of its
-follow-up (the agent work on the relations side, §8 "S2b follow-up step 1 as delivered"),
+with the UI simplification's UX8, §8 "S2a as delivered"), S2b (the dry runs) with steps 1 and 2 of its
+follow-up (the agent work in the dry runs, relations side and placements, §8 "S2b follow-up step 1
+as delivered" and "S2b follow-up step 2 as delivered"),
 S2c-1 (the trust class and the rule tier, §8 "S2c-1 as delivered"), S2c-2 (the fast path for
 derived calls, §8 "S2c-2 as delivered"), S2c-3 (owners' rules for derived calls, §8 "S2c-3 as
 delivered") and S2c-4 („Vor der Vertrauensregel angenommen“, §8 "S2c-4 as delivered"; with it
 all of S2c) done, the „erste Anfänge“ await the owner's review; next the rest of S2b's follow-up
-(step 2 the placements, step 3 the surfaces, optionally 3b the backlog's pair count, step 4 the
+(step 3 the surfaces, optionally 3b the backlog's pair count, step 4 the
 integrate plugin 0.1.3, step 5 the identity rows of decision 29 (1)), then S3c, then S6; after
 the owner's live runs S5b, S7 and facts v2 · Branch:
 `feat/integration-and-gaps` ·
@@ -468,9 +469,28 @@ The existing previews compute impact with pure code (`apps/server/src/domain/val
       and `rejudged`, those of them whose current agent judgement the write makes non-current
       (judged again, the cost signal). The head then also covers the current judgements and the
       open tasks. A deletion cancels the model's open task and queues nothing.
-    - **Step 2, placements:** whether the placement task becomes due, and accepted placements
-      turning `changed` or `missing`; the head then also covers placements and the chain's
-      structure.
+    - **Step 2, placements (delivered 2026-10-20, §8 "S2b follow-up step 2 as delivered"):**
+      only for a project with a live value chain, optional and REST only (a project without one
+      has neither field): `placementsChanged`, the accepted placements whose process the write
+      turns `changed` or `missing` (where the write's refresh records
+      `placement.endpoint_changed`; held and obsolete placements and those on removed steps are
+      not named), sorted by process, then step; and `placementTask`, the chain's placement task
+      after the write (`queued`, `open`, `deferred` while an agent holds it, `nothing-due`, or
+      `not-triggered` for a layout-only upload or a deletion, which never queue) with the open
+      processes due after the write (`due`), those of them not due before (`newlyDue`) and those
+      of these an agent had judged (`again`, placed again). Due-ness comes from the pipeline's
+      own input hashes over the head and the would-be head, with the rule tier's placement
+      writes planned as the write records them. The head then also covers the chain's
+      structure, placements and their histories, the agent's verdicts and the open placement
+      task.
+    - **Step 3, the surfaces (planned):** in the „Vorschau“ a cost line in the last of its three
+      slots (for example „214 mögliche Relationen zu beurteilen (56 davon erneut), 7 Prozesse zu
+      platzieren“), its placement part „N Prozesse zu platzieren (… davon erneut)“ only when the
+      placement task is triggered and processes are newly due (with the held-claim rule also for
+      a deferred task), with „etwa“ in front for more than one batch; a placements line
+      („1 angenommene Platzierung mit geändertem oder fehlendem Prozess“) and lists in „Was ändert
+      sich?“; the claimed-task warning with a second click („Trotzdem importieren“); the CLI's
+      lines in `analyzr import --dry-run` and the deletion listing of `analyzr models delete`.
 
   Lists are capped at 100 with counts.
 - **REST:** `POST …/imports?dryRun=true` and `PUT …/models/by-key/{key}?dryRun=true` answer the
@@ -2277,8 +2297,8 @@ note; „Importieren“ sends the same plan, „Abbrechen“ sends nothing. One 
 Left: the follow-up (judgements made non-current, tasks queued or cancelled, the placement task
 due, placements changed or missing), and the plugin's next version with the pre-approved
 `--dry-run` (since decision 29 (2) a bundled read-only script, not a CLI pattern; plugin 0.1.3).
-Step 1 of the follow-up, the relations side, is delivered (2026-10-20, "S2b follow-up step 1 as
-delivered" below).
+Steps 1 and 2 of the follow-up, the relations side and the placements, are delivered (2026-10-20,
+"S2b follow-up step 1 as delivered" and "S2b follow-up step 2 as delivered" below).
 
 Left for S2b: `importImpact`, the dry runs (`POST …/imports?dryRun=true`, `PUT …?dryRun=true`,
 `analyzr import --dry-run`), the deletion impact in `models delete`, and the absent keys of
@@ -2858,8 +2878,9 @@ question. Open:
 Left: S2b's follow-up (judgements made non-current, tasks queued or cancelled, the placement task
 due, placements changed or missing; the integrate plugin's next release with the key-map rebuild,
 a pre-approved `--dry-run` and `normalize-bpmn` writing `null` for an empty `exporterVersion`;
-its step 1, the relations side, delivered the same day, below; the pre-approved `--dry-run`
-is to become a read-only script by decision 29 (2), plugin 0.1.3 in step 4); then S3c and S6.
+its steps 1 and 2, the relations side and the placements, delivered the same day, below; the
+pre-approved `--dry-run` is to become a read-only script by decision 29 (2), plugin 0.1.3 in step
+4); then S3c and S6.
 
 **S2b follow-up step 1 as delivered** (2026-10-20, on the branch, every gate green, with a review
 round's fixes; [DEVELOPMENT.md](DEVELOPMENT.md) "M6 S2b follow-up step 1 (2026-10-20)" and
@@ -3014,11 +3035,193 @@ are in HANDOFF §4 ("Taken during the M6 S2b follow-up step 1"); no owner questi
 - **The amendment number can drop to 0** where agents judged only `compatible` pairs, the search
   space no claim assigns.
 
-Left: step 2 (placements: `placementsChanged`, `placementTask`), step 3 (the surfaces: the
+Left: step 2 (placements: `placementsChanged`, `placementTask`; delivered the same day, "S2b
+follow-up step 2 as delivered" below), step 3 (the surfaces: the
 „Vorschau“'s cost line, the claimed-task warning with a second click, the CLI's lines, the deletion
 listing), optionally 3b (`ProjectSummary.pairsToJudge` in „Als Nächstes“), step 4 (plugin 0.1.3:
 the key-map rebuild, `analyzr-read.mjs` by decision 29 (2), `exporterVersion`), step 5 (the
 identity rows of decision 29 (1), migrations 0021/0022); then S3c and S6.
+
+**S2b follow-up step 2 as delivered** (2026-10-20, on the branch, every gate green, with a review
+round's fixes; [DEVELOPMENT.md](DEVELOPMENT.md) "M6 S2b follow-up step 2 (2026-10-20)" and
+"Provenance and the import manifest (M6 S2a)"): the agent work in the dry runs, placements (§3.5
+"Follow-up"). For the first analysis: before an import the server now knows whether the
+placement agent must place processes (again) and how many, and which accepted placements lose or
+change their process, so once the surfaces show it (step 3) the consultant sees what a re-export
+sets off on the value chain before importing, and can hold back a trivial change that would send
+judged processes back to the agent or wait while an agent places. No user-visible text changed in
+this step: the „Vorschau“ lines, the CLI's lines and the deletion listing come in step 3;
+`analyzr import --dry-run --json` and `models delete --json` carry the fields. Contracts first
+(the client regenerated); no route, no migration, MCP unchanged.
+
+- **The contract.** `ImportImpact` gains two optional fields, present only when the project has
+  a live value chain (a project without one has neither), REST only (the import's and PUT's dry
+  runs and the deletion impact; no MCP output schema holds `ImportImpact`):
+  - `placementsChanged` (`impactList(ImpactPlacement)`, by process, then step, capped at 100):
+    the accepted placements whose process the write turns `changed` or `missing`, each
+    `{step, stepName, process, endpointState}`; `step` is the element id (`@outside` included),
+    `stepName` its name in the chain's head (`null` for `@outside`);
+  - `placementTask` (`ImpactPlacementTask {outcome, due, newlyDue, again}`): `outcome` is
+    `queued` (no task was open and a process is due), `open` (a queued task waits; its claim
+    shows the new head), `deferred` (an agent holds the task: it gets `requeue_after` and is never
+    cancelled, its submission queues the follow-up), `nothing-due` or `not-triggered`; `due` the
+    open processes due after the write, `newlyDue` those of them not due before, `again` those of
+    `newlyDue` an agent had judged (placed again).
+- **Triggered as the write decides it.** Only a created or revised file with other facts triggers
+  the task (`afterHeadChange`); a layout-only upload, an unchanged import and a deletion never
+  queue it (M4 §3.2), so the deletion impact is always `not-triggered`, but still reports `due`,
+  `newlyDue` and `again` (those processes wait for the next trigger or a requeue). The outcome
+  follows `queuePlacementTask`: a queued task gives `open`, one an agent holds `deferred`, else
+  `queued` when an open process is due, else `nothing-due`.
+- **Due-ness from the pipeline's own input hashes.** `loadPipelineInputs` (`value-chain/queue.ts`)
+  is now the same reads in the same order, then the new pure `pipelineInputs` (`byProcess`,
+  `hashContext`, `hashOf`, `open`, `due`), which the write and claim paths and the dry runs share
+  (`claim-golden` unchanged); `factsByProcess` and `processOwnFields` (`unplaced.ts`) take
+  fact-shaped input (types only). The new pure `value-chain/model-impact.ts` (`ChainRead`,
+  `ChainSide`, `headFactOrder`, `placementImpact`) runs it over the head and over the would-be
+  head: its facts, the relations the write leaves (`importImpact` computes the relations part
+  first, so an owner's rule acceptances are in them and a newly accepted call makes both ends
+  due), the placements and histories after the rule tier (below) and the agent's verdicts as
+  stored (`placement_input`). `again` is "newly due and open before": an agent's verdict, or the
+  held claim, matched the process's input then.
+- **The rule tier, planned.** Every head change runs the chain's sync, whose rule tier proposes
+  and withdraws over the would-be head processes. The new pure `planRulePlacements`
+  (`value-chain/rules.ts`) plans those writes; `recomputeRulePlacements` now reads, plans, then
+  writes with the same queries and event order (`value-chain-golden` unchanged). Whenever the
+  write changes a head (a created or revised file, a layout-only one included, or a deletion) the
+  dry run appends the planned rule assertions to the histories with seqs after every stored one,
+  so a process the rule tier records on gets a new input hash, as in the write; an unchanged
+  import plans nothing. The rules principal is taken from the histories (a dry run never creates
+  it).
+- **The held claim.** While an agent holds the task, the processes its claim shows count as judged
+  on the input the claim showed (its submission records those verdicts): in the `deferred` case
+  `due` is what the follow-up then offers, and a process the import changes under the claim
+  counts as newly due and placed again.
+- **The placements.** `placementsChanged` comes from `derivedPlacementState` over the history after
+  the rule tier, as `refreshPlacement` computes it; an accepted placement keeps its decision's
+  anchor (`recomputeStatusOf`), so the list equals the write's `placement.endpoint_changed` events
+  that turn an accepted placement `changed` or `missing`. Held and obsolete placements,
+  placements on removed steps and a placement turning back to `ok` (a revert, a revival; the
+  write records that event too) are not named, as `endpointsChanged` names accepted relations
+  only.
+- **One fact order.** The extractor lists a model's fact kinds in the enum's order, `facts.head` in
+  code point order, and a process's first start and end labels (`processOwnFields`) follow the
+  order, so a process with message and plain start events would hash differently in the dry run
+  than in the write. The new pure `domain/fact-order.ts` (`compareStoredFacts`) is the one
+  comparator that `store.ts` (`facts.head`, a revision's facts) and `headFactOrder` share; the
+  stored order is unchanged.
+- **Reads** (`readChain` in `ingest.ts`, inside the dry run's read-only snapshot; permission
+  `read`, no lock, nothing written): one query without a live chain (the fields are then left
+  out); else the head's structure (cached by content hash), the live step generations, the
+  placements with their histories, the agent's verdicts, the open placement task and, while an
+  agent holds it, the input hashes its claim showed (one more query). `importImpact` takes the
+  chain as an optional seventh parameter. The chain is read for an unchanged batch too, so the
+  fields are always present with a chain.
+- **The merge** (`mergePlacements` in the zod-free `@analyzr/contracts/impact-merge`): the fields
+  only when some batch has them; `placementsChanged`' counts added up, its items concatenated,
+  sorted again and capped (a process belongs to one batch, so the count is exact); `placementTask`
+  the strongest outcome (`deferred` > `open` > `queued` > `nothing-due` > `not-triggered`, a typed
+  `Record` of all five), `due` the largest batch's count, `newlyDue` and `again` added up. All three
+  counts are approximate across batches: each batch counts against the head, so another batch's
+  revert or removed process is not seen, and a process two batches make due counts in both.
+
+Deviations from the plan, with reasons:
+
+- **The dry run plans the rule tier** (above). The plan's invariant (the rule tier records on a
+  process only where it is new or its own fields change, so the dry run need not simulate it) did
+  not hold: a proposal a human decision suppressed at the last run is recorded once that decision
+  is gone. The review's case: a placement auto-accepted, then a step link added to its step (the
+  rule tier derives the placement, the auto-acceptance suppresses it), then the auto-acceptance
+  revoked; the next head change records the rule proposal on a process whose own fields did not
+  change, so the write made it due and the dry run did not. The plan's fallback,
+  `planRulePlacements`, is now built.
+- **The shared fact order** (above), an addition: without it the dry run's due-ness differed from
+  the write's for a process with start or end events of mixed kinds.
+- **`pipelineInputs` also returns `byProcess`** (its callers need it, computed once); it is generic
+  over the fact type and takes a structural chain state.
+- **`placementsChanged` over the history** (`derivedPlacementState`, as `refreshPlacement`), sorted
+  by process, then step (the plan left the order open).
+- **The held claim counts** (above): as planned, a claimed process was due before and after, so a
+  process the import changed under the claim showed neither as newly due nor as placed again,
+  although its follow-up judges it again.
+- **The chain is read for an unchanged batch too** (about 20–30 ms): the fields are always present
+  with a chain.
+
+The review round (a correctness lens, dry run equals write, and a refactor-safety and contracts
+lens) found one major and five minor points and a nit, all fixed: (1) major, the write could queue
+a placement task the dry run did not predict (the revoked auto-acceptance above; now the rule-tier
+plan, a dry-run-equals-write test of that case and three unit tests, two of which fail without the
+plan); (2) the merged `due` was called a lower bound (now "approximate, the largest batch's
+count"); (3) the fact order existed twice, its tests pinned it only against itself (now one
+comparator, and an integration test that `facts.head` keeps it on `nordwind-handel`, which has a
+process with message and plain start events); (4) a re-placement under a held claim was not
+counted (the held-claim rule; the lease test now expects `{deferred, 1, 1, 1}`, equal to the
+follow-up's queued `due`); (5) the deletion's due-ness was never checked against the write (a
+deletion of a model a step links to: `{not-triggered, 2, 2, 2}`, then no task queued and the chain
+due 2); (6) no multi-file import dry run on a chain project (one layout-only file and one rename:
+`queued` with due 1, as the import's `analysis.queued`); (7) nit, an untyped outcome order (a
+typed `Record` of all five outcomes, which the type checker keeps complete).
+
+Tests: server unit `test/unit/placement-impact.test.ts` (new, 21 tests: an accepted placement named
+`changed` on a rename and `missing` when its process or its whole model leaves the head, none on a
+removed step, no held one, `@outside` without a step name, nothing when the process comes back or
+nothing changes, the sort; nothing due on an unchanged head; due-ness of a new process, of an
+own-field change but not its sibling, of both ends of a newly accepted call, of every open process
+when a step link resolves, a process due before not newly due, more than five start events of mixed
+kinds keeping their digest; the outcome matrix with `not-triggered`; the rule tier's proposal a
+revoked auto-acceptance no longer suppresses, nothing where its proposal is live or a human decided,
+a proposal on a new spot and a withdrawal each a new non-agent seq; the held claim's processes
+judged on the claim's input, and without its hashes; `headFactOrder`), `recompute-trust.test.ts` (a
+derived call an owner's rule accepts makes both ends due, `{queued, 2, 2, 2}`; without the rules
+nothing is due); real PostgreSQL `value-chain-ingest.test.ts` (before each write, a rename and back,
+a deletion and revival, a rule proposal withdrawn and back, an unchanged re-import and a layout-only
+re-save, the dry run's `placementsChanged` equals the following `endpoint_changed` events that turn
+an accepted placement `changed` or `missing`, and `lastSeq` is unchanged; the head's fact order on
+`nordwind-handel`), `placement-pipeline.test.ts` (the triggers: layout-only `not-triggered`, a new
+model `queued` with the `analysis.queued` payload's `due`, a deletion `not-triggered` with no event;
+an own-field change `{queued, 1, 1, 1}`, a task label `nothing-due`; an import during the lease
+`deferred`, then `requeue_after` set and the follow-up offering the changed process; the rule tier
+proposing and withdrawing on a rename, dry run equal to write; an accepted placement the rule tier
+re-proposes named changed; a newly accepted call making both ends due; the revoked auto-acceptance;
+the deletion of a model a step links to; a batch with a layout-only file and a rename),
+`import-dry-run.test.ts` (no chain, no placement fields, in the import's dry run and the deletion
+impact); contracts `impact-merge.test.ts` (2 new tests: absent, added up, sorted again and capped;
+the outcome precedence, the largest `due` and the sums); the bundle guard's comment.
+
+One web fix the e2e run found (older than step 2: the spec failed the same way on a stack built
+from step 1's commit): an owner who clicked „Agent starten“ on the chain's line before their agent
+tokens had loaded got the toast „Eingeplant“ and no popover, since `RetryAgent` decided by the
+agent state of the click's render. It now opens the popover for every owner, once the tokens are
+known, and shows the toast only while they are not known when the requeue answers
+(`agent-start.test.tsx`, two tests that fail on the old code; the entry stays 226.6 KB).
+
+What it costs and leaves open. On 16 renamed copies of `nordwind-handel` (496 models, 6,128 facts,
+the golden chain, 512 processes judged over 31 claims, 64 rule proposals accepted) with a 50-file
+batch, on the final tree and a quiet machine: the chain reads take 6.4–10.5 ms and
+`placementImpact` 9.5–10.7 ms (about 3 ms of it planning the rule tier), so a 50-file dry run
+gains about 20 ms (25–30 ms on the busier machine of the review round); the REST medians of 7
+runs, without a chain → with it: an unchanged batch 320 → 327 ms, renamed processes 1,242 → 1,244
+ms, changed end labels 1,159 → 1,193 ms (within the runs' spread). Live-run neutral: claim
+inputs, `renderClaims`, MCP snapshots, procedures, recordings and eval reports unchanged
+(`claim-golden`, `recompute-golden` and `value-chain-golden` green unchanged). The bundle entry is
+226.6 KB gzip (+0.3, the merge of the chain's part). The readings the implementing agent took that
+the owner may overrule are in HANDOFF §4 ("Taken during the M6 S2b follow-up step 2"); no owner
+question. Open:
+
+- **A non-owner's preview** leaves out the neighbours of calls an owner's rules for derived calls
+  would accept (no rule data outside an owner's preview), so its `due` can be too low.
+- **Across batches** the placement task's counts are approximate (above), as the pairs are; step
+  3's cost line is planned to start with „etwa“ for more than one batch (§3.5 "Follow-up", step
+  3).
+- **`readChain` takes the first live chain with a head** (M4 has only `main`).
+
+Left: step 3 (the surfaces, as planned in §3.5 "Follow-up": the „Vorschau“'s cost line, whose
+placement part „N Prozesse zu platzieren (… davon erneut)“ with the held-claim rule also appears for
+a deferred task, the placements line and list, the claimed-task warning with a second click, the
+CLI's lines, the deletion listing), optionally 3b (`ProjectSummary.pairsToJudge` in „Als Nächstes“),
+step 4 (plugin 0.1.3: the key-map rebuild, `analyzr-read.mjs` by decision 29 (2),
+`exporterVersion`), step 5 (the identity rows of decision 29 (1), migrations 0021/0022); then S3c
+and S6.
 
 **S3 "Toolkit".** S3a (part of the „erste Anfänge“): §3.11, report committed, CI drift check,
 and the `get_landscape` size per model of the seeded `nordwind-handel` with the v1 limit in §6.

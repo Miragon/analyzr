@@ -57,6 +57,7 @@ import { DomainError } from './errors.ts';
 import {
   absentKeys,
   importImpact,
+  type ChainInput,
   type DerivedCallRules,
   type FileHeads,
   type TaskInput,
@@ -83,7 +84,11 @@ import type {
 } from './ports.ts';
 import { recomputeProject } from './recompute.ts';
 import { callTargets, storedTrust, trustByModel, trustOf, type ModelTrust } from './trust.ts';
+import { headRevision, revisionStructure } from './value-chain/chain-state.ts';
+import type { ChainRead } from './value-chain/model-impact.ts';
+import { byPlacement } from './value-chain/placement-state.ts';
 import { queuePlacementTasks } from './value-chain/queue.ts';
+import { liveGenerations } from './value-chain/steps.ts';
 import { syncValueChainAfterModels } from './value-chain/sync.ts';
 import { storedWarnings } from './warnings.ts';
 
@@ -844,6 +849,47 @@ async function readTasks(
 }
 
 /**
+ * What a dry run reads of the project's live value chain (S2b follow-up),
+ * in its snapshot: the head's structure (cached per content hash), the live
+ * step generations, the placements with their histories (and the rule
+ * principal they name), the agent's last verdicts, the open placement task
+ * and, while an agent holds it, the input hashes its claim showed. The
+ * process facts come from the head facts the dry run already read. Without
+ * a live chain (M4: only `main`) one query and `null`: the impact has no
+ * chain fields.
+ */
+async function readChain(
+  tx: Tx,
+  projectId: ProjectId,
+  procedure: DeclaredProcedure,
+): Promise<ChainRead | null> {
+  const chain = (await tx.valueChains.list(projectId)).find(
+    (c) => c.deletedSeq === null && c.headRevisionId !== null,
+  );
+  if (!chain) return null;
+  const structure = await revisionStructure(tx, await headRevision(tx, chain));
+  const assertions = await tx.placementAssertions.listForChain(projectId, chain.id);
+  const openTask = await tx.tasks.latestForChain(projectId, chain.id, ['queued', 'claimed']);
+  const held =
+    openTask?.state === 'claimed' ? await tx.tasks.findInProject(projectId, openTask.id) : null;
+  const claim = held?.kind === 'placement' ? held.placementClaim : null;
+  return {
+    valueChainId: chain.id,
+    structure,
+    live: liveGenerations(await tx.valueChainSteps.list(projectId, chain.id)),
+    placements: await tx.placements.forChain(projectId, chain.id),
+    histories: byPlacement(assertions),
+    rows: new Map(
+      (await tx.placementInputs.forChain(projectId, chain.id)).map((r) => [r.processRef, r]),
+    ),
+    openTask,
+    claimed: new Map((claim?.processes ?? []).map((p) => [p.process, p])),
+    procedure,
+    rulesPrincipalId: rulesPrincipalOf(assertions),
+  };
+}
+
+/**
  * What the relations tasks of a dry run read (S2b follow-up): every live
  * agent judgement with its basis (the pipeline proposals of the relations
  * that are not obsolete, as a claim reads them, and the live no-links of
@@ -883,6 +929,15 @@ function taskInput(
   };
 }
 
+/** The value chain's part of a dry run's input, without a live chain none. */
+function chainInput(
+  chain: ChainRead | null,
+  headFacts: ProjectFacts,
+  effect: Pick<ChainInput, 'headChange' | 'triggered'>,
+): ChainInput | undefined {
+  return chain ? { ...chain, headFacts, ...effect } : undefined;
+}
+
 /** The trust a dry run gives a created or revised file's model (M6 S2c), as the ingest stores it. */
 function incomingTrust(
   trust: RevisionTrust,
@@ -914,12 +969,14 @@ function incomingTrust(
  * (`autoAcceptedCalls`, M6 S2c-3); nobody else gets it. `manifest` names
  * the bundle's system, scope and listed keys for the absent keys. The
  * relations tasks (S2b follow-up) are planned from the open tasks, and for a
- * model without one from its latest done task, read in the same snapshot.
+ * model without one from its latest done task, read in the same snapshot;
+ * with a live value chain the impact also names the accepted placements
+ * whose process changes and the placement task (`readChain`).
  *
  * @throws {DomainError} from the policy (`read` on the project)
  */
 export async function previewIngest(
-  deps: Pick<IngestDeps, 'store' | 'analysis' | 'expectedProcedure'>,
+  deps: Pick<IngestDeps, 'store' | 'analysis' | 'expectedProcedure' | 'expectedPlacementProcedure'>,
   actor: Actor,
   projectRef: string,
   files: readonly IngestFile[],
@@ -969,6 +1026,7 @@ export async function previewIngest(
       tasks,
       sources: await tx.revisions.uploadedSources(project.id),
       auto: await derivedCallRulesFor(tx, actor, project),
+      chain: await readChain(tx, project.id, deps.expectedPlacementProcedure()),
     };
   });
 
@@ -1049,6 +1107,12 @@ export async function previewIngest(
     absentKeys(read.sources, manifest, imported),
     read.auto ?? undefined,
     taskInput(deps, read.head, read.tasks, projectFacts, read.done),
+    chainInput(read.chain, read.head.projectFacts, {
+      // `afterHeadChange` runs for a created or revised file (the chain's sync with it) and
+      // queues the placement task when a file changes facts.
+      headChange: heads.length > 0,
+      triggered: heads.some((h) => h.previousFactsHash !== h.factsHash),
+    }),
   );
   return { project: read.project, results, impact };
 }
@@ -1058,13 +1122,16 @@ export async function previewIngest(
  * the impact with the model's facts removed from the head; `files` and
  * `absentKeys` are empty; for an owner the derived calls their rules would
  * accept (a duplicate process id gone, M6 S2c-3); the model's open
- * relations task cancelled, nothing queued (S2b follow-up). Permission
- * `read`, nothing written.
+ * relations task cancelled, nothing queued (S2b follow-up); with a live
+ * value chain the accepted placements of its processes turn `missing` and
+ * the placement task is `not-triggered` (deletions never queue, M4 §3.2),
+ * with the processes the deletion makes due. Permission `read`, nothing
+ * written.
  *
  * @throws {DomainError} `not-found` for unknown, deleted or foreign models
  */
 export async function deletionImpact(
-  deps: Pick<IngestDeps, 'store' | 'analysis' | 'expectedProcedure'>,
+  deps: Pick<IngestDeps, 'store' | 'analysis' | 'expectedProcedure' | 'expectedPlacementProcedure'>,
   actor: Actor,
   projectRef: string,
   modelId: ModelId,
@@ -1079,6 +1146,7 @@ export async function deletionImpact(
       head: await readHead(tx, project.id),
       tasks: await readTasks(tx, project.id, [model.key], deps.expectedProcedure()),
       auto: await derivedCallRulesFor(tx, actor, project),
+      chain: await readChain(tx, project.id, deps.expectedPlacementProcedure()),
     };
   });
   const projectFacts = {
@@ -1101,5 +1169,7 @@ export async function deletionImpact(
     [],
     read.auto ?? undefined,
     taskInput(deps, read.head, read.tasks, projectFacts, new Map(), read.model.key),
+    // `deleteModel` syncs the chain, but never queues the placement task (M4 §3.2).
+    chainInput(read.chain, read.head.projectFacts, { headChange: true, triggered: false }),
   );
 }

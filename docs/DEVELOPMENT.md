@@ -35,8 +35,9 @@ the dry runs, [below](#provenance-and-the-import-manifest-m6-s2a)), S2c-1 (the t
 the rule tier, [below](#the-trust-rule-m6-s2c-1)), S2c-2 (the fast path for derived calls,
 [M6 S2c-2](#m6-s2c-2-2026-10-20)), S2c-3 (owners' rules for derived calls,
 [M6 S2c-3](#m6-s2c-3-2026-10-20)), S2c-4 („Vor der Vertrauensregel angenommen“,
-[M6 S2c-4](#m6-s2c-4-2026-10-20)) and step 1 of S2b's follow-up (the agent work in the dry runs,
-relations side, [M6 S2b follow-up step 1](#m6-s2b-follow-up-step-1-2026-10-20)) are in. The public read-only demo of
+[M6 S2c-4](#m6-s2c-4-2026-10-20)) and steps 1 and 2 of S2b's follow-up (the agent work in the dry
+runs, relations side and placements, [M6 S2b follow-up step 1](#m6-s2b-follow-up-step-1-2026-10-20)
+and [step 2](#m6-s2b-follow-up-step-2-2026-10-20)) are in. The public read-only demo of
 owner decision 20 runs at https://analyzr-demo.fly.dev after the first deploy
 ([Demo deployment (Fly.io)](#demo-deployment-flyio)).
 
@@ -1491,7 +1492,8 @@ them.
 Contracts: `packages/contracts/src/api/{value-chains,placements}.ts`, OpenAPI tag
 `value-chains`; domain: `src/domain/value-chain/` (S1's write path and lifecycle plus
 `document.ts`, `structure.ts`, `impact.ts`, `items.ts`, `tiers.ts`, `views.ts`,
-`chain-state.ts`, `revocation.ts`, `rules.ts`, `sync.ts`, `findings.ts`) and the use cases
+`chain-state.ts`, `revocation.ts`, `rules.ts`, `sync.ts`, `findings.ts`; since M6 S2b's follow-up
+step 2 `model-impact.ts`, the chain's part of a dry run) and the use cases
 `src/domain/use-cases/{value-chains,placements,chain-access}.ts`; HTTP:
 `src/http/routes/{value-chains,placements}.ts`, `src/http/etag.ts`.
 
@@ -1619,7 +1621,13 @@ Analysis tasks have two kinds: `relations` (subject: a model revision, `analyzr-
 chain's open processes on steps (or `@outside`), or says it is unsure; humans decide on the chain
 page as for ad-hoc proposals. Code: `src/domain/value-chain/{pipeline,queue,unplaced}.ts`,
 `src/domain/use-cases/placement-tasks.ts`, the claim dispatch in `use-cases/analyses.ts`;
-migration `0008_placement_pipeline.sql`.
+migration `0008_placement_pipeline.sql`. Since M6 S2b's follow-up step 2 `queue.ts`'s
+`loadPipelineInputs` is its reads (placements, histories, `facts.head`, relations, the verdict
+rows, in the same order) plus the pure `pipelineInputs` (`byProcess`, `hashContext`, `hashOf`,
+`open`, `due`), which the write and claim paths and the dry runs share (`claim-golden.test.ts`
+unchanged); `unplaced.ts`'s `factsByProcess` and `processOwnFields` take fact-shaped input, so a
+dry run runs them over the would-be facts ([The placements in the dry
+runs](#provenance-and-the-import-manifest-m6-s2a)).
 
 **Kinds everywhere.** `claim_analysis`/`POST /analyses/claim` take `kinds` (default
 `["relations"]`; `modelKey` narrows to relations tasks), `GET /analyses/pending?kinds=relations&kinds=placement`
@@ -1653,9 +1661,11 @@ without an accepted or held placement on a live step, due when open and its hash
 task per chain is open (`analysis_task_open_chain_unique`); triggers while it is claimed set
 `requeue_after`, and the follow-up is queued at submit (after a truncated claim that wrote a
 verdict row, or with `requeue_after`), only when something is due. Triggers: creating or reviving
-the chain, a save whose `chainInputDigest` differs from the head's, an upload with new or changed
-processes, requeue, a lost judgement (a revoked token, a withdrawn pipeline proposal, an agent's
-own ad-hoc withdrawal), and the server start for a live chain that never had a placement task
+the chain, a save whose `chainInputDigest` differs from the head's, an upload that changes a
+model's facts (a created or revised file with another `facts_hash`, a task label change included,
+a layout-only re-save not; like every trigger it queues only when a process is due), requeue, a
+lost judgement (a revoked token, a withdrawn pipeline proposal, an agent's own ad-hoc
+withdrawal), and the server start for a live chain that never had a placement task
 (`queueFirstPlacementTasks` in `main.ts`, reason `server start`, under `analyzr-rules`: the chains
 created before migration 0008); never a model deletion, a decision or a note, never a save that
 keeps the claim's steps. Deleting the chain cancels the task; a save never cancels a claimed task
@@ -2015,10 +2025,10 @@ token), `--owner-key-file` (`ANALYZR_OWNER_KEY_FILE`).
 | Command | Credential | |
 |---|---|---|
 | `analyzr seed [landscape…] [--corpus dir] [-p\|--project <key>] [--issue-tokens [--token-name <name>]] [--value-chains [--value-chains-dir <dir>]] [--verbose] [--json]` | owner key | one project per landscape of `eval/corpus` (default: every scored one, i.e. not starting with `_`; `_sample` seeds into `sample`), named after `landscape.yaml`; imports `models/`; safe to repeat (unchanged models stay unchanged). `--project` seeds exactly one named landscape into a project of that key, named `<landscape name> (<key>)` (a fresh project per live run; an existing project is refused with exit 1 before any import or token request); `--issue-tokens` creates a read+propose token per project (90 days), named `--token-name` (default `seed`; the name is the agent segment of `eval:live` recordings). `--value-chains` (M4 S4) also creates each landscape's golden value chain from `eval/value-chains/<landscape>/value-chain.vc.json` (or `--value-chains-dir`), after the import and before the token, without placements: a line `value chain: created r1` (`revived` for a deleted chain, `unchanged` when the head equals it, `exists r<n>, differs from the golden chain: left unchanged` for an edited chain, which is never overwritten, `no golden value chain` for `_sample`). Misuse (`--project` without exactly one landscape or with an invalid key, `--token-name` without `--issue-tokens`, `--value-chains-dir` without `--value-chains` or not a directory) is refused before any request. The JSON result names the `landscape` of each project and its `valueChain` (`{outcome, rev}`, `null` without the flag) |
-| `analyzr import <dir> --project <key> [--create [--name n]] [--dry-run] [--verbose] [--json]` | agent token (`analyzr:write`) or owner key; `--dry-run` any credential | every file below `<dir>` the shared file rule picks up (M6 S1, `isImportPath` of `@analyzr/contracts/paths`, as the web upload: `.bpmn`, `.bpmn2`, `.bpmn20.xml`, `.xml`, case-insensitive; hidden files and directories, `node_modules` and symbolic links are skipped), in requests of ≤ 50 files and ≤ 25 MB, in code-point order (`comparePaths`, as the web); the model key is the path below `<dir>` (`modelKeyFromPath`, derived before sending: a path without a valid key, a key another file of the import gets, also in another request, and a file above 5 MB are reported `failed` locally in the server's wording and never sent; a key goes to the first `.bpmn…` file and only then to a plain `.xml`, `modelKeyOwners`, and the refusal names that file: `another file of this import has model key z (Z.bpmn)`); listed as `skipped` instead, outside `files` and `counts`, and never changing the exit code: a plain `.xml` whose key a `.bpmn…` file has (a tool's sidecar `Prozess.xml` next to `Prozess.bpmn`, `keyTakenBy`; never sent; reason `key-taken`, text `skipped   Prozess.xml  (same model key as Prozess.bpmn)`), while two `.bpmn…` files or two plain `.xml` files with one key stay `failed`, and a plain `.xml` the server refuses as no BPMN (422 `bpmn-invalid`, reason `not-bpmn`; text `skipped   meta.xml  (not BPMN)`); the summary names the reasons („N skipped (not BPMN)“ when all share one, „2 skipped (1 not BPMN, 1 same model key)“ otherwise); JSON: `skipped: [{path, reason, takenBy?}]`, only when non-empty; every other refusal (a DOCTYPE, …) stays `failed`; per-file outcome with the extractor's warnings by code (`warnings: 3 (invalid-id 2, parse-warning 1)`; beyond the extractor's 100 its own entry follows, `warnings: 100 (parse-warning 19, 81 more, 150 more warnings omitted)`; `--verbose` lists the entries, `--json` carries the result's `warnings` (≤ 20) and `warningCount`; warnings never change the exit code); in text mode it ends with the project's waiting work (`<project>: N relations tasks waiting, placement task waiting: yes\|no`, from `GET …/analyses?state=queued`, so any credential with `read` works; the project's state, not this import's effect) and, only when something waits, the next agent step (`/analyzr:relations <project>` when relations tasks wait, `/analyzr:placements <project>` when the placement task waits, the start prompts in `examples/agents`); exit 1 if a file failed, or if every file was a plain `.xml` that is no BPMN (nothing imported: „no BPMN files below <dir>: N skipped (not BPMN)“, no next-step block); since M6 S5c-2 a model with live amendments adds `amendments: 2 applied, 1 already in the source, 1 conflict` to its line, and conflicts end in „N amendments no longer apply; see analyzr questions -p <project> --kind amendment-conflict“; since M6 S2a it reads `analyzr-import.json` at `<dir>` (the bundle's manifest, `analyzr-import/1`): checked with the contracts' `ImportManifest` before anything is sent, also before `--create` creates the project (an invalid one exits 1, „nothing imported“, naming the manifest's importer as a hint that a newer converter may need a newer analyzr); a `<dir>` without a manifest whose subfolders hold one (a workspace's `bundles/`) is refused before anything is sent („found analyzr-import.json in <folder>/: import that folder …“); the keys it pins win over the paths (also in the local duplicate check), each batch sends the manifest's subset for its files as the part `manifest` (compact JSON), text mode prints `manifest: analyzr-import.json (<system>), N of M files listed: keys pinned, provenance stored for N` (`…; K unchanged keep what analyzr had` for identical bytes, which keep their first provenance) with the files it does not list (path keys, no provenance) and the ones it names that are missing, each file's import warnings (`manifest-sha-mismatch`, `external-id-moved`, `external-id-changed`, `provenance-kept`, since M6 S2c-1 `trust-kept`, always listed, never changing the exit code), `<project>: N import warnings (…); the files were imported` and, after `external-id-moved` or `external-id-changed`, a `next:` line each before the agent step (which then starts with `then:`), and for a bundle with a value chain the `value-chain push … --dry-run` to run next (the chain is never sent with the models); `--json` gains `manifest` `{system, listed, stored, kept, unlisted, missing, valueChain?}` only with a manifest, and the files carry the server's `importWarnings`; since M6 S2b `--dry-run` previews into an existing project (not with `--create`) through `POST …/imports?dryRun=true`, each batch with the whole manifest (so every batch knows which keys the bundle names), prints the same lines and then what the import would change (`<project>: dry run, nothing imported; the import would` … the facts of N models changed with processes added and removed, rule-tier calls accepted, since M6 S2c-1 and only when there are any the unique calls of derived callers only proposed (`propose instead of accept (trust rule): 12 (no engine 10, agent token 2), 3 of them accepted until now`, from the server's totals over all of them), rule proposals added, rule stances withdrawn, accepted relations losing or changing an end, findings added and resolved, up to five examples each, the keys not in the bundle (kept, nothing deleted), and for several batches that each was previewed against the head, so a call into a later batch shows as unresolved); `--json` gains `impact` (the batches' merged, `callsProposed`'s totals added up; since M6 S2b's follow-up step 1 merged by the contracts' zod-free `mergeImpacts`, `@analyzr/contracts/impact-merge`, which the web shares, and carrying `relationsTasks`: the tasks queued, sorted by key, and cancelled, claimed first, concatenated, `claimed` and `pairs` added up, the pairs judged again deduplicated; the text lines for them come with step 3) and `batches`; a file that would fail exits 1, and no waiting tasks are listed; since M6 S2c-1 a file whose model is derived carries `trust` (`{class, reasons}`) in `--json`; since M6 S2c-2, after an import whose files include derived models (unchanged ones too), text mode counts the unique calls of derived models that wait for a bulk accept (every page of `GET …/relations?type=call&status=proposed&tier=key`, permission `read`, counted with the contracts' `isBulkDerivedCall`, so the number is the selection the web's link opens) and, only when at least one waits, prints before the agent step (which then starts with `then:`) `next: 6 models are derived (no engine 6); 1 unique call is a proposal: accept it in the web review before the agent runs:` and the link `  <url>/projects/<p>/review?bulk=calls` (the models are this import's derived files, each under its first reason; an import of modelled files only asks nothing, so calls still waiting from an earlier import go unmentioned there); with an agent token (`--token`, or `ANALYZR_TOKEN`, which it prefers to the owner key) it says once on stderr before anything is sent, also for `--dry-run`, `importing with an agent token (ANALYZR_TOKEN): unique calls become proposals (trust rule); unset ANALYZR_TOKEN to import with the owner key` (with `--token`: `… (--token): …; drop --token to import with the owner key`), never with the owner key or `--create`; since M6 S2c-3 an owner's dry run (the owner key; `impact.autoAcceptedCalls` merged across batches, `ofProposed` added up) adds `  accept by your rules for derived calls: 12 ("Aufrufe: Export ohne Engine" 12)` with up to five examples, and with the owner key only the `next:` block gets a third line for the source most of the waiting calls' callers among this import's derived files declare (`ruleSource`; agent uploads, reconstructed and as-told files and a conversion without converter count for nothing), from the project's rules (one request; the line is left out when it fails): `  or let the owner rule "<name>" accept them: analyzr rules apply <id> -p <p>` while a rule naming that source is on (rules are never retroactive), `  or turn on the owner rule "<name>" for that source: analyzr rules enable <id> -p <p>` while it is off, else `  or add an owner rule that accepts that source's next calls: analyzr rules add --name <name> --derived <kind> [--converter <c>] -p <p>` (no `--enable`: the rule starts off and `rules add` says how to turn it on; the name as the web suggests it, at most 100 characters, „(2)“ … when taken); its arguments and the value-chain `push` line's path and project are POSIX-shell-quoted (`shellArg`), so a manifest cannot plant `$(…)` or backticks in a line the owner pastes; `--json` keeps stdout pure JSON and prints no `next:` line |
+| `analyzr import <dir> --project <key> [--create [--name n]] [--dry-run] [--verbose] [--json]` | agent token (`analyzr:write`) or owner key; `--dry-run` any credential | every file below `<dir>` the shared file rule picks up (M6 S1, `isImportPath` of `@analyzr/contracts/paths`, as the web upload: `.bpmn`, `.bpmn2`, `.bpmn20.xml`, `.xml`, case-insensitive; hidden files and directories, `node_modules` and symbolic links are skipped), in requests of ≤ 50 files and ≤ 25 MB, in code-point order (`comparePaths`, as the web); the model key is the path below `<dir>` (`modelKeyFromPath`, derived before sending: a path without a valid key, a key another file of the import gets, also in another request, and a file above 5 MB are reported `failed` locally in the server's wording and never sent; a key goes to the first `.bpmn…` file and only then to a plain `.xml`, `modelKeyOwners`, and the refusal names that file: `another file of this import has model key z (Z.bpmn)`); listed as `skipped` instead, outside `files` and `counts`, and never changing the exit code: a plain `.xml` whose key a `.bpmn…` file has (a tool's sidecar `Prozess.xml` next to `Prozess.bpmn`, `keyTakenBy`; never sent; reason `key-taken`, text `skipped   Prozess.xml  (same model key as Prozess.bpmn)`), while two `.bpmn…` files or two plain `.xml` files with one key stay `failed`, and a plain `.xml` the server refuses as no BPMN (422 `bpmn-invalid`, reason `not-bpmn`; text `skipped   meta.xml  (not BPMN)`); the summary names the reasons („N skipped (not BPMN)“ when all share one, „2 skipped (1 not BPMN, 1 same model key)“ otherwise); JSON: `skipped: [{path, reason, takenBy?}]`, only when non-empty; every other refusal (a DOCTYPE, …) stays `failed`; per-file outcome with the extractor's warnings by code (`warnings: 3 (invalid-id 2, parse-warning 1)`; beyond the extractor's 100 its own entry follows, `warnings: 100 (parse-warning 19, 81 more, 150 more warnings omitted)`; `--verbose` lists the entries, `--json` carries the result's `warnings` (≤ 20) and `warningCount`; warnings never change the exit code); in text mode it ends with the project's waiting work (`<project>: N relations tasks waiting, placement task waiting: yes\|no`, from `GET …/analyses?state=queued`, so any credential with `read` works; the project's state, not this import's effect) and, only when something waits, the next agent step (`/analyzr:relations <project>` when relations tasks wait, `/analyzr:placements <project>` when the placement task waits, the start prompts in `examples/agents`); exit 1 if a file failed, or if every file was a plain `.xml` that is no BPMN (nothing imported: „no BPMN files below <dir>: N skipped (not BPMN)“, no next-step block); since M6 S5c-2 a model with live amendments adds `amendments: 2 applied, 1 already in the source, 1 conflict` to its line, and conflicts end in „N amendments no longer apply; see analyzr questions -p <project> --kind amendment-conflict“; since M6 S2a it reads `analyzr-import.json` at `<dir>` (the bundle's manifest, `analyzr-import/1`): checked with the contracts' `ImportManifest` before anything is sent, also before `--create` creates the project (an invalid one exits 1, „nothing imported“, naming the manifest's importer as a hint that a newer converter may need a newer analyzr); a `<dir>` without a manifest whose subfolders hold one (a workspace's `bundles/`) is refused before anything is sent („found analyzr-import.json in <folder>/: import that folder …“); the keys it pins win over the paths (also in the local duplicate check), each batch sends the manifest's subset for its files as the part `manifest` (compact JSON), text mode prints `manifest: analyzr-import.json (<system>), N of M files listed: keys pinned, provenance stored for N` (`…; K unchanged keep what analyzr had` for identical bytes, which keep their first provenance) with the files it does not list (path keys, no provenance) and the ones it names that are missing, each file's import warnings (`manifest-sha-mismatch`, `external-id-moved`, `external-id-changed`, `provenance-kept`, since M6 S2c-1 `trust-kept`, always listed, never changing the exit code), `<project>: N import warnings (…); the files were imported` and, after `external-id-moved` or `external-id-changed`, a `next:` line each before the agent step (which then starts with `then:`), and for a bundle with a value chain the `value-chain push … --dry-run` to run next (the chain is never sent with the models); `--json` gains `manifest` `{system, listed, stored, kept, unlisted, missing, valueChain?}` only with a manifest, and the files carry the server's `importWarnings`; since M6 S2b `--dry-run` previews into an existing project (not with `--create`) through `POST …/imports?dryRun=true`, each batch with the whole manifest (so every batch knows which keys the bundle names), prints the same lines and then what the import would change (`<project>: dry run, nothing imported; the import would` … the facts of N models changed with processes added and removed, rule-tier calls accepted, since M6 S2c-1 and only when there are any the unique calls of derived callers only proposed (`propose instead of accept (trust rule): 12 (no engine 10, agent token 2), 3 of them accepted until now`, from the server's totals over all of them), rule proposals added, rule stances withdrawn, accepted relations losing or changing an end, findings added and resolved, up to five examples each, the keys not in the bundle (kept, nothing deleted), and for several batches that each was previewed against the head, so a call into a later batch shows as unresolved); `--json` gains `impact` (the batches' merged, `callsProposed`'s totals added up; since M6 S2b's follow-up step 1 merged by the contracts' zod-free `mergeImpacts`, `@analyzr/contracts/impact-merge`, which the web shares, and carrying `relationsTasks`: the tasks queued, sorted by key, and cancelled, claimed first, concatenated, `claimed` and `pairs` added up, the pairs judged again deduplicated; since step 2, with a live value chain, `placementsChanged`, concatenated, sorted by process, then step, and capped, and `placementTask` with the strongest outcome, the largest batch's `due` and `newlyDue` and `again` added up; the text lines for them come with step 3) and `batches`; a file that would fail exits 1, and no waiting tasks are listed; since M6 S2c-1 a file whose model is derived carries `trust` (`{class, reasons}`) in `--json`; since M6 S2c-2, after an import whose files include derived models (unchanged ones too), text mode counts the unique calls of derived models that wait for a bulk accept (every page of `GET …/relations?type=call&status=proposed&tier=key`, permission `read`, counted with the contracts' `isBulkDerivedCall`, so the number is the selection the web's link opens) and, only when at least one waits, prints before the agent step (which then starts with `then:`) `next: 6 models are derived (no engine 6); 1 unique call is a proposal: accept it in the web review before the agent runs:` and the link `  <url>/projects/<p>/review?bulk=calls` (the models are this import's derived files, each under its first reason; an import of modelled files only asks nothing, so calls still waiting from an earlier import go unmentioned there); with an agent token (`--token`, or `ANALYZR_TOKEN`, which it prefers to the owner key) it says once on stderr before anything is sent, also for `--dry-run`, `importing with an agent token (ANALYZR_TOKEN): unique calls become proposals (trust rule); unset ANALYZR_TOKEN to import with the owner key` (with `--token`: `… (--token): …; drop --token to import with the owner key`), never with the owner key or `--create`; since M6 S2c-3 an owner's dry run (the owner key; `impact.autoAcceptedCalls` merged across batches, `ofProposed` added up) adds `  accept by your rules for derived calls: 12 ("Aufrufe: Export ohne Engine" 12)` with up to five examples, and with the owner key only the `next:` block gets a third line for the source most of the waiting calls' callers among this import's derived files declare (`ruleSource`; agent uploads, reconstructed and as-told files and a conversion without converter count for nothing), from the project's rules (one request; the line is left out when it fails): `  or let the owner rule "<name>" accept them: analyzr rules apply <id> -p <p>` while a rule naming that source is on (rules are never retroactive), `  or turn on the owner rule "<name>" for that source: analyzr rules enable <id> -p <p>` while it is off, else `  or add an owner rule that accepts that source's next calls: analyzr rules add --name <name> --derived <kind> [--converter <c>] -p <p>` (no `--enable`: the rule starts off and `rules add` says how to turn it on; the name as the web suggests it, at most 100 characters, „(2)“ … when taken); its arguments and the value-chain `push` line's path and project are POSIX-shell-quoted (`shellArg`), so a manifest cannot plant `$(…)` or backticks in a line the owner pastes; `--json` keeps stdout pure JSON and prints no `next:` line |
 | `analyzr models list -p <key> [--stage <stage>] [--json]` (M6 S1) | agent token or owner key | every page of `GET …/models`: key, stage, head revision, engine, open items; `--stage` is checked before any request |
 | `analyzr models requeue -p <key> (<key>… \| --all) [--json]` (M6 S1) | owner key, or an agent token with `analyzr:write` | `POST …/analyses/requeue` with `{modelKeys}` (≤ 1,000, checked before any request) or `{all: true}`: `queued`, `open` (a task is already queued or claimed) or `not-found` per model; exit 1 if a key has no live model |
-| `analyzr models delete <key>… -p <key> [--yes] [--json]` (M6 S1) | owner key only (an agent token is refused before any request; the server's policy lets any `write` credential delete) | resolves the keys through `GET …/models` (deleting takes the `mdl_` id); an unknown key exits 1 before anything is deleted; without `--yes` it lists the models (key, stage, open items), says that partner relations turn `missing` and that uploading a key again revives its model, and exits 1 („nothing deleted“); with `--yes` `DELETE …/models/{model}` one by one (`--json`: `{deleted, models}`; when a DELETE fails, `{deleted, models, failed: {key, error}}` with the models deleted before it, then exit 1). Since M6 S2b the listing without `--yes` adds each deletion's impact (`GET …/deletion-impact`, each against the project's head): `<key>: 2 accepted relations lose an end (missing), 5 rule stances withdrawn, findings 2 added, 0 resolved` (`--json`: `impacts: [{key, impact}]`, each impact since M6 S2b's follow-up step 1 with `relationsTasks`, the model's open task the deletion cancels; its text line comes with step 3); since M6 S2c-1 also `N calls only proposed (trust rule)` when there are any, since S2c-3 with the owner key `N calls accepted by your rules for derived calls` (a duplicate process id gone) |
+| `analyzr models delete <key>… -p <key> [--yes] [--json]` (M6 S1) | owner key only (an agent token is refused before any request; the server's policy lets any `write` credential delete) | resolves the keys through `GET …/models` (deleting takes the `mdl_` id); an unknown key exits 1 before anything is deleted; without `--yes` it lists the models (key, stage, open items), says that partner relations turn `missing` and that uploading a key again revives its model, and exits 1 („nothing deleted“); with `--yes` `DELETE …/models/{model}` one by one (`--json`: `{deleted, models}`; when a DELETE fails, `{deleted, models, failed: {key, error}}` with the models deleted before it, then exit 1). Since M6 S2b the listing without `--yes` adds each deletion's impact (`GET …/deletion-impact`, each against the project's head): `<key>: 2 accepted relations lose an end (missing), 5 rule stances withdrawn, findings 2 added, 0 resolved` (`--json`: `impacts: [{key, impact}]`, each impact since M6 S2b's follow-up step 1 with `relationsTasks`, the model's open task the deletion cancels, and since step 2, with a live value chain, `placementsChanged` (the model's accepted placements turning `missing`) and `placementTask` (`not-triggered`, with the processes due after the deletion, `due`, those it makes due, `newlyDue`, and those of them placed again, `again`); their text lines come with step 3); since M6 S2c-1 also `N calls only proposed (trust rule)` when there are any, since S2c-3 with the owner key `N calls accepted by your rules for derived calls` (a duplicate process id gone) |
 | `analyzr models external-ids -p <key> [--system <system>] [--json]` (M6 S2a) | agent token or owner key | `GET …/external-ids`: per live model whose provenance declares a source system its key, tool id (`-` when the manifest named none) and tool folder, as the manifest declared them (an amended head followed to its uploaded revision; a head stored without a manifest falls back to the newest revision a manifest declared), the count per system, and a line per tool id several keys carry (`signavio id sid-… on 2 keys: …`, one model twice after `external-id-moved`); `--system` (a lowercase slug, checked before any request) keeps one; the JSON is the response, from which a lost workspace's `keymap.json` is rebuilt |
 | `analyzr questions [list] -p <key> [--model <key or folder>] [--kind <kind>] [--source <source>] [--ask-who <name>] [--state open\|answered] [--group <group>…] [--format text\|md\|csv\|json] [-o <file>]` (M6 S4; `--group` since UX2a) | agent token (`analyzr:read`) or owner key | the open questions ([M6-INTEGRATION-AND-GAPS.md](M6-INTEGRATION-AND-GAPS.md) §4.2); `list` is the default subcommand of `questions` (M6 S5a), so `analyzr questions -p …` lists: `text` (default) and `json` page through `GET …/open-questions` (questions first, then the value chain's findings, then the informational items, each by `unlocks` descending): a header, one line per question (id, unlocks, kind, the first model key with `+N` for more or `-` for steps and the chain, `subject: question` as the server returns them, line breaks folded into one space, `  [answered: outside the landscape]` after a marked item; since S5c-1 also the primary action, and under a question the suggested targets as `„Name“ (ref)` with the proposals a link to each accepts) and `<project> (<filters>): N open questions (kind n, …)` with `, N answered (outside the landscape)` when marks are recorded and, since UX2a, `; groups: ask n, agent n, …` (`no open questions in …` when none match), or every item as one JSON array; `md` (also `markdown`) and `csv` write `GET …/open-questions/export`'s bytes verbatim (the CSV with its byte order mark and the `Antwort` column, empty or holding the item's latest note, without the informational items; both only the `ask` items unless `--group`, `--kind` or `--source` says otherwise); `--group` (`ask`, `agent`, `proposal`, `info`) repeats or takes a comma-separated list, and the list shows every group without it; every flag is checked before any request (`--ask-who`: a lane, one step owner or the folder, exactly, ≤ 200 characters); `-o` writes to a file |
 | `analyzr questions answer <id> -p <key> --text <text> [--json]`, `analyzr questions answer -p <key> --from <csv> [--dry-run] [--json]` (M6 S5a; notes without kinds since S5c-1) | owner key only (an agent token is refused before any request: only humans answer) | one note (`POST …/open-questions/{q}/answers`; the text normalized as the server stores it, ≤ 2,000 characters; `--kind` is refused since S5c-1 with a hint at `questions outside`; no dry run, the single route has none): what was recorded, where the text landed and what it does by the item's subject and kind (a note never ends the item; its action does, named with where to run it), the personal-data warning; or a filled-in sheet (UTF-8 only; only the rows with an `Antwort` are sent, in one call to `POST …/open-questions/answers`, `--dry-run` previews; an S5a sheet's `Antwortart` still reads, „Liegt außerhalb der Landschaft“ as the outside mark except on a relation or placement item): one line per sent row under its spreadsheet row (blank rows and the header counted), the counts, exit 1 when a filled row is (or would be) left out |
@@ -2320,7 +2330,7 @@ models table's chip and the model view's header (`sourceSummary` in `src/domain/
 | REST (`/api/v1/projects/{p}`) | Permission | |
 |---|---|---|
 | `POST /imports?dryRun=true`, `PUT /models/by-key/{key}?dryRun=true` (M6 S2b) | read | the outcomes the import or upload would answer (warnings, amendments, import warnings) and `impact` (`ImportImpact`, below); nothing is written and no lock is taken; the PUT answers `PutModelDryRunResult` with 200 also for a would-be new model |
-| `GET /models/{model}/deletion-impact` (M6 S2b) | read | the `ImportImpact` of deleting the model (its facts removed from the head); `files` and `absentKeys` empty; since S2b's follow-up step 1 `relationsTasks` names the model's open task the deletion cancels and queues nothing |
+| `GET /models/{model}/deletion-impact` (M6 S2b) | read | the `ImportImpact` of deleting the model (its facts removed from the head); `files` and `absentKeys` empty; since S2b's follow-up step 1 `relationsTasks` names the model's open task the deletion cancels and queues nothing; since step 2, with a live value chain, `placementsChanged` names the accepted placements of its processes turning `missing` and `placementTask` is `not-triggered` (a deletion never queues the placement task) with the processes due after the deletion (`due`), those it makes due (`newlyDue`) and those of them placed again (`again`) |
 | `POST /imports` with the part `manifest` | write | the manifest's JSON (≤ 1 MiB, one part); a listed file gets the key it pins and its declared provenance on the uploaded revision, with `manifestSha256` (the SHA-256 of the manifest bytes received); an unlisted file keeps its path key and declares nothing; `importWarnings` on a file's outcome only when there is one |
 | `PUT /models/by-key/{key}` with the header `Analyzr-Manifest` | write | the base64url of the UTF-8 JSON of a manifest that lists exactly this file (≤ 8,192 characters; its `key`, if given, equal to `{key}`; its `path` becomes `source.path`); `importWarnings` as above |
 | `GET /external-ids?system=` | read | `{items: [{key, system, externalId, externalPath}]}`: one unpaged list, sorted by key, of every live model whose provenance declares a source system; `externalId: null` when the manifest named no tool id |
@@ -2377,6 +2387,63 @@ across batches it counts in neither, each batch previewed against a head without
 their count lowered by the duplicates found. No surface shows the field yet (the „Vorschau“'s cost
 line, the claimed-task warning, the CLI's lines and the deletion listing come with step 3); `--json`
 carries it.
+
+**The placements in the dry runs** (M6 S2b follow-up step 2,
+[M6-INTEGRATION-AND-GAPS.md](M6-INTEGRATION-AND-GAPS.md) §3.5 and §8 "S2b follow-up step 2 as
+delivered"): only for a project with a live value chain `ImportImpact` carries two optional
+fields, REST only (a project without a chain has neither): `placementsChanged`
+(`impactList(ImpactPlacement)`, each `{step, stepName, process, endpointState}`, by process, then
+step) and `placementTask` (`ImpactPlacementTask {outcome, due, newlyDue, again}`). `readChain` in
+`ingest.ts` reads the chain in the dry run's snapshot: one query without a live chain; else the
+head's structure (cached by content hash), the live step generations, the placements with their
+histories, the `placement_input` rows, the open placement task and, while an agent holds it, the
+input hashes its claim showed (one more query); the rules principal comes from the histories.
+`importImpact`'s optional seventh parameter hands it, with the head facts, `headChange` (a created
+or revised file, or a deletion) and `triggered` (a created or revised file with other facts), to
+the pure `placementImpact` in `src/domain/value-chain/model-impact.ts`, after the relations part,
+so the relations the write leaves (an owner's rule acceptances included) give the neighbours. It
+runs the pipeline's pure `pipelineInputs` over the head and over the would-be head: `due` is the
+open processes due after the write, `newlyDue` those not due before, `again` those of them open
+before (an agent's verdict, or the held claim, matched their input). The outcome mirrors
+`afterHeadChange` and `queuePlacementTask`: `not-triggered` unless a created or revised file
+changes facts (a layout-only upload and a deletion never queue, M4 §3.2; the deletion impact still
+counts the due processes), `open` for a queued task, `deferred` for a claimed one (the write sets
+`requeue_after`), else `queued` when a process is due, else `nothing-due`.
+
+- **The rule tier's plan.** A write that changes a head (`headChange`, a layout-only file
+  included) runs the chain's sync, whose rule tier proposes and withdraws over the would-be head
+  processes. The pure `planRulePlacements` (`value-chain/rules.ts`; `recomputeRulePlacements`
+  reads, plans with it and writes, with the same queries and event order,
+  `value-chain-golden.test.ts` unchanged) gives those writes, and the dry run appends them to the
+  histories with seqs after every stored one (a new placement for a proposal on a new spot, the
+  touched placements' statuses recomputed). So a process the rule tier records on gets a new
+  non-agent seq in its input hash (`lastNonAgentSeqs`), as in the write, also where a revoked
+  auto-acceptance no longer suppresses a proposal; an unchanged import plans nothing.
+- **The held claim.** While an agent holds the task, the input hashes its claim showed count as
+  its verdicts (its submission records them), so `due` is what the follow-up then offers, and a
+  process the import changes under the claim is newly due and placed again.
+- **The placements.** `placementsChanged` comes from `derivedPlacementState` over the history
+  after the rule tier, as `refreshPlacement` computes it: the accepted placements the write's
+  `placement.endpoint_changed` events turn `changed` or `missing` (an accepted placement keeps its
+  decision's anchor); held, obsolete and removed-step placements and a return to `ok` are not
+  named.
+- **The shared fact order.** A process's first start and end labels (`processOwnFields`) follow
+  the fact order, and the extractor lists kinds in the enum's order while `facts.head` sorts by
+  code point, so `headFactOrder` sorts the would-be facts with `compareStoredFacts` of
+  `src/domain/fact-order.ts`, the comparator `store.ts` uses for `facts.head` and a revision's
+  facts; `value-chain-ingest.test.ts` pins it on `nordwind-handel` (message and plain start
+  events in one process).
+- **The merge** (`mergePlacements` in `@analyzr/contracts/impact-merge`) adds the fields only when
+  a batch has them: `placementsChanged` added up, concatenated, sorted again and capped;
+  `placementTask` with the strongest outcome (`deferred`, `open`, `queued`, `nothing-due`,
+  `not-triggered`), the largest batch's `due`, and `newlyDue` and `again` added up, all three
+  approximate across batches.
+
+The chain is read for an unchanged batch too, so the fields are always present with a chain;
+on 496 models a 50-file batch gains about 20–30 ms ([M6 S2b follow-up
+step 2](#m6-s2b-follow-up-step-2-2026-10-20)). No surface shows the fields yet (the „Vorschau“'s
+placement part, the placements line and list, the CLI's lines and the deletion listing come with
+step 3); `--json` carries them.
 
 An invalid manifest (not UTF-8 JSON, a schema error such as a control character or a lone
 surrogate in an identity field or credentials in `url`, two `manifest` parts, a header that is no
@@ -2717,7 +2784,7 @@ derived calls, so the rule dialog's default still shows its four criteria and th
 | Projects list (UX9) | 24 controls, 179 words; „Offen für dich“ equals the sum of the project's three badges | „Zuletzt geändert“ as a line under the key | „Angelegt“, no open work | – |
 | Model view `vertrieb/order-handling` (UX3) | 18, 196, 3 badges; the panel 10 controls, 75 words, the first question ends inside it | `finanzen/gutschrift`: the name in the top bar, the sheet collapsed, the canvas 86 % of the screen | 35, 555; the panel 37, 515, the first question 1,275 px down | the panel ≤ 25 controls, ≤ 300 words, the first question without scrolling; ≤ 3 chips and „Mehr“; ≥ 55 % canvas at 390 |
 | Review screen, an agent proposal (UX5) | the panel 93 words with „Verlauf“ closed | the sheet collapsed to „Von → Nach · Konfidenz“, the way back and ‹ › on top | 201 words | ≤ 110 words; the way back and ‹ › answer `elementFromPoint` at 390 |
-| Entry chunk (gzip) | 226.3 KB in 1 chunk (218.1 before UX3, 219.8 after it, 220.7 after UX4, 221.3 after UX5 step 1, 221.9 after step 2, 222.1 after UX6, 223.4 after UX9, 224.1 after M6 S2c-1, 225.1 after S2c-2, 226.0 after S2c-3, 226.1 after S2c-4) | | 211.0 KB in 7 | < 240 KB, each slice ≤ +3 KB |
+| Entry chunk (gzip) | 226.6 KB in 1 chunk (218.1 before UX3, 219.8 after it, 220.7 after UX4, 221.3 after UX5 step 1, 221.9 after step 2, 222.1 after UX6, 223.4 after UX9, 224.1 after M6 S2c-1, 225.1 after S2c-2, 226.0 after S2c-3, 226.1 after S2c-4, 226.3 after S2b's follow-up step 1) | | 211.0 KB in 7 | < 240 KB, each slice ≤ +3 KB |
 
 How it talks to the server: only through `@analyzr/client` (generated from the contracts) with
 `baseUrl` = the page's origin. `src/lib/api.ts` wraps `fetch`: on a 401 it calls
@@ -4614,6 +4681,38 @@ agent's recordings ([Recordings](#simulation-agent-and-evalreplay-m2)).
   index, above); CLI `import.test.ts`, `manifest.test.ts` and `models.test.ts` and web
   `lib.test.ts` and `upload-panel.test.tsx` (fixtures with `relationsTasks`, the merge
   unchanged); the bundle guard (226.3 KB, `impact-merge.ts` in the entry).
+- M6 S2b follow-up step 2 "Placements in the dry runs": server unit
+  `test/unit/placement-impact.test.ts` (new, 21 tests: an accepted placement named `changed` on a
+  rename and `missing` when its process or its whole model leaves the head, none on a removed step,
+  no held one, `@outside` without a step name, nothing when the process comes back or nothing
+  changes, the sort; nothing due on an unchanged head; due-ness of a new process, of an own-field
+  change but not its sibling, of both ends of a newly accepted call, of every open process when a
+  step link resolves, a process due before not newly due, more than five start events of mixed kinds
+  keeping their digest; the outcome matrix with `not-triggered`; the rule tier the write runs: the
+  proposal a revoked auto-acceptance no longer suppresses, nothing where its proposal is live or a
+  human decided, a proposal on a new spot and a withdrawal each a new non-agent seq; the held
+  claim's processes judged on the claim's input, and without its hashes; `headFactOrder`),
+  `recompute-trust.test.ts` (a derived call an owner's rule accepts makes both ends due,
+  `{queued, 2, 2, 2}`; without the rules nothing is due); real PostgreSQL
+  `test/integration/value-chain-ingest.test.ts` (before each write, a rename and back, a deletion
+  and revival, a rule proposal withdrawn and back, an unchanged re-import and a layout-only re-save,
+  the dry run's `placementsChanged` equals the following `placement.endpoint_changed` events that
+  turn an accepted placement `changed` or `missing`, and `lastSeq` is unchanged; `headFactOrder`
+  over the head equal to `facts.head` on `nordwind-handel`),
+  `test/integration/placement-pipeline.test.ts` (the triggers: layout-only `not-triggered`, a new
+  model `queued` with the `analysis.queued` payload's `due`, a deletion `not-triggered` and no
+  event; an own-field change `{queued, 1, 1, 1}`, a task label `nothing-due`; an import during the
+  lease `deferred` `{1, 1, 1}`, then `requeue_after` set and the follow-up offering the changed
+  process; the rule tier proposing and withdrawing on a rename, dry run equal to write; an accepted
+  placement the rule tier re-proposes named changed; a newly accepted call making both ends due; the
+  rule proposal a revoked auto-acceptance no longer suppresses; the deletion of a model a step links
+  to, `{not-triggered, 2, 2, 2}`, then the chain due 2; a batch with a layout-only file and a
+  rename, `queued` with due 1 as the import's `analysis.queued`),
+  `test/integration/import-dry-run.test.ts` (no chain, no placement fields, in the import's dry run
+  and the deletion impact); contracts `test/impact-merge.test.ts` (2 new tests: the chain's part
+  absent, added up, sorted again and capped; the outcome precedence, the largest `due` and the
+  sums); `claim-golden`, `recompute-golden` and `value-chain-golden` unchanged; the bundle guard
+  (226.6 KB).
 
 ## CI
 
@@ -6581,3 +6680,64 @@ number no longer counts pairs the amendment itself settles.
 
 Not checked: the new fields in a browser (no surface shows them before step 3), the measurements
 on a container or CI host (a developer Mac only), other browsers than Chromium, CI (no e2e job).
+
+### M6 S2b follow-up step 2 (2026-10-20)
+
+Same machine; step 2 of M6 S2b's follow-up (placements in the dry runs,
+[M6-INTEGRATION-AND-GAPS.md](M6-INTEGRATION-AND-GAPS.md) §3.5 and §8 "S2b follow-up step 2 as
+delivered", [The placements in the dry runs](#provenance-and-the-import-manifest-m6-s2a)) on
+`feat/integration-and-gaps` on top of step 1. Built by an implementing agent, reviewed
+adversarially from a correctness lens (dry run equals write) and from a refactor-safety and
+contracts lens; one major and five minor findings and a nit, all fixed (the write queuing a
+placement task the dry run did not predict after a revoked auto-acceptance, now the rule tier
+planned by `planRulePlacements`; the merged `due` called a lower bound, now approximate, the
+largest batch's count; the fact order copied from the store and pinned only against itself, now
+one comparator in `fact-order.ts` with an integration test; a re-placement under a held claim not
+counted, now the held-claim rule; the deletion's due-ness and a multi-file import on a chain
+project not checked against the write; an untyped outcome order, now a typed `Record`). For the
+first analysis: before an import the server knows whether the placement agent must place
+processes (again) and how many, and which accepted placements lose or change their process; the
+„Vorschau“, the CLI's lines and the deletion listing show it from step 3. The e2e run found one
+older web race, fixed in this step: an owner who clicked „Agent starten“ on the chain's line
+before their agent tokens had loaded got the toast „Eingeplant“ and no popover, because
+`RetryAgent` decided by the agent state of the click's render. It now opens the popover for
+every owner (the plain button turns into its open trigger once the tokens are known) and shows
+the toast only while they are not known when the requeue answers (`agent-start.test.tsx`, two
+tests that fail on the old code).
+
+1. Gates: every gate green (`pnpm format:check`, `pnpm -r typecheck`, `pnpm -r lint` with
+   dependency-cruiser, 150 modules, no violations, `pnpm -r test` with Testcontainers: server
+   1,775, web 647 (649 with the `RetryAgent` fix, whose web gates ran again: format, typecheck,
+   lint, test), CLI 269 plus 7 skipped, contracts 177, integrate 145, bpmn-facts 200, relations
+   88, agent-sim 57, procedures 37, demo 27, notices 9, client 4, eval/tools 108; `pnpm
+   eval:candidates`, `pnpm eval:replay`, `pnpm eval:placements`, `pnpm eval:descriptive`); `git
+   diff --stat eval/reports` empty. Contracts first, the client regenerated; no migration, no
+   route. The MCP snapshots, the procedures, the recordings and the claim inputs are unchanged
+   (`ImportImpact` is REST only; `claim-golden.test.ts`, `recompute-golden.test.ts` and
+   `value-chain-golden.test.ts` stay green unchanged after the `pipelineInputs` and
+   `planRulePlacements` extractions and the shared fact order), so it is live-run neutral.
+2. The bundle guard: the entry 226.6 KB gzip (+0.3 after step 1's 226.3, ceiling 240): the merge
+   of the chain's part; the `RetryAgent` fix leaves it at 226.6. The measurements on 16 renamed
+   copies of `nordwind-handel` (496 models, 6,128 facts, the golden chain, 512 processes judged
+   over 31 claims, 64 rule proposals accepted) with a 50-file batch, on the final tree and a
+   quiet machine: the chain reads take 6.4–10.5 ms (a held claim adds one query),
+   `placementImpact` 9.5–10.7 ms of CPU (about 3 ms of it planning the rule tier), so a dry run
+   gains about 20 ms per 50-file batch (25–30 ms on the busier machine of the review round); the
+   whole REST dry run's medians of 7 runs, without a chain → with it: an unchanged batch 320 →
+   327 ms, renamed processes 1,242 → 1,244 ms, changed end labels 1,159 → 1,193 ms (within the
+   runs' spread).
+3. The e2e run, after the gates, on scratch stacks built from the working tree (`analyzr-s2bf2`,
+   the server on 7635 with `analyzr seed`: 26 models, 3 accepted and 36 proposed relations, 17
+   findings; the demo `analyzr-s2bf2-demo` on 7636). The first full Playwright run had 108 passed,
+   1 failed, 21 skipped: `value-chain-agent.spec.ts` „a reviewer's rejection makes a process due
+   without a task; „Agent starten“ queues it“, where the popover did not open. The spec failed
+   alone 3 times out of 3, and 2 times out of 2 on a stack built from step 1's commit `ce666a4`,
+   so it was not step 2's server change; the trace showed the toast „Eingeplant“ in place of the
+   popover (the race above). With the `RetryAgent` fix, on rebuilt stacks: the full Playwright
+   suite 109 passed and 21 skipped (the spec green), the demo check 152 passed and 0 failed,
+   `demo.spec.ts` 14 passed. The UI load numbers are unchanged against step 1 (24 rows). All
+   logs in full in the session's scratchpad; the stacks and images are removed.
+
+Not checked: the new fields in a browser (no surface shows them before step 3), the measurements
+on a container or CI host (a developer Mac only), other browsers than Chromium, CI (no e2e
+job).

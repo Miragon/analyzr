@@ -8,6 +8,7 @@
 import {
   UNPLACED_DOC_CHARS,
   UNPLACED_EVENT_LABELS,
+  type Fact,
   type Ref,
   type RelationId,
   type UnplacedProcess,
@@ -22,9 +23,17 @@ const byCodePoint = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 
 /** What the claim and `list_unplaced_processes` show of a process itself (its own facts). */
 export type ProcessOwnFields = Pick<UnplacedProcess, 'name' | 'lanes' | 'starts' | 'ends' | 'doc'>;
 
-/** The head facts of each process (lanes, events, …), by process ref. */
-export function factsByProcess(facts: readonly HeadFact[]): Map<string, HeadFact[]> {
-  const out = new Map<string, HeadFact[]>();
+/** The fields of a fact that {@link processOwnFields} reads (a head fact or an extracted one). */
+export type OwnFact = Pick<Fact, 'kind' | 'elementId' | 'scope' | 'label' | 'attrs'>;
+
+/**
+ * The facts of each process (lanes, events, …), by process ref: head facts,
+ * or the would-be facts of a dry run (S2b follow-up).
+ */
+export function factsByProcess<F extends Pick<Fact, 'modelKey' | 'processId'>>(
+  facts: readonly F[],
+): Map<string, F[]> {
+  const out = new Map<string, F[]>();
   for (const f of facts) {
     if (f.processId === null) continue;
     const key = `${f.modelKey}#${f.processId}`;
@@ -39,9 +48,13 @@ export function factsByProcess(facts: readonly HeadFact[]): Map<string, HeadFact
  * The process's own fields as an agent sees them: the name, lanes, up to 5
  * start and end labels and the documentation cut to 200 characters.
  *
- * @param own the head facts of the process ({@link factsByProcess})
+ * @param process the process fact
+ * @param own the facts of the process ({@link factsByProcess}), in the order the head lists them
  */
-export function processOwnFields(process: HeadFact, own: readonly HeadFact[]): ProcessOwnFields {
+export function processOwnFields(
+  process: Pick<Fact, 'label' | 'attrs'>,
+  own: readonly OwnFact[],
+): ProcessOwnFields {
   const labels = (elementType: string) => {
     const seen = new Set<string>();
     const out: string[] = [];

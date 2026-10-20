@@ -1311,6 +1311,30 @@
           },
           "relationsTasks": {
             "$ref": "#/components/schemas/ImpactRelationsTasks"
+          },
+          "placementsChanged": {
+            "type": "object",
+            "properties": {
+              "count": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "items": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ImpactPlacement"
+                },
+                "maxItems": 100
+              }
+            },
+            "required": [
+              "count",
+              "items"
+            ],
+            "description": "Only with a live value chain: accepted placements whose process would turn changed or missing, sorted by process, then step."
+          },
+          "placementTask": {
+            "$ref": "#/components/schemas/ImpactPlacementTask"
           }
         },
         "required": [
@@ -1748,6 +1772,75 @@
           "assigned"
         ],
         "description": "An open relations task the write would cancel: claimed means an agent holds it and its work is lost; `claimedBy` (handle) and `assigned` (the pairs its claim was assigned) are null while queued."
+      },
+      "ImpactPlacement": {
+        "type": "object",
+        "properties": {
+          "step": {
+            "type": "string"
+          },
+          "stepName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "process": {
+            "$ref": "#/components/schemas/Ref"
+          },
+          "endpointState": {
+            "type": "string",
+            "enum": [
+              "changed",
+              "missing"
+            ]
+          }
+        },
+        "required": [
+          "step",
+          "stepName",
+          "process",
+          "endpointState"
+        ],
+        "description": "An accepted placement whose process would change or go missing: `step` is the element id (`@outside` included), `stepName` its name in the head (null for `@outside`)."
+      },
+      "ImpactPlacementTask": {
+        "type": "object",
+        "properties": {
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "open",
+              "deferred",
+              "nothing-due",
+              "not-triggered"
+            ],
+            "description": "queued: the write queues the task; open: a queued task waits and its claim shows the new head; deferred: an agent holds the task, its submission queues the follow-up; nothing-due: no process is due; not-triggered: no file changes facts, or a deletion (deletions never queue)."
+          },
+          "due": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Open processes that are due for placement after the write (while an agent holds the task: those its follow-up offers)."
+          },
+          "newlyDue": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Of the due processes, those that were not due before the write."
+          },
+          "again": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Of the newly due processes, those whose input an agent had judged (or judges in the claim it holds): they are placed again."
+          }
+        },
+        "required": [
+          "outcome",
+          "due",
+          "newlyDue",
+          "again"
+        ],
+        "description": "Only with a live value chain: the chain’s placement task after the write (whether it is queued) and how many processes are due, newly due and placed again."
       },
       "PutModelResult": {
         "type": "object",

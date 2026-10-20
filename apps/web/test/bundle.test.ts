@@ -127,7 +127,8 @@ const BUDGET = 40 * 1024;
  * Vertrauensregel angenommen“ load with the rules page. 226.3 KB after the
  * S2b follow-up's step 1 (2026-10-20): the batches' merge is the contracts'
  * zod-free `impact-merge.ts` (shared with the CLI), with the relations
- * tasks' merge, in place of the web's own.
+ * tasks' merge, in place of the web's own. 226.6 KB after its step 2: the
+ * merge of the value chain's part (placements, placement task).
  */
 const ENTRY_CEILING = 240 * 1024;
 
