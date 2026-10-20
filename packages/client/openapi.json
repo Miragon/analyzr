@@ -1308,6 +1308,9 @@
               "count",
               "items"
             ]
+          },
+          "relationsTasks": {
+            "$ref": "#/components/schemas/ImpactRelationsTasks"
           }
         },
         "required": [
@@ -1319,7 +1322,8 @@
           "endpointsChanged",
           "findingsAdded",
           "findingsResolved",
-          "absentKeys"
+          "absentKeys",
+          "relationsTasks"
         ],
         "description": "What an import or a deletion would change."
       },
@@ -1623,6 +1627,127 @@
           "unmatched-catch"
         ],
         "description": "Kind of a deterministic finding."
+      },
+      "ImpactRelationsTasks": {
+        "type": "object",
+        "properties": {
+          "queued": {
+            "type": "object",
+            "properties": {
+              "count": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "items": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ModelKey"
+                },
+                "maxItems": 100
+              }
+            },
+            "required": [
+              "count",
+              "items"
+            ],
+            "description": "Models whose relations task the write queues, sorted by key."
+          },
+          "cancelled": {
+            "type": "object",
+            "properties": {
+              "count": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "items": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ImpactCancelledTask"
+                },
+                "maxItems": 100
+              }
+            },
+            "required": [
+              "count",
+              "items"
+            ],
+            "description": "Open relations tasks the write cancels, the claimed ones first, then by key."
+          },
+          "claimed": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "How many of the cancelled tasks an agent holds (their work is lost), past the cap."
+          },
+          "pairs": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Typed pairs around the queued models that agents judge after the write (assigned candidates and relations without a current judgement or a settling decision): the agent work the write sets off. An upper bound of what the queued tasks’ claims are assigned: judge each pair once may give a pair to another model’s open task, which while it waits would judge it anyway."
+          },
+          "rejudged": {
+            "type": "object",
+            "properties": {
+              "count": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "items": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ImpactRelation"
+                },
+                "maxItems": 100
+              }
+            },
+            "required": [
+              "count",
+              "items"
+            ],
+            "description": "Of those pairs, the ones whose current agent judgement the write makes non-current (judged again), sorted by type, from and to."
+          }
+        },
+        "required": [
+          "queued",
+          "cancelled",
+          "claimed",
+          "pairs",
+          "rejudged"
+        ],
+        "description": "The relations tasks the write would queue and cancel, and the pairs agents judge around the queued models."
+      },
+      "ImpactCancelledTask": {
+        "type": "object",
+        "properties": {
+          "modelKey": {
+            "$ref": "#/components/schemas/ModelKey"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "claimed"
+            ]
+          },
+          "claimedBy": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "assigned": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          }
+        },
+        "required": [
+          "modelKey",
+          "state",
+          "claimedBy",
+          "assigned"
+        ],
+        "description": "An open relations task the write would cancel: claimed means an agent holds it and its work is lost; `claimedBy` (handle) and `assigned` (the pairs its claim was assigned) are null while queued."
       },
       "PutModelResult": {
         "type": "object",

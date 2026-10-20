@@ -25,14 +25,15 @@ const CHAIN_CHUNK_MESSAGE =
  * `@analyzr/contracts/open-question-labels` (M6 S4), for answers (M6
  * S5a) `@analyzr/contracts/open-question-csv` and
  * `@analyzr/contracts/personal-data`, for model amendments (M6 S5c-2)
- * `@analyzr/contracts/amendment-labels`, and for a dropped bundle's manifest
- * (UX8) `@analyzr/contracts/import-manifest`, the one with zod, loaded with a
- * dynamic import (all but `paths` in lazy chunks only, which the bundle guard
- * checks). `paths` entries match the bare specifier
+ * `@analyzr/contracts/amendment-labels`, for the „Vorschau“'s batches (M6
+ * S2b follow-up) `@analyzr/contracts/impact-merge`, and for a dropped
+ * bundle's manifest (UX8) `@analyzr/contracts/import-manifest`, the one with
+ * zod, loaded with a dynamic import (all but `paths` and `impact-merge` in
+ * lazy chunks only, which the bundle guard checks). `paths` entries match the bare specifier
  * only, so a pattern restricts every other subpath.
  */
 const CONTRACTS_MESSAGE =
-  'Import types from @analyzr/client; constants live in src/lib/limits.ts; the file rule comes from @analyzr/contracts/paths, the open-question labels from @analyzr/contracts/open-question-labels, the answer sheet reader from @analyzr/contracts/open-question-csv, the personal-data check from @analyzr/contracts/personal-data, the amendment labels from @analyzr/contracts/amendment-labels, the schema of a bundle manifest from @analyzr/contracts/import-manifest (a dynamic import).';
+  'Import types from @analyzr/client; constants live in src/lib/limits.ts; the file rule comes from @analyzr/contracts/paths, the open-question labels from @analyzr/contracts/open-question-labels, the answer sheet reader from @analyzr/contracts/open-question-csv, the personal-data check from @analyzr/contracts/personal-data, the amendment labels from @analyzr/contracts/amendment-labels, the merge of the preview batches from @analyzr/contracts/impact-merge, the schema of a bundle manifest from @analyzr/contracts/import-manifest (a dynamic import).';
 const CONTRACTS_RESTRICTION = {
   paths: [{ name: '@analyzr/contracts', message: CONTRACTS_MESSAGE, allowTypeImports: true }],
   patterns: [
@@ -44,6 +45,7 @@ const CONTRACTS_RESTRICTION = {
         '!@analyzr/contracts/open-question-csv',
         '!@analyzr/contracts/personal-data',
         '!@analyzr/contracts/amendment-labels',
+        '!@analyzr/contracts/impact-merge',
         '!@analyzr/contracts/import-manifest',
       ],
       message: CONTRACTS_MESSAGE,

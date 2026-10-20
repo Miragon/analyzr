@@ -1131,6 +1131,13 @@ describe('analyzr import', () => {
         findingsAdded: { count: 0, items: [] },
         findingsResolved: { count: 0, items: [] },
         absentKeys: { count: 0, items: [] },
+        relationsTasks: {
+          queued: { count: 0, items: [] },
+          cancelled: { count: 0, items: [] },
+          claimed: 0,
+          pairs: 0,
+          rejudged: { count: 0, items: [] },
+        },
       });
       const merged = mergeImpacts([impact(2), impact(1)]);
       expect(merged.autoAcceptedCalls).toMatchObject({

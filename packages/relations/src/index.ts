@@ -6,6 +6,8 @@
  *   `duplicate-process-id`, `dangling-throw`, `unmatched-catch`;
  * - {@link generateCandidates}: candidate pairs for agents (key, lexical,
  *   compatible), in both directions around a focus model;
+ *   {@link indexCandidates} computes its landscape-wide part once for many
+ *   focus models;
  * - {@link labelBaseline} (`baseline-label/1`): label matching, for comparison in the eval;
  * - {@link derivePlacementRules} (the rule tier's key placements),
  *   {@link baselinePrefix} (`baseline-prefix/1`) and {@link sharesNameStem}:
@@ -31,8 +33,9 @@ export {
   DEFAULT_COMPATIBLE_PER_ENDPOINT,
   DEFAULT_LEXICAL_PER_ENDPOINT,
   generateCandidates,
+  indexCandidates,
 } from './candidates.ts';
-export type { CandidateOptions } from './candidates.ts';
+export type { CandidateIndex, CandidateOptions } from './candidates.ts';
 export { createPairAssessor } from './assess.ts';
 export type { PairAssessment, PairQuery, PairRejection, ProposalTier } from './assess.ts';
 export {

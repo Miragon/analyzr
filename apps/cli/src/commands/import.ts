@@ -15,7 +15,6 @@ import {
   IMPORT_MANIFEST_FILE,
   MAX_AUTO_ACCEPT_NAME_CHARS,
   MAX_PAGE_LIMIT,
-  MAX_IMPACT_ITEMS,
   bpmnSuffixOf,
   isBulkDerivedCall,
   modelKeyFromPath,
@@ -28,6 +27,7 @@ import {
   type ImportImpact,
   type ImportWarning,
 } from '@analyzr/contracts';
+import { mergeImpacts } from '@analyzr/contracts/impact-merge';
 
 import { call, callOrNull, createApi, type Api } from '../api.ts';
 import { anyCredential, ownerCredential, type CredentialOptions } from '../credentials.ts';
@@ -222,89 +222,8 @@ export async function sendImport(
   };
 }
 
-const IMPACT_LISTS = [
-  'acceptedCalls',
-  'proposalsAdded',
-  'proposalsWithdrawn',
-  'endpointsChanged',
-  'findingsAdded',
-  'findingsResolved',
-] as const;
-
-/** The calls only proposed of several batches (M6 S2c): totals added up, reasons in order. */
-function mergeProposedCalls(impacts: readonly ImportImpact[]): ImportImpact['callsProposed'] {
-  const lists = impacts.map((i) => i.callsProposed);
-  const byReason = new Map<TrustReason, number>();
-  for (const { reason, count } of lists.flatMap((l) => l.byReason)) {
-    byReason.set(reason, (byReason.get(reason) ?? 0) + count);
-  }
-  return {
-    count: lists.reduce((n, l) => n + l.count, 0),
-    items: lists.flatMap((l) => l.items).slice(0, MAX_IMPACT_ITEMS),
-    wasAccepted: lists.reduce((n, l) => n + l.wasAccepted, 0),
-    byReason: TrustReason.options
-      .filter((reason) => byReason.has(reason))
-      .map((reason) => ({ reason, count: byReason.get(reason) ?? 0 })),
-  };
-}
-
-/**
- * The calls an owner's rules for derived calls would accept, of several
- * batches (M6 S2c-3): totals added up per rule, in first-seen order; absent
- * when no batch has them (not an owner's dry run).
- */
-function mergeAutoAccepted(
-  impacts: readonly ImportImpact[],
-): Pick<ImportImpact, 'autoAcceptedCalls'> {
-  const lists = impacts.flatMap((i) => (i.autoAcceptedCalls ? [i.autoAcceptedCalls] : []));
-  if (lists.length === 0) return {};
-  const byRule = new Map<
-    string,
-    NonNullable<ImportImpact['autoAcceptedCalls']>['byRule'][number]
-  >();
-  for (const r of lists.flatMap((l) => l.byRule)) {
-    const seen = byRule.get(r.ruleId);
-    byRule.set(r.ruleId, seen ? { ...seen, count: seen.count + r.count } : { ...r });
-  }
-  return {
-    autoAcceptedCalls: {
-      count: lists.reduce((n, l) => n + l.count, 0),
-      items: lists.flatMap((l) => l.items).slice(0, MAX_IMPACT_ITEMS),
-      ofProposed: lists.reduce((n, l) => n + l.ofProposed, 0),
-      byRule: [...byRule.values()],
-    },
-  };
-}
-
-/**
- * The impacts of a dry run's batches as one (M6 §3.5): the files and the
- * counts added up, the items concatenated up to the cap; the absent keys are
- * the first batch's (every batch sends the whole manifest, so all name the
- * same).
- */
-export function mergeImpacts(impacts: readonly ImportImpact[]): ImportImpact {
-  const empty = { count: 0, items: [] };
-  const merged: ImportImpact = {
-    files: impacts.flatMap((i) => i.files),
-    acceptedCalls: empty,
-    callsProposed: mergeProposedCalls(impacts),
-    ...mergeAutoAccepted(impacts),
-    proposalsAdded: empty,
-    proposalsWithdrawn: empty,
-    endpointsChanged: empty,
-    findingsAdded: empty,
-    findingsResolved: empty,
-    absentKeys: impacts[0]?.absentKeys ?? empty,
-  };
-  for (const key of IMPACT_LISTS) {
-    const lists = impacts.map((i) => i[key]);
-    (merged[key] as { count: number; items: unknown[] }) = {
-      count: lists.reduce((n, l) => n + l.count, 0),
-      items: lists.flatMap((l) => l.items as unknown[]).slice(0, MAX_IMPACT_ITEMS),
-    };
-  }
-  return merged;
-}
+// The batches' impacts as one (M6 §3.5): the zod-free merge the web's „Vorschau“ shares.
+export { mergeImpacts };
 
 function plural(n: number, one: string, many = `${one}s`): string {
   return `${n} ${n === 1 ? one : many}`;

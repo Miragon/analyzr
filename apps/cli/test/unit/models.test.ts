@@ -208,6 +208,13 @@ describe('analyzr models delete', () => {
     findingsAdded: { count: missing, items: [] },
     findingsResolved: { count: 0, items: [] },
     absentKeys: { count: 0, items: [] },
+    relationsTasks: {
+      queued: { count: 0, items: [] },
+      cancelled: { count: 0, items: [] },
+      claimed: 0,
+      pairs: 0,
+      rejudged: { count: 0, items: [] },
+    },
   });
 
   function deletingApi() {

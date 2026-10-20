@@ -2054,7 +2054,8 @@ UX3 builds the header's „Mehr“, „Herkunft“ is a ghost button next to the
 bullet but one. A drop shows the dry run first in the result's layout: the headline „Vorschau: 5
 Modelle neu · 1 Fehler · 1 übersprungen“, the outcome column „Wird neu“, „Neue Revision“,
 „Unverändert“, „Fehler“, at most three impact lines („Danach: …“; the pairs to re-judge wait for
-S2b's follow-up), „Was ändert sich?“ closed, the shared-top-folder hint, the batch note, „Importieren“
+S2b's follow-up: the server counts them since its step 1, 2026-10-20, and the line comes with its
+step 3), „Was ändert sich?“ closed, the shared-top-folder hint, the batch note, „Importieren“
 and „Abbrechen“; after importing the same panel is the result with „Als Nächstes“ (UX7). The
 deletion impact stays in the CLI (the web has no model deletion).
 

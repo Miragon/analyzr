@@ -529,6 +529,7 @@ export type ImportImpact = {
     count: number;
     items: Array<ModelKey>;
   };
+  relationsTasks: ImpactRelationsTasks;
 };
 
 /**
@@ -645,6 +646,51 @@ export type FindingKind =
   | 'duplicate-process-id'
   | 'dangling-throw'
   | 'unmatched-catch';
+
+/**
+ * The relations tasks the write would queue and cancel, and the pairs agents judge around the queued models.
+ */
+export type ImpactRelationsTasks = {
+  /**
+   * Models whose relations task the write queues, sorted by key.
+   */
+  queued: {
+    count: number;
+    items: Array<ModelKey>;
+  };
+  /**
+   * Open relations tasks the write cancels, the claimed ones first, then by key.
+   */
+  cancelled: {
+    count: number;
+    items: Array<ImpactCancelledTask>;
+  };
+  /**
+   * How many of the cancelled tasks an agent holds (their work is lost), past the cap.
+   */
+  claimed: number;
+  /**
+   * Typed pairs around the queued models that agents judge after the write (assigned candidates and relations without a current judgement or a settling decision): the agent work the write sets off. An upper bound of what the queued tasks’ claims are assigned: judge each pair once may give a pair to another model’s open task, which while it waits would judge it anyway.
+   */
+  pairs: number;
+  /**
+   * Of those pairs, the ones whose current agent judgement the write makes non-current (judged again), sorted by type, from and to.
+   */
+  rejudged: {
+    count: number;
+    items: Array<ImpactRelation>;
+  };
+};
+
+/**
+ * An open relations task the write would cancel: claimed means an agent holds it and its work is lost; `claimedBy` (handle) and `assigned` (the pairs its claim was assigned) are null while queued.
+ */
+export type ImpactCancelledTask = {
+  modelKey: ModelKey;
+  state: 'queued' | 'claimed';
+  claimedBy: string | null;
+  assigned: number | null;
+};
 
 /**
  * Result of uploading one BPMN file.

@@ -1859,6 +1859,14 @@ function repos(db: Conn): Tx {
                     eq(nl.fromModel, filter.touchingModelKey),
                     eq(nl.toModel, filter.touchingModelKey),
                   ),
+              filter.touchingModelKeys === undefined
+                ? undefined
+                : filter.touchingModelKeys.length === 0
+                  ? sql`false`
+                  : or(
+                      inArray(nl.fromModel, [...filter.touchingModelKeys]),
+                      inArray(nl.toModel, [...filter.touchingModelKeys]),
+                    ),
               filter.principalId === undefined ? undefined : eq(nl.principalId, filter.principalId),
               froms === undefined ? undefined : inArray(nl.fromRef, froms),
             ),

@@ -397,6 +397,13 @@ describe('upload result (UX7)', () => {
       findingsAdded: list(1),
       findingsResolved: list(0),
       absentKeys: list(0),
+      relationsTasks: {
+        queued: list(0),
+        cancelled: list(0),
+        claimed: 0,
+        pairs: 0,
+        rejudged: list(0),
+      },
     };
     expect(impactLines(impact)).toEqual([
       '1 Aufruf automatisch verknüpft',
@@ -517,6 +524,13 @@ describe('upload result (UX7)', () => {
       findingsAdded: list(0),
       findingsResolved: list(0),
       absentKeys: list(0),
+      relationsTasks: {
+        queued: list(0),
+        cancelled: list(0),
+        claimed: 0,
+        pairs: 0,
+        rejudged: list(0),
+      },
     };
     // All of them: nothing left to accept after the import.
     expect(impactLines({ ...impact, autoAcceptedCalls: auto(['Signavio-Export', 12]) })).toEqual([

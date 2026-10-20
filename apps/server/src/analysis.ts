@@ -14,7 +14,12 @@ import {
   readAmendable,
   type ExtractResult,
 } from '@analyzr/bpmn-facts';
-import { createPairAssessor, generateCandidates, runRules } from '@analyzr/relations';
+import {
+  createPairAssessor,
+  generateCandidates,
+  indexCandidates,
+  runRules,
+} from '@analyzr/relations';
 
 import type { AnalysisPort, Extracted, ExtractFailure } from './domain/ports.ts';
 
@@ -56,6 +61,10 @@ export const libraryAnalysis: AnalysisPort = {
   factsHash: (facts) => factsHash(facts),
   runRules: (projectFacts) => runRules(projectFacts),
   candidates: (projectFacts, focusModelKey) => generateCandidates(projectFacts, focusModelKey),
+  candidateSource: (projectFacts) => {
+    const prepared = indexCandidates(projectFacts);
+    return (focusModelKey) => generateCandidates(projectFacts, focusModelKey, undefined, prepared);
+  },
   pairAssessor: (projectFacts) => createPairAssessor(projectFacts),
   async amend(xml, amendments, modelKey) {
     try {

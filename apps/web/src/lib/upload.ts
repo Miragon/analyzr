@@ -3,9 +3,10 @@ import type {
   ExtractWarning,
   ImportFileOutcome,
   ImportImpact,
-  TrustReason,
 } from '@analyzr/client';
-// The shared file rule and key derivation (M6 S1): zod-free, the one runtime import from the contracts.
+// The batches' merge of a preview (S2b follow-up) and the shared file rule and key derivation
+// (M6 S1): zod-free, the runtime imports from the contracts.
+import { mergeImpacts } from '@analyzr/contracts/impact-merge';
 import {
   BPMN_FILE_SUFFIXES,
   bpmnSuffixOf,
@@ -19,7 +20,7 @@ import {
 import { formatBytes } from './labels';
 import { MAX_IMPORT_BYTES, MAX_IMPORT_FILES, MAX_MODEL_BYTES, PROBLEM_TYPE_BASE } from './limits';
 import { problemText } from './problem-texts';
-import { TRUST_REASON_LABELS, trustReasonLabel } from './provenance';
+import { trustReasonLabel } from './provenance';
 
 /** A file picked or dropped for import, with its path below the import root. */
 export interface UploadEntry {
@@ -687,92 +688,14 @@ export function askNowText(ask: number): string | null {
 
 // ------------------------------------------------------------- the preview (M6 S2b)
 
-/** The capped lists of an impact. */
-type ImpactListKey =
-  | 'acceptedCalls'
-  | 'proposalsAdded'
-  | 'proposalsWithdrawn'
-  | 'endpointsChanged'
-  | 'findingsAdded'
-  | 'findingsResolved';
-
-/** One list of several impacts: counts added up, items concatenated up to the server's cap. */
-function mergeList<K extends ImpactListKey>(
-  impacts: readonly ImportImpact[],
-  key: K,
-): ImportImpact[K] {
-  const lists = impacts.map((i) => i[key]);
-  return {
-    count: lists.reduce((n, l) => n + l.count, 0),
-    items: lists.flatMap((l) => l.items as unknown[]).slice(0, 100),
-  } as ImportImpact[K];
-}
-
-/** The calls only proposed of several batches (M6 S2c): totals added up, reasons in order. */
-function mergeProposedCalls(impacts: readonly ImportImpact[]): ImportImpact['callsProposed'] {
-  const lists = impacts.map((i) => i.callsProposed);
-  const byReason = new Map<TrustReason, number>();
-  for (const { reason, count } of lists.flatMap((l) => l.byReason)) {
-    byReason.set(reason, (byReason.get(reason) ?? 0) + count);
-  }
-  return {
-    count: lists.reduce((n, l) => n + l.count, 0),
-    items: lists.flatMap((l) => l.items).slice(0, 100),
-    wasAccepted: lists.reduce((n, l) => n + l.wasAccepted, 0),
-    byReason: (Object.keys(TRUST_REASON_LABELS) as TrustReason[])
-      .filter((reason) => byReason.has(reason))
-      .map((reason) => ({ reason, count: byReason.get(reason) ?? 0 })),
-  };
-}
-
-/**
- * The calls an owner's rules for derived calls would accept, of several
- * batches (M6 S2c-3): totals per rule added up in first-seen order; absent
- * when no batch has them (only an owner's preview has them).
- */
-function mergeAutoAccepted(
-  impacts: readonly ImportImpact[],
-): Pick<ImportImpact, 'autoAcceptedCalls'> {
-  const lists = impacts.flatMap((i) => (i.autoAcceptedCalls ? [i.autoAcceptedCalls] : []));
-  if (lists.length === 0) return {};
-  const byRule = new Map<
-    string,
-    NonNullable<ImportImpact['autoAcceptedCalls']>['byRule'][number]
-  >();
-  for (const r of lists.flatMap((l) => l.byRule)) {
-    const seen = byRule.get(r.ruleId);
-    byRule.set(r.ruleId, seen ? { ...seen, count: seen.count + r.count } : { ...r });
-  }
-  return {
-    autoAcceptedCalls: {
-      count: lists.reduce((n, l) => n + l.count, 0),
-      items: lists.flatMap((l) => l.items).slice(0, 100),
-      ofProposed: lists.reduce((n, l) => n + l.ofProposed, 0),
-      byRule: [...byRule.values()],
-    },
-  };
-}
-
 /**
  * The impacts of a preview's batches as one, as `analyzr import --dry-run`
- * merges them: files and counts added up, items concatenated up to the
- * server's cap of 100; the absent keys are the first batch's (each batch
- * sends the whole manifest).
+ * merges them (the zod-free merge of `@analyzr/contracts/impact-merge`):
+ * files and counts added up, items concatenated up to the server's cap of
+ * 100; the absent keys are the first batch's (each batch sends the whole
+ * manifest).
  */
-export function mergeImpacts(impacts: readonly ImportImpact[]): ImportImpact {
-  return {
-    files: impacts.flatMap((i) => i.files),
-    acceptedCalls: mergeList(impacts, 'acceptedCalls'),
-    callsProposed: mergeProposedCalls(impacts),
-    ...mergeAutoAccepted(impacts),
-    proposalsAdded: mergeList(impacts, 'proposalsAdded'),
-    proposalsWithdrawn: mergeList(impacts, 'proposalsWithdrawn'),
-    endpointsChanged: mergeList(impacts, 'endpointsChanged'),
-    findingsAdded: mergeList(impacts, 'findingsAdded'),
-    findingsResolved: mergeList(impacts, 'findingsResolved'),
-    absentKeys: impacts[0]?.absentKeys ?? { count: 0, items: [] },
-  };
-}
+export { mergeImpacts };
 
 /**
  * The preview's headline (UX-SIMPLIFICATION.md §6): „Vorschau: 5 Modelle neu

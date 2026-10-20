@@ -17,7 +17,6 @@ import {
   formatRef,
   newId,
   openQuestionsPath,
-  parseRef,
   personalDataWarnings,
   type AmendModelBody,
   type AmendModelItemResult,
@@ -45,7 +44,12 @@ import { quoteDe } from '@analyzr/relations';
 
 import { sourceKindOf, type Actor } from '../actor.ts';
 import { deriveHead, planOf, uploadedOf, type Derivation } from '../amendments/derive.ts';
-import { amendmentEffect, noEffect, type EffectCandidate } from '../amendments/effect.ts';
+import {
+  amendmentEffect,
+  noEffect,
+  replaceModel,
+  type EffectCandidate,
+} from '../amendments/effect.ts';
 import {
   changeListFilename,
   renderChangeListCsv,
@@ -72,8 +76,22 @@ import { liveAmendments, type LiveAmendment } from '../amendments/plan.ts';
 import { amendmentViews } from '../amendments/state.ts';
 import { DomainError } from '../errors.ts';
 import { headFingerprints } from '../fingerprints.ts';
-import { afterHeadChange, amendedSource, contentHash, storeHead } from '../ingest.ts';
-import { linkJudgements, pairKey } from '../judgements.ts';
+import { plannedRelations, type RelationAfter } from '../import-impact.ts';
+import {
+  afterHeadChange,
+  amendedSource,
+  contentHash,
+  derivedCallRulesFor,
+  rulesPrincipalOf,
+  storeHead,
+} from '../ingest.ts';
+import {
+  currentPairs,
+  judgementShift,
+  linkJudgements,
+  noLinkJudgement,
+  pairsToJudge,
+} from '../judgements.ts';
 import type { OpenQuestionInput } from '../open-questions/model.ts';
 import { buildOpenQuestions } from '../open-questions/read-model.ts';
 import { policy, type ProjectAccess } from '../policy.ts';
@@ -87,6 +105,7 @@ import type {
   StoredModelAmendment,
   Tx,
 } from '../ports.ts';
+import { planQueue } from '../queue-plan.ts';
 import { byRelation } from '../relation-state.ts';
 import { callTargets, trustByModel, type ModelTrust } from '../trust.ts';
 import { toModel, toRevision } from '../views.ts';
@@ -245,6 +264,35 @@ const ELEMENT_TYPES: Readonly<Record<string, string>> = {
   'bpmn:MessageFlow': 'Nachrichtenfluss',
 };
 
+/**
+ * The key-tier proposals a `partner` accepts, marked accepted among the
+ * relations after the write, as `settleLinks` decides them after its tail:
+ * the message and signal relations between a candidate's endpoints and its
+ * partner that are proposed or held.
+ */
+function acceptPartners(
+  relations: Map<string, RelationAfter>,
+  modelKey: string,
+  candidates: readonly EffectCandidate[],
+): void {
+  for (const c of candidates) {
+    if (c.partner === null) continue;
+    const ends = new Set(c.endpoints.map((id) => `${modelKey}#${id}`));
+    for (const [key, r] of relations) {
+      const pair =
+        (ends.has(r.fromRef) && r.toRef === c.partner) ||
+        (ends.has(r.toRef) && r.fromRef === c.partner);
+      if (
+        pair &&
+        (r.type === 'message' || r.type === 'signal') &&
+        (r.status === 'proposed' || r.status === 'held')
+      ) {
+        relations.set(key, { ...r, status: 'accepted' });
+      }
+    }
+  }
+}
+
 export function amendmentUseCases(deps: AmendmentDeps) {
   const candidateCache = new CandidateCache();
 
@@ -299,38 +347,80 @@ export function amendmentUseCases(deps: AmendmentDeps) {
     return model;
   }
 
-  /** The cost of a new head (decision 17): judgements made non-current, a claimed task. */
+  /**
+   * The cost of a new head (decision 17), counted as the import's dry run
+   * counts it (S2b follow-up): the pairs the model's next claim would judge
+   * again, that is `pairsToJudge` over the would-be candidates and the
+   * relations as the write leaves them (its recompute under the derived
+   * head's trust, for an owner the derived calls their rules accept, and the
+   * partner proposals `settleLinks` accepts for `candidates`), of them those
+   * whose current judgement the new head makes non-current
+   * (`judgementShift`); and whether the write cancels a claimed task
+   * (`planQueue`, as `queueAnalysis` plans it: only when the facts change).
+   */
   async function costOf(
     tx: Tx,
-    projectId: ProjectId,
+    actor: Actor,
+    project: ProjectRecord,
     l: Loaded,
     derivation: Derivation | null,
+    candidates: readonly EffectCandidate[] = [],
   ): Promise<AmendmentCost> {
+    if (!derivation) return { factsChange: false, pairsToRejudge: 0, taskClaimed: false };
+    const projectId = project.id;
+    const factsHash = deps.analysis.factsHash(derivation.extracted.facts);
+    const factsChange = factsHash !== l.head.factsHash;
     const open = await tx.tasks.latest(projectId, l.model.id, ['queued', 'claimed']);
-    const taskClaimed = open?.state === 'claimed';
-    if (!derivation) return { factsChange: false, pairsToRejudge: 0, taskClaimed };
-    const factsChange = deps.analysis.factsHash(derivation.extracted.facts) !== l.head.factsHash;
+    // Only the cancellation matters here, which never depends on the done task.
+    const plan = planQueue({
+      previousFactsHash: l.head.factsHash,
+      factsHash,
+      open,
+      doneFactsHash: null,
+    });
+    const taskClaimed = plan.cancel?.state === 'claimed';
     if (!factsChange) return { factsChange, pairsToRejudge: 0, taskClaimed };
     const { input } = l;
-    const hashes = new Map([...input.models].map(([k, m]) => [k, m.factsHash]));
-    const touches = (from: string, to: string) =>
-      parseRef(from).modelKey === l.model.key || parseRef(to).modelKey === l.model.key;
-    const pairs = new Set<string>();
-    for (const j of linkJudgements(
-      input.relations,
-      input.histories,
-      new Map(),
-      hashes,
-      deps.expectedProcedure(),
-    )) {
-      if (j.current && touches(j.from, j.to)) pairs.add(pairKey(j));
-    }
-    for (const n of input.noLinks) {
-      if (n.current && touches(n.fromRef, n.toRef)) {
-        pairs.add(pairKey({ type: n.type, from: n.fromRef, to: n.toRef }));
-      }
-    }
-    return { factsChange, pairsToRejudge: pairs.size, taskClaimed };
+    const procedure = deps.expectedProcedure();
+    const before = new Map([...input.models].map(([k, m]) => [k, m.factsHash]));
+    const after = new Map(before).set(l.model.key, factsHash);
+    // Every live no-link on the model's pairs, stale ones too: a revert makes them current again.
+    const noLinks = await tx.noLinks.listLive(
+      projectId,
+      { touchingModelKey: l.model.key },
+      procedure,
+    );
+    const judgements = [
+      ...linkJudgements(input.relations, input.histories, new Map(), before, procedure),
+      ...noLinks.map(noLinkJudgement),
+    ];
+    const afterFacts = replaceModel(input.projectFacts, l.model.key, derivation.extracted);
+    const history = await tx.assertions.listForProject(projectId);
+    const relations = plannedRelations(
+      {
+        projectId,
+        rulesPrincipalId: rulesPrincipalOf(history),
+        projectFacts: afterFacts,
+        rules: deps.analysis.runRules(afterFacts),
+        trust: (await effectTrust(tx, projectId, l.model.key, derivation)).after,
+        relations: await tx.relations.all(projectId),
+        history,
+      },
+      (await derivedCallRulesFor(tx, actor, project)) ?? undefined,
+    );
+    acceptPartners(relations, l.model.key, candidates);
+    const pairs = pairsToJudge({
+      models: [l.model.key],
+      candidatesOf: (key) => deps.analysis.candidates(afterFacts, key),
+      relations: relations.values(),
+      judged: currentPairs(judgements, after, procedure),
+    });
+    const lost = judgementShift({ judgements, before, after, procedure });
+    return {
+      factsChange,
+      pairsToRejudge: [...pairs.keys()].filter((key) => lost.has(key)).length,
+      taskClaimed,
+    };
   }
 
   /**
@@ -399,6 +489,7 @@ export function amendmentUseCases(deps: AmendmentDeps) {
    */
   async function withdrawalDryRun(
     tx: Tx,
+    actor: Actor,
     project: ProjectRecord,
     model: ModelRecord,
     amendments: readonly StoredModelAmendment[],
@@ -432,7 +523,7 @@ export function amendmentUseCases(deps: AmendmentDeps) {
       model: view ? toModel(view) : null,
       revision: null,
       dryRun: true,
-      cost: await costOf(tx, project.id, l, derivation),
+      cost: await costOf(tx, actor, project, l, derivation),
     };
   }
 
@@ -788,7 +879,7 @@ export function amendmentUseCases(deps: AmendmentDeps) {
             };
           }
         }
-        const cost = await costOf(tx, project.id, l, derivation);
+        const cost = await costOf(tx, actor, project, l, derivation, effectCandidates);
         const idOf = new Map(candidates.map((c) => [c.index, c.id]));
         const views = new Map(
           (await amendmentViews(tx, project.id, l.stored)).map((v) => [v.id as string, v]),
@@ -856,7 +947,7 @@ export function amendmentUseCases(deps: AmendmentDeps) {
             model: toModel(view),
             revision: null,
             effect: recordable ? computed.effect : noEffect(),
-            cost: recordable ? cost : { ...cost, factsChange: false, pairsToRejudge: 0 },
+            cost: recordable ? cost : { factsChange: false, pairsToRejudge: 0, taskClaimed: false },
           };
         }
         if (rulesPrincipalId === null) throw new Error('rules principal missing');
@@ -975,7 +1066,7 @@ export function amendmentUseCases(deps: AmendmentDeps) {
         const model = await tx.models.findIncludingDeleted(project.id, amendment.modelId);
         if (!model) throw new Error(`model of ${amendmentId} missing`);
         await checkWithdrawalHead(tx, project, model, options.ifMatchRev);
-        if (dryRun) return withdrawalDryRun(tx, project, model, [amendment]);
+        if (dryRun) return withdrawalDryRun(tx, actor, project, model, [amendment]);
         if (rulesPrincipalId === null) throw new Error('rules principal missing');
         return withdraw(tx, actor, project, model, [amendment], rulesPrincipalId);
       };
@@ -1009,7 +1100,7 @@ export function amendmentUseCases(deps: AmendmentDeps) {
         const stored = (await tx.amendments.list(project.id, { modelId: model.id })).filter(
           (a) => a.withdrawal === null,
         );
-        if (dryRun) return withdrawalDryRun(tx, project, model, stored);
+        if (dryRun) return withdrawalDryRun(tx, actor, project, model, stored);
         if (rulesPrincipalId === null) throw new Error('rules principal missing');
         return withdraw(tx, actor, project, model, stored, rulesPrincipalId);
       };

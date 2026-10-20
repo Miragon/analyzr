@@ -66,6 +66,37 @@ export function textsOf(index: LandscapeIndex, e: Endpoint): string[] {
   return [...new Set(texts.filter((t) => t.trim() !== ''))];
 }
 
+/**
+ * What candidate generation computes once per landscape, whatever the focus
+ * model: the index, the rule tier's relations and the pairs they fix, and
+ * the endpoints' text forms (filled as they are needed). Built by
+ * {@link indexCandidates}; {@link generateCandidates} over the same facts
+ * returns the same candidates with it as without it, cheaper when one
+ * landscape is asked about many focus models (the import's dry run, M6 S2b
+ * follow-up).
+ */
+export interface CandidateIndex {
+  /** The facts it indexes: {@link generateCandidates} refuses other facts. */
+  readonly projectFacts: ProjectFacts;
+  readonly index: LandscapeIndex;
+  readonly ruleRelations: readonly DerivedRelation[];
+  /** Pairs fixed by the rule tier, with their basis and score. */
+  readonly fixed: ReadonlyMap<string, { basis: CandidateBasis; score: number }>;
+  /** Text forms by endpoint (`type|side|ref`); they depend on the index only. */
+  readonly forms: Map<string, readonly TextForm[]>;
+}
+
+/** The landscape-wide part of {@link generateCandidates}, to pass to several of its calls. */
+export function indexCandidates(projectFacts: ProjectFacts): CandidateIndex {
+  const index = indexLandscape(projectFacts);
+  const ruleRelations = rulesFromIndex(index).relations;
+  const fixed = new Map<string, { basis: CandidateBasis; score: number }>();
+  for (const r of ruleRelations) {
+    fixed.set(pairKey(r.type, r.from, r.to), { basis: basisOf(r), score: r.confidence });
+  }
+  return { projectFacts, index, ruleRelations, fixed, forms: new Map() };
+}
+
 interface Context {
   readonly index: LandscapeIndex;
   readonly forms: Map<string, readonly TextForm[]>;
@@ -176,21 +207,24 @@ function perspective(ctx: Context, self: Endpoint, partners: readonly Endpoint[]
  * processes. Without it, the union over all endpoints.
  *
  * Sorted by score descending, then `(type, from, to)`; deterministic.
+ *
+ * @param prepared {@link indexCandidates} of these very facts, shared by
+ *   several calls (the same candidates, computed once per landscape)
+ * @throws {Error} when `prepared` indexes other facts
  */
 export function generateCandidates(
   projectFacts: ProjectFacts,
   focusModelKey?: string,
   options?: CandidateOptions,
+  prepared?: CandidateIndex,
 ): Candidate[] {
-  const index = indexLandscape(projectFacts);
-  const ruleRelations = rulesFromIndex(index).relations;
-  const fixed = new Map<string, { basis: CandidateBasis; score: number }>();
-  for (const r of ruleRelations) {
-    fixed.set(pairKey(r.type, r.from, r.to), { basis: basisOf(r), score: r.confidence });
+  if (prepared !== undefined && prepared.projectFacts !== projectFacts) {
+    throw new Error('generateCandidates: the prepared index is of other facts');
   }
+  const { index, ruleRelations, fixed, forms } = prepared ?? indexCandidates(projectFacts);
   const ctx: Context = {
     index,
-    forms: new Map(),
+    forms,
     fixed,
     out: new Map(),
     lexicalN: options?.lexicalPerEndpoint ?? DEFAULT_LEXICAL_PER_ENDPOINT,

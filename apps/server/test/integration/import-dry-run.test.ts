@@ -12,18 +12,29 @@
  * rule) the impact names the unique calls that become proposals instead
  * (`callsProposed`, with the acceptances they end) and each file's class,
  * as the import then stores them; a read-only token's preview classifies by
- * its credential.
+ * its credential. The relations tasks (S2b follow-up): the dry run names the
+ * tasks the import queues and cancels (a claimed one with its holder and
+ * assignment) as the import's events then do, the pairs the queued tasks'
+ * claims are then assigned (the other models' tasks done) and those judged
+ * again; a layout-only re-import
+ * queues nothing; the PUT dry run counts as the import's; the deletion
+ * impact names the task `DELETE` cancels.
  */
 import type {
+  AnalysisTaskPage,
+  ClaimedRelationsAnalysis,
+  CreatedAgentToken,
   FindingList,
   ImportImpact,
   ImportResult,
   ModelPage,
+  NoLinkList,
   Project,
   PutModelDryRunResult,
   Relation,
   RelationPage,
 } from '@analyzr/contracts';
+import { sql } from 'drizzle-orm';
 import { isDeepStrictEqual } from 'node:util';
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -32,6 +43,7 @@ import { libraryAnalysis } from '../../src/analysis.ts';
 import { startTestApp, type TestApp } from '../support/app.ts';
 import { corpusFiles, importForm, type CorpusFile } from '../support/corpus.ts';
 import { createTestDatabase, type TestDatabase } from '../support/db.ts';
+import { asAgent, claim, problemOf, submission, submit, submitRaw } from '../support/pipeline.ts';
 
 let database: TestDatabase;
 let t: TestApp;
@@ -71,6 +83,15 @@ function importFiles(p: string, batch: readonly CorpusFile[], dryRun: boolean, m
   });
 }
 
+const noTasks = (impact: ImportImpact) =>
+  isDeepStrictEqual(impact.relationsTasks, {
+    queued: { count: 0, items: [] },
+    cancelled: { count: 0, items: [] },
+    claimed: 0,
+    pairs: 0,
+    rejudged: { count: 0, items: [] },
+  });
+
 const empty = (impact: ImportImpact) =>
   [
     impact.acceptedCalls,
@@ -80,7 +101,7 @@ const empty = (impact: ImportImpact) =>
     impact.endpointsChanged,
     impact.findingsAdded,
     impact.findingsResolved,
-  ].every((l) => l.count === 0);
+  ].every((l) => l.count === 0) && noTasks(impact);
 
 describe('POST …/imports?dryRun=true', () => {
   it('answers the outcomes and what the import then does, and writes nothing', async () => {
@@ -367,5 +388,223 @@ describe('absent keys of a bundle', () => {
     // without a manifest no system to compare: none
     const plain = await importFiles('scope', [file('finanzen/a.bpmn')], true);
     expect(plain.impact?.absentKeys.count).toBe(0);
+  });
+});
+
+describe('the relations tasks of a dry run (S2b follow-up)', () => {
+  const T = 'tasks';
+  const A = 'finanzen/rechnungsstellung';
+  const B = 'finanzen/mahnwesen';
+  const C = 'finanzen/zahlungseingang';
+  const D = 'finanzen/gutschrift';
+  // A has key-tier and lexical partners among them (pairs its claim is assigned).
+  const KEYS = [
+    A,
+    B,
+    C,
+    D,
+    'finanzen/e-rechnung-versand',
+    'finanzen/forderungsmanagement',
+    'finanzen/monatsabschluss',
+  ];
+  let subset: CorpusFile[];
+  let first: CreatedAgentToken;
+  let second: CreatedAgentToken;
+  /** B's task, claimed by the second agent and held. */
+  let held: ClaimedRelationsAnalysis;
+
+  const fileOf = (key: string): CorpusFile => {
+    const f = subset.find((x) => x.key === key);
+    if (!f) throw new Error(`${key} missing`);
+    return f;
+  };
+  /** The end event each test renames: a new label, new facts. */
+  const LABELS = new Map<string, [string, string]>([
+    [A, ['Rechnung gestellt', 'Rechnung gestellt (neu)']],
+    [B, ['Kunde gesperrt', 'Kunde gesperrt (neu)']],
+    [C, ['Kontoauszug verarbeitet', 'Kontoauszug verarbeitet (neu)']],
+    [D, ['Gutschrift erstellt', 'Gutschrift erstellt (neu)']],
+  ]);
+  /** The file with its label renamed, with a comment as well (`layout`: the same facts again). */
+  const relabelled = (key: string, layout = false): CorpusFile => {
+    const f = fileOf(key);
+    const [label, renamed] = LABELS.get(key) ?? ['', ''];
+    const text = new TextDecoder().decode(f.bytes);
+    const next = text.replace(`name="${label}"`, `name="${renamed}"`);
+    if (next === text) throw new Error(`${key}: nothing renamed`);
+    return { ...f, bytes: new TextEncoder().encode(layout ? `${next}<!-- layout -->\n` : next) };
+  };
+  const keyOf = (p: { type: string; from: string; to: string }) => `${p.type} ${p.from} ${p.to}`;
+
+  async function assignmentOf(taskId: string): Promise<string[]> {
+    const r = await database.db.execute(
+      sql`SELECT assignment FROM analysis_task WHERE id = ${taskId}`,
+    );
+    const [row] = r.rows as { assignment: { type: string; from: string; to: string }[] | null }[];
+    return (row?.assignment ?? []).map(keyOf).sort();
+  }
+
+  /** The `analysis.*` events of the project after `seq`, with their model. */
+  async function analysisEvents(afterSeq: number): Promise<{ type: string; modelKey: unknown }[]> {
+    const r = await database.db.execute(
+      sql`SELECT e.type, e.payload FROM event e JOIN project p ON p.id = e.project_id
+          WHERE p.key = ${T} AND e.seq > ${afterSeq} AND e.type LIKE 'analysis.%' ORDER BY e.seq`,
+    );
+    return (r.rows as { type: string; payload: Record<string, unknown> }[]).map((e) => ({
+      type: e.type,
+      modelKey: e.payload['modelKey'],
+    }));
+  }
+
+  beforeAll(async () => {
+    await t.createProject(T);
+    subset = files.filter((f) => KEYS.includes(f.key));
+    expect(subset).toHaveLength(KEYS.length);
+    await importFiles(T, subset, false);
+    first = await t.createToken(T, ['analyzr:read', 'analyzr:propose']);
+    second = await t.createToken(T, ['analyzr:read', 'analyzr:propose']);
+    const agent = asAgent(t, first.secret);
+    // The first agent finishes the others without a verdict, then judges A's pairs (a no-link
+    // on every candidate): with the partners' tasks done, A's claim is assigned its pairs.
+    for (const key of [...KEYS.filter((k) => k !== A && k !== B), A]) {
+      const [task] = await claim(agent, { projectId: T, modelKey: key });
+      if (!task) throw new Error(`no task for ${key}`);
+      const noLinks =
+        key === A
+          ? task.input.candidates.map(([type, from, to]) => ({
+              type,
+              from,
+              to,
+              reason: 'no-evidence: nicht verbunden',
+            }))
+          : [];
+      await submit(agent, task.taskId, { ...submission(task, []), noLinks });
+    }
+    // The second agent holds B's claim.
+    const [task] = await claim(asAgent(t, second.secret), { projectId: T, modelKey: B });
+    if (!task) throw new Error('no task for B');
+    held = task;
+  });
+
+  it('names the tasks queued and cancelled and the pairs to judge, as the import then does', async () => {
+    const changed = [relabelled(A), relabelled(B)];
+    const seq = await lastSeq(T);
+    const preview = await importFiles(T, changed, true);
+    expect(await lastSeq(T)).toBe(seq);
+    if (!preview.impact) throw new Error('no impact');
+    const tasks = preview.impact.relationsTasks;
+    expect(tasks.queued).toEqual({ count: 2, items: [B, A] });
+    const [holder] = (
+      await json<AnalysisTaskPage>(`/api/v1/projects/${T}/analyses?state=claimed&modelKey=${B}`)
+    ).items;
+    expect(holder?.claimedBy).toEqual(expect.any(String));
+    expect(tasks.cancelled).toEqual({
+      count: 1,
+      items: [
+        {
+          modelKey: B,
+          state: 'claimed',
+          claimedBy: holder?.claimedBy,
+          assigned: (await assignmentOf(held.taskId)).length,
+        },
+      ],
+    });
+    expect(tasks.claimed).toBe(1);
+    expect(tasks.pairs).toBeGreaterThan(0);
+    expect(tasks.rejudged.count).toBeGreaterThan(0);
+    expect(tasks.rejudged.count).toBe(tasks.rejudged.items.length);
+    const judgedBefore = new Set(
+      (await json<NoLinkList>(`/api/v1/projects/${T}/no-links`)).items.map(keyOf),
+    );
+
+    // The import queues and cancels what the dry run named.
+    await importFiles(T, changed, false);
+    const events = await analysisEvents(seq);
+    expect(
+      events
+        .filter((e) => e.type === 'analysis.queued')
+        .map((e) => e.modelKey)
+        .sort(),
+    ).toEqual(tasks.queued.items);
+    expect(events.filter((e) => e.type === 'analysis.cancelled').map((e) => e.modelKey)).toEqual(
+      tasks.cancelled.items.map((c) => c.modelKey),
+    );
+    // B's agent loses its work.
+    const late = await submitRaw(asAgent(t, second.secret), held.taskId, submission(held, []));
+    expect(late.status).toBe(409);
+    expect((await problemOf(late)).code).toBe('task-cancelled');
+    // Claiming every queued task assigns exactly the pairs; the judged ones are those named.
+    const agent = asAgent(t, first.secret);
+    const claimed = await claim(agent, { projectId: T, max: 5 });
+    expect(claimed.map((c) => c.modelKey).sort()).toEqual(tasks.queued.items);
+    const union = new Set((await Promise.all(claimed.map((c) => assignmentOf(c.taskId)))).flat());
+    expect(union.size).toBe(tasks.pairs);
+    expect([...union].filter((k) => judgedBefore.has(k)).sort()).toEqual(
+      tasks.rejudged.items.map(keyOf).sort(),
+    );
+    for (const c of claimed) await submit(agent, c.taskId, submission(c, []));
+  });
+
+  it('queues nothing for a layout-only re-import, as the import does', async () => {
+    // A's head is the relabelled file: the same with a comment only changes the layout.
+    const layout = relabelled(A, true);
+    const seq = await lastSeq(T);
+    const preview = await importFiles(T, [layout], true);
+    if (!preview.impact) throw new Error('no impact');
+    expect(preview.files.map((f) => f.outcome)).toEqual(['revised']);
+    expect(noTasks(preview.impact)).toBe(true);
+    await importFiles(T, [layout], false);
+    expect(await analysisEvents(seq)).toEqual([]);
+  });
+
+  it('counts a PUT’s dry run as the import’s', async () => {
+    const changed = relabelled(D);
+    const preview = await importFiles(T, [changed], true);
+    const res = await t.asOwner(
+      `/api/v1/projects/${T}/models/by-key/${encodeURIComponent(D)}?dryRun=true`,
+      { method: 'PUT', headers: { 'content-type': 'application/xml' }, body: changed.bytes },
+    );
+    expect(res.status).toBe(200);
+    const put = (await res.json()) as PutModelDryRunResult;
+    expect(put.impact.relationsTasks).toEqual(preview.impact?.relationsTasks);
+    expect(put.impact.relationsTasks.queued.items).toEqual([D]);
+    expect(put.impact.relationsTasks.cancelled.count).toBe(0);
+  });
+
+  it('names the open task a deletion cancels, and DELETE cancels exactly that one', async () => {
+    // C gets a new head, and the second agent claims its task.
+    await importFiles(T, [relabelled(C)], false);
+    const [task] = await claim(asAgent(t, second.secret), { projectId: T, modelKey: C });
+    if (!task) throw new Error('no task for C');
+    const [holder] = (
+      await json<AnalysisTaskPage>(`/api/v1/projects/${T}/analyses?state=claimed&modelKey=${C}`)
+    ).items;
+    const seq = await lastSeq(T);
+    const impact = await json<ImportImpact>(
+      `/api/v1/projects/${T}/models/${task.modelId}/deletion-impact`,
+    );
+    expect(await lastSeq(T)).toBe(seq);
+    expect(impact.relationsTasks).toEqual({
+      queued: { count: 0, items: [] },
+      cancelled: {
+        count: 1,
+        items: [
+          {
+            modelKey: C,
+            state: 'claimed',
+            claimedBy: holder?.claimedBy,
+            assigned: (await assignmentOf(task.taskId)).length,
+          },
+        ],
+      },
+      claimed: 1,
+      pairs: 0,
+      rejudged: { count: 0, items: [] },
+    });
+    const res = await t.asOwner(`/api/v1/projects/${T}/models/${task.modelId}`, {
+      method: 'DELETE',
+    });
+    expect(res.status).toBe(204);
+    expect(await analysisEvents(seq)).toEqual([{ type: 'analysis.cancelled', modelKey: C }]);
   });
 });

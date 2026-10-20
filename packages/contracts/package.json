@@ -12,6 +12,7 @@
     "./amendment-labels": "./src/amendment-labels.ts",
     "./open-question-csv": "./src/open-question-csv.ts",
     "./personal-data": "./src/personal-data.ts",
+    "./impact-merge": "./src/impact-merge.ts",
     "./import-manifest": "./src/api/import-manifest.ts"
   },
   "scripts": {

@@ -320,6 +320,13 @@ describe('analyzr import with a hand-written manifest', () => {
             ]),
             findingsResolved: list(0),
             absentKeys: list(1, ['alt/modell']),
+            relationsTasks: {
+              queued: list(0),
+              cancelled: list(0),
+              claimed: 0,
+              pairs: 0,
+              rejudged: list(0),
+            },
           },
         });
       },

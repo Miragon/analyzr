@@ -8,18 +8,18 @@ import { FACTS_VERSION, extractFacts } from '@analyzr/bpmn-facts';
 import type { ProjectFacts } from '@analyzr/contracts';
 import { beforeAll, describe, expect, it } from 'vitest';
 
-import { labelBaseline, generateCandidates, runRules } from '../src/index.ts';
+import { labelBaseline, generateCandidates, indexCandidates, runRules } from '../src/index.ts';
 
-const SAMPLE = fileURLToPath(new URL('../../../eval/corpus/_sample/models', import.meta.url));
+const corpus = (name: string) =>
+  fileURLToPath(new URL(`../../../eval/corpus/${name}/models`, import.meta.url));
+const SAMPLE = corpus('_sample');
 
-async function sampleFacts(): Promise<ProjectFacts> {
-  const files = (await readdir(SAMPLE, { recursive: true }))
-    .filter((f) => f.endsWith('.bpmn'))
-    .sort();
+async function sampleFacts(dir = SAMPLE): Promise<ProjectFacts> {
+  const files = (await readdir(dir, { recursive: true })).filter((f) => f.endsWith('.bpmn')).sort();
   const models = await Promise.all(
     files.map(async (f) => {
       const modelKey = f.slice(0, -'.bpmn'.length).split(path.sep).join('/');
-      const r = await extractFacts(await readFile(path.join(SAMPLE, f)), { modelKey });
+      const r = await extractFacts(await readFile(path.join(dir, f)), { modelKey });
       return {
         modelKey,
         factsVersion: FACTS_VERSION,
@@ -83,4 +83,25 @@ describe('_sample landscape', () => {
       ),
     ).toBe(true);
   });
+});
+
+// The import's dry run asks one landscape about many focus models with one prepared index
+// (M6 S2b follow-up): every focus model of the scored landscape (the holdout is left out) and
+// the run without a focus give exactly the candidates of the calls without it.
+describe('a prepared candidate index over a corpus landscape', () => {
+  it.each(['_sample', 'nordwind-handel'])(
+    '%s: the same candidates for every focus model',
+    async (name) => {
+      const facts = await sampleFacts(corpus(name));
+      const prepared = indexCandidates(facts);
+      for (const { modelKey } of facts.models) {
+        expect(generateCandidates(facts, modelKey, undefined, prepared), modelKey).toEqual(
+          generateCandidates(facts, modelKey),
+        );
+      }
+      expect(generateCandidates(facts, undefined, undefined, prepared)).toEqual(
+        generateCandidates(facts),
+      );
+    },
+  );
 });

@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { MessageFlowInfo, Fact, ProcessInfo } from '../facts.ts';
 import { Finding } from '../findings.ts';
 import { AutoAcceptRuleId, ModelId, ProjectId, RevisionId } from '../ids.ts';
+import { MAX_IMPACT_ITEMS, TRUST_REASON_ORDER } from '../impact-merge.ts';
 import { ApiProblem } from '../problem.ts';
 import { ModelKey, Ref } from '../refs.ts';
 import { RelationType } from '../relations.ts';
@@ -83,7 +84,7 @@ export type TrustClass = z.infer<typeof TrustClass>;
  * `converted`, `reconstructed` or `as-told`.
  */
 export const TrustReason = z
-  .enum(['no-engine', 'agent-upload', 'converted', 'reconstructed', 'as-told'])
+  .enum(TRUST_REASON_ORDER)
   .meta({ id: 'TrustReason', description: 'Why an uploaded revision is derived.' });
 export type TrustReason = z.infer<typeof TrustReason>;
 
@@ -393,8 +394,8 @@ export const ImportFileOutcome = z
   .meta({ id: 'ImportFileOutcome', description: 'Outcome of one file of an import.' });
 export type ImportFileOutcome = z.infer<typeof ImportFileOutcome>;
 
-/** Most items an impact list carries (M6 §3.5); `count` says how many there are. */
-export const MAX_IMPACT_ITEMS = 100;
+// Most items an impact list carries (M6 §3.5): zod-free, with the batches' merge.
+export { MAX_IMPACT_ITEMS };
 
 const impactList = <T extends z.ZodType>(item: T) =>
   z.object({
@@ -497,6 +498,75 @@ export const ImpactAutoAcceptedCalls = impactList(ImpactAutoAcceptedCall)
 export type ImpactAutoAcceptedCalls = z.infer<typeof ImpactAutoAcceptedCalls>;
 
 /**
+ * An open relations task an import or a model's deletion would cancel (M6
+ * S2b follow-up): a new head with other facts cancels the model's open task
+ * (CONCEPT §3 "Requeue"), so an agent holding its claim gets 409
+ * `task-cancelled` at submit and its work is lost. `claimedBy` is the handle
+ * of the principal holding the claim (what `GET …/analyses` shows at
+ * `read`), `assigned` the number of pairs its claim was assigned; both
+ * `null` for a queued task.
+ */
+export const ImpactCancelledTask = z
+  .object({
+    modelKey: ModelKey,
+    state: z.enum(['queued', 'claimed']),
+    claimedBy: z.string().nullable(),
+    assigned: z.number().int().min(0).nullable(),
+  })
+  .meta({
+    id: 'ImpactCancelledTask',
+    description:
+      'An open relations task the write would cancel: claimed means an agent holds it and its work is lost; `claimedBy` (handle) and `assigned` (the pairs its claim was assigned) are null while queued.',
+  });
+export type ImpactCancelledTask = z.infer<typeof ImpactCancelledTask>;
+
+/**
+ * The relations tasks an import or a model's deletion sets off (M6 S2b
+ * follow-up), planned as the write queues them: `queued`, the models whose
+ * task it queues, by key; `cancelled`, the open tasks it cancels, the
+ * claimed ones first, then by key; `claimed`, how many of them an agent
+ * holds (their work is lost), past the cap; `pairs`, the typed pairs
+ * around the queued models that agents judge after the write (each queued
+ * model's candidates of an assigned basis and its assigned relations then,
+ * without a current agent judgement or a settling decision then), the agent
+ * work the write sets off: an upper bound of what the queued tasks' claims
+ * are assigned, since judge each pair once may give a pair to another
+ * model's open task instead (while such tasks wait it counts pairs they
+ * would judge anyway); `rejudged`, those of them whose current agent
+ * judgement the write makes non-current, so they are judged again, sorted
+ * by type, from and to. A deletion cancels the model's task and queues
+ * nothing (`pairs` 0). Counted per request against the head: a dry run in
+ * batches counts a pair between models of two batches in both.
+ */
+export const ImpactRelationsTasks = z
+  .object({
+    queued: impactList(ModelKey).meta({
+      description: 'Models whose relations task the write queues, sorted by key.',
+    }),
+    cancelled: impactList(ImpactCancelledTask).meta({
+      description: 'Open relations tasks the write cancels, the claimed ones first, then by key.',
+    }),
+    claimed: z.number().int().min(0).meta({
+      description:
+        'How many of the cancelled tasks an agent holds (their work is lost), past the cap.',
+    }),
+    pairs: z.number().int().min(0).meta({
+      description:
+        'Typed pairs around the queued models that agents judge after the write (assigned candidates and relations without a current judgement or a settling decision): the agent work the write sets off. An upper bound of what the queued tasks’ claims are assigned: judge each pair once may give a pair to another model’s open task, which while it waits would judge it anyway.',
+    }),
+    rejudged: impactList(ImpactRelation).meta({
+      description:
+        'Of those pairs, the ones whose current agent judgement the write makes non-current (judged again), sorted by type, from and to.',
+    }),
+  })
+  .meta({
+    id: 'ImpactRelationsTasks',
+    description:
+      'The relations tasks the write would queue and cancel, and the pairs agents judge around the queued models.',
+  });
+export type ImpactRelationsTasks = z.infer<typeof ImpactRelationsTasks>;
+
+/**
  * What an import or a model's deletion would change (M6 §3.5, slice S2b),
  * computed by the pure `importImpact` over the stored head and the would-be
  * head facts; nothing is written. `files`: the created and revised files.
@@ -515,6 +585,10 @@ export type ImpactAutoAcceptedCalls = z.infer<typeof ImpactAutoAcceptedCalls>;
  * live keys of the manifest's source system the import does not name, only
  * those whose tool folder lies in the manifest's `source.scope` (the whole
  * system without one); information only, nothing is deleted (decision 7).
+ * `relationsTasks` (S2b follow-up): the relations tasks the write queues and
+ * cancels and the pairs agents judge around the queued models
+ * ({@link ImpactRelationsTasks}), the agent work an import sets off, repeats
+ * or destroys.
  */
 export const ImportImpact = z
   .object({
@@ -528,6 +602,7 @@ export const ImportImpact = z
     findingsAdded: impactList(Finding),
     findingsResolved: impactList(Finding),
     absentKeys: impactList(ModelKey),
+    relationsTasks: ImpactRelationsTasks,
   })
   .meta({ id: 'ImportImpact', description: 'What an import or a deletion would change.' });
 export type ImportImpact = z.infer<typeof ImportImpact>;

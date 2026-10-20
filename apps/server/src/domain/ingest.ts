@@ -31,11 +31,13 @@ import { createHash } from 'node:crypto';
 import {
   newId,
   type AmendmentCounts,
+  type Candidate,
   type DeclaredProcedure,
   type ExtractWarning,
   type ImportImpact,
   type ModelId,
   type PrincipalId,
+  type ProjectFacts,
   type ProjectId,
   type RevisionSource,
   type RevisionTrust,
@@ -57,20 +59,26 @@ import {
   importImpact,
   type DerivedCallRules,
   type FileHeads,
+  type TaskInput,
 } from './import-impact.ts';
+import { linkJudgements, noLinkJudgement } from './judgements.ts';
 import { touchNoLinkRelations } from './no-links.ts';
 import { evaluate, policy, roleIn } from './policy.ts';
-import { naturalKey } from './relation-state.ts';
+import { needsDoneTask, planQueue } from './queue-plan.ts';
+import { byRelation, naturalKey } from './relation-state.ts';
 import type {
   AnalysisPort,
   ExtractFailure,
   ExtractOutcome,
   Extracted,
   ModelRecord,
+  ModelTaskDetail,
   ModelTaskRecord,
   ProjectRecord,
   RevisionRecord,
   Store,
+  StoredAssertion,
+  StoredNoLink,
   Tx,
 } from './ports.ts';
 import { recomputeProject } from './recompute.ts';
@@ -574,7 +582,7 @@ async function storeFile(
  * judge-once keeps that cheap. A layout-only change queues nothing, unless
  * no task is open and none analysed these facts (a failed task). An open
  * task for different facts is cancelled first; one for the same facts
- * stays.
+ * stays. Reads, then the pure `planQueue` the dry runs share, then writes.
  */
 export async function queueAnalysis(
   tx: Tx,
@@ -585,13 +593,13 @@ export async function queueAnalysis(
   previousFactsHash: string | null,
 ): Promise<ModelTaskRecord | null> {
   const open = await tx.tasks.latest(projectId, model.id, ['queued', 'claimed']);
-  if (open?.factsHash === revision.factsHash) return null;
-  if (open) await cancelTask(tx, actor, projectId, model, open, 'new head with different facts');
-  if (!open && previousFactsHash === revision.factsHash) {
-    const done = await tx.tasks.latest(projectId, model.id, ['done']);
-    if (done?.factsHash === revision.factsHash) return null;
+  const heads = { previousFactsHash, factsHash: revision.factsHash, open };
+  const done = needsDoneTask(heads) ? await tx.tasks.latest(projectId, model.id, ['done']) : null;
+  const plan = planQueue({ ...heads, doneFactsHash: done?.factsHash ?? null });
+  if (plan.cancel) {
+    await cancelTask(tx, actor, projectId, model, plan.cancel, 'new head with different facts');
   }
-  return queueTask(tx, actor, projectId, model, revision, 'new head');
+  return plan.queue ? queueTask(tx, actor, projectId, model, revision, 'new head') : null;
 }
 
 /**
@@ -789,6 +797,92 @@ async function readHead(tx: Tx, projectId: ProjectId) {
   };
 }
 
+/** Upper bound of a listing that must return every row (as the claim's own read of open tasks). */
+const ALL_TASKS = 100_000;
+
+/** What the relations tasks of a dry run read ({@link readTasks}). */
+interface TaskReads {
+  /** The head `facts_hash` of every live model. */
+  heads: Map<string, string>;
+  /** The live no-links touching the models (current or stale: a revert makes one current again). */
+  noLinks: StoredNoLink[];
+  /** The open (queued or claimed) relations task of each of the models, by key. */
+  open: Map<string, ModelTaskDetail>;
+}
+
+/**
+ * What the relations tasks of a dry run read (S2b follow-up) for the models
+ * it may change (`keys`), in its snapshot: the head hashes, the live
+ * no-links touching those models and their open relations tasks (at most
+ * one per model). Only pairs touching a changed model change their
+ * judgement or are judged by a queued task, so without such a model (an
+ * unchanged re-import) nothing is read (`null`).
+ */
+async function readTasks(
+  tx: Tx,
+  projectId: ProjectId,
+  keys: readonly string[],
+  procedure: DeclaredProcedure,
+): Promise<TaskReads | null> {
+  const wanted = new Set(keys);
+  if (wanted.size === 0) return null;
+  const open = new Map<string, ModelTaskDetail>();
+  for (const state of ['queued', 'claimed'] as const) {
+    for (const t of await tx.tasks.list(
+      projectId,
+      { state, kind: 'relations' },
+      { limit: ALL_TASKS },
+    )) {
+      if (t.subjectKind === 'model' && wanted.has(t.modelKey)) open.set(t.modelKey, t);
+    }
+  }
+  return {
+    heads: await tx.revisions.headHashes(projectId),
+    noLinks: await tx.noLinks.listLive(projectId, { touchingModelKeys: [...wanted] }, procedure),
+    open,
+  };
+}
+
+/**
+ * What the relations tasks of a dry run read (S2b follow-up): every live
+ * agent judgement with its basis (the pipeline proposals of the relations
+ * that are not obsolete, as a claim reads them, and the live no-links of
+ * the models it may change), the head hashes, the open tasks, and the
+ * candidates over the would-be head (the landscape indexed once, when a
+ * task is queued).
+ */
+function taskInput(
+  deps: Pick<IngestDeps, 'analysis' | 'expectedProcedure'>,
+  head: Awaited<ReturnType<typeof readHead>>,
+  tasks: TaskReads | null,
+  projectFacts: ProjectFacts,
+  done: ReadonlyMap<string, string>,
+  deleted?: string,
+): TaskInput {
+  const procedure = deps.expectedProcedure();
+  let around: ((modelKey: string) => Candidate[]) | undefined;
+  return {
+    judgements: tasks
+      ? [
+          ...linkJudgements(
+            head.relations.filter((r) => r.status !== 'obsolete'),
+            byRelation<StoredAssertion>(head.history),
+            new Map(),
+            tasks.heads,
+            procedure,
+          ),
+          ...tasks.noLinks.map(noLinkJudgement),
+        ]
+      : [],
+    before: tasks?.heads ?? new Map(),
+    procedure,
+    open: tasks?.open ?? new Map(),
+    doneFactsHash: (key) => done.get(key) ?? null,
+    candidatesOf: (key) => (around ??= deps.analysis.candidateSource(projectFacts))(key),
+    ...(deleted === undefined ? {} : { deleted }),
+  };
+}
+
 /** The trust a dry run gives a created or revised file's model (M6 S2c), as the ingest stores it. */
 function incomingTrust(
   trust: RevisionTrust,
@@ -818,12 +912,14 @@ function incomingTrust(
  * files keep their stored class. For an owner on an interactive client the
  * impact also names the derived calls their rules would accept
  * (`autoAcceptedCalls`, M6 S2c-3); nobody else gets it. `manifest` names
- * the bundle's system, scope and listed keys for the absent keys.
+ * the bundle's system, scope and listed keys for the absent keys. The
+ * relations tasks (S2b follow-up) are planned from the open tasks, and for a
+ * model without one from its latest done task, read in the same snapshot.
  *
  * @throws {DomainError} from the policy (`read` on the project)
  */
 export async function previewIngest(
-  deps: Pick<IngestDeps, 'store' | 'analysis'>,
+  deps: Pick<IngestDeps, 'store' | 'analysis' | 'expectedProcedure'>,
   actor: Actor,
   projectRef: string,
   files: readonly IngestFile[],
@@ -833,6 +929,7 @@ export async function previewIngest(
     keys: ReadonlySet<string>;
   } | null,
 ): Promise<{ project: ProjectRecord; results: PreviewResult[]; impact: ImportImpact }> {
+  const hashes = files.map((f) => contentHash(f.bytes));
   const read = await deps.store.read(async (tx) => {
     const { project } = await policy.require(tx, actor, 'read', projectRef);
     const seen: (Seen & { model: ModelRecord | null; previous: RevisionRecord | null })[] = [];
@@ -845,10 +942,31 @@ export async function previewIngest(
           : null;
       seen.push({ ...(await seenOf(tx, project.id, f.key)), model: live ? model : null, previous });
     }
+    /** Whether a file is `unchanged`: bytes its live model knows. */
+    const unchanged = (i: number) => !!seen[i]?.previous && !!seen[i]?.known?.has(hashes[i] ?? '');
+    const tasks = await readTasks(
+      tx,
+      project.id,
+      files.flatMap((f, i) => (unchanged(i) ? [] : [f.key])),
+      deps.expectedProcedure(),
+    );
+    /** The facts of the latest done task of a changing file's model without an open task. */
+    const done = new Map<string, string>();
+    for (const [i, f] of files.entries()) {
+      // `queueAnalysis` reads it for a layout-only change; whether the facts change is known
+      // only after the extraction, outside this snapshot.
+      const model = seen[i]?.model;
+      if (model && seen[i]?.previous && !unchanged(i) && !tasks?.open.has(f.key)) {
+        const task = await tx.tasks.latest(project.id, model.id, ['done']);
+        if (task) done.set(f.key, task.factsHash);
+      }
+    }
     return {
       project,
       seen,
+      done,
       head: await readHead(tx, project.id),
+      tasks,
       sources: await tx.revisions.uploadedSources(project.id),
       auto: await derivedCallRulesFor(tx, actor, project),
     };
@@ -861,7 +979,7 @@ export async function previewIngest(
   for (const [i, f] of files.entries()) {
     const s = read.seen[i];
     if (!s) throw new Error('previewIngest: a file without its read');
-    if (s.previous && s.known?.has(contentHash(f.bytes))) {
+    if (s.previous && s.known?.has(hashes[i] ?? '')) {
       const kept = read.head.trust.get(f.key);
       results.push({
         outcome: 'unchanged',
@@ -930,6 +1048,7 @@ export async function previewIngest(
     heads,
     absentKeys(read.sources, manifest, imported),
     read.auto ?? undefined,
+    taskInput(deps, read.head, read.tasks, projectFacts, read.done),
   );
   return { project: read.project, results, impact };
 }
@@ -938,13 +1057,14 @@ export async function previewIngest(
  * What deleting a model would change (M6 §3.5, `GET …/deletion-impact`):
  * the impact with the model's facts removed from the head; `files` and
  * `absentKeys` are empty; for an owner the derived calls their rules would
- * accept (a duplicate process id gone, M6 S2c-3). Permission `read`,
- * nothing written.
+ * accept (a duplicate process id gone, M6 S2c-3); the model's open
+ * relations task cancelled, nothing queued (S2b follow-up). Permission
+ * `read`, nothing written.
  *
  * @throws {DomainError} `not-found` for unknown, deleted or foreign models
  */
 export async function deletionImpact(
-  deps: Pick<IngestDeps, 'store' | 'analysis'>,
+  deps: Pick<IngestDeps, 'store' | 'analysis' | 'expectedProcedure'>,
   actor: Actor,
   projectRef: string,
   modelId: ModelId,
@@ -957,6 +1077,7 @@ export async function deletionImpact(
       project,
       model,
       head: await readHead(tx, project.id),
+      tasks: await readTasks(tx, project.id, [model.key], deps.expectedProcedure()),
       auto: await derivedCallRulesFor(tx, actor, project),
     };
   });
@@ -979,5 +1100,6 @@ export async function deletionImpact(
     [],
     [],
     read.auto ?? undefined,
+    taskInput(deps, read.head, read.tasks, projectFacts, new Map(), read.model.key),
   );
 }

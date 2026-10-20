@@ -24,12 +24,14 @@ import { build, type Plugin, type UserConfig } from 'vite';
  *    and „Mehr“, the change list), which load with the tab and the model
  *    view's own lazy module.
  *    Of `@analyzr/contracts`, only the zod-free `paths.ts` (the upload's file
- *    rule, M6 S1), `open-question-labels.ts` (M6 S4), `open-question-csv.ts`
- *    and `personal-data.ts` (M6 S5a: the answer sheet's reader and the
- *    personal-data check) and `amendment-labels.ts` (M6 S5c-2), and, for a
- *    dropped bundle's manifest (UX8), `api/import-manifest.ts` with its schema
- *    (zod) and the modules it imports, a dynamic import of its own, are in the
- *    bundle; all but `paths.ts` in lazy chunks only.
+ *    rule, M6 S1), `impact-merge.ts` (the „Vorschau“'s merge of its batches,
+ *    shared with the CLI, M6 S2b follow-up), `open-question-labels.ts` (M6
+ *    S4), `open-question-csv.ts` and `personal-data.ts` (M6 S5a: the answer
+ *    sheet's reader and the personal-data check) and `amendment-labels.ts`
+ *    (M6 S5c-2), and, for a dropped bundle's manifest (UX8),
+ *    `api/import-manifest.ts` with its schema (zod) and the modules it
+ *    imports, a dynamic import of its own, are in the bundle; all but
+ *    `paths.ts` and `impact-merge.ts` in lazy chunks only.
  *    The entry stays under a gzip ceiling, so a page that slips into it shows.
  * 3. The main CSS has no `.vc-` rule (the renderer's CSS comes with the chunk).
  * 4. Budget: with the diagram-js (+ diagram-js-direct-editing) dependency
@@ -122,7 +124,10 @@ const BUDGET = 40 * 1024;
  * the „Vorschau“ line's rules part, `?new=calls` and the marks of such
  * acceptances; the rule dialog's third „Art“ loads with the rules page.
  * 226.1 KB after S2c-4: the system rule card's line and the dialog „Vor der
- * Vertrauensregel angenommen“ load with the rules page.
+ * Vertrauensregel angenommen“ load with the rules page. 226.3 KB after the
+ * S2b follow-up's step 1 (2026-10-20): the batches' merge is the contracts'
+ * zod-free `impact-merge.ts` (shared with the CLI), with the relations
+ * tasks' merge, in place of the web's own.
  */
 const ENTRY_CEILING = 240 * 1024;
 
@@ -307,8 +312,8 @@ describe('web bundle (M4 §5 bundle guard)', { timeout: 120_000 }, () => {
     const mainModules = chunks.filter((c) => main.has(c.fileName)).flatMap((c) => c.moduleIds);
     expect(mainModules.filter(isChainModule)).toEqual([]);
     // M6 S1, S4 and S5a: the web's runtime imports from the contracts are zod-free: the file
-    // rule (entry), the open questions' labels, the answer sheet's reader and the
-    // personal-data check (lazy chunks only).
+    // rule and (S2b follow-up) the batches' merge (entry), the open questions' labels, the
+    // answer sheet's reader and the personal-data check (lazy chunks only).
     const contracts = join(WEB, '../../packages/contracts') + sep;
     const contractsFile = (name: string) => join('..', '..', 'packages', 'contracts', 'src', name);
     const fromContracts = (list: readonly string[]) =>
@@ -318,6 +323,7 @@ describe('web bundle (M4 §5 bundle guard)', { timeout: 120_000 }, () => {
     expect(fromContracts(ids)).toEqual(
       [
         contractsFile('amendment-labels.ts'),
+        contractsFile('impact-merge.ts'),
         contractsFile('open-question-csv.ts'),
         contractsFile('open-question-labels.ts'),
         contractsFile('paths.ts'),
@@ -330,7 +336,10 @@ describe('web bundle (M4 §5 bundle guard)', { timeout: 120_000 }, () => {
         contractsFile('zod-utils.ts'),
       ].sort(),
     );
-    expect(fromContracts(mainModules)).toEqual([contractsFile('paths.ts')]);
+    // S2b follow-up: the „Vorschau“ merges its batches with the merge the CLI uses.
+    expect(fromContracts(mainModules)).toEqual(
+      [contractsFile('impact-merge.ts'), contractsFile('paths.ts')].sort(),
+    );
     // … loaded with a dynamic import only when a folder has a manifest, never with the entry.
     expect(
       chunks.some(

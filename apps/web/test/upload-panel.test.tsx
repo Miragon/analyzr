@@ -751,6 +751,13 @@ describe('UploadPanel', () => {
                   findingsAdded: list(0),
                   findingsResolved: list(0),
                   absentKeys: list(3, ['alt/x', 'alt/y', 'alt/z']),
+                  relationsTasks: {
+                    queued: list(2, ['gemeinsam/a', 'gemeinsam/b']),
+                    cancelled: list(0),
+                    claimed: 0,
+                    pairs: 0,
+                    rejudged: list(0),
+                  },
                 },
               }
             : {}),

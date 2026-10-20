@@ -20,12 +20,12 @@ import {
   type ProjectFacts,
   type RelationId,
 } from '@analyzr/contracts';
-import { runRules } from '@analyzr/relations';
+import { generateCandidates, runRules } from '@analyzr/relations';
 import { describe, expect, it } from 'vitest';
 
 import type { AutoAcceptRuleRev } from '../../src/domain/auto-accept/evaluate.ts';
 import { headFingerprints } from '../../src/domain/fingerprints.ts';
-import { relationImpact } from '../../src/domain/import-impact.ts';
+import { importImpact, relationImpact, relationsAfter } from '../../src/domain/import-impact.ts';
 import type { AssertionRecord, RelationRecord, Tx } from '../../src/domain/ports.ts';
 import { planRecompute, writeRecompute, type RecomputeInput } from '../../src/domain/recompute.ts';
 import { naturalKey } from '../../src/domain/relation-state.ts';
@@ -507,6 +507,49 @@ describe('the dry run’s acceptances by an owner’s rule for derived calls (M6
     );
     expect(back.callsProposed.wasAccepted).toBe(1);
     expect(back.autoAcceptedCalls).toMatchObject({ count: 1, ofProposed: 1 });
+  });
+
+  it('settles the calls the rule accepts for the relations tasks: no pair to judge (S2b follow-up)', async () => {
+    const facts = await landscape(true);
+    const m = memory();
+    const input = m.input(facts, exported(facts));
+    // the derived call is a candidate the caller's claim is assigned (candidates know no trust
+    // rule: its basis is `rule`, which the rule tier's acceptance normally settles)
+    expect(
+      generateCandidates(facts, AUFTRAG_KEY).find(
+        (c) => naturalKey(c.type, c.from, c.to) === CALL_KEY,
+      )?.basis,
+    ).toBe('rule');
+    const pairs = (auto?: { rules: AutoAcceptRuleRev[]; liveNoLinks: Map<string, number> }) =>
+      importImpact(
+        input,
+        [],
+        [
+          {
+            modelKey: AUFTRAG_KEY,
+            previousFactsHash: null,
+            factsHash: 'h',
+            previousProcesses: [],
+            processes: [],
+            trust: NO_ENGINE,
+          },
+        ],
+        [],
+        auto,
+        {
+          judgements: [],
+          before: new Map(),
+          procedure: { id: 'analyzr-relations', version: '0.2.0' },
+          open: new Map(),
+          doneFactsHash: () => null,
+          candidatesOf: (key) => generateCandidates(facts, key),
+        },
+      ).relationsTasks.pairs;
+    // the rule accepts it in the write, so the claim after it leaves the pair alone
+    expect(pairs()).toBe(pairs({ rules: [rule()], liveNoLinks: none }) + 1);
+    expect(pairs({ rules: [], liveNoLinks: none })).toBe(pairs());
+    // relationsAfter alone is the plan's: the call proposed
+    expect(relationsAfter(input, planRecompute(input)).get(CALL_KEY)?.status).toBe('proposed');
   });
 
   it('is not retroactive: a proposal written before is not recorded again', async () => {

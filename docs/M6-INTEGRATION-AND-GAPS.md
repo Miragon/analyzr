@@ -1,14 +1,17 @@
 # analyzr – Milestone M6 "Landscape integration and gap analysis"
 
-Status: in progress (2026-10-15); owner decisions 24, 25 and 28 (§2, HANDOFF §4); S0 (this
+Status: in progress (2026-10-15); owner decisions 24, 25, 28 and 29 (§2, HANDOFF §4); S0 (this
 concept, revised after review), S1, S3a, S3b, S4, S5a, S5c-1, S5c-2 (answering by action and model
 amendments, decision 25, §4.8), S2a (provenance, manifest, stable identity; its web parts came
-with the UI simplification's UX8, §8 "S2a as delivered"), S2b (the dry runs; its follow-up open),
+with the UI simplification's UX8, §8 "S2a as delivered"), S2b (the dry runs) with step 1 of its
+follow-up (the agent work on the relations side, §8 "S2b follow-up step 1 as delivered"),
 S2c-1 (the trust class and the rule tier, §8 "S2c-1 as delivered"), S2c-2 (the fast path for
 derived calls, §8 "S2c-2 as delivered"), S2c-3 (owners' rules for derived calls, §8 "S2c-3 as
 delivered") and S2c-4 („Vor der Vertrauensregel angenommen“, §8 "S2c-4 as delivered"; with it
-all of S2c) done, the „erste Anfänge“ await the owner's review; next S2b's follow-up, then S3c,
-then S6; after the owner's live runs S5b, S7 and facts v2 · Branch:
+all of S2c) done, the „erste Anfänge“ await the owner's review; next the rest of S2b's follow-up
+(step 2 the placements, step 3 the surfaces, optionally 3b the backlog's pair count, step 4 the
+integrate plugin 0.1.3, step 5 the identity rows of decision 29 (1)), then S3c, then S6; after
+the owner's live runs S5b, S7 and facts v2 · Branch:
 `feat/integration-and-gaps` ·
 Spec: [CONCEPT.md](CONCEPT.md) §1–§7 · Previous: [M4-VALUE-CHAIN.md](M4-VALUE-CHAIN.md) · Paused:
 the process network map (decision 22, issue [#2](https://github.com/Miragon/analyzr/issues/2)),
@@ -69,7 +72,8 @@ the command or screen and the slice that adds it ("today" means it exists now):
 3. **Import.** Create the project and import the bundle: `analyzr import <bundle> -p <project>
    --create --name …`, or „Neues Projekt“ and „Hochladen“ with the bundle folder in the web
    (today). The preview („Vorschau“ in the web, `--dry-run` in the CLI) came with S2b; the skill
-   recommends it instead of a probe project since plugin 0.1.2 (S2c-2, §3.7 step 5). A bundle
+   recommends it instead of a probe project since plugin 0.1.2 (S2c-2, §3.7 step 5) and, from
+   plugin 0.1.3, runs it itself through a bundled read-only script (decision 29 (2)). A bundle
    without a Camunda engine (most exports) gets its unique calls as proposals (the trust rule,
    §3.10): one bulk accept, „Gesammelt annehmen“ after „Importieren“ or the link `analyzr import`
    prints opens the dialog with them selected and one click accepts them before step 5 (S2c-2).
@@ -95,10 +99,13 @@ the command or screen and the slice that adds it ("today" means it exists now):
     tool; notes reach the agents with S5b and S7.
 
 The size and cost of the first agent run on a customer landscape (§6 "Run size and cost
-estimate") already matter at step 5, during M6: S1 prints the tasks waiting, and the follow-up of
-S2b's impact counts the pairs to judge.
+estimate") already matter at step 5, during M6: S1 prints the tasks waiting, and since step 1 of
+S2b's follow-up the impact counts the pairs an import sets agents to judge (per request, against
+the head, so on a first import across batches a pair between two batches counts in neither; the
+backlog's count, optional step 3b, gives the first run's size; the „Vorschau“ and the CLI show it
+from step 3).
 
-## 2. Owner decisions 24 (2026-10-15), 25 (2026-10-17) and 28 (2026-10-19)
+## 2. Owner decisions 24 (2026-10-15), 25 (2026-10-17), 28 (2026-10-19) and 29 (2026-10-20)
 
 Decision 24 is recorded in HANDOFF §4 on 2026-10-15 in short form; HANDOFF §7 names M6 and keeps
 M5 paused, and CONCEPT §11 notes what §7 "Deferrals" says. Decision 25 is recorded in HANDOFF §4
@@ -229,6 +236,21 @@ source tool took over, `in-source`, counts as modelled like an applied one) and 
 abgeleiteten“ (the list „Vor der Vertrauensregel angenommen“ holds only pre-S2c acceptances whose
 revision would classify as derived from what it carries). §3.10 "Decision 28" places them.
 
+Decision 29 (2026-10-20, after step 1 of S2b's follow-up; HANDOFF §4) answers two open points,
+each with the recommended option: (1) **provenance of unchanged bytes** (§10.10) gets option (b),
+an append-only identity row per import and model (system, tool id, tool folder, link), written
+also for an unchanged file whose declaration differs; `external-ids`, the change list,
+„Herkunft“ and the identity warnings read the newest row; no re-analysis, `facts_hash` untouched.
+It is step 5 of S2b's follow-up, its own step after steps 1–4 (migrations 0021/0022), before the first
+customer re-export. (2) **The integrate skill's pre-approved preview** (§3.1, §3.7 step 5) is no
+CLI pattern but a read-only script bundled with the plugin, `analyzr-read.mjs`, which
+`allowed-tools` pre-approves: it has only `GET …/models`, `GET …/external-ids` and
+`POST …/imports` with `dryRun=true` built in, talks to loopback hosts only and follows no
+redirect; the real import stays with the consultant. A rule over the CLI form is not safe:
+`import b -p p --create --name --dry-run` parses `--dry-run` as the value of `--name` and imports for real, the
+CLI's prefix differs per workspace, and `--url` could send the key elsewhere. It comes with
+plugin 0.1.3 (step 4 of the follow-up).
+
 ## 3. Part A: Integration toolkit
 
 ### 3.1 Ground rules
@@ -249,9 +271,12 @@ revision would classify as derived from what it carries). §3.10 "Decision 28" p
   enforce this in local mode: an agent with a shell runs as the consultant's OS user, and
   `analyzr import` without `--token`/`ANALYZR_TOKEN` falls back to the owner key file that user
   can read (`apps/cli/src/credentials.ts` `anyCredential`). So the guard is the client's approval
-  of every command that is not pre-approved: the skill pre-approves read commands and `analyzr
-  import … --dry-run` only, and the consultant does not run it in a bypass or auto-approve mode
-  (Codex with approvals on). A stronger setup denies the agent the owner key file (a Claude Code
+  of every command that is not pre-approved: the skill pre-approves only its own read-only
+  scripts (`inspect.mjs`; from plugin 0.1.3 `analyzr-read.mjs` for analyzr's reads: the models,
+  the external ids and the dry run), and the consultant does not run it in a bypass or auto-approve mode
+  (Codex with approvals on). By decision 29 (2) no rule over any CLI form is pre-approved, so the
+  dry run is pre-approved only as the plugin's read-only script (§3.7 step 5), never as a pattern
+  over `analyzr import`, which a real import can match. A stronger setup denies the agent the owner key file (a Claude Code
   `permissions.deny` rule, a Codex sandbox without read access to that path as HANDOFF §9 asks
   for the holdout; the exact rules are verified in S3b); in the Docker setup the key sits in the
   container's volume anyway. A read+propose `ANALYZR_TOKEN`, if set, makes an accidental import
@@ -363,7 +388,9 @@ and trust class (append-only; since S2c-1 the warning `trust-kept` says when the
 have classified them differently); a
 correction needs new bytes, and the import says so with the warning `provenance-kept` when the
 manifest declares another place in the tool (S2a; a folder move keeps a Signavio export's bytes,
-§10.10). A revision stored without a manifest declares nothing: readers then take the newest
+§10.10; decided as decision 29 (1): an append-only identity row per import and model, which
+`external-ids`, the change list, „Herkunft“ and the identity warnings read, comes as step 5 of
+S2b's follow-up, its own step after steps 1–4). A revision stored without a manifest declares nothing: readers then take the newest
 revision a manifest declared (S2a), so such an upload never erases a declared identity. An amended revision keeps no manifest fields of its own: readers of
 provenance (the „Herkunft“ panel, `external-ids`, the trust class of S2c) follow `upstream` to
 the uploaded revision, so S2a extends the uploaded revisions only. Its own `uploader` and
@@ -431,10 +458,19 @@ The existing previews compute impact with pure code (`apps/server/src/domain/val
     token previews the files as agent uploads), and the unique calls of derived callers that would
     only be proposed (`callsProposed`, apart from `proposalsAdded`, with `wasAccepted` per item and
     the totals `wasAccepted` and `byReason` over all of them, past the cap).
-  - **Follow-up, right after:** judgements made non-current (pairs to re-judge, the cost signal);
-    relations tasks queued or cancelled and whether the placement task becomes due; placements
-    turning `changed` or `missing`. The head then also covers current judgements, placements, the
-    chain's structure and open tasks.
+  - **Follow-up, right after,** in steps:
+    - **Step 1, the relations side (delivered 2026-10-20, §8 "S2b follow-up step 1 as
+      delivered"):** `relationsTasks`, required, REST only: the relations tasks the write queues
+      (`queued`) and cancels (`cancelled`, the claimed ones first with the holder's handle and
+      the length of their assignment; `claimed` counts them past the cap: their work is lost),
+      planned with the write's own pure `planQueue`; `pairs`, the typed pairs agents judge
+      around the queued models after the write (an upper bound while other models' tasks wait);
+      and `rejudged`, those of them whose current agent judgement the write makes non-current
+      (judged again, the cost signal). The head then also covers the current judgements and the
+      open tasks. A deletion cancels the model's open task and queues nothing.
+    - **Step 2, placements:** whether the placement task becomes due, and accepted placements
+      turning `changed` or `missing`; the head then also covers placements and the chain's
+      structure.
 
   Lists are capped at 100 with counts.
 - **REST:** `POST …/imports?dryRun=true` and `PUT …/models/by-key/{key}?dryRun=true` answer the
@@ -474,6 +510,7 @@ plugins/analyzr-integrate/
   skills/interview-guide/…, skills/interview-facts/…          # S6
   reference/{signavio,aris,visio,adonis,bizagi,images}.md     # S3b, S3c
   scripts/inspect.mjs, scripts/normalize-bpmn.mjs             # S3b
+  scripts/analyzr-read.mjs (read-only preview, decision 29 (2))  # 0.1.3, S2b's follow-up step 4
   scripts/analyzr-spec.mjs (renderer, §3.9), scripts/analyzr.mjs (CLI)   # S3c
   scripts/transcript-prep.mjs                                 # S6
 ```
@@ -559,7 +596,8 @@ import with `--create --name …`.
    (from S2b also from the dry run) and asks before it changes the map. It asks „Vollständiger
    Export oder Ausschnitt?“ and records a partial export's tool folders as `source.scope` and in
    `keymap.json`. A missing or stale `keymap.json` is rebuilt from analyzr (§3.4, from S2a; the
-   skill's part still open after plugin 0.1.2): a tool id several keys carry (after
+   skill's part still open after plugin 0.1.2, planned for plugin 0.1.3, S2b's follow-up step 4):
+   a tool id several keys carry (after
    `external-id-moved`, one tool model twice) keeps the older key, the other entries get
    `externalId: null` and go to the consultant; the key rule is inferred from the (`externalPath`,
    key) pairs and confirmed by the consultant.
@@ -569,7 +607,15 @@ import with `--create --name …`.
    the workspace names a read-only token (§3.1). Until plugin 0.1.2 (S2c-2) the report suggested a
    probe project for a first import (`analyzr import <bundle> -p <kunde>-probe --create`; no route
    deletes a project, so probe projects stay in the list); since then it recommends the dry run,
-   which needs an existing project.
+   which needs an existing project. **Decision 29 (2)** (2026-10-20): the skill runs the preview
+   itself only through the plugin's read-only script `scripts/analyzr-read.mjs` (planned:
+   `preview <bundle> -p <project> --url <u>`; plugin 0.1.3, S2b's follow-up step 4), which
+   `allowed-tools` pre-approves: its guarded requests are only `GET …/models`, `GET …/external-ids` and `POST …/imports` with
+   `dryRun=true` built in, to loopback hosts only and without redirects, so it cannot import. No
+   rule over the CLI form is pre-approved (`import b -p p --create --name --dry-run` parses
+   `--dry-run` as `--name`'s value and imports for real; the CLI's prefix differs per workspace;
+   `--url` could send the key elsewhere); the CLI's `--dry-run` stays the fallback the
+   consultant approves, and the real import stays with the consultant (step 7).
 6. **Report** in German under `reports/`: tool and format found, what was converted and lost
    (every `link-unresolved` link listed), the keys, the extractor warnings with their German
    labels (S1), from S2b the impact (every rule-tier call the import would newly accept,
@@ -1490,7 +1536,18 @@ documentation line makes every judgement of a pair touching the model non-curren
 cancels the model's open relations task: an agent holding its claim gets 409 `task-cancelled` at
 submit (CONCEPT §3), its work lost. The dry run therefore returns the current judgements it makes
 non-current (pairs to re-judge, as S2b's follow-up counts them) and whether the model's relations
-task is claimed; the form says „Danach: … 214 Paare werden neu beurteilt.“ and, for a claimed
+task is claimed. Since step 1 of S2b's follow-up (`AmendmentCost` unchanged) `pairsToRejudge`
+counts the pairs agents judge again after the write: the model's pairs whose current judgement
+the new head makes non-current, without those the write itself settles (the import dry run's
+`pairsToJudge` and `judgementShift` for the one model, against the relations as the write leaves
+them: its recompute under the derived head's trust, for an owner the derived calls their rules
+accept, the partner proposals `settleLinks` accepts). While a partner's task waits, judge each
+pair once may give some of them to that task rather than to the model's next claim. The number
+can drop to 0 where agents judged only `compatible` pairs (the search space no claim assigns);
+`taskClaimed` comes from the write's `planQueue`, so it is set only when the facts change (and
+never when nothing can be recorded). The form says „Danach: … Die Agenten beurteilen 214
+mögliche Relationen neu, sobald du den Agenten startest.“ (the cost as its own sentence since
+UX4) and, for a claimed
 task, warns „Ein Agent bearbeitet dieses Modell gerade; seine Arbeit geht verloren.“, saving only
 after confirmation. One request carries up to 20 amendments of a model, and the tab and the model
 view collect them before one save (Web, below), so working through a model's questions costs one
@@ -1589,7 +1646,9 @@ decision 22) would write the head, amended or not; §9.
   would-be effect at the element (findings resolved and added, rule-tier relations accepted or
   withdrawn, the key-tier proposals a `partner` accepts, relations turning `changed`, manual
   relations retired: `runRules` over the head facts with the model's facts replaced, pure) and the
-  cost (the current judgements made non-current, whether the model's relations task is claimed);
+  cost (the current judgements made non-current, whether the model's relations task is claimed;
+  since S2b's follow-up step 1 counted as above: the pairs agents judge again after the write,
+  and a claimed task only when the facts change, so the write cancels it);
   a dry run writes nothing; 404 for a deleted model;
 - `GET /projects/{p}/amendments` (`read`; filters `modelKey`, `state`), `POST
   /projects/{p}/amendments/{a}/withdrawal` and `POST
@@ -1607,7 +1666,9 @@ withdrawal use cases call `policy.require` for both, and a review-only scope get
 personal-data warning for names and documentation, the normalized value as it will be stored, and
 the hint „Der nächste Import aus dem Quellsystem behält die Ergänzung, solange das Feld dort
 unverändert ist.“) and saves after a dry run's summary („Danach: 1 Aufruf angenommen, 1 Befund
-erledigt, 214 Paare werden neu beurteilt.“, with the warning for a claimed task). „Sammeln“ next to
+erledigt, 214 Paare werden neu beurteilt.“, with the warning for a claimed task; since UX4 the
+cost is its own sentence: „Die Agenten beurteilen 214 mögliche Relationen neu, sobald du den
+Agenten startest.“). „Sammeln“ next to
 „Speichern“ keeps the amendment in the page instead: a bar per model („3 Ergänzungen für „…“
 gesammelt – Speichern“) saves them with one dry run and one request. In the model view, selecting
 an element (today's `?element=` of the bpmn-js NavigatedViewer, `components/bpmn-canvas.tsx`; no
@@ -1694,7 +1755,7 @@ draft (after the owner's rated draft run, M4b) are later work.
 | Customer assessment report skill | the deliverable of a landscape analysis: coverage, gaps, network, placements, open questions, every statement citing refs. After S4. |
 | Inventory-first import | coverage against the customer's catalog from day one, without stub models. Needs a boundary entity: with placeholders. |
 | Instruction-like content signal | foreign exports and transcripts widen the injection surface; a cheap deterministic backstop as an extractor warning and gap signal. With S4 or S7. |
-| Run size and cost estimate | claim sizes against the 100 KB and 96 KB (`CLAIM_PLACEMENT_MAX_BYTES`) budgets, documentation cut by `CLAIM_DOC_CHARS`, CONCEPT §7's cost per revision. Before the first paid customer run; the follow-up of S2b's impact gives the pair count. |
+| Run size and cost estimate | claim sizes against the 100 KB and 96 KB (`CLAIM_PLACEMENT_MAX_BYTES`) budgets, documentation cut by `CLAIM_DOC_CHARS`, CONCEPT §7's cost per revision. Before the first paid customer run; S2b's follow-up gives the pair count: since its step 1 per request (`relationsTasks.pairs`, the pairs an import sets agents to judge, against the head, so on a first import across batches a pair between two batches counts in neither), the backlog's, the first run's size, in its optional step 3b. |
 | Reindex with judgement carry-over, then facts v2 | no reindex exists (`packages/bpmn-facts/src/version.ts` named one until M6 S1); `facts_hash` includes `FACTS_VERSION`, so any fact change re-judges every pair. Carry-over first, then one bump with descriptive facts (collapsed subprocesses, data objects, black-box participants, task-to-pool messages), systems and tool identities. Only if `eval:descriptive` shows a large loss. |
 | Placeholders (external parties, phantom processes) | lifts CONCEPT §11's deferral; the computed boundary signals of §4.3 come first. Owner decision. |
 | MCP `put_model` or model drafts as proposals | shell-less agents (Claude Desktop) could submit models; only after the trust decision. Owner choice between the two. |
@@ -1909,7 +1970,7 @@ delivered".
     `analyzr:propose`). Then the next step (`/analyzr:relations <project>`, `/analyzr:placements
     <project>`, the start prompts in `examples/agents`). `--json` output unchanged.
   - Not possible over existing routes, so not in S1: a deletion or import preview (S2), the
-    number of candidate pairs the waiting tasks will judge (S2b's follow-up), requeueing a single
+    number of candidate pairs the waiting tasks will judge (S2b's follow-up, its optional step 3b), requeueing a single
     pair (S5b queues exactly the affected work instead).
 - **Docs:** DEVELOPMENT.md "The `analyzr` CLI"; CONCEPT §4, which still lists `analyzr import
   <dir>` for R1; CONCEPT §3 "Requeue" and the comment in `packages/bpmn-facts/src/version.ts`,
@@ -2133,9 +2194,9 @@ Choices the spec left open (the owner may overrule):
   whose declared system, tool id, tool folder or link differs from the provenance analyzr keeps,
   or for which analyzr keeps none (stored without a manifest), gets this warning (§3.3: identical
   bytes keep their first provenance). The common case is a folder moved in the tool, which leaves
-  a Signavio export's bytes as they were: until the owner decides §10.10, `external-ids` and the
-  change list keep the old tool folder, and the warning says so. Never next to
-  `external-id-changed`.
+  a Signavio export's bytes as they were: until the identity rows of decision 29 (1) land (§10.10,
+  decided 2026-10-20; step 5 of S2b's follow-up, not built yet), `external-ids` and the change
+  list keep the old tool folder, and the warning says so. Never next to `external-id-changed`.
 - **An upload without a manifest keeps a declared identity** (an addition after the review): the
   readers fall back to the newest revision a manifest declared, so a later „Hochladen“ of a
   re-export (the web sends no manifest until its S2a part) or a PUT without the header does not
@@ -2143,7 +2204,9 @@ Choices the spec left open (the owner may overrule):
   a bundle imported first through the web records no identity at all, and importing the same
   bytes again with the CLI cannot add it (`provenance-kept` says so); the skill therefore prefers
   the CLI for a bundle (plugin 0.1.1). Since UX8 „Hochladen“ reads the manifest as well, and
-  plugin 0.1.2 (S2c-2) no longer marks the web path „ohne Herkunftsangaben“.
+  plugin 0.1.2 (S2c-2) no longer marks the web path „ohne Herkunftsangaben“. Decision 29 (1)
+  will close the gap (step 5 of S2b's follow-up; not built yet): the identity row will be written
+  also for unchanged bytes whose declaration differs.
 - **Informational declared fields are tidied, identity fields refused** (an addition after the
   review): `systemVersion`, `externalPath`, `derived.converter` and `derived.llmModel` accept any
   string within their length; analyzr stores them with lone surrogates replaced by U+FFFD, control
@@ -2213,7 +2276,9 @@ of impact, the capped lists behind „Was ändert sich?“, the shared-top-folde
 note; „Importieren“ sends the same plan, „Abbrechen“ sends nothing. One click more, no new screen.
 Left: the follow-up (judgements made non-current, tasks queued or cancelled, the placement task
 due, placements changed or missing), and the plugin's next version with the pre-approved
-`--dry-run`.
+`--dry-run` (since decision 29 (2) a bundled read-only script, not a CLI pattern; plugin 0.1.3).
+Step 1 of the follow-up, the relations side, is delivered (2026-10-20, "S2b follow-up step 1 as
+delivered" below).
 
 Left for S2b: `importImpact`, the dry runs (`POST …/imports?dryRun=true`, `PUT …?dryRun=true`,
 `analyzr import --dry-run`), the deletion impact in `models delete`, and the absent keys of
@@ -2222,7 +2287,8 @@ next version, with S2b's dry run: the skill's rebuild of a lost `keymap.json` fr
 models external-ids` (§3.7 step 3, with the rule for a tool id several keys carry) and the
 pre-approved `--dry-run`; plugin 0.1.1 changes only the skill text (above). Plugin 0.1.2 (S2c-2)
 recommends the dry run in the report, for the consultant to run; the key-map rebuild and a
-pre-approved `--dry-run` are still left. Left for the plugin's
+pre-approved `--dry-run` are still left (by decision 29 (2) the read-only script
+`analyzr-read.mjs`, with plugin 0.1.3 in step 4 of S2b's follow-up). Left for the plugin's
 next version as well, and still left after 0.1.2 (no script changed): `normalize-bpmn` writing
 `null` for an empty or blank `exporterVersion` (analyzr already stores it as absent).
 Left for the UI simplification slice ([UX-SIMPLIFICATION.md](UX-SIMPLIFICATION.md)): S2a's web
@@ -2491,7 +2557,7 @@ Vorschläge prüfen (1) …“ (122 → 113 words at 1440, the controls unchange
 it measures 22 controls and 112 words. Calls nobody accepts stay unsettled, and the claims assign
 them to judge as before. Left: S2c-3 (owners' rules for these proposals by derived kind and
 converter, the toast's rule offer; delivered 2026-10-20, below), S2c-4 („Vor der Vertrauensregel
-angenommen“; delivered 2026-10-20, below), the skill's key-map rebuild, a pre-approved `--dry-run` and `normalize-bpmn` writing `null` for an empty
+angenommen“; delivered 2026-10-20, below), the skill's key-map rebuild, a pre-approved `--dry-run` (since decision 29 (2) a read-only script) and `normalize-bpmn` writing `null` for an empty
 `exporterVersion`.
 
 **S2c-3 as delivered** (2026-10-20, on the branch, every gate green, with a review round's fixes;
@@ -2652,8 +2718,8 @@ that the owner may overrule are in HANDOFF §4 ("Taken during M6 S2c-3"). Open:
   current head, not from the revision the proposal was made under.
 
 Left: S2c-4 („Vor der Vertrauensregel angenommen“; delivered the same day, below), the skill's
-key-map rebuild, a pre-approved `--dry-run` and `normalize-bpmn` writing `null` for an empty
-`exporterVersion`.
+key-map rebuild, a pre-approved `--dry-run` (since decision 29 (2) a read-only script) and
+`normalize-bpmn` writing `null` for an empty `exporterVersion`.
 
 **S2c-4 as delivered** (2026-10-20, on the branch, every gate green, with a review round's fixes;
 [DEVELOPMENT.md](DEVELOPMENT.md) "M6 S2c-4 (2026-10-20)" and "The trust rule (M6 S2c-1)").
@@ -2791,8 +2857,168 @@ question. Open:
 
 Left: S2b's follow-up (judgements made non-current, tasks queued or cancelled, the placement task
 due, placements changed or missing; the integrate plugin's next release with the key-map rebuild,
-a pre-approved `--dry-run` and `normalize-bpmn` writing `null` for an empty `exporterVersion`);
-then S3c and S6.
+a pre-approved `--dry-run` and `normalize-bpmn` writing `null` for an empty `exporterVersion`;
+its step 1, the relations side, delivered the same day, below; the pre-approved `--dry-run`
+is to become a read-only script by decision 29 (2), plugin 0.1.3 in step 4); then S3c and S6.
+
+**S2b follow-up step 1 as delivered** (2026-10-20, on the branch, every gate green, with a review
+round's fixes; [DEVELOPMENT.md](DEVELOPMENT.md) "M6 S2b follow-up step 1 (2026-10-20)" and
+"Provenance and the import manifest (M6 S2a)"): the agent work in the dry runs, relations side
+(§3.5 "Follow-up"). For the first analysis: the server now knows before an import how much agent
+work it sets off (the relations tasks it queues, the pairs agents then judge), repeats (the pairs
+judged again) or destroys (a claimed task it cancels, whose work is lost), so the consultant can
+hold back a costly trivial change, wait for an agent or skip a re-import once the surfaces show it
+(step 3); and the amendment form's number („Die Agenten beurteilen 3 mögliche Relationen neu,
+sobald du den Agenten startest.“) no longer counts pairs the amendment itself settles. No user-visible text
+changed in this step: the „Vorschau“, the CLI's lines and the plugin follow in steps 3 and 4;
+`analyzr import --dry-run --json` and `models delete --json` carry the field. Contracts first (the
+client regenerated); no route, no migration, MCP unchanged.
+
+- **The contract.** `ImportImpact.relationsTasks` (`ImpactRelationsTasks`), required, REST only
+  (the import's and PUT's dry runs and the deletion impact; no MCP output schema holds
+  `ImportImpact`):
+  - `queued` (`impactList(ModelKey)`, by key): the models whose relations task the write queues;
+  - `cancelled` (`impactList(ImpactCancelledTask)`, the claimed ones first, then by key): the open
+    tasks the write cancels, each `{modelKey, state: 'queued'|'claimed', claimedBy, assigned}`,
+    for a claimed one the holder's handle (what `GET …/analyses` already shows at `read`) and the
+    number of pairs its claim was assigned, both `null` while queued;
+  - `claimed`: how many of them an agent holds (their work is lost), past the cap;
+  - `pairs`: the typed pairs agents judge around the queued models after the write, each queued
+    model's candidates of an assigned basis and its assigned relations then, without a current
+    agent judgement or a settling decision then; an **upper bound** of what the queued tasks'
+    claims are assigned, since judge each pair once may give a pair to another model's open task
+    (while such a task waits it would judge the pair anyway);
+  - `rejudged` (`impactList(ImpactRelation)`, by type, from and to): those of them whose current
+    agent judgement the write makes non-current, judged again.
+
+  A deletion cancels the model's open task and queues nothing (`pairs` 0, CONCEPT §3). Counted per
+  request against the head, so a pair between models of two batches counts in both when both
+  models are in the head; on a first import across batches it counts in neither (the first run's
+  size needs the backlog's count, step 3b).
+- **Planned as the write plans.** The new pure `apps/server/src/domain/queue-plan.ts` (`planQueue`,
+  `needsDoneTask`) follows `queueAnalysis` branch for branch; `queueAnalysis` is now read, plan,
+  write, with the same reads and the same event order (`recompute-golden` unchanged). The dry run
+  plans each created or revised file with it; unchanged and failed files queue nothing.
+- **Judgements.** Pure `currentPairs`, `judgementShift` and `pairsToJudge` in `judgements.ts`
+  (`settles`, `isAssignedRelation` and `relationPair` take narrower `Pick` types). The judgements
+  are the live pipeline proposals of the relations that are not obsolete (`linkJudgements`) and
+  the live no-links touching the changing models; "before" is the head hashes, "after" the
+  would-be ones (a deleted key dropped). A pair is judged again when a judgement was current before
+  and none is after, so a revert that makes an older judgement current again loses nothing.
+- **`importImpact` plans the recompute once.** `relationsAfter`, factored out of
+  `autoAcceptedCalls` (which marks an owner's rule acceptances in the same map), gives the
+  relations as the claims after the write read them; `plannedRelations` does the same for the
+  amendment cost. `relationImpact` keeps its signature for the trust review and delegates.
+- **Reads**, in the dry run's read-only snapshot (permission `read`, no lock, nothing written), only
+  for files whose bytes are not already known: the open relations tasks (queued and claimed, with
+  the holder's handle and the assignment), `headHashes`, the live no-links touching those models
+  (the new `NoLinkFilter.touchingModelKeys`), and for each such file's model without an open task
+  its latest done task. An unchanged re-import reads nothing more than before.
+- **The prepared candidate index.** `indexCandidates` in `packages/relations` and an optional
+  fourth parameter `prepared` of `generateCandidates` (it throws for an index of other facts)
+  compute the landscape-wide part once (the index, the rule relations, the pairs they fix, the
+  text forms); the port's new `AnalysisPort.candidateSource(projectFacts)` serves the dry run's
+  focus models from it and is built only when a task is queued. The candidates are equal with and
+  without it (tests on a synthetic landscape and on every model of `_sample` and `nordwind-handel`,
+  the holdout left out); `eval:candidates` is unchanged.
+- **One merge for the batches.** The zod-free `@analyzr/contracts/impact-merge` (`MAX_IMPACT_ITEMS`,
+  re-exported by `api/models.ts`; `TRUST_REASON_ORDER`, which `TrustReason` now enumerates;
+  `mergeImpacts`) replaces the CLI's and the web's own merges with byte-identical output; ESLint
+  allows it in the web, and the bundle guard lists it in the entry next to `paths.ts`. For the
+  relations tasks: `queued` concatenated and sorted by key; `cancelled` concatenated, claimed first
+  and then by key, before the cap (a claimed task stays listed past the first batch's cap);
+  `claimed` and `pairs` added up; `rejudged` deduplicated by item and sorted, its count lowered by
+  the duplicates found among the items (past a cap an upper bound).
+- **The amendment cost** (`costOf`; `AmendmentCost` unchanged; §4.8 c) counts against the relations
+  as the write leaves them: the recompute over the would-be facts under the derived head's trust,
+  for an owner the derived calls their rules accept, the partner proposals `settleLinks` accepts;
+  `pairsToRejudge` is the pairs to judge for the one model whose judgement the new head makes
+  non-current, `taskClaimed` comes from `planQueue` (only when the facts change), and the
+  not-recordable branch answers `{factsChange: false, pairsToRejudge: 0, taskClaimed: false}`.
+  `withdrawalDryRun` takes the actor.
+
+Deviations from the plan, with reasons:
+
+- **The done task is read for every changing file without an open task**, not only for
+  layout-only ones: whether its facts change is known only after the extraction, outside the read
+  snapshot (at most 50 small indexed queries).
+- **`pairs` is an upper bound**, not the exact union of the claims, while other models' tasks
+  wait: exact routing needs every waiting partner model's candidates, which in a re-import during
+  a first analysis means seconds per batch, and would still not give "the work the import adds"
+  (pairs with partners whose key sorts later only move from that partner's task to the queued
+  one). `rejudged` is the reliable "judged again" number; the contract says so.
+- **The prepared candidate index** (the plan's fallback above about 2 s per 50-file batch) came in
+  with the review fixes: the first measurement added 1.7 s of CPU, about 2.2 s per batch with cold
+  reads.
+- **The amendment cost counts against the relations after the write**, not the stored ones: the
+  stored ones counted the call a call-target amendment accepts and the partner pair a message-name
+  amendment accepts.
+- **The amendment test's "> 0 after the no-links"**: in that fixture the claim's candidates were
+  only `compatible` pairs, and the assigned pairs went to the partners' queued tasks, so the count
+  is 0 there; the test now also submits no-links on those pairs and checks
+  `0 < pairsToRejudge ≤ skip.length`. The new integration tests finish the partners first for the same reason.
+- **Small choices.** `ALL_TASKS` a local constant in `ingest.ts`; `costOf` reads
+  `listLive({touchingModelKey})` with stale no-links (a revert makes them current again) and no
+  done task (the cancellation never depends on it).
+
+The review round (a correctness lens and a refactor-safety and contracts lens) found one major and
+seven minor points, all fixed: (1) the amendment cost counted pairs the amendment itself settles (3
+instead of 2 for a call target, 2 instead of 1 for a partner name; now counted after the write,
+`amendment-cost.test.ts`); (2) `pairs` claimed to be exactly what the claims are assigned (reworded
+as an upper bound in the contract, OpenAPI and `pairsToJudge`, a unit test pins it); (3) and (4)
+the added dry-run time at or above the 2 s threshold, from both lenses (the prepared index); (5)
+the merged lists broke their sort descriptions (sorted before the cap); (6) every batch read every
+live no-link, also for an unchanged re-import (reads only for changing models,
+`touchingModelKeys`); (7) the claimed-task case without a fact change was not tested end to end (a
+withdrawal dry run in `amendment-cost.test.ts`); (8) `impact-merge.ts` had no zod-free source
+check (`impact-merge.test.ts`).
+
+Tests: server unit `queue-plan.test.ts` (new, 12 tests: one row per `queueAnalysis` branch, when
+the done task is read, the cancelled task handed back), `judgement-shift.test.ts` (new, 9 tests:
+`judgementShift` for a stale hash, pairs counted once, a link and a no-link on one pair, another
+procedure, a deleted model, a revert; `pairsToJudge` without judged and settled pairs, equal to
+`planClaim`'s union without partner tasks, the upper bound with an outside open task),
+`import-impact.test.ts` (5 tests: the recompute planned once, the relations after the plan, the
+pairs and those judged again, the cancelled tasks, a deletion), `recompute-trust.test.ts` (an
+owner's rule acceptance settles the pair); real PostgreSQL `import-dry-run.test.ts` (4 tests, the
+dry run equal to the write: queued `[B, A]`, B cancelled as claimed with the handle and its
+assignment's length, nothing written; after the import the `analysis.queued` and
+`analysis.cancelled` events as previewed and B's submit 409 `task-cancelled`; the claims'
+assignments together equal to `pairs`, their part judged before equal to `rejudged`; a layout-only
+re-import queuing nothing; PUT's dry run equal to the import's; the deletion impact naming the
+claimed task and `DELETE` writing exactly that one `analysis.cancelled`), `amendment-cost.test.ts`
+(new, 3 tests: a call target counted as the PUT dry run's `rejudged` and the next claim's part
+judged before, without the accepted call; a partner name without the accepted partner pair; a
+withdrawal dry run without a fact change while the task is claimed), `amendments.test.ts` (a
+not-recordable dry run while claimed); contracts `impact-merge.test.ts` (new, 10 tests); relations
+`candidates.test.ts` and `sample.test.ts` (the prepared index equal); CLI and web fixtures with
+`relationsTasks`, the bundle guard.
+
+What it costs and leaves open. On 16 renamed copies of `nordwind-handel` (496 models, 6,128 facts,
+19,417 live no-links) with a 50-file batch of renamed labels, the dry run adds 0.67 s of CPU (1.7 s
+before the prepared index; 0.63–0.64 s of it the 50 focus models' candidates), the whole REST dry
+run takes 1.13–1.17 s against a real database, the no-link read 31–34 ms (5,503 of the batch's
+models instead of all 19,417 in 94–97 ms), the task and head-hash reads 1–2 ms, and an unchanged
+50-file re-import 234–258 ms; the pair counts are identical with and without the prepared index
+(3,004 pairs, 2,889 judged again). Live-run neutral: claim inputs, `renderClaims`, MCP snapshots,
+procedures, recordings and eval reports unchanged. The bundle entry is 226.3 KB gzip (+0.2, the
+shared merge in the entry). The readings the implementing agent took that the owner may overrule
+are in HANDOFF §4 ("Taken during the M6 S2b follow-up step 1"); no owner question. Open:
+
+- **`pairs` overstates while other models' tasks wait** (above): during a first analysis a
+  re-import's preview can name pairs the partners' queued tasks would judge anyway; the surfaces
+  (step 3) must not present it as new work; the pairs judged again (`rejudged`) are the reliable
+  part.
+- **A non-owner's preview** counts a derived call an owner's rule would accept as a pair to judge
+  (no rule data outside an owner's preview).
+- **The amendment number can drop to 0** where agents judged only `compatible` pairs, the search
+  space no claim assigns.
+
+Left: step 2 (placements: `placementsChanged`, `placementTask`), step 3 (the surfaces: the
+„Vorschau“'s cost line, the claimed-task warning with a second click, the CLI's lines, the deletion
+listing), optionally 3b (`ProjectSummary.pairsToJudge` in „Als Nächstes“), step 4 (plugin 0.1.3:
+the key-map rebuild, `analyzr-read.mjs` by decision 29 (2), `exporterVersion`), step 5 (the
+identity rows of decision 29 (1), migrations 0021/0022); then S3c and S6.
 
 **S3 "Toolkit".** S3a (part of the „erste Anfänge“): §3.11, report committed, CI drift check,
 and the `get_landscape` size per model of the seeded `nordwind-handel` with the v1 limit in §6.
@@ -2907,8 +3133,9 @@ built-ins only and name no local path, and runs them copied away from `node_modu
 - The workspace gains `inventory/` for catalogs and `reports/<…>.{models,plan,bundle}.json` for
   the scripts' complete results; `keymap.json` records per system the key rule, the scope and the
   folders to leave out (formats `analyzr-keymap/1` and `analyzr-workspace/1`).
-- The skill pre-approves only `inspect.mjs`; §3.1's `analyzr import … --dry-run` waits for S2b
-  (`allowed-tools` lasts for the invoking turn only). The guard setup it offers (a
+- The skill pre-approves only `inspect.mjs`; §3.1's pre-approved dry run waits for S2b
+  (`allowed-tools` lasts for the invoking turn only; since decision 29 (2) a read-only script,
+  `analyzr-read.mjs` in plugin 0.1.3, takes its place). The guard setup it offers (a
   `permissions.deny` rule `Read(~/.local/state/analyzr/**)`, the sandbox with a
   `credentials.files` deny, `autoAllowBashIfSandboxed` and `allowUnsandboxedCommands` false)
   follows the setting descriptions of Claude Code 2.1.300 but was not tried in a live session, so
@@ -3742,7 +3969,13 @@ write-back or sync to the source tools (decision 7).
       real or sandbox export confirms the shape (§10.4), so the operation is not built on an
       unverified assumption.
 
-10. **Provenance of unchanged bytes (amends §3.3, raised by the S2a review).** Identical bytes
+10. **Provenance of unchanged bytes (amends §3.3, raised by the S2a review). Decided 2026-10-20
+    as recommended (decision 29 (1), §2):** of the options (a) keep the warning
+    `provenance-kept`, (b) the append-only identity row and (c) defer until a customer re-export
+    shows the problem, the owner chose (b): the identity row per import and model as proposed
+    below, as step 5 of S2b's follow-up, its own step after steps 1–4 (migrations 0021/0022), and
+    before the first customer re-export; no re-analysis, `facts_hash` untouched. The question as
+    first raised: Identical bytes
     stay `unchanged` and keep their first revision's provenance (§3.3, append-only). A folder
     moved in the tool leaves a Signavio export's bytes as they were, so after such a re-export
     `external-ids` and the change list keep the old tool folder, and a bundle imported first

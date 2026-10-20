@@ -1,7 +1,7 @@
 import { Candidate } from '@analyzr/contracts';
 import { describe, expect, it } from 'vitest';
 
-import { generateCandidates } from '../src/index.ts';
+import { generateCandidates, indexCandidates } from '../src/index.ts';
 import { call, end, model, msgCatch, msgThrow, project, shuffled, start } from './support/facts.ts';
 
 const pairs = (cs: Candidate[]) => cs.map((c) => `${c.basis} ${c.type} ${c.from} -> ${c.to}`);
@@ -150,5 +150,24 @@ describe('generateCandidates', () => {
 
   it('handles an empty project', () => {
     expect(generateCandidates(project())).toEqual([]);
+  });
+
+  it('returns the same candidates with a prepared index shared by several calls', () => {
+    const prepared = indexCandidates(landscape);
+    const keys = landscape.models.map((m) => m.modelKey);
+    for (const key of [...keys, ...[...keys].reverse()]) {
+      expect(generateCandidates(landscape, key, undefined, prepared), key).toEqual(
+        generateCandidates(landscape, key),
+      );
+    }
+    expect(generateCandidates(landscape, undefined, undefined, prepared)).toEqual(all);
+    const narrow = { lexicalPerEndpoint: 1, compatiblePerEndpoint: 0 };
+    expect(generateCandidates(landscape, 'vertrieb/shop', narrow, prepared)).toEqual(
+      generateCandidates(landscape, 'vertrieb/shop', narrow),
+    );
+    // An index of other facts (even equal ones) is refused.
+    expect(() => generateCandidates(shuffled(landscape), undefined, undefined, prepared)).toThrow(
+      /other facts/,
+    );
   });
 });

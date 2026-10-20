@@ -6,21 +6,29 @@
  * system the import does not name. The dry runs and the deletion impact
  * call it; nothing is written. For an owner (M6 S2c-3) it also evaluates
  * the derived call proposals the plan records against their rules for
- * derived calls, as the write's `autoAcceptDerivedCalls` does.
+ * derived calls, as the write's `autoAcceptDerivedCalls` does. Since the
+ * S2b follow-up it also plans the relations tasks the write queues and
+ * cancels (`planQueue`, as `queueAnalysis` does) and the pairs agents judge
+ * around the queued models (`pairsToJudge`), with the judgements the write
+ * makes non-current (`judgementShift`).
  */
 import {
   MAX_IMPACT_ITEMS,
   TrustReason,
   parseRef,
   type AutoAcceptRuleId,
+  type Candidate,
+  type DeclaredProcedure,
   type Finding,
   type ImpactAutoAcceptedCall,
   type ImpactAutoAcceptedCalls,
+  type ImpactCancelledTask,
   type ImpactEndpoint,
   type ImpactFile,
   type ImpactProposedCall,
   type ImpactProposedCalls,
   type ImpactRelation,
+  type ImpactRelationsTasks,
   type ImportImpact,
   type ProcessInfo,
   type RelationStatus,
@@ -35,7 +43,9 @@ import {
   evaluateRelationAutoAccept,
   type AutoAcceptRuleRev,
 } from './auto-accept/evaluate.ts';
-import type { RelationRecord } from './ports.ts';
+import { currentPairs, judgementShift, pairsToJudge, type JudgementBasis } from './judgements.ts';
+import type { ModelTaskDetail, RelationRecord } from './ports.ts';
+import { planQueue } from './queue-plan.ts';
 import { planRecompute, type RecomputeInput, type RecomputePlan } from './recompute.ts';
 import { naturalKey } from './relation-state.ts';
 
@@ -64,25 +74,23 @@ export interface DerivedCallRules {
   liveNoLinks: ReadonlyMap<string, number>;
 }
 
-type RelationAfter = Pick<
+/** A relation as a plan leaves it ({@link relationsAfter}). */
+export type RelationAfter = Pick<
   RelationRecord,
   'id' | 'type' | 'fromRef' | 'toRef' | 'status' | 'endpointState'
 >;
 
 /**
- * The unique calls from derived models the owner's rules would accept in
- * the write (M6 S2c-3): the rule tier's proposals the plan records, each
- * evaluated as `autoAcceptDerivedCalls` evaluates it after the recompute
- * (natural key order, the relations as the plan leaves them, an acceptance
- * taking its call element), with `byRule` over all of them and how many of
- * them are among `proposed` (the natural keys `callsProposed` counts).
+ * Every relation as the plan leaves it, by natural key: the stored ones
+ * with their refreshed state, and the new ones the rules derive (by their
+ * placeholder id). For an owner, {@link autoAcceptedCalls} then marks the
+ * derived calls their rules accept, so the map is what the claims after the
+ * write read.
  */
-function autoAcceptedCalls(
-  input: RecomputeInput,
-  plan: RecomputePlan,
-  auto: DerivedCallRules,
-  proposed: ReadonlySet<string>,
-): ImpactAutoAcceptedCalls {
+export function relationsAfter(
+  input: Pick<RecomputeInput, 'relations'>,
+  plan: Pick<RecomputePlan, 'steps'>,
+): Map<string, RelationAfter> {
   const after = new Map<string, RelationAfter>();
   for (const r of input.relations) after.set(naturalKey(r.type, r.fromRef, r.toRef), r);
   for (const step of plan.steps) {
@@ -94,6 +102,25 @@ function autoAcceptedCalls(
       after.set(naturalKey(r.type, r.fromRef, r.toRef), { ...r, ...step.patch });
     }
   }
+  return after;
+}
+
+/**
+ * The unique calls from derived models the owner's rules would accept in
+ * the write (M6 S2c-3): the rule tier's proposals the plan records, each
+ * evaluated as `autoAcceptDerivedCalls` evaluates it after the recompute
+ * (natural key order, the relations as the plan leaves them, an acceptance
+ * taking its call element), with `byRule` over all of them and how many of
+ * them are among `proposed` (the natural keys `callsProposed` counts).
+ * Marks each accepted call in `after` ({@link relationsAfter}).
+ */
+function autoAcceptedCalls(
+  input: RecomputeInput,
+  plan: RecomputePlan,
+  auto: DerivedCallRules,
+  proposed: ReadonlySet<string>,
+  after: Map<string, RelationAfter>,
+): ImpactAutoAcceptedCalls {
   const proposals = plan.steps
     .flatMap((step) =>
       step.kind === 'derive' && step.derivedCaller && step.assertion?.kind === 'proposal'
@@ -155,7 +182,26 @@ function autoAcceptedCalls(
   };
 }
 
+/**
+ * Every relation as a write over `input` leaves it, by natural key (what the
+ * claims after it read; the amendment cost, S2b follow-up): the plan's
+ * ({@link relationsAfter}) and, with `auto` (an owner, M6 S2c-3), the
+ * derived calls their rules accept.
+ */
+export function plannedRelations(
+  input: RecomputeInput,
+  auto?: DerivedCallRules,
+): Map<string, RelationAfter> {
+  const plan = planRecompute(input);
+  const after = relationsAfter(input, plan);
+  if (auto) autoAcceptedCalls(input, plan, auto, new Set(), after);
+  return after;
+}
+
 const byCodePoint = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
+
+/** The relations' part of an impact ({@link relationImpact}). */
+type RelationImpact = Omit<ImportImpact, 'files' | 'absentKeys' | 'relationsTasks'>;
 
 /**
  * The relations' part of an impact: the transitions a recompute over the
@@ -170,8 +216,27 @@ export function relationImpact(
   findingsBefore: readonly Finding[],
   auto?: DerivedCallRules,
   ofProposed: 'proposed' | 'was-accepted' = 'proposed',
-): Omit<ImportImpact, 'files' | 'absentKeys'> {
+): RelationImpact {
   const plan = planRecompute(input);
+  return plannedRelationImpact(
+    input,
+    plan,
+    relationsAfter(input, plan),
+    findingsBefore,
+    auto,
+    ofProposed,
+  );
+}
+
+/** {@link relationImpact} over a plan; `relations` gets the calls an owner’s rules accept. */
+function plannedRelationImpact(
+  input: RecomputeInput,
+  plan: RecomputePlan,
+  relations: Map<string, RelationAfter>,
+  findingsBefore: readonly Finding[],
+  auto: DerivedCallRules | undefined,
+  ofProposed: 'proposed' | 'was-accepted',
+): RelationImpact {
   const accepted: ImpactRelation[] = [];
   const callsProposed: ImpactProposedCall[] = [];
   const added: ImpactRelation[] = [];
@@ -242,6 +307,7 @@ export function relationImpact(
                 .filter((c) => ofProposed === 'proposed' || c.wasAccepted)
                 .map((c) => naturalKey(c.type, c.from, c.to)),
             ),
+            relations,
           ),
         }
       : {}),
@@ -334,17 +400,132 @@ export function absentKeys(
     .sort();
 }
 
-/** The whole impact (`ImportImpact`), from its parts; `auto` only for an owner (M6 S2c-3). */
+/** An open relations task as the dry run reads it: its facts, and who holds it with what. */
+export type OpenRelationsTask = Pick<
+  ModelTaskDetail,
+  'state' | 'factsHash' | 'claimedByHandle' | 'assignment'
+>;
+
+/**
+ * What the relations tasks of a dry run read (M6 S2b follow-up), in the
+ * dry run's snapshot.
+ */
+export interface TaskInput {
+  /** Every live agent judgement (pipeline proposals and no-links) with its basis. */
+  judgements: readonly JudgementBasis[];
+  /** The head `facts_hash` of every live model now (`headHashes`). */
+  before: ReadonlyMap<string, string>;
+  /** The procedure relations claims name. */
+  procedure: DeclaredProcedure;
+  /** The open (queued or claimed) relations task of each model, by key. */
+  open: ReadonlyMap<string, OpenRelationsTask>;
+  /**
+   * The `facts_hash` of a model's latest done task, where the plan needs it
+   * (no open task and possibly a layout-only change); `null` otherwise.
+   */
+  doneFactsHash: (modelKey: string) => string | null;
+  /** A model's candidates over the would-be head facts (`AnalysisPort.candidates`). */
+  candidatesOf: (modelKey: string) => readonly Candidate[];
+  /** The deleted model's key (the deletion impact): its task is cancelled, nothing queued. */
+  deleted?: string;
+}
+
+/** An open task as the impact names it when the write cancels it. */
+function cancelledTask(modelKey: string, task: OpenRelationsTask): ImpactCancelledTask {
+  const claimed = task.state === 'claimed';
+  return {
+    modelKey,
+    state: claimed ? 'claimed' : 'queued',
+    claimedBy: claimed ? task.claimedByHandle : null,
+    assigned: claimed ? (task.assignment?.length ?? null) : null,
+  };
+}
+
+/**
+ * The relations tasks the write queues and cancels (`planQueue` per created
+ * or revised file, as `queueAnalysis` plans it; a deletion cancels the
+ * model's open task and queues nothing), the pairs agents judge around the
+ * queued models (`pairsToJudge` over the would-be candidates and the
+ * relations after the plan, without the judgements current after the
+ * write; an upper bound of what the queued tasks' claims are assigned) and
+ * those of them whose current judgement the write makes non-current
+ * (`judgementShift`).
+ */
+function relationsTasks(
+  files: readonly FileHeads[],
+  tasks: TaskInput,
+  relations: ReadonlyMap<string, RelationAfter>,
+): ImpactRelationsTasks {
+  const after = new Map(tasks.before);
+  for (const f of files) after.set(f.modelKey, f.factsHash);
+  if (tasks.deleted !== undefined) after.delete(tasks.deleted);
+  const queued: string[] = [];
+  const cancelled: ImpactCancelledTask[] = [];
+  for (const f of files) {
+    const open = tasks.open.get(f.modelKey) ?? null;
+    const plan = planQueue({
+      previousFactsHash: f.previousFactsHash,
+      factsHash: f.factsHash,
+      open,
+      doneFactsHash: tasks.doneFactsHash(f.modelKey),
+    });
+    if (plan.queue) queued.push(f.modelKey);
+    if (plan.cancel) cancelled.push(cancelledTask(f.modelKey, plan.cancel));
+  }
+  const gone = tasks.deleted === undefined ? undefined : tasks.open.get(tasks.deleted);
+  if (tasks.deleted !== undefined && gone) cancelled.push(cancelledTask(tasks.deleted, gone));
+  const pairs = pairsToJudge({
+    models: queued,
+    candidatesOf: tasks.candidatesOf,
+    relations: relations.values(),
+    judged: currentPairs(tasks.judgements, after, tasks.procedure),
+  });
+  const lost = judgementShift({
+    judgements: tasks.judgements,
+    before: tasks.before,
+    after,
+    procedure: tasks.procedure,
+  });
+  const rejudged = [...pairs]
+    .filter(([key]) => lost.has(key))
+    .map(([, p]) => p)
+    .sort(
+      (a, b) =>
+        byCodePoint(a.type, b.type) || byCodePoint(a.from, b.from) || byCodePoint(a.to, b.to),
+    );
+  return {
+    queued: capped(queued.sort(byCodePoint)),
+    cancelled: capped(
+      cancelled.sort(
+        (a, b) =>
+          Number(b.state === 'claimed') - Number(a.state === 'claimed') ||
+          byCodePoint(a.modelKey, b.modelKey),
+      ),
+    ),
+    claimed: cancelled.filter((t) => t.state === 'claimed').length,
+    pairs: pairs.size,
+    rejudged: capped(rejudged),
+  };
+}
+
+/**
+ * The whole impact (`ImportImpact`), from its parts, planning the recompute
+ * once; `auto` only for an owner (M6 S2c-3).
+ */
 export function importImpact(
   input: RecomputeInput,
   findingsBefore: readonly Finding[],
   files: readonly FileHeads[],
   absent: readonly string[],
-  auto?: DerivedCallRules,
+  auto: DerivedCallRules | undefined,
+  tasks: TaskInput,
 ): ImportImpact {
+  const plan = planRecompute(input);
+  const relations = relationsAfter(input, plan);
   return {
     files: fileImpact(files),
-    ...relationImpact(input, findingsBefore, auto),
+    ...plannedRelationImpact(input, plan, relations, findingsBefore, auto, 'proposed'),
     absentKeys: capped(absent),
+    relationsTasks: relationsTasks(files, tasks, relations),
   };
 }

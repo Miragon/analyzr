@@ -190,7 +190,7 @@ export function sortJudgements<T extends Judgement>(list: readonly T[]): T[] {
  * `uncovered` lists only what an agent left out. Held pairs and rejections
  * with a changed endpoint are judged again.
  */
-export function settles(r: RelationRecord): boolean {
+export function settles(r: Pick<RelationRecord, 'status' | 'endpointState'>): boolean {
   return r.status === 'accepted' || (r.status === 'rejected' && r.endpointState === 'ok');
 }
 
@@ -201,14 +201,18 @@ export function settles(r: RelationRecord): boolean {
  * ({@link settles}) and with both endpoints in the head (a `missing` end can
  * take neither a proposal nor a no-link).
  */
-export function isAssignedRelation(r: RelationRecord): boolean {
+export function isAssignedRelation(
+  r: Pick<RelationRecord, 'type' | 'status' | 'endpointState'>,
+): boolean {
   return (
     r.type !== 'manual' && r.status !== 'obsolete' && !settles(r) && r.endpointState !== 'missing'
   );
 }
 
 /** The typed pair of a relation ({@link isAssignedRelation} excludes `manual` ones). */
-export function relationPair(r: RelationRecord): TypedPair {
+export function relationPair(
+  r: Pick<RelationRecord, 'id' | 'type' | 'fromRef' | 'toRef'>,
+): TypedPair {
   if (r.type === 'manual') throw new Error(`a manual relation is no typed pair: ${r.id}`);
   return { type: r.type, from: r.fromRef, to: r.toRef };
 }
@@ -330,4 +334,99 @@ export function planClaim(src: {
   }
   skip.sort(comparePairs);
   return { judged, skip, assignment };
+}
+
+// ------------------------------------------------- the dry runs' cost (M6 S2b follow-up)
+
+/** What currency reads of a judgement: its pair and its basis. */
+export type JudgementBasis = Pick<
+  Judgement,
+  'type' | 'from' | 'to' | 'fromHash' | 'toHash' | 'procedure'
+>;
+
+/** The pair keys ({@link pairKey}) with a judgement that is current with `heads`. */
+export function currentPairs(
+  judgements: readonly JudgementBasis[],
+  heads: ReadonlyMap<string, string>,
+  procedure: DeclaredProcedure,
+): Set<string> {
+  const out = new Set<string>();
+  for (const j of judgements) {
+    if (isCurrent(j, j.procedure, heads, procedure)) out.add(pairKey(j));
+  }
+  return out;
+}
+
+/**
+ * The typed pairs a head change leaves without a current agent judgement
+ * (M6 S2b follow-up; the amendment cost, M6 §4.8 c): pairs with a judgement
+ * current with `before` (the head hashes now) and none current with `after`
+ * (the would-be head hashes; a deleted model has none). A judgement under
+ * another procedure is never current, so never lost; a revert that makes a
+ * stale judgement current again loses nothing on its pair. Pair keys.
+ */
+export function judgementShift(src: {
+  judgements: readonly JudgementBasis[];
+  before: ReadonlyMap<string, string>;
+  after: ReadonlyMap<string, string>;
+  procedure: DeclaredProcedure;
+}): Set<string> {
+  const before = currentPairs(src.judgements, src.before, src.procedure);
+  const after = currentPairs(src.judgements, src.after, src.procedure);
+  return new Set([...before].filter((key) => !after.has(key)));
+}
+
+/** A relation as the pairs to judge read it: its pair and what settles or assigns it. */
+export type RelationState = Pick<
+  RelationRecord,
+  'type' | 'fromRef' | 'toRef' | 'status' | 'endpointState'
+>;
+
+/**
+ * The typed pairs agents judge around `models` (the dry runs' cost, S2b
+ * follow-up), as one set: per model its candidates of an assigned basis
+ * ({@link isAssigned}) and its assigned relations
+ * ({@link isAssignedRelation}), without a current agent judgement (`judged`)
+ * or a settling decision ({@link settles}), what {@link planClaim} assigns
+ * before its partner rules. Those rules only decide which claim judges a
+ * pair, so among the claims of `models` the union stays; but they may give
+ * a pair to an open task of a model outside `models` (a claimed one that
+ * holds it, a queued one whose key sorts first), so this is an upper bound
+ * of what the claims of `models` are assigned, and while such tasks wait it
+ * counts pairs they would judge anyway. Telling them apart needs every such
+ * partner's candidates, too slow for a preview.
+ *
+ * @param relations every relation as it will be when the claims run (after
+ *   the write's recompute)
+ * @param judged pair keys with a current agent judgement then
+ */
+export function pairsToJudge(src: {
+  models: Iterable<string>;
+  candidatesOf: (modelKey: string) => readonly Candidate[];
+  relations: Iterable<RelationState>;
+  judged: ReadonlySet<string>;
+}): Map<string, TypedPair> {
+  const models = new Set(src.models);
+  const out = new Map<string, TypedPair>();
+  const settled = new Set<string>();
+  const assigned: TypedPair[] = [];
+  for (const r of src.relations) {
+    if (r.type === 'manual') continue;
+    const pair = { type: r.type, from: r.fromRef, to: r.toRef };
+    if (settles(r)) settled.add(pairKey(pair));
+    else if (isAssignedRelation(r)) assigned.push(pair);
+  }
+  const add = (pair: TypedPair) => {
+    const key = pairKey(pair);
+    if (!src.judged.has(key) && !settled.has(key)) out.set(key, pair);
+  };
+  for (const modelKey of [...models].sort(compareStrings)) {
+    for (const c of src.candidatesOf(modelKey)) {
+      if (isAssigned(c)) add({ type: c.type, from: c.from, to: c.to });
+    }
+  }
+  for (const pair of assigned) {
+    if (models.has(modelOf(pair.from)) || models.has(modelOf(pair.to))) add(pair);
+  }
+  return out;
 }

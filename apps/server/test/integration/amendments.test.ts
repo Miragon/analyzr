@@ -410,23 +410,44 @@ describe('amendments at the open questions', () => {
     ]);
     expect(await lastSeq()).toBe(before);
     expect(await count('model_amendment')).toBe(0);
-    // The agent judges its pairs: now the cost names them.
-    const noLinks = claimed.input.candidates.map(([type, from, to]) => ({
-      type,
-      from,
-      to,
-      reason: 'no-evidence: nicht verbunden',
-    }));
+    // Nothing recordable: no new head, so no task is cancelled, claimed or not (S2b follow-up).
+    const refused = AmendModelResult.parse(
+      (
+        await amend(
+          AUFTRAG_KEY,
+          [{ elementId: 'End_Auftrag', op: 'event-name', after: 'Fertig' }],
+          {
+            dryRun: true,
+            status: 200,
+          },
+        )
+      ).body,
+    );
+    expect(refused).toMatchObject({
+      outcome: 'unchanged',
+      cost: { factsChange: false, pairsToRejudge: 0, taskClaimed: false },
+    });
+    // The agent judges the model's pairs: its candidates (here only the `compatible` search
+    // space) and the pairs its claim left to the partners' queued tasks.
+    const skipped = claimed.input.skip ?? [];
+    expect(skipped.length).toBeGreaterThan(0);
+    const noLinks = [
+      ...claimed.input.candidates.map(([type, from, to]) => ({ type, from, to })),
+      ...skipped.map(({ type, from, to }) => ({ type, from, to })),
+    ].map((p) => ({ ...p, reason: 'no-evidence: nicht verbunden' }));
     const done = await submit(asAgent(t, agent.secret), claimed.taskId, {
       ...submission(claimed, []),
       noLinks,
     });
-    expect(done.noLinks?.items.some((i) => i.result === 'stored')).toBe(true);
+    expect(done.noLinks?.items.every((i) => i.result === 'stored')).toBe(true);
     const again = AmendModelResult.parse(
       (await amend(AUFTRAG_KEY, [item], { dryRun: true, status: 200 })).body,
     );
     expect(again.cost.taskClaimed).toBe(false);
+    // Now the cost names them, as the import's dry run counts them (S2b follow-up): the pairs
+    // the model's next claim is assigned; the search space is nobody's assignment.
     expect(again.cost.pairsToRejudge).toBeGreaterThan(0);
+    expect(again.cost.pairsToRejudge).toBeLessThanOrEqual(skipped.length);
   });
 
   it('amends a call: an amended head on the uploaded revision, the call accepted, the manual link retired', async () => {

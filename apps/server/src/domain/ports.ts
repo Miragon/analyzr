@@ -493,6 +493,8 @@ export interface NoLinkHistoryRecord {
 export interface NoLinkFilter {
   /** No-links with an endpoint in this model. */
   touchingModelKey?: string;
+  /** No-links with an endpoint in one of these models (none for an empty list). */
+  touchingModelKeys?: readonly string[];
   principalId?: PrincipalId;
   /** No-links on these typed pairs. */
   pairs?: readonly TypedPair[];
@@ -1502,6 +1504,12 @@ export interface AnalysisPort {
    * §3); without a focus model, every model's (the open-questions read model).
    */
   candidates(projectFacts: ProjectFacts, focusModelKey?: string): Candidate[];
+  /**
+   * {@link candidates} around one focus model after another over the same
+   * facts, the landscape indexed once (the dry runs' pairs to judge, M6 S2b
+   * follow-up): the same candidates, cheaper for many focus models.
+   */
+  candidateSource(projectFacts: ProjectFacts): (focusModelKey: string) => Candidate[];
   /** Validates proposed pairs against the head facts and computes their tier. */
   pairAssessor(projectFacts: ProjectFacts): (pair: PairQuery) => PairAssessment;
   /**
