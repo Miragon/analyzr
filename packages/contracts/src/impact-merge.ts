@@ -6,9 +6,12 @@
  * entry chunk; it takes only types from `api/models.ts`.
  *
  * A batch is previewed against the head, so the merge adds up what the
- * batches count and concatenates their items up to the server's cap; a pair
- * between models of two batches counts in both (the surfaces say „etwa“).
- * The placement task's counts (a project with a value chain) are
+ * batches count and concatenates their items up to the server's cap. The
+ * pairs are no bound either way (the surfaces say „etwa“ / "about"): a pair
+ * between two models of the head in two batches counts in both, one between
+ * new models of two batches in neither, since neither batch sees the other's
+ * model (the batch notes say so; on a first import in parts that is most of
+ * them). The placement task's counts (a project with a value chain) are
  * approximate across batches too: each batch counts the processes due after
  * its own files against the head.
  */
@@ -104,9 +107,10 @@ const pairKey = (r: { type: string; from: string; to: string }): string =>
  * server sorts them, the queued by key, the cancelled claimed first, then
  * by key (batches follow the paths, pinned keys need not), so a claimed one
  * stays listed past the cap; `claimed` and `pairs` added up; the pairs
- * judged again deduplicated by item (a pair between models of two batches
- * is listed by both), their count lowered by the duplicates found. Each
- * batch lists its first items, so the first of all are among them.
+ * judged again deduplicated by item (a pair between two models of the head
+ * in two batches is listed by both), their count lowered by the duplicates
+ * found. Each batch lists its first items, so the first of all are among
+ * them.
  */
 function mergeRelationsTasks(
   impacts: readonly MergeableImpact[],

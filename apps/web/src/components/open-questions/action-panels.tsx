@@ -19,7 +19,7 @@ import {
   SearchIcon,
   TriangleAlertIcon,
 } from 'lucide-react';
-import { useId, useMemo, useState, type FormEvent, type ReactNode } from 'react';
+import { useId, useMemo, useState, type FormEvent, type MouseEvent, type ReactNode } from 'react';
 
 import { ImportHint } from '@/components/amendments/amend-form';
 import { AmendEffect } from '@/components/amendments/amend-summary';
@@ -245,6 +245,7 @@ function PanelForm({
   submitIcon,
   submitVariant = 'default',
   submitDescribedBy,
+  onSubmitClick,
   canSubmit,
   pending,
   error,
@@ -257,6 +258,8 @@ function PanelForm({
   submitIcon: ReactNode;
   submitVariant?: 'default' | 'destructive';
   submitDescribedBy?: string | undefined;
+  /** The submit button's click before the form's submit (the second click's `repeated`). */
+  onSubmitClick?: ((event: MouseEvent<HTMLButtonElement>) => void) | undefined;
   canSubmit: boolean;
   pending: boolean;
   error: string | null;
@@ -291,6 +294,7 @@ function PanelForm({
           variant={submitVariant}
           disabled={!canSubmit || pending}
           aria-describedby={submitDescribedBy}
+          onClick={onSubmitClick}
           data-testid="action-submit"
         >
           {pending ? <Spinner data-icon="inline-start" /> : submitIcon}
@@ -694,6 +698,7 @@ export function LinkPanel(props: PanelProps) {
             : effectId
           : undefined
       }
+      onSubmitClick={checked ? confirm.repeated : undefined}
       canSubmit={checked ? draft.check.phase === 'ready' : canLink}
       pending={checked ? draft.saving || draft.check.phase === 'checking' : pending}
       error={checked ? null : error}

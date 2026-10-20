@@ -814,7 +814,8 @@ describe('one entry for a link or an amendment (UX4, M6 S5c-2)', () => {
     );
     const submit = within(panel).getByTestId('action-submit');
     expect(submit.textContent).toBe('Speichern');
-    await user.click(submit);
+    // a double click arms only: its later click submits nothing
+    await user.dblClick(submit);
     expect(submit.textContent).toBe('Trotzdem speichern');
     expect(amendPosts(calls).map((c) => c.search)).toEqual(['?dryRun=true']);
     await user.click(submit);

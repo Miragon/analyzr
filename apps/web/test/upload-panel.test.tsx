@@ -795,6 +795,200 @@ describe('UploadPanel', () => {
     expect(imports(calls)).toHaveLength(0);
   });
 
+  it('names the agent work, warns before cancelling an agent’s claim and asks a second time (S2b follow-up)', async () => {
+    const list = <T,>(count: number, items: T[] = []) => ({ count, items });
+    /** The claimed tasks the preview answers (the test changes it between drops). */
+    let claimed = ['vertrieb/auftrag'];
+    const calls = stubApi({
+      [`POST ${IMPORT_PATH}`]: (call) =>
+        json({
+          files: (call.body as string[]).map((path) => ({
+            path,
+            modelKey: path.replace(/\.bpmn$/, ''),
+            outcome: 'revised',
+            problem: null,
+          })),
+          ...(call.search === '?dryRun=true'
+            ? {
+                impact: {
+                  files: [],
+                  acceptedCalls: list(0),
+                  callsProposed: { ...list(0), wasAccepted: 0, byReason: [] },
+                  proposalsAdded: list(0),
+                  proposalsWithdrawn: list(0),
+                  endpointsChanged: list(0),
+                  findingsAdded: list(0),
+                  findingsResolved: list(0),
+                  absentKeys: list(0),
+                  relationsTasks: {
+                    queued: list(2, ['finanzen/rechnung', 'vertrieb/auftrag']),
+                    cancelled: list(claimed.length + 1, [
+                      ...claimed.map((modelKey) => ({
+                        modelKey,
+                        state: 'claimed',
+                        claimedBy: 'agent:claude',
+                        assigned: 34,
+                      })),
+                      {
+                        modelKey: 'finanzen/rechnung',
+                        state: 'queued',
+                        claimedBy: null,
+                        assigned: null,
+                      },
+                    ]),
+                    claimed: claimed.length,
+                    pairs: 1214,
+                    rejudged: list(56, [
+                      { type: 'call', from: 'vertrieb/auftrag#Call_R', to: 'finanzen/rechnung#P' },
+                    ]),
+                  },
+                  placementsChanged: list(1, [
+                    {
+                      step: 'step-vertrieb',
+                      stepName: 'Vertrieb',
+                      process: 'vertrieb/auftrag#Process_Auftrag',
+                      endpointState: 'changed',
+                    },
+                  ]),
+                  placementTask: { outcome: 'deferred', due: 3, newlyDue: 2, again: 1 },
+                },
+              }
+            : {}),
+        }),
+    });
+    await render();
+    const drop = () =>
+      fireEvent.change(screen.getByTestId('file-input'), {
+        target: {
+          files: [
+            withRelativePath('auftrag.bpmn', 'models/vertrieb/auftrag.bpmn'),
+            withRelativePath('rechnung.bpmn', 'models/finanzen/rechnung.bpmn'),
+          ],
+        },
+      });
+    drop();
+    let preview = await screen.findByTestId('upload-preview');
+    // the cost in the last line, a deferred placement task's newly due processes included
+    expect(within(preview).getByTestId('preview-impact').textContent).toBe(
+      'Danach: 1 angenommene Platzierung mit geändertem oder fehlendem Prozess · 1.214 mögliche Relationen zu beurteilen (56 davon erneut), 2 Prozesse zu platzieren (1 davon erneut)',
+    );
+    const details = within(preview).getByTestId('preview-details');
+    expect(details.textContent).toContain(
+      'Angenommene Platzierungen mit geändertem oder fehlendem Prozess (1)vertrieb/auftrag#Process_Auftrag → „Vertrieb“ (geändert)',
+    );
+    expect(details.textContent).toContain(
+      'Mögliche Relationen, die erneut beurteilt werden (56)Aufruf vertrieb/auftrag#Call_R → finanzen/rechnung#P… und 55 weitere',
+    );
+    // one claimed task: by its key, no handle
+    const warning = within(preview).getByTestId('preview-claimed');
+    expect(warning.textContent).toBe(
+      'Ein Agent bearbeitet „vertrieb/auftrag“ gerade; seine Arbeit geht verloren.Der Import bricht seine Analyse ab; sie wird danach neu eingeplant.',
+    );
+    expect(warning.textContent).not.toContain('agent:claude');
+    // the first click sends nothing and asks again
+    const button = within(preview).getByTestId('preview-import');
+    expect(button.textContent).toBe('Importieren');
+    expect(button.getAttribute('aria-describedby')).toBe(warning.id);
+    fireEvent.click(button);
+    expect(button.textContent).toBe('Trotzdem importieren');
+    expect(imports(calls)).toHaveLength(0);
+    // „Abbrechen“ disarms: the next preview asks again
+    fireEvent.click(within(preview).getByTestId('preview-cancel'));
+    expect(screen.queryByTestId('upload-preview')).toBeNull();
+    claimed = ['a', 'b', 'c', 'd', 'e'];
+    drop();
+    preview = await screen.findByTestId('upload-preview');
+    expect(within(preview).getByTestId('preview-claimed').textContent).toBe(
+      'Agenten bearbeiten gerade 5 dieser Modelle; ihre Arbeit geht verloren.„a“, „b“, „c“ und 2 weitere. Der Import bricht ihre Analysen ab; sie werden danach neu eingeplant.',
+    );
+    expect(within(preview).getByTestId('preview-import').textContent).toBe('Importieren');
+    fireEvent.click(within(preview).getByTestId('preview-import'));
+    // a new preview while armed disarms too
+    drop();
+    await waitFor(() => expect(previews(calls)).toHaveLength(3));
+    await waitFor(() =>
+      expect(screen.getByTestId('preview-import').textContent).toBe('Importieren'),
+    );
+    preview = screen.getByTestId('upload-preview');
+    fireEvent.click(within(preview).getByTestId('preview-import'), { detail: 1 });
+    expect(imports(calls)).toHaveLength(0);
+    // a double click arms only: its later click sends nothing, the preview stays
+    fireEvent.click(within(preview).getByTestId('preview-import'), { detail: 2 });
+    expect(screen.getByTestId('preview-import').textContent).toBe('Trotzdem importieren');
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(imports(calls)).toHaveLength(0);
+    // the second click imports
+    fireEvent.click(within(preview).getByTestId('preview-import'), { detail: 1 });
+    await waitFor(() => expect(imports(calls)).toHaveLength(1));
+    await waitFor(() =>
+      expect(screen.getByTestId('import-headline').textContent).toBe('2 Modelle importiert'),
+    );
+    expect(screen.queryByTestId('preview-claimed')).toBeNull();
+  });
+
+  it('opens „Was ändert sich?“ only onto lists, and drops the „keine Änderung“ line beside the warning (S2b follow-up)', async () => {
+    const list = <T,>(count: number, items: T[] = []) => ({ count, items });
+    /** The relations tasks the preview answers (the test changes it between drops). */
+    let tasks = {
+      queued: list(1, ['vertrieb/auftrag']),
+      cancelled: list(0),
+      claimed: 0,
+      pairs: 12,
+      rejudged: list(0),
+    };
+    stubApi({
+      [`POST ${IMPORT_PATH}`]: (call) =>
+        json({
+          files: (call.body as string[]).map((path) => ({
+            path,
+            modelKey: path.replace(/\.bpmn$/, ''),
+            outcome: 'revised',
+            problem: null,
+          })),
+          impact: {
+            files: [],
+            acceptedCalls: list(0),
+            callsProposed: { ...list(0), wasAccepted: 0, byReason: [] },
+            proposalsAdded: list(0),
+            proposalsWithdrawn: list(0),
+            endpointsChanged: list(0),
+            findingsAdded: list(0),
+            findingsResolved: list(0),
+            absentKeys: list(0),
+            relationsTasks: tasks,
+          },
+        }),
+    });
+    await render();
+    const drop = () =>
+      fireEvent.change(screen.getByTestId('file-input'), {
+        target: { files: [withRelativePath('auftrag.bpmn', 'models/vertrieb/auftrag.bpmn')] },
+      });
+    drop();
+    let preview = await screen.findByTestId('upload-preview');
+    // a documentation fix before the agents ran: only the cost line, whose pairs have no list
+    expect(within(preview).getByTestId('preview-impact').textContent).toBe(
+      'Danach: 12 mögliche Relationen zu beurteilen',
+    );
+    expect(within(preview).queryByTestId('preview-details')).toBeNull();
+    // a revert while an agent holds the task: its work is lost, so no „keine Änderung“ beside it
+    fireEvent.click(within(preview).getByTestId('preview-cancel'));
+    tasks = {
+      queued: list(0),
+      cancelled: list(1, [
+        { modelKey: 'vertrieb/auftrag', state: 'claimed', claimedBy: 'agent:claude', assigned: 3 },
+      ]),
+      claimed: 1,
+      pairs: 0,
+      rejudged: list(0),
+    };
+    drop();
+    await waitFor(() => expect(screen.getByTestId('preview-claimed')).toBeDefined());
+    preview = screen.getByTestId('upload-preview');
+    expect(within(preview).queryByTestId('preview-impact')).toBeNull();
+    expect(within(preview).queryByTestId('preview-details')).toBeNull();
+  });
+
   it('marks the drop zone while files are dragged over it', async () => {
     stubApi({});
     await render();

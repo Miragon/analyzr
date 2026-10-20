@@ -36,6 +36,7 @@ import { useEffect, useRef, useState } from 'react';
 
 import { useNavigate } from '@tanstack/react-router';
 
+import { CLAIMED_WARNING, possibleRelationsText, useSecondClick } from './agent-cost';
 import { requestAgentStart } from './agent-start-request';
 import { useAgentState } from './agent-state';
 import { ApiError, api, errorMessage, unwrap, unwrapWithResponse } from './api';
@@ -75,9 +76,8 @@ export const AMENDMENT_VALUE_LIMITS: Readonly<Record<AmendmentOp, number>> = {
 export const AMEND_HINT =
   'Der nächste Import aus dem Quellsystem behält die Ergänzung, solange das Feld dort unverändert ist.';
 
-/** The warning before a save that cancels a claimed relations task (M6 §4.8 c). */
-export const CLAIMED_WARNING =
-  'Ein Agent bearbeitet dieses Modell gerade; seine Arbeit geht verloren.';
+/** The warning before a save that cancels a claimed relations task (M6 §4.8 c), shared with the „Vorschau“. */
+export { CLAIMED_WARNING };
 
 /**
  * The personal-data hint under names and documentation: „Personennamen“,
@@ -257,11 +257,7 @@ export function rejudgeText(
   cost: Pick<AmendModelResult['cost'], 'factsChange' | 'pairsToRejudge'>,
 ): string | null {
   if (!cost.factsChange || cost.pairsToRejudge <= 0) return null;
-  const n =
-    cost.pairsToRejudge === 1
-      ? '1 mögliche Relation'
-      : `${cost.pairsToRejudge.toLocaleString('de-DE')} mögliche Relationen`;
-  return `Die Agenten beurteilen ${n} neu, sobald du den Agenten startest.`;
+  return `Die Agenten beurteilen ${possibleRelationsText(cost.pairsToRejudge)} neu, sobald du den Agenten startest.`;
 }
 
 /**
@@ -603,22 +599,12 @@ export function useSavedToast(project: string) {
 /**
  * „Speichern“ under the inline dry run: saves what the dry run checked; when
  * an agent holds the model's task, the first click asks again („Trotzdem
- * speichern“).
+ * speichern“, the second click the „Vorschau“ shares; the submit button's
+ * `onClick` is `repeated`, so a double click arms only).
  */
 export function useClaimedConfirm(check: AmendCheck, request: string | null) {
-  const [armedFor, setArmedFor] = useState<string | null>(null);
   const claimed = check.phase === 'ready' && check.dry.cost.taskClaimed;
-  const armed = claimed && armedFor !== null && armedFor === request;
-  return {
-    claimed,
-    armed,
-    /** Whether the click may save now (else it armed the second confirmation). */
-    confirm: (): boolean => {
-      if (!claimed || armed) return true;
-      setArmedFor(request);
-      return false;
-    },
-  };
+  return { claimed, ...useSecondClick(claimed, request) };
 }
 
 // ------------------------------------------------------------- withdrawing

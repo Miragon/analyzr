@@ -1400,6 +1400,26 @@ describe('analyzr import', () => {
         'calledElement="Process_Briefdienst"',
       ),
     );
+    // S2b follow-up: the dry run names the agent work, in text and in `--json`
+    const dry = await analyzr(['import', 'changed', '-p', 'nordwind-handel', '--dry-run']);
+    expect(dry.code).toBe(0);
+    const dryJson = await analyzr([
+      'import',
+      'changed',
+      '-p',
+      'nordwind-handel',
+      '--dry-run',
+      '--json',
+    ]);
+    const preview = JSON.parse(dryJson.out) as {
+      impact: { relationsTasks: { queued: { items: string[] }; pairs: number; claimed: number } };
+    };
+    expect(preview.impact.relationsTasks.queued.items).toEqual(['finanzen/gutschrift']);
+    expect(preview.impact.relationsTasks.claimed).toBe(0);
+    expect(dry.out).toContain(
+      `queue 1 relations task, ${preview.impact.relationsTasks.pairs} pair`,
+    );
+
     const r = await analyzr(['import', 'changed', '--project', 'nordwind-handel']);
     expect(r.code).toBe(0);
     expect(r.out).toContain('  revised   finanzen/gutschrift\n');
@@ -1502,6 +1522,8 @@ describe('analyzr import and models (M6 S1)', () => {
     const dry = await analyzr(['models', 'delete', 'w/dup', '-p', 'm6-s1']);
     expect(dry.code).toBe(1);
     expect(dry.out).toContain('would delete 1 model from m6-s1:');
+    // S2b follow-up: the deletion cancels the model's queued relations task
+    expect(dry.out).toMatch(/\n {2}w\/dup: .*, relations task cancelled\n/);
     expect(dry.err).toContain('nothing deleted');
 
     const deleted = await analyzr(['models', 'delete', 'w/dup', '-p', 'm6-s1', '--yes']);

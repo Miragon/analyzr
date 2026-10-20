@@ -17,8 +17,15 @@ import {
   modelKeyOwners,
 } from '@analyzr/contracts/paths';
 
-import { formatBytes } from './labels';
-import { MAX_IMPORT_BYTES, MAX_IMPORT_FILES, MAX_MODEL_BYTES, PROBLEM_TYPE_BASE } from './limits';
+import { agentCostText } from './agent-cost';
+import { OUTSIDE_LABEL, RELATION_TYPES, formatBytes } from './labels';
+import {
+  MAX_IMPORT_BYTES,
+  MAX_IMPORT_FILES,
+  MAX_MODEL_BYTES,
+  OUTSIDE_STEP,
+  PROBLEM_TYPE_BASE,
+} from './limits';
 import { problemText } from './problem-texts';
 import { trustReasonLabel } from './provenance';
 
@@ -718,6 +725,9 @@ export function previewHeadline(
   return `Vorschau: ${parts.length === 0 ? 'nichts zu importieren' : parts.join(' · ')}`;
 }
 
+/** A count as German text: „1.234“. */
+const de = (n: number) => n.toLocaleString('de-DE');
+
 /** „deine Regel „Signavio-Export“ nimmt“, or „deine Regeln nehmen“ for more than one (M6 S2c-3). */
 function rulesWho(auto: NonNullable<ImportImpact['autoAcceptedCalls']>): string {
   const [one] = auto.byRule;
@@ -746,11 +756,11 @@ export function autoAcceptedText(impact: ImportImpact): string | null {
   if (proposed === 0) {
     return again === 1
       ? `1 bereits vorgeschlagener Aufruf – ${who} ihn gleich an`
-      : `${again} bereits vorgeschlagene Aufrufe – ${who} sie gleich an`;
+      : `${de(again)} bereits vorgeschlagene Aufrufe – ${who} sie gleich an`;
   }
   const parts = [
-    of > 0 ? `${of} davon` : null,
-    again > 0 ? `${again} bereits ${again === 1 ? 'vorgeschlagenen' : 'vorgeschlagene'}` : null,
+    of > 0 ? `${de(of)} davon` : null,
+    again > 0 ? `${de(again)} bereits ${again === 1 ? 'vorgeschlagenen' : 'vorgeschlagene'}` : null,
   ].filter((p) => p !== null);
   return `${who} ${parts.join(' und ')} gleich an`;
 }
@@ -762,18 +772,24 @@ export function autoAcceptedText(impact: ImportImpact): string | null {
  * on; since S2c-3 with what an owner's rules for derived calls accept at
  * once, {@link autoAcceptedText}, and without „gesammelt annehmen“ when
  * they take every call proposed anew),
- * accepted relations whose end changes or goes missing, rule proposals
+ * accepted relations whose end changes or goes missing, accepted placements
+ * whose process does (S2b follow-up, with a live chain), rule proposals
  * added, stances withdrawn, models of the system the bundle no longer names
- * (kept), findings added.
+ * (kept), findings added. The agent work the import sets off (S2b follow-up
+ * step 3, {@link agentCostText}, „etwa“ for a preview of several `batches`)
+ * always takes the last of the three, on a first import too; an unchanged
+ * re-import has none.
  */
-export function impactLines(impact: ImportImpact): string[] {
-  const n = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
+export function impactLines(impact: ImportImpact, batches = 1): string[] {
+  const n = (count: number, one: string, many: string) =>
+    `${de(count)} ${count === 1 ? one : many}`;
   // The reason most calls rest on (the server counts each under its caller's first one).
   const reason = [...impact.callsProposed.byReason].sort((a, b) => b.count - a.count)[0]?.reason;
   const proposed = impact.callsProposed.count;
   // How many of the calls proposed anew the rules take; the rest waits for „gesammelt annehmen“.
   const taken = Math.min(impact.autoAcceptedCalls?.ofProposed ?? 0, proposed);
   const rules = autoAcceptedText(impact);
+  const placements = impact.placementsChanged?.count ?? 0;
   const lines = [
     impact.acceptedCalls.count > 0
       ? `${n(impact.acceptedCalls.count, 'Aufruf', 'Aufrufe')} automatisch verknüpft`
@@ -785,6 +801,9 @@ export function impactLines(impact: ImportImpact): string[] {
       : rules,
     impact.endpointsChanged.count > 0
       ? `${n(impact.endpointsChanged.count, 'angenommene Relation', 'angenommene Relationen')} mit geändertem oder fehlendem Endpunkt`
+      : null,
+    placements > 0
+      ? `${n(placements, 'angenommene Platzierung', 'angenommene Platzierungen')} mit geändertem oder fehlendem Prozess`
       : null,
     impact.proposalsAdded.count > 0
       ? `${n(impact.proposalsAdded.count, 'neuer Vorschlag', 'neue Vorschläge')} der Regeln zu prüfen`
@@ -798,8 +817,28 @@ export function impactLines(impact: ImportImpact): string[] {
     impact.findingsAdded.count > 0
       ? `${n(impact.findingsAdded.count, 'neuer Befund', 'neue Befunde')}`
       : null,
-  ];
-  return lines.filter((l) => l !== null).slice(0, 3);
+  ].filter((l) => l !== null);
+  const cost = agentCostText(impact, batches);
+  return cost ? [...lines.slice(0, 2), cost] : lines.slice(0, 3);
+}
+
+/** A pair judged again in „Was ändert sich?“: „Aufruf a#Call_X → b#Process_Y“. */
+export function rejudgedText(
+  r: ImportImpact['relationsTasks']['rejudged']['items'][number],
+): string {
+  return `${RELATION_TYPES[r.type].label} ${r.from} → ${r.to}`;
+}
+
+/**
+ * An accepted placement whose process changes, in „Was ändert sich?“:
+ * „lager/versand#Process_1 → „Versand“ (fehlt)“, „… → Außerhalb der Kette
+ * (geändert)“; a step without a name by its id.
+ */
+export function placementChangeText(
+  p: NonNullable<ImportImpact['placementsChanged']>['items'][number],
+): string {
+  const step = p.step === OUTSIDE_STEP ? OUTSIDE_LABEL : p.stepName ? `„${p.stepName}“` : p.step;
+  return `${p.process} → ${step} (${p.endpointState === 'missing' ? 'fehlt' : 'geändert'})`;
 }
 
 /**
@@ -812,4 +851,26 @@ export function sharedTopFolder(keys: readonly string[]): string | null {
   const firsts = new Set(keys.map((k) => (k.includes('/') ? k.slice(0, k.indexOf('/')) : null)));
   const [only] = [...firsts];
   return firsts.size === 1 && only != null ? only : null;
+}
+
+/**
+ * The note under a preview of several batches (M6 S2b): each batch is
+ * previewed against the head without the others, so a call into another
+ * batch shows as unresolved; with new models in two batches or more (a first
+ * import), the possible relations between them count in no batch, so the
+ * cost line's „etwa“ falls short, and the note says so too. `null` for one
+ * batch.
+ */
+export function batchNoteText(
+  batches: readonly (readonly { path: string }[])[],
+  outcomes: readonly { path: string; outcome: string }[],
+): string | null {
+  if (batches.length < 2) return null;
+  const created = new Set(outcomes.flatMap((o) => (o.outcome === 'created' ? [o.path] : [])));
+  const apart = batches.filter((b) => b.some((e) => created.has(e.path))).length > 1;
+  return `Vorschau je 50 Dateien; Aufrufe zwischen den Teilen erscheinen hier als unaufgelöst${
+    apart
+      ? ', mögliche Relationen zwischen neuen Modellen verschiedener Teile fehlen in der Zahl'
+      : ''
+  }.`;
 }

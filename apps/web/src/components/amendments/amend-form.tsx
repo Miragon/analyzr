@@ -757,6 +757,7 @@ export function AmendForm({
             size="sm"
             variant={confirm.armed ? 'destructive' : 'default'}
             disabled={!canSave}
+            onClick={confirm.repeated}
             aria-describedby={
               check.phase === 'ready'
                 ? confirm.claimed

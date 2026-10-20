@@ -345,6 +345,7 @@ describe('analyzr import with a hand-written manifest', () => {
       [
         'demo: dry run, nothing imported; the import would',
         `  change the facts of ${paths.length} models (${paths.length} processes added, 0 removed)`,
+        '  agent work: none',
         '  accept rule-tier calls: 2: m/f01#Call → x#P1, m/f02#Call → x#P2',
         '  propose instead of accept (trust rule): 152 (no engine 140, agent token 12), 120 of them accepted until now: m/f03#Call → x#P3, m/f04#Call → x#P4, m/f05#Call → x#P5, … 149 more',
         '  add rule proposals: 4',
@@ -352,7 +353,7 @@ describe('analyzr import with a hand-written manifest', () => {
         '  change or lose an end of accepted relations: 0',
         '  findings: 2 added, 0 resolved: unresolved-call m/f00#Call, unresolved-call m/f00#Call',
         '  not in the bundle, kept in analyzr (nothing is deleted): 1 key: alt/modell',
-        "  previewed in 2 batches, each against the project's head: a call into a later batch shows as unresolved",
+        "  previewed in 2 batches, each against the project's head: a call into a later batch shows as unresolved, and the pairs between new models of different batches are not counted",
         '',
       ].join('\n'),
     );

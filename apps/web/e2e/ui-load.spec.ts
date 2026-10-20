@@ -1,6 +1,14 @@
 import { spawn } from 'node:child_process';
-import { readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join, relative } from 'node:path';
 
 import {
   expect,
@@ -55,7 +63,9 @@ import { userPath } from './user-path';
  * outline, the panel's toggle, the phone's sheet and project link); M6
  * S2c-2's calls line on `signavio-beispiel` (its number the bulk dialog's
  * selection behind „Gesammelt annehmen“, closed without a decision; the
- * accept itself runs in `trust-calls.spec.ts` on projects of its own).
+ * accept itself runs in `trust-calls.spec.ts` on projects of its own); S2b
+ * follow-up step 3's „Vorschau“ of a re-import on `nordwind-handel` (the
+ * cost line with the pairs judged again, a dry run only, the heads kept).
  */
 
 const ROOT = join(import.meta.dirname, '../../..');
@@ -1484,6 +1494,76 @@ test('UX7: the token form shows its name and its button only; step 3 starts the 
   expect(controls, 'visible controls of the token form').toBe(UPLOAD_BUDGET.tokenFormControls);
   await expect(page.getByTestId('connect-start')).toContainText(`/analyzr:relations ${EMPTY}`);
   await measure(page, EMPTY, 'Agent verbinden', null);
+});
+
+/**
+ * S2b follow-up step 3: the „Vorschau“ of a re-import on the worked
+ * `nordwind-handel`, a dry run only. One model re-exported with other
+ * documentation of its process (its facts change), so the cost line names
+ * the pairs the agents judge again; the simulation agent finished, so no
+ * agent holds a task and no warning shows. „Abbrechen“ then, on the desktop
+ * and on a phone; the heads stay as they were.
+ */
+const REEXPORTED = 'finanzen/rechnungsstellung';
+
+test('S2b follow-up: a re-import’s „Vorschau“ names the agent work it repeats in the last of three lines, on a phone too', async ({
+  page,
+  browser,
+}) => {
+  const folder = join(mkdtempSync(join(tmpdir(), 'analyzr-ui-load-')), 'export');
+  const target = join(folder, `${REEXPORTED}.bpmn`);
+  mkdirSync(dirname(target), { recursive: true });
+  const xml = readFileSync(join(CORPUS, `${REEXPORTED}.bpmn`), 'utf8');
+  writeFileSync(
+    target,
+    xml.includes('</bpmn:documentation>')
+      ? xml.replace('</bpmn:documentation>', ' Neu exportiert.</bpmn:documentation>')
+      : xml.replace(
+          /(<bpmn:process\b[^>]*>)/,
+          '$1<bpmn:documentation>Neu exportiert.</bpmn:documentation>',
+        ),
+  );
+  const heads = async () =>
+    Object.fromEntries(
+      (await allPages<{ key: string; headRev: number }>(`/api/v1/projects/${NORDWIND}/models`)).map(
+        (m) => [m.key, m.headRev],
+      ),
+    );
+  const before = await heads();
+  async function preview(p: Page) {
+    await settle(p, `/projects/${NORDWIND}/upload`, '[data-testid=dropzone]');
+    await p.getByTestId('folder-input').setInputFiles(folder);
+    await expect(p.getByTestId('import-headline')).toHaveText('Vorschau: 1 neue Revision', {
+      timeout: 30_000,
+    });
+    // at most three lines, the cost in the last; no agent holds a task
+    const line = await p.getByTestId('preview-impact').innerText();
+    expect(line).toMatch(
+      /(^Danach: | · )[^·]*\d+ mögliche Relationen? zu beurteilen \(\d+ davon erneut\)[^·]*$/,
+    );
+    expect(line.split(' · ').length).toBeLessThanOrEqual(3);
+    await expect(p.getByTestId('preview-claimed')).toHaveCount(0);
+  }
+  await preview(page);
+  await measure(page, NORDWIND, 'Vorschau (erneuter Import)', '[data-testid=upload-preview]');
+  await page.getByTestId('preview-cancel').click();
+  await expect(page.getByTestId('upload-preview')).toHaveCount(0);
+  const phone = await mobile(browser);
+  try {
+    await preview(phone.page);
+    const m = await measure(
+      phone.page,
+      NORDWIND,
+      'Vorschau (erneuter Import)',
+      '[data-testid=upload-preview]',
+    );
+    expect(m.scrollWidth, 'no horizontal scroll on a phone').toBeLessThanOrEqual(m.width);
+    await phone.page.getByTestId('preview-cancel').click();
+    await expect(phone.page.getByTestId('upload-preview')).toHaveCount(0);
+  } finally {
+    await phone.context.close();
+  }
+  expect(await heads()).toEqual(before);
 });
 
 // ------------------------------------------------------------------ question actions (UX4)

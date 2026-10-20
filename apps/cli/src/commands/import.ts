@@ -15,6 +15,7 @@ import {
   IMPORT_MANIFEST_FILE,
   MAX_AUTO_ACCEPT_NAME_CHARS,
   MAX_PAGE_LIMIT,
+  OUTSIDE_STEP,
   bpmnSuffixOf,
   isBulkDerivedCall,
   modelKeyFromPath,
@@ -258,22 +259,117 @@ function trustLine(impact: ImportImpact): string | null {
   );
 }
 
+/** Examples a dry run's line names, the rest counted. */
+const SAMPLED = 5;
+
+/** `a, b, c, … 2 more` of a capped list: at most {@link SAMPLED} items, then the rest counted. */
+function named(items: readonly string[], count: number, separator = ', '): string {
+  const shown = items.slice(0, SAMPLED);
+  return `${shown.join(separator)}${count > shown.length ? `${separator}… ${count - shown.length} more` : ''}`;
+}
+
+/**
+ * The placement task's part of the agent work (S2b follow-up, a project with
+ * a live chain): what the write's `queuePlacementTask` does and the
+ * processes it places for the write, as the web's „Vorschau“ counts them
+ * (`processesToPlace` in `apps/web/src/lib/agent-cost.ts`): a task the write
+ * queues places every process due, also those due before (a deletion
+ * queues no task); one waiting or held places the newly due ones (`again`,
+ * those an agent had placed), and the line adds all that are due then;
+ * `null` when the write does not trigger it (no file changes facts) or the
+ * project has no chain.
+ */
+function placementWork(task: ImportImpact['placementTask'], about: string): string | null {
+  if (!task || task.outcome === 'not-triggered') return null;
+  if (task.outcome === 'nothing-due') return 'placement task: nothing due';
+  // The claim an agent holds is never cancelled: its submission queues the follow-up for these.
+  const where = task.outcome === 'deferred' ? ' in its follow-up' : '';
+  // Never below `newlyDue`: across batches `due` is the largest batch's, `newlyDue` their sum.
+  const place = task.outcome === 'queued' ? Math.max(task.due, task.newlyDue) : task.newlyDue;
+  const text =
+    place > 0
+      ? `${about}${plural(place, 'process', 'processes')} to place${where}${task.again > 0 ? ` (${task.again} again)` : ''}`
+      : `nothing new to place${where}`;
+  const all =
+    task.outcome !== 'queued' && task.due > place ? `, ${about}${task.due} due in all` : '';
+  const what =
+    task.outcome === 'deferred'
+      ? 'an agent holds it;'
+      : task.outcome === 'open'
+        ? 'already queued,'
+        : 'queued,';
+  return `placement task: ${what} ${text}${all}`;
+}
+
+/**
+ * `agent work: queue 3 relations tasks, 214 pairs to judge (56 judged
+ * again); placement task: queued, 7 processes to place (5 again)` (S2b
+ * follow-up): the relations tasks the write queues and the pairs agents then
+ * judge (an upper bound while other models' tasks wait; the pairs judged
+ * again are the reliable part), and the placement task; `about` for counts
+ * that several batches add up, each against the head (a pair between two
+ * models of the head in two batches counts in both, one between new models
+ * of two batches in neither: the batch line says so).
+ */
+function agentWorkLine(impact: ImportImpact, batches: number): string {
+  const about = batches > 1 ? 'about ' : '';
+  const { queued, pairs, rejudged } = impact.relationsTasks;
+  const relations =
+    queued.count > 0
+      ? `queue ${plural(queued.count, 'relations task')}, ${pairs > 0 ? about : ''}${plural(pairs, 'pair')} to judge${rejudged.count > 0 ? ` (${rejudged.count} judged again)` : ''}`
+      : null;
+  const placement = placementWork(impact.placementTask, about);
+  if (relations === null && placement === null) return '  agent work: none';
+  return `  agent work: ${[relations ?? 'no relations task', placement].filter((p) => p !== null).join('; ')}`;
+}
+
+/**
+ * `cancel relations tasks: 2 (vertrieb/auftrag claimed by agent:claude, 34
+ * pairs assigned; finanzen/rechnung queued)` and, while agents hold some of
+ * them, the warning in `costLines`' words (`models amend`): their work is
+ * lost. Nothing when the write cancels no task.
+ */
+function cancelLines(tasks: ImportImpact['relationsTasks']): string[] {
+  const { cancelled, claimed } = tasks;
+  if (cancelled.count === 0) return [];
+  const items = cancelled.items.map((t) =>
+    t.state === 'claimed'
+      ? `${t.modelKey} claimed by ${t.claimedBy ?? 'an agent'}${t.assigned === null ? '' : `, ${plural(t.assigned, 'pair')} assigned`}`
+      : `${t.modelKey} queued`,
+  );
+  const lines = [
+    `  cancel relations tasks: ${cancelled.count} (${named(items, cancelled.count, '; ')})`,
+  ];
+  const keys = cancelled.items.filter((t) => t.state === 'claimed').map((t) => t.modelKey);
+  if (claimed === 1) {
+    lines.push(
+      `  warning: an agent is working on the relations task of ${keys[0] ?? 'one of these models'} right now; the import cancels the task and the agent's work is lost`,
+    );
+  } else if (claimed > 1) {
+    lines.push(
+      `  warning: agents are working on the relations tasks of ${claimed} of these models right now (${named(keys, claimed)}); the import cancels them and their work is lost`,
+    );
+  }
+  return lines;
+}
+
 /**
  * A dry run's impact as text (M6 §3.5): the files whose model changes, the
- * rule-tier calls accepted, the unique calls of derived models only proposed
- * (M6 S2c, the trust rule; when there are any), the rule proposals added and
- * the stances withdrawn, accepted relations whose end changes or goes
- * missing, the findings, and the keys the bundle does not name (nothing is
- * deleted); up to five examples each. A preview of several batches says
- * that a call into a later batch shows as unresolved.
+ * agent work the import sets off (S2b follow-up: the relations tasks queued
+ * and the pairs to judge, the placement task) and the tasks it cancels,
+ * with a warning for those an agent holds, the rule-tier calls accepted, the
+ * unique calls of derived models only proposed (M6 S2c, the trust rule; when
+ * there are any), the rule proposals added and the stances withdrawn,
+ * accepted relations whose end changes or goes missing, accepted placements
+ * whose process does (with a live chain), the findings, and the keys the
+ * bundle does not name (nothing is deleted); up to five examples each. A
+ * preview of several batches says that a call into a later batch shows as
+ * unresolved and the pairs between new models of different batches are not
+ * counted, and its counts of agent work are "about".
  */
 export function formatImpact(impact: ImportImpact, project: string, batches = 1): string {
-  const sample = (items: readonly string[], count: number) => {
-    const shown = items.slice(0, 5);
-    return shown.length === 0
-      ? ''
-      : `: ${shown.join(', ')}${count > shown.length ? `, … ${count - shown.length} more` : ''}`;
-  };
+  const sample = (items: readonly string[], count: number) =>
+    items.length === 0 ? '' : `: ${named(items, count)}`;
   const added = impact.files.reduce((n, f) => n + f.processesAdded.length, 0);
   const removed = impact.files.reduce((n, f) => n + f.processesRemoved.length, 0);
   const lines = [`${project}: dry run, nothing imported; the import would`];
@@ -281,6 +377,7 @@ export function formatImpact(impact: ImportImpact, project: string, batches = 1)
   lines.push(
     `  change the facts of ${plural(changed, 'model')} (${added} processes added, ${removed} removed)`,
   );
+  lines.push(agentWorkLine(impact, batches), ...cancelLines(impact.relationsTasks));
   const list = (label: string, l: { count: number; items: { from: string; to: string }[] }) =>
     lines.push(`  ${label} ${l.count}${sample(l.items.map(arrow), l.count)}`);
   list('accept rule-tier calls:', impact.acceptedCalls);
@@ -306,6 +403,18 @@ export function formatImpact(impact: ImportImpact, project: string, batches = 1)
       impact.endpointsChanged.count,
     )}`,
   );
+  const placements = impact.placementsChanged;
+  if (placements && placements.count > 0) {
+    lines.push(
+      `  change or lose the process of accepted placements: ${placements.count}${sample(
+        placements.items.map(
+          (p) =>
+            `${p.process} on ${p.step === OUTSIDE_STEP || p.stepName === null ? p.step : JSON.stringify(p.stepName)} (${p.endpointState})`,
+        ),
+        placements.count,
+      )}`,
+    );
+  }
   lines.push(
     `  findings: ${impact.findingsAdded.count} added, ${impact.findingsResolved.count} resolved${sample(
       impact.findingsAdded.items.map((f) => `${f.kind} ${f.refs[0] ?? ''}`),
@@ -319,7 +428,7 @@ export function formatImpact(impact: ImportImpact, project: string, batches = 1)
   }
   if (batches > 1) {
     lines.push(
-      `  previewed in ${batches} batches, each against the project's head: a call into a later batch shows as unresolved`,
+      `  previewed in ${batches} batches, each against the project's head: a call into a later batch shows as unresolved, and the pairs between new models of different batches are not counted`,
     );
   }
   return `${lines.join('\n')}\n`;

@@ -22,7 +22,9 @@ import { build, type Plugin, type UserConfig } from 'vite';
  *    model amendments (M6 S5c-2: the amend form with its inline dry run since
  *    UX4, the model view's „Ergänzen“ with its history, the header's badge
  *    and „Mehr“, the change list), which load with the tab and the model
- *    view's own lazy module.
+ *    view's own lazy module; the agent work's words and the second click
+ *    they share with the „Vorschau“ (`lib/agent-cost.ts`, S2b follow-up)
+ *    are in the entry, `amendments.ts` re-exports them.
  *    Of `@analyzr/contracts`, only the zod-free `paths.ts` (the upload's file
  *    rule, M6 S1), `impact-merge.ts` (the „Vorschau“'s merge of its batches,
  *    shared with the CLI, M6 S2b follow-up), `open-question-labels.ts` (M6
@@ -128,7 +130,13 @@ const BUDGET = 40 * 1024;
  * S2b follow-up's step 1 (2026-10-20): the batches' merge is the contracts'
  * zod-free `impact-merge.ts` (shared with the CLI), with the relations
  * tasks' merge, in place of the web's own. 226.6 KB after its step 2: the
- * merge of the value chain's part (placements, placement task).
+ * merge of the value chain's part (placements, placement task). 227.6 KB
+ * after its step 3 (227.4 KB before its review fixes: the batch note's
+ * pairs, the lists only with items, a double click arming only): the
+ * „Vorschau“'s cost line, its placements line and the two lists in „Was
+ * ändert sich?“, the warning for a claimed relations task with the second
+ * click („Trotzdem importieren“), in `lib/agent-cost.ts` with the second
+ * click the amend form now shares.
  */
 const ENTRY_CEILING = 240 * 1024;
 
@@ -355,8 +363,10 @@ describe('web bundle (M4 §5 bundle guard)', { timeout: 120_000 }, () => {
     // M6 S4 and S5a: the tab „Offene Fragen“, the model view's section and the answer
     // dialogs load lazily as well.
     expect(mainModules.filter(isOpenQuestionsModule).map((id) => relative(WEB, id))).toEqual([]);
-    // M6 S5c-2: the amendments' form, section, bar and downloads load lazily too.
+    // M6 S5c-2: the amendments' form, section, bar and downloads load lazily too; the words of
+    // the agent work they share with the „Vorschau“ (S2b follow-up) come with the entry.
     expect(mainModules.filter(isAmendmentsModule).map((id) => relative(WEB, id))).toEqual([]);
+    expect(mainModules).toContain(join(WEB, 'src/lib/agent-cost.ts'));
     expect(ids.some(isAmendmentsModule)).toBe(true);
     expect(
       chunks.some(

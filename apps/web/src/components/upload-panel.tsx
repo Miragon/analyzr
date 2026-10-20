@@ -19,15 +19,17 @@ import {
   FileUpIcon,
   FolderUpIcon,
   RefreshCwIcon,
+  TriangleAlertIcon,
   type LucideIcon,
 } from 'lucide-react';
-import { useRef, useState, type DragEvent, type ReactNode } from 'react';
+import { useId, useRef, useState, type DragEvent, type MouseEvent, type ReactNode } from 'react';
 
 import { AgentStart } from '@/components/agent-start';
 import { ToneBadge } from '@/components/badges';
 import { CopyButton } from '@/components/copy-button';
 import { TechnicalDetails } from '@/components/error-text';
 import { toast } from '@/lib/toast';
+import { claimedImportWarning, useSecondClick } from '@/lib/agent-cost';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -58,6 +60,7 @@ import {
   INTEGRATE_SKILL,
   amendmentCountsText,
   askNowText,
+  batchNoteText,
   callsWaitingText,
   entriesFromDataTransfer,
   entriesFromFileList,
@@ -68,9 +71,11 @@ import {
   impactLines,
   isSkippedXml,
   mergeImpacts,
+  placementChangeText,
   planUpload,
   previewHeadline,
   problemDetail,
+  rejudgedText,
   sharedTopFolder,
   skippedGroupText,
   skippedReasonText,
@@ -437,7 +442,6 @@ const arrow = (r: { from: string; to: string }) => `${r.from} → ${r.to}`;
 
 /** One capped list of „Was ändert sich?“, with its count. */
 function ImpactList({ title, list }: { title: string; list: { count: number; items: string[] } }) {
-  if (list.count === 0) return null;
   return (
     <div data-testid="preview-list">
       <p className="text-muted-foreground">
@@ -455,28 +459,93 @@ function ImpactList({ title, list }: { title: string; list: { count: number; ite
   );
 }
 
+/** The capped lists of „Was ändert sich?“ in their order, empty ones included. */
+function impactLists(impact: ImportImpact): { title: string; count: number; items: string[] }[] {
+  return [
+    {
+      title: 'Automatisch verknüpfte Aufrufe',
+      count: impact.acceptedCalls.count,
+      items: impact.acceptedCalls.items.map(arrow),
+    },
+    {
+      title: 'Aufrufe als Vorschlag',
+      count: impact.callsProposed.count,
+      items: impact.callsProposed.items.map(
+        (r) => `${arrow(r)}${r.wasAccepted ? ' (bisher angenommen)' : ''}`,
+      ),
+    },
+    {
+      title: 'Angenommene Relationen mit geändertem oder fehlendem Endpunkt',
+      count: impact.endpointsChanged.count,
+      items: impact.endpointsChanged.items.map(
+        (r) => `${arrow(r)} (${r.endpointState === 'missing' ? 'fehlt' : 'geändert'})`,
+      ),
+    },
+    {
+      title: 'Angenommene Platzierungen mit geändertem oder fehlendem Prozess',
+      count: impact.placementsChanged?.count ?? 0,
+      items: (impact.placementsChanged?.items ?? []).map(placementChangeText),
+    },
+    {
+      title: 'Neue Vorschläge der Regeln',
+      count: impact.proposalsAdded.count,
+      items: impact.proposalsAdded.items.map(arrow),
+    },
+    {
+      title: 'Zurückgezogene Vorschläge der Regeln',
+      count: impact.proposalsWithdrawn.count,
+      items: impact.proposalsWithdrawn.items.map(arrow),
+    },
+    {
+      title: 'Modelle des Quellsystems, die nicht im Bundle sind (bleiben erhalten)',
+      ...impact.absentKeys,
+    },
+    {
+      title: 'Neue Befunde',
+      count: impact.findingsAdded.count,
+      items: impact.findingsAdded.items.map((f) => f.detail),
+    },
+    {
+      title: 'Mögliche Relationen, die erneut beurteilt werden',
+      count: impact.relationsTasks.rejudged.count,
+      items: impact.relationsTasks.rejudged.items.map(rejudgedText),
+    },
+  ];
+}
+
 /**
  * The preview's box (UX-SIMPLIFICATION.md §6, M6 S2b): at most three lines of
- * what the import would change, the capped lists behind „Was ändert sich?“,
- * the hint when every key starts with one folder (keys are fixed for good),
- * the note for a preview of several batches, then „Importieren“ and
- * „Abbrechen“.
+ * what the import would change (since S2b's follow-up the last one the agent
+ * work it sets off), the capped lists behind „Was ändert sich?“ (only when
+ * one has items: the cost line's pairs have none), the hint when every key
+ * starts with one folder (keys are fixed for good), the note for a preview
+ * of several batches, the warning when the import cancels relations tasks
+ * an agent holds (then without the „keine Änderung“ fallback), then
+ * „Importieren“ (while that warning shows, `armed` after the first click:
+ * „Trotzdem importieren“) and „Abbrechen“.
  */
 function PreviewBox({
   run,
   batches,
+  batchNote,
   canImport,
+  armed,
   onImport,
   onCancel,
 }: {
   run: UploadRun;
   batches: number;
+  batchNote: string | null;
   canImport: boolean;
-  onImport: () => void;
+  armed: boolean;
+  onImport: (event: MouseEvent<HTMLButtonElement>) => void;
   onCancel: () => void;
 }) {
+  const claimedId = useId();
   const impact = run.impact;
-  const lines = impact ? impactLines(impact) : [];
+  const lines = impact ? impactLines(impact, batches) : [];
+  const lists = impact ? impactLists(impact).filter((l) => l.count > 0) : [];
+  const warning = impact ? claimedImportWarning(impact.relationsTasks) : null;
   const keys = run.outcomes.flatMap((o) =>
     o.outcome !== 'failed' && o.modelKey ? [o.modelKey] : [],
   );
@@ -490,7 +559,7 @@ function PreviewBox({
       {impact ? (
         lines.length > 0 ? (
           <p data-testid="preview-impact">Danach: {lines.join(' · ')}</p>
-        ) : (
+        ) : warning ? null : (
           <p data-testid="preview-impact">Danach: keine Änderung an Relationen und Befunden.</p>
         )
       ) : null}
@@ -500,73 +569,38 @@ function PreviewBox({
           Namen sein soll.
         </p>
       ) : null}
-      {batches > 1 ? (
+      {batchNote ? (
         <p className="text-muted-foreground" data-testid="preview-batches">
-          Vorschau je 50 Dateien; Aufrufe zwischen den Teilen erscheinen hier als unaufgelöst.
+          {batchNote}
         </p>
       ) : null}
-      {impact && lines.length > 0 ? (
+      {lists.length > 0 ? (
         <details className="w-full" data-testid="preview-details">
           <summary className="cursor-pointer text-muted-foreground">Was ändert sich?</summary>
           <div className="mt-2 flex flex-col gap-2">
-            <ImpactList
-              title="Automatisch verknüpfte Aufrufe"
-              list={{
-                count: impact.acceptedCalls.count,
-                items: impact.acceptedCalls.items.map(arrow),
-              }}
-            />
-            <ImpactList
-              title="Aufrufe als Vorschlag"
-              list={{
-                count: impact.callsProposed.count,
-                items: impact.callsProposed.items.map(
-                  (r) => `${arrow(r)}${r.wasAccepted ? ' (bisher angenommen)' : ''}`,
-                ),
-              }}
-            />
-            <ImpactList
-              title="Angenommene Relationen mit geändertem oder fehlendem Endpunkt"
-              list={{
-                count: impact.endpointsChanged.count,
-                items: impact.endpointsChanged.items.map(
-                  (r) => `${arrow(r)} (${r.endpointState === 'missing' ? 'fehlt' : 'geändert'})`,
-                ),
-              }}
-            />
-            <ImpactList
-              title="Neue Vorschläge der Regeln"
-              list={{
-                count: impact.proposalsAdded.count,
-                items: impact.proposalsAdded.items.map(arrow),
-              }}
-            />
-            <ImpactList
-              title="Zurückgezogene Vorschläge der Regeln"
-              list={{
-                count: impact.proposalsWithdrawn.count,
-                items: impact.proposalsWithdrawn.items.map(arrow),
-              }}
-            />
-            <ImpactList
-              title="Modelle des Quellsystems, die nicht im Bundle sind (bleiben erhalten)"
-              list={impact.absentKeys}
-            />
-            <ImpactList
-              title="Neue Befunde"
-              list={{
-                count: impact.findingsAdded.count,
-                items: impact.findingsAdded.items.map((f) => f.detail),
-              }}
-            />
+            {lists.map((l) => (
+              <ImpactList key={l.title} title={l.title} list={l} />
+            ))}
           </div>
         </details>
       ) : null}
+      {warning ? (
+        <Alert variant="destructive" id={claimedId} data-testid="preview-claimed">
+          <TriangleAlertIcon />
+          <AlertTitle>{warning.title}</AlertTitle>
+          <AlertDescription>{warning.description}</AlertDescription>
+        </Alert>
+      ) : null}
       <div className="flex flex-wrap gap-2">
         {canImport ? (
-          <Button onClick={onImport} data-testid="preview-import">
+          <Button
+            variant={armed ? 'destructive' : 'default'}
+            onClick={onImport}
+            aria-describedby={warning ? claimedId : undefined}
+            data-testid="preview-import"
+          >
             <FileUpIcon data-icon="inline-start" />
-            Importieren
+            {armed ? 'Trotzdem importieren' : 'Importieren'}
           </Button>
         ) : null}
         <Button variant="outline" onClick={onCancel} data-testid="preview-cancel">
@@ -628,6 +662,9 @@ export function UploadPanel({
   /** A bundle whose manifest stopped the upload before anything was sent. */
   const [refused, setRefused] = useState<Extract<ManifestRead, { kind: 'refused' }> | null>(null);
   const busy = run !== null && !run.done;
+  // S2b follow-up: an import that cancels relations tasks an agent holds asks a second time; a
+  // new preview (a new `pending`) disarms.
+  const second = useSecondClick((run?.impact?.relationsTasks.claimed ?? 0) > 0, pending);
 
   async function upload(entries: UploadEntry[]) {
     if (busy) return;
@@ -898,8 +935,12 @@ export function UploadPanel({
             <PreviewBox
               run={run}
               batches={pending?.plan.batches.length ?? 1}
+              batchNote={pending ? batchNoteText(pending.plan.batches, run.outcomes) : null}
               canImport={pending !== null}
-              onImport={() => void confirm()}
+              armed={second.armed}
+              onImport={(event) => {
+                if (!second.repeated(event) && second.confirm()) void confirm();
+              }}
               onCancel={() => {
                 setPending(null);
                 setRun(null);

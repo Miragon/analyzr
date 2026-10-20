@@ -173,7 +173,8 @@ and code are in English.
   the pure `importImpact` with the dry runs `POST …/imports?dryRun=true` and `PUT …?dryRun=true`
   (permission `read`) and `GET …/models/{m}/deletion-impact`, `analyzr import --dry-run` and the
   deletion impact in `analyzr models delete`, and the web's „Vorschau“ before „Importieren“; of
-  the follow-up (judgements, tasks, placements) steps 1 and 2 are done (below), the rest open;
+  the follow-up (judgements, tasks, placements, then their surfaces) steps 1 to 3 are done
+  (below), the rest open;
   live-run neutral. **UX3 „Modellansicht“**
   (done 2026-10-18 on the branch, every gate green, the UI load guard and the whole Playwright
   suite against a scratch stack; UX-SIMPLIFICATION.md §7 "UX3 as delivered"): the shared canvas
@@ -309,13 +310,31 @@ and code are in English.
   live-run neutral. The e2e run found an older web race, fixed with it: an owner who clicked
   „Agent starten“ before their agent tokens had loaded got a toast and no popover (`RetryAgent`
   now opens it once the tokens are known).
+  **M6 S2b follow-up step 3 "The surfaces"** (done 2026-10-20 on the branch, every gate green with
+  a review round's fixes, 12 of 14 points fixed; M6 §8 "S2b follow-up step 3 as delivered";
+  DEVELOPMENT.md "M6 S2b follow-up step 3 (2026-10-20)"; UX-SIMPLIFICATION.md §6): the agent work
+  of a dry run reaches the screens. The „Vorschau“'s last line names it, on a first import too
+  („214 mögliche Relationen zu beurteilen (56 davon erneut), 7 Prozesse zu platzieren“, „etwa“ for
+  more than one batch); a placements line and two lists in „Was ändert sich?“ (the placements
+  losing their process, the pairs judged again); while the import cancels a relations task an
+  agent holds, the warning „Ein Agent bearbeitet „vertrieb/auftrag“ gerade; seine Arbeit geht
+  verloren.“ and a second click („Trotzdem importieren“; a double click arms only, also in the
+  amend form and the action panel); the batch note says on a first import that the pairs between
+  new models of different batches are missing from the number. `analyzr import --dry-run` prints
+  `agent work: …`, the tasks it cancels with a `warning:` and the placements line;
+  `analyzr models delete` lists the task cancelled, the placements losing their process and the
+  processes made due, with the requeue hint once. For the first analysis: before „Importieren“
+  the consultant sees how much agent work an import sets off, which it repeats and whether it
+  destroys an agent's running work, so imports can be timed and batched without losing agent
+  runs. Web and CLI only (no route, no migration, no contract change), live-run neutral; the
+  readings taken are in §4 ("Taken during the M6 S2b follow-up step 3"); the e2e run: the full
+  Playwright suite 111 passed and 21 skipped, the demo check 152 of 152, `demo.spec.ts` 14 of 14.
   **Owner decision 29** (2026-10-20, §4): M6 §10.10 decided (identity rows), and the integrate
   skill's pre-approved preview becomes a bundled read-only script, not a CLI pattern. **Next:**
-  the rest of S2b's follow-up: step 3 (the surfaces: the „Vorschau“'s cost line with the
-  placement part, the placements line and list, the claimed-task warning with a second click, the
-  CLI's lines, the deletion listing), optionally 3b (`ProjectSummary.pairsToJudge` in „Als
-  Nächstes“), step 4 (the integrate plugin 0.1.3: the key-map rebuild, `analyzr-read.mjs`,
-  `exporterVersion`), step 5 (decision 29 (1)'s identity rows); then S3c (renderer and spec YAML,
+  the rest of S2b's follow-up: optionally step 3b (`ProjectSummary.pairsToJudge` in „Als
+  Nächstes“, the first run's size a preview in batches cannot give), step 4 (the integrate plugin
+  0.1.3: the key-map rebuild, `analyzr-read.mjs`, `exporterVersion`), step 5 (decision 29 (1)'s
+  identity rows); then S3c (renderer and spec YAML,
   the ad-hoc converter path, the bundled CLI), then S6 (interviews); after the owner's live runs
   S5b, S7 and facts v2 as recommended (§7 "M6"; M6 §8 "After S2a").
 
@@ -759,6 +778,33 @@ trigger or a requeue); (h) a non-owner's preview leaves out the neighbours of th
 rules for derived calls would accept, so its `due` can be too low (no rule data outside an
 owner's preview; the counterpart of step 1's (c)).
 
+**Taken during the M6 S2b follow-up step 3 by the lead agent, on the implementing agent's and the
+review round's open points (the owner may overrule each; details in M6 §8 "S2b follow-up step 3 as
+delivered" and UX-SIMPLIFICATION.md §6):** (a) „N Prozesse zu platzieren“ counts, for a placement
+task the import queues (`queued`), every process due (`max(due, newlyDue)`: it places them all,
+also those a deletion made due without queuing a task), and for one waiting (`open`) or held by an
+agent (`deferred`) the newly due ones (the waiting task covers the rest anyway); the CLI counts the
+same and adds "N due in all" only for `open` and `deferred`; (b) the cost line always takes the
+last of the three lines, on a first import too, so it can push the endpoints or the placements line
+into „Was ändert sich?“ (the order UX-SIMPLIFICATION.md §6 planned, the agent work in the last of
+the three lines; the UX review asked to confirm it, the lead kept it: the human decisions it
+pushes still show in the list); (c) „etwa“ / "about" stays across batches,
+and the batch note names the gap on a first import (the web only when new models lie in two or
+more batches, the CLI always): „…, mögliche Relationen zwischen neuen Modellen verschiedener Teile
+fehlen in der Zahl.“; step 3b's backlog count is the full fix; (d) the second click comes only
+with the claimed-task warning; „Abbrechen“ closes the preview as before (which disarms), a new
+preview disarms, and a double click arms only, in all three places that ask a second time (the
+„Vorschau“, the amend form, the action panel); (e) the warning for several models names at most
+three, then „und N weitere“, and shows no handle and no lease (as the amend form); (f) the fallback
+„Danach: keine Änderung an Relationen und Befunden.“ is hidden while the warning shows; (g) no
+screen-reader live region when the button arms (not a regression, the amend form has none either;
+it would go into all three places at once, so it is left open for you, §8); (h) the relations part
+of the cost line shows only when `pairs` is above 0, and there is no list of all pairs to judge
+and none of the processes to place (the impact carries counts only); the pairs judged again are
+listed; (i) the CLI shows an accepted placement on `@outside` or on a step without a name by the
+step id (`on @outside`), and `analyzr models delete` prints the requeue hint once after the
+listing, also when a task already waits ("… queues it unless one waits").
+
 ## 5. What exists
 
 | Path | Content |
@@ -773,8 +819,8 @@ owner's preview; the counterpart of step 1's (c)).
 | `tools/integrate` | `@analyzr/integrate` (M6 S3b, decision 24.8): the sources and tests of the integrate plugin's scripts (`inspect`, `normalize-bpmn` with `file`, `plan`, `bundle`, `inventory`), bundled by `pnpm --filter @analyzr/integrate generate` with a drift test; a synthetic Signavio-style export and its golden bundle, which the CLI and web tests import; imported by nothing in `apps/` or `packages/` |
 | `examples/agents` | reference setups: Claude Code (interactive and `run-headless.sh [--skill placements]`), Claude Desktop (configs + German start prompts for relations, placements and drafting a chain), Codex; documentation, not in the image |
 | `apps/server` | Hono server: domain (pure, dependency-cruiser enforced), Drizzle/PostgreSQL, REST `/api/v1`, MCP `/mcp` (stateless Streamable HTTP), local mode, agent tokens, pipeline, review; since M4 S1/S2 the value chain and placements (`src/domain/value-chain/`: storage, lifecycle, `prepareRevision`, rule proposals, findings; REST under `/value-chains`, six MCP tools; the web page since S3); since decision 19 the owner's auto-accept rules (`src/domain/auto-accept/`, seven owner-only routes and the ledger for every reviewer, no MCP); since M6 S4 the open questions (`src/domain/open-questions/`: one read model over findings, chain findings, holds, agents' questions, unsure verdicts, coded no-links, summaries and unjudged pairs plus the gap signals, computed on read; `GET …/open-questions` and `…/open-questions/export?format=markdown\|csv`, permission `read`; no MCP until S7); since M6 S5a the answers (the append-only `open_question_answer`, migrations 0011/0012; `POST …/open-questions/{q}/answers` and `…/open-questions/answers?dryRun=`, permission `review`, humans only; on a relation or placement a human note through the note use cases); since M6 S5c-1 the actions (`open-questions/actions.ts`, pure: each item's actions, R1 and R1b, what a link writes or accepts; `POST …/open-questions/{q}/actions` for link, place, choose copy and the outside mark, `…/answers/{a}/withdrawal`, permission `review`, humans only; the append-only `open_question_answer_withdrawal`, migrations 0013/0014; items versioned by what they ask about; the safeguard `competing-call` also counts a human's manual link from the call element to another target); since M6 S5c-2 the model amendments (`src/domain/amendments/`, pure: planning against the uploaded revision, the fields a human may set, derivation, effect and cost, the change list; the append-only `model_amendment` and `model_amendment_withdrawal`, migrations 0015/0016; uploaded plus amended revisions with the plan on the head; the routes of tag `amendments`, `review` and `write`, humans only; the open question `amendment-conflict`); since M6 S2a provenance and stable identity (`src/domain/provenance.ts`, pure: the manifest checked, the uploaded revision's declared `source`, the import warnings, the `external-ids` list; readers follow an amended head's `source.upstream`, or the newest revision a manifest declared; `model_revision.extract_warnings`, migration 0017; the open question `extractor-loss`); since UX2a (decision 26) the open questions' groups (`group` on every item from a `Record` over the kinds: `ask` „Zu klären“, `agent`, `proposal`, `info`; the repeatable `group` filter; `totals` and `askByModel` on every page), the question first with its reason apart (`text`, `detail`), the customer export in plain German (dated, „Betrifft“, no folder, the id only in HTML comments, the CSV column `Ansprechpartner`, `ask` by default under the old file name); since the first wave's review an agent's coded no-link joins the rule tier's item about the same gap (read model only) and a primary link reads „Verknüpfen mit …“; since M6 S2c-1 the trust rule (`src/domain/trust.ts`, pure: the class stored on every uploaded revision as `source.trust`, a unique call of a derived caller proposed at 0.9 instead of accepted, a call target set in analyzr modelled; `callsProposed` in the dry runs, the import warning `trust-kept`; no migration, no MCP; since S2c-2 the system rule counts only the calls a bulk accept takes, the contracts' `isBulkDerivedCall`; since S2c-3 the owners' rules for derived calls: `proposedBy`, `derivedKind` and `converter` on the rule revisions with migration 0018, the safeguards `agent-upload` (every rule) and `amendment-conflict`, the fifth write path `autoAcceptDerivedCalls` after the recompute of an import, an amendment write or a deletion, `ImportImpact.autoAcceptedCalls` for owners, `derivedGroups` in the preview; since S2c-4 the owner's review of the acceptances from before S2c, „Vor der Vertrauensregel angenommen“: `src/domain/use-cases/trust-review.ts`, `preTrustAcceptances` and `storedTrust` in `trust.ts`, the append-only `revision_trust_review` with migrations 0019/0020, `GET …/pre-trust-calls` and `POST …/pre-trust-calls/review?dryRun=`, owners only, the event `revision.trust_reviewed`); since M6 S2b the dry runs and the deletion impact (the pure `src/domain/import-impact.ts` over `planRecompute`, permission `read`, nothing written), since its follow-up step 1 with the relations tasks the write would queue and cancel (the pure `src/domain/queue-plan.ts`, which the write's `queueAnalysis` shares), the pairs agents then judge and those judged again (`pairsToJudge`, `judgementShift` in `judgements.ts`), and the amendment cost counted the same way; since step 2, with a live value chain, the accepted placements whose process the write changes or removes and the placement task's outcome with the processes due, newly due and placed again (the pure `src/domain/value-chain/model-impact.ts` over the pipeline's pure `pipelineInputs`, which `loadPipelineInputs` shares; the rule tier planned by `planRulePlacements`, which the write's `recomputeRulePlacements` shares; one stored fact order, `src/domain/fact-order.ts`) |
-| `apps/cli` | `analyzr health / status / import (reads analyzr-import.json since M6 S2a) / seed [--project --issue-tokens --token-name --value-chains] / models list\|requeue\|delete\|external-ids [--system] / questions [list] [--model --kind --source --ask-who --state --group (since UX2a) --format text\|md\|csv\|json -o] / questions answer <id> --text \| --from <csv> [--dry-run] (notes; `--kind` refused since M6 S5c-1) / questions outside <id> [--note] [--undo <answer>] / questions link <id> --to <target>… \| --pair <from> <to> [--note] / questions place <id> --step <id>\|@outside \| --process <target> [--note] / questions amend <id> / models amend <key> --element <id> … \| pull <key> [--original] / amendments list\|export\|withdraw [--rev] / token create\|list\|revoke / value-chain push\|pull / rules list\|show\|add\|edit\|enable\|disable\|preview\|apply\|revoke [--derived …] / rules pre-trust [--model] [--revoke\|--keep] / mcp` (stdio bridge; `rules add --derived` since M6 S2c-3, `rules pre-trust` since S2c-4) |
-| `apps/web` | projects, models, relations, findings, bpmn-js model view, upload, connect-an-agent, inbox, review screen; since M4 S3 the value chain page (`/projects/{key}/value-chain`: renderer viewer/modeler in a lazy chunk, placement review, save with dry run and conflict, drafts, link editing) and the step view; since decision 19 the tab „Regeln“ (auto-accept rules with live preview, apply, revoke) and the marks and filters of auto-accepted items in the review views, since M6 S2c-3 with the third „Art“ „Eindeutige Aufrufe aus abgeleiteten Modellen“ (offered by the bulk toast after accepting such calls) and the „Vorschau“ line naming what an owner's rules take at once, since M6 S2c-4 with the system rule's line „… vor der Vertrauensregel angenommen – prüfen…“ and its dialog („Behalten“, „Zurück in die Prüfung“); since M6 S4 the tab „Offene Fragen“ (every gap as a question, filters, Markdown and CSV export) and the model view's section of the same name, since M6 S5a with „Antworten aus CSV übernehmen“ (a preview first) for reviewers, since M6 S5c-1 with an action on every question (pickers, inline decisions, the outside mark, „Rückgängig“) and „Notiz hinzufügen“ instead of S5a's „Beantworten“, and „Verknüpfen mit …“ on a collapsed subprocess in the model view; since M6 S5c-2 the amend form at a question with „Sammeln“ and its bar, the conflicts with both values side by side, „Ergänzen“ in the model view with history, overlay, badge and both BPMN downloads, every withdrawal after its cost, and the change list in the models tab; since M6 S2a the open-question kind „Elemente beim Import verloren“ (S2a's „Herkunft“, badges and the manifest of a dropped folder come with the UI simplification); since UX1 (decision 26) the shell of four object tabs („Übersicht“, „Relationen“, „Wertschöpfungskette“, „Offene Fragen“, badges from one hook), „Hochladen“ as a button, the owners' menu „Einstellungen“ („Agent verbinden“, „Annahmeregeln“, the former tab „Regeln“), the list „Befunde“ behind a link in „Offene Fragen“, „Übersicht“ with „Als Nächstes“, the popover „Agent starten“, the export hub, search, phase chips and „Offene Punkte“, failed writes in German, the server banner only on trouble; since UX2b „Offene Fragen“ as lean cards „Zu klären“ (the badge's number) with one intro line, three filters, „Zur Information“ and „Erledigte zeigen“ closed, the agents' questions on their proposals, the dialog „Für den Kunden exportieren …“ and a hold answered in one dialog from its card, its „Vorgemerkt“ row and the review screen and decided with „Jetzt entscheiden“ (the inline decision panels gone), the model view's „Fragen“ with „Zu klären“ only; since the first wave's review „Offene Punkte“ as text with its split in a tooltip, the customer export of the open items only, the agent's summary closed in the model view; the UI load guard `e2e/ui-load.spec.ts` |
+| `apps/cli` | `analyzr health / status / import (reads analyzr-import.json since M6 S2a) / seed [--project --issue-tokens --token-name --value-chains] / models list\|requeue\|delete\|external-ids [--system] / questions [list] [--model --kind --source --ask-who --state --group (since UX2a) --format text\|md\|csv\|json -o] / questions answer <id> --text \| --from <csv> [--dry-run] (notes; `--kind` refused since M6 S5c-1) / questions outside <id> [--note] [--undo <answer>] / questions link <id> --to <target>… \| --pair <from> <to> [--note] / questions place <id> --step <id>\|@outside \| --process <target> [--note] / questions amend <id> / models amend <key> --element <id> … \| pull <key> [--original] / amendments list\|export\|withdraw [--rev] / token create\|list\|revoke / value-chain push\|pull / rules list\|show\|add\|edit\|enable\|disable\|preview\|apply\|revoke [--derived …] / rules pre-trust [--model] [--revoke\|--keep] / mcp` (stdio bridge; `rules add --derived` since M6 S2c-3, `rules pre-trust` since S2c-4; since M6 S2b's follow-up step 3 `import --dry-run` names the agent work, the relations tasks it cancels with a warning for a claimed one and the placements losing their process, and `models delete` lists the task cancelled, the placements and the processes made due) |
+| `apps/web` | projects, models, relations, findings, bpmn-js model view, upload, connect-an-agent, inbox, review screen; since M4 S3 the value chain page (`/projects/{key}/value-chain`: renderer viewer/modeler in a lazy chunk, placement review, save with dry run and conflict, drafts, link editing) and the step view; since decision 19 the tab „Regeln“ (auto-accept rules with live preview, apply, revoke) and the marks and filters of auto-accepted items in the review views, since M6 S2c-3 with the third „Art“ „Eindeutige Aufrufe aus abgeleiteten Modellen“ (offered by the bulk toast after accepting such calls) and the „Vorschau“ line naming what an owner's rules take at once, since M6 S2c-4 with the system rule's line „… vor der Vertrauensregel angenommen – prüfen…“ and its dialog („Behalten“, „Zurück in die Prüfung“); since M6 S2b's follow-up step 3 the „Vorschau“'s line of the agent work an import sets off, its lists of the placements losing their process and of the pairs judged again, and the warning with a second click („Trotzdem importieren“) before an import that cancels an agent's claim (`lib/agent-cost.ts`, shared with the amend form); since M6 S4 the tab „Offene Fragen“ (every gap as a question, filters, Markdown and CSV export) and the model view's section of the same name, since M6 S5a with „Antworten aus CSV übernehmen“ (a preview first) for reviewers, since M6 S5c-1 with an action on every question (pickers, inline decisions, the outside mark, „Rückgängig“) and „Notiz hinzufügen“ instead of S5a's „Beantworten“, and „Verknüpfen mit …“ on a collapsed subprocess in the model view; since M6 S5c-2 the amend form at a question with „Sammeln“ and its bar, the conflicts with both values side by side, „Ergänzen“ in the model view with history, overlay, badge and both BPMN downloads, every withdrawal after its cost, and the change list in the models tab; since M6 S2a the open-question kind „Elemente beim Import verloren“ (S2a's „Herkunft“, badges and the manifest of a dropped folder come with the UI simplification); since UX1 (decision 26) the shell of four object tabs („Übersicht“, „Relationen“, „Wertschöpfungskette“, „Offene Fragen“, badges from one hook), „Hochladen“ as a button, the owners' menu „Einstellungen“ („Agent verbinden“, „Annahmeregeln“, the former tab „Regeln“), the list „Befunde“ behind a link in „Offene Fragen“, „Übersicht“ with „Als Nächstes“, the popover „Agent starten“, the export hub, search, phase chips and „Offene Punkte“, failed writes in German, the server banner only on trouble; since UX2b „Offene Fragen“ as lean cards „Zu klären“ (the badge's number) with one intro line, three filters, „Zur Information“ and „Erledigte zeigen“ closed, the agents' questions on their proposals, the dialog „Für den Kunden exportieren …“ and a hold answered in one dialog from its card, its „Vorgemerkt“ row and the review screen and decided with „Jetzt entscheiden“ (the inline decision panels gone), the model view's „Fragen“ with „Zu klären“ only; since the first wave's review „Offene Punkte“ as text with its split in a tooltip, the customer export of the open items only, the agent's summary closed in the model view; the UI load guard `e2e/ui-load.spec.ts` |
 | `apps/agent-sim` | LLM-free reference agent that works the pipeline over MCP, both task kinds since M4 S5 |
 | `apps/demo` | `analyzr-demo seed\|serve\|check` (owner decision 20): seeds the read-only demo while its image is built, supervises PostgreSQL and the server in the container, checks a running demo from outside |
 | `eval/corpus` | test landscapes `nordwind-handel` (dev, 31 models, 17 C7/14 C8) and `stadtwerke-auental` (holdout, 26 models, 10 C7/16 C8) + `_sample`; every model deploys on Camunda 7.24.0 and 8.9.22 |
@@ -1409,12 +1455,37 @@ About 20–30 ms more per 50-file batch on 496 models. No user-visible text chan
 the fields); live-run neutral; the readings taken without asking are in §4 ("Taken during the M6
 S2b follow-up step 2"). For the first analysis: before an import the server knows whether the
 placement agent must place processes (again) and how many, and which accepted placements lose or
-change their process; the surfaces follow in step 3. **Owner decision 29**
+change their process; the surfaces follow in step 3. **S2b follow-up step 3 "The surfaces"**
+(**done 2026-10-20** on the branch, every gate green with a review round's fixes: 14 points, one
+major, 12 fixed, 2 rejected; M6 §8 "S2b follow-up step 3 as delivered"; DEVELOPMENT.md "M6 S2b
+follow-up step 3 (2026-10-20)"; UX-SIMPLIFICATION.md §6 and §7 "M6 S2b follow-up step 3's texts as
+delivered"): the web's „Vorschau“ (`lib/agent-cost.ts`, new, in the entry; `impactLines(impact,
+batches)`) names the agent work in the last of its three lines, on a first import too: „214
+mögliche Relationen zu beurteilen (56 davon erneut), 7 Prozesse zu platzieren“ (the relations part
+only when `pairs` is above 0; a placement task the import queues places every process due, one
+waiting or held the newly due ones; „etwa“ for more than one batch), a placements line right after
+the endpoints line, and in „Was ändert sich?“ (shown only when a list has items) the placements
+losing their process and the pairs judged again. While the import cancels a relations task an agent holds:
+the destructive warning („Ein Agent bearbeitet „vertrieb/auftrag“ gerade; seine Arbeit geht
+verloren.“, several by count and at most three keys) and the second click („Trotzdem
+importieren“), through `useSecondClick`, which the amend form now shares; a double click arms only
+in all three second-click places. The batch note names, on a first import in parts, the pairs
+between new models of different batches that count in no batch. `analyzr import --dry-run` prints
+`agent work: …`, `cancel relations tasks: …`, `warning: …` and the placements line, its batch line
+the same gap; `analyzr models delete` lists the task cancelled, the placements losing their
+process and the processes made due, and the requeue hint once. All counts of the impact lines in
+German numbers. No route, no migration, no contract change (comments only), the client not
+regenerated; the bundle entry 227.6 KB gzip (+1.0); the UI load guard's new step „Vorschau
+(erneuter Import)“ 16 controls and 95 / 93 words at 1440 / 390, UX7's „Vorschau“ 133 words (128);
+live-run neutral; the readings taken are in §4 ("Taken during the M6 S2b follow-up step 3"), the
+screen-reader point is open in §8. For the first analysis: before „Importieren“ the consultant
+sees how much agent work an import sets off (pairs to judge, processes to place), which it repeats
+(„davon erneut“) and whether it destroys an agent's running work, so imports can be timed and
+batched without losing agent runs. **Owner decision 29**
 (2026-10-20, §4) answers M6 §10.10 (identity rows, step 5) and makes the integrate skill's
-pre-approved preview a bundled read-only script (step 4). **Next:** S2b follow-up step 3 (the
-surfaces: the „Vorschau“'s cost line with the placement part, the placements line and list, the
-claimed-task warning with a second click, the CLI's lines, the deletion listing),
-optionally 3b (`ProjectSummary.pairsToJudge` in „Als Nächstes“), step 4 (the integrate plugin
+pre-approved preview a bundled read-only script (step 4). **Next:** optionally S2b follow-up step
+3b (`ProjectSummary.pairsToJudge` in „Als Nächstes“ and the CLI's waiting line: the first run's
+size, which a preview in batches cannot give), step 4 (the integrate plugin
 0.1.3: the key-map rebuild, `analyzr-read.mjs`, `exporterVersion`), step 5 (decision 29 (1)'s
 identity rows, migrations 0021/0022); then S3c (renderer and spec YAML, the ad-hoc converter
 path, the bundled CLI), then S6 (interviews); after the owner's live runs S5b, S7 and facts v2. The owner's review of S1–S2a, ideally on a sandbox or anonymized export
@@ -1496,6 +1567,7 @@ Git/bpmiq.yml import, MCP App widget.
 | M6: Modeler saves of the amendment fixtures | S5c-2's golden fixtures are hand-written in the Camunda Modeler's layout, and the expected files are `applyAmendments`' own output (regression snapshots plus a check of the BPMN XSD's child order, M6 §8 "S5c-2 as delivered"). Could you open `packages/bpmn-facts/test/fixtures/amend/c7-modeler.bpmn` and `c8-modeler.bpmn` once in Camunda Modeler 5.x, make the changes of `test/amend.test.ts`'s two snapshot tests (call targets, names, documentation, the message reference) and save them, so the child order is compared with what the Modeler writes? | M6 §4.8 c, S5c-2 |
 | M6: `If-Match` on withdrawals | S5c-2 makes `If-Match` optional on both withdrawal routes (the web always sends the head its dry run showed; `analyzr amendments withdraw --rev <n>`), so a script withdrawing by id keeps working; amendment writes require it. Keep it optional, or require it as on saves (428 without)? | M6 §4.8 c "Concurrency", S5c-2 as delivered |
 | M6: `competing-call` and manual links | S5c-1 counts a human's accepted or held `manual` relation from a call element as a competing call only when it goes to another target: an agent's `call` proposal to the same target agrees with the human and is no second target, so an owner's rule may still accept it; the „Regeln“ preview counts a human's later manual link to another target as a correction of the call. Keep this reading of decision 19's „a call has one target“, or count every manual relation from the call element (then a rule never accepts the agreeing call either)? | M6 §8 "S5c-1 as delivered", decision 19 |
+| M6: the second click for screen readers | When a button turns into „Trotzdem importieren“ (the „Vorschau“) or „Trotzdem speichern“ (the amend form, the action panel) because an agent's claim would be cancelled, a screen reader hears nothing new: the warning is an alert announced when it appears and the button points to it (`aria-describedby`), but the focused button's new name is not reliably read out. The amend form has worked this way all along, so it is no regression. Add a polite live region that says to click once more, in all three places at once, or keep it as is? | M6 §8 "S2b follow-up step 3 as delivered", §4 "Taken during the M6 S2b follow-up step 3" (g) |
 
 ## 9. Working agreements and pitfalls
 

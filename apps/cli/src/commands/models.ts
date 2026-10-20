@@ -17,8 +17,11 @@
  *   keys stop it before anything is deleted; without `--yes` it only lists
  *   what it would delete. When a later DELETE fails, `--json` still prints
  *   `{deleted, models, failed: {key, error}}` with the models already
- *   deleted before it exits 1. The deletion's impact on relations and
- *   placements comes with M6 S2.
+ *   deleted before it exits 1. Without `--yes` each deletion's impact is
+ *   listed (`GET …/deletion-impact`, M6 S2b; {@link deletionImpactText}):
+ *   relations and rule stances, findings, the relations task it cancels
+ *   and, with a value chain, the accepted placements losing their process
+ *   and the processes it makes due for placement.
  * - **external-ids** (any credential, M6 S2a, §3.4) lists the source-system
  *   identity of every live model whose uploaded head declares one
  *   (`GET …/external-ids`, optionally one `--system`): key, tool id and tool
@@ -267,11 +270,27 @@ export async function modelsRequeueCommand(
 }
 
 /**
+ * The line after a deletion listing whose deletions make processes due for
+ * placement (S2b follow-up): a deletion queues no placement task, and
+ * `value-chain requeue` queues it (or answers that one waits already).
+ */
+function requeueHint(project: string): string {
+  return `Deleting queues no placement task; afterwards analyzr value-chain requeue -p ${project} queues it unless one waits.`;
+}
+
+/**
  * What deleting one model would change (`GET …/deletion-impact`, M6 S2b):
- * `2 accepted relations lose an end (missing), 5 rule stances withdrawn, findings 2 added, 0 resolved`.
+ * `2 accepted relations lose an end (missing), 5 rule stances withdrawn, findings 2 added, 0 resolved`;
+ * since S2b's follow-up, when there are any, the model's relations task the
+ * deletion cancels (an agent's work on it is lost), the accepted placements
+ * of its processes (missing) and the processes it makes due for placement,
+ * which wait: a deletion never queues the placement task (the listing says
+ * once how to queue it, {@link requeueHint}).
  */
 export function deletionImpactText(impact: ImportImpact): string {
   const missing = impact.endpointsChanged.count;
+  const placements = impact.placementsChanged?.count ?? 0;
+  const due = impact.placementTask?.newlyDue ?? 0;
   return [
     `${plural(missing, 'accepted relation')} ${missing === 1 ? 'loses' : 'lose'} an end (missing)`,
     `${plural(impact.proposalsWithdrawn.count, 'rule stance')} withdrawn`,
@@ -286,6 +305,17 @@ export function deletionImpactText(impact: ImportImpact): string {
       ? `${plural(impact.autoAcceptedCalls.count, 'call')} accepted by your rules for derived calls`
       : null,
     `findings ${impact.findingsAdded.count} added, ${impact.findingsResolved.count} resolved`,
+    impact.relationsTasks.claimed > 0
+      ? 'relations task cancelled while an agent works on it (its work is lost)'
+      : impact.relationsTasks.cancelled.count > 0
+        ? 'relations task cancelled'
+        : null,
+    placements > 0
+      ? `${plural(placements, 'accepted placement')} ${placements === 1 ? 'loses its' : 'lose their'} process (missing)`
+      : null,
+    due > 0
+      ? `${plural(due, 'process', 'processes')} ${due === 1 ? 'becomes' : 'become'} due for placement`
+      : null,
   ]
     .filter((p) => p !== null)
     .join(', ');
@@ -333,6 +363,9 @@ export async function modelsDeleteCommand(
           `would delete ${plural(models.length, 'model')} from ${opts.project}:`,
           ...formatModels(models),
           ...impacts.map(({ key, impact }) => `  ${key}: ${deletionImpactText(impact)}`),
+          ...(impacts.some(({ impact }) => (impact.placementTask?.newlyDue ?? 0) > 0)
+            ? [requeueHint(opts.project)]
+            : []),
           'Uploading a key again revives its model with a new revision.',
           '',
         ].join('\n'),

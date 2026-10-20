@@ -3,15 +3,16 @@
 Status: in progress (2026-10-15); owner decisions 24, 25, 28 and 29 (§2, HANDOFF §4); S0 (this
 concept, revised after review), S1, S3a, S3b, S4, S5a, S5c-1, S5c-2 (answering by action and model
 amendments, decision 25, §4.8), S2a (provenance, manifest, stable identity; its web parts came
-with the UI simplification's UX8, §8 "S2a as delivered"), S2b (the dry runs) with steps 1 and 2 of its
-follow-up (the agent work in the dry runs, relations side and placements, §8 "S2b follow-up step 1
-as delivered" and "S2b follow-up step 2 as delivered"),
+with the UI simplification's UX8, §8 "S2a as delivered"), S2b (the dry runs) with steps 1 to 3 of
+its follow-up (the agent work in the dry runs, relations side, placements and the surfaces, §8 "S2b
+follow-up step 1 as delivered", "S2b follow-up step 2 as delivered" and "S2b follow-up step 3 as
+delivered"),
 S2c-1 (the trust class and the rule tier, §8 "S2c-1 as delivered"), S2c-2 (the fast path for
 derived calls, §8 "S2c-2 as delivered"), S2c-3 (owners' rules for derived calls, §8 "S2c-3 as
 delivered") and S2c-4 („Vor der Vertrauensregel angenommen“, §8 "S2c-4 as delivered"; with it
 all of S2c) done, the „erste Anfänge“ await the owner's review; next the rest of S2b's follow-up
-(step 3 the surfaces, optionally 3b the backlog's pair count, step 4 the
-integrate plugin 0.1.3, step 5 the identity rows of decision 29 (1)), then S3c, then S6; after
+(optionally step 3b the backlog's pair count, step 4 the integrate plugin 0.1.3, step 5 the
+identity rows of decision 29 (1)), then S3c, then S6; after
 the owner's live runs S5b, S7 and facts v2 · Branch:
 `feat/integration-and-gaps` ·
 Spec: [CONCEPT.md](CONCEPT.md) §1–§7 · Previous: [M4-VALUE-CHAIN.md](M4-VALUE-CHAIN.md) · Paused:
@@ -104,7 +105,7 @@ estimate") already matter at step 5, during M6: S1 prints the tasks waiting, and
 S2b's follow-up the impact counts the pairs an import sets agents to judge (per request, against
 the head, so on a first import across batches a pair between two batches counts in neither; the
 backlog's count, optional step 3b, gives the first run's size; the „Vorschau“ and the CLI show it
-from step 3).
+since step 3, and their batch notes name that gap).
 
 ## 2. Owner decisions 24 (2026-10-15), 25 (2026-10-17), 28 (2026-10-19) and 29 (2026-10-20)
 
@@ -483,14 +484,30 @@ The existing previews compute impact with pure code (`apps/server/src/domain/val
       writes planned as the write records them. The head then also covers the chain's
       structure, placements and their histories, the agent's verdicts and the open placement
       task.
-    - **Step 3, the surfaces (planned):** in the „Vorschau“ a cost line in the last of its three
-      slots (for example „214 mögliche Relationen zu beurteilen (56 davon erneut), 7 Prozesse zu
-      platzieren“), its placement part „N Prozesse zu platzieren (… davon erneut)“ only when the
-      placement task is triggered and processes are newly due (with the held-claim rule also for
-      a deferred task), with „etwa“ in front for more than one batch; a placements line
-      („1 angenommene Platzierung mit geändertem oder fehlendem Prozess“) and lists in „Was ändert
-      sich?“; the claimed-task warning with a second click („Trotzdem importieren“); the CLI's
-      lines in `analyzr import --dry-run` and the deletion listing of `analyzr models delete`.
+    - **Step 3, the surfaces (delivered 2026-10-20, §8 "S2b follow-up step 3 as delivered"):**
+      the „Vorschau“ names the agent work in the last of its three lines, on a first import too
+      (for example „214 mögliche Relationen zu beurteilen (56 davon erneut), 7 Prozesse zu
+      platzieren“): the relations part only when `pairs` is above 0, „(N davon erneut)“ for the
+      pairs judged again; the placement part when the write triggers the placement task and it
+      has processes to place (a task the write queues places every process due, one waiting or
+      held by an agent the newly due ones, so with the held-claim rule also a deferred task),
+      „(N davon erneut)“ for those placed again; „etwa“ in front for more than one batch. A
+      placements line right after the endpoints line („1 angenommene Platzierung mit geändertem
+      oder fehlendem Prozess“), and in „Was ändert sich?“ the lists „Angenommene Platzierungen mit
+      geändertem oder fehlendem Prozess“ and „Mögliche Relationen, die erneut beurteilt werden“.
+      While the import cancels a relations task an agent holds, the warning „Ein Agent bearbeitet
+      „vertrieb/auftrag“ gerade; seine Arbeit geht verloren.“ and a second click („Trotzdem
+      importieren“). `analyzr import --dry-run` prints `agent work: …`, `cancel relations tasks:
+      …` and `warning: …` right after the facts line and the placements line after the endpoints
+      line; `analyzr models delete` lists the task cancelled, the placements losing their process
+      and the processes made due. **„etwa“ across batches:** each batch counts against the head
+      without the others, so a pair between two models of the head in two batches counts in both,
+      one between new models of two batches in neither (on a first import in parts most of them);
+      „etwa“ / "about" is no bound either way, so the batch notes name the gap on a first import
+      („Vorschau je 50 Dateien; Aufrufe zwischen den Teilen erscheinen hier als unaufgelöst,
+      mögliche Relationen zwischen neuen Modellen verschiedener Teile fehlen in der Zahl.“; the
+      CLI: "and the pairs between new models of different batches are not counted"); the
+      backlog's count, step 3b, is the full fix.
 
   Lists are capped at 100 with counts.
 - **REST:** `POST …/imports?dryRun=true` and `PUT …/models/by-key/{key}?dryRun=true` answer the
@@ -499,8 +516,10 @@ The existing previews compute impact with pure code (`apps/server/src/domain/val
   skill can run it with the consultant's credential or a read-only token (§3.1).
 - **Limits:** one dry run covers one request (≤ 50 files, 25 MB). A larger bundle gets one dry run
   per batch, each against the head; a call from batch 1 into batch 2 shows as `unresolved-call`
-  in batch 1's preview, and the CLI says so. Multi-batch imports are not atomic today either; a
-  staged import with an exact preview is a later candidate (§6).
+  in batch 1's preview, and the CLI and the „Vorschau“ say so (since the follow-up's step 3 also
+  that the pairs between new models of different batches are not counted: the CLI always, the
+  „Vorschau“ when new models lie in two batches or more). Multi-batch imports are not atomic today
+  either; a staged import with an exact preview is a later candidate (§6).
 - **M5:** `impact_of` reuses the relation-graph part (what depends on a process).
 
 ### 3.6 CLI ergonomics
@@ -1775,7 +1794,7 @@ draft (after the owner's rated draft run, M4b) are later work.
 | Customer assessment report skill | the deliverable of a landscape analysis: coverage, gaps, network, placements, open questions, every statement citing refs. After S4. |
 | Inventory-first import | coverage against the customer's catalog from day one, without stub models. Needs a boundary entity: with placeholders. |
 | Instruction-like content signal | foreign exports and transcripts widen the injection surface; a cheap deterministic backstop as an extractor warning and gap signal. With S4 or S7. |
-| Run size and cost estimate | claim sizes against the 100 KB and 96 KB (`CLAIM_PLACEMENT_MAX_BYTES`) budgets, documentation cut by `CLAIM_DOC_CHARS`, CONCEPT §7's cost per revision. Before the first paid customer run; S2b's follow-up gives the pair count: since its step 1 per request (`relationsTasks.pairs`, the pairs an import sets agents to judge, against the head, so on a first import across batches a pair between two batches counts in neither), the backlog's, the first run's size, in its optional step 3b. |
+| Run size and cost estimate | claim sizes against the 100 KB and 96 KB (`CLAIM_PLACEMENT_MAX_BYTES`) budgets, documentation cut by `CLAIM_DOC_CHARS`, CONCEPT §7's cost per revision. Before the first paid customer run; S2b's follow-up gives the pair count: since its step 1 per request (`relationsTasks.pairs`, the pairs an import sets agents to judge, against the head, so on a first import across batches a pair between two batches counts in neither; shown since its step 3 in the „Vorschau“ and `analyzr import --dry-run`, whose batch notes name that gap), the backlog's, the first run's size, in its optional step 3b. |
 | Reindex with judgement carry-over, then facts v2 | no reindex exists (`packages/bpmn-facts/src/version.ts` named one until M6 S1); `facts_hash` includes `FACTS_VERSION`, so any fact change re-judges every pair. Carry-over first, then one bump with descriptive facts (collapsed subprocesses, data objects, black-box participants, task-to-pool messages), systems and tool identities. Only if `eval:descriptive` shows a large loss. |
 | Placeholders (external parties, phantom processes) | lifts CONCEPT §11's deferral; the computed boundary signals of §4.3 come first. Owner decision. |
 | MCP `put_model` or model drafts as proposals | shell-less agents (Claude Desktop) could submit models; only after the trust decision. Owner choice between the two. |
@@ -2297,8 +2316,8 @@ note; „Importieren“ sends the same plan, „Abbrechen“ sends nothing. One 
 Left: the follow-up (judgements made non-current, tasks queued or cancelled, the placement task
 due, placements changed or missing), and the plugin's next version with the pre-approved
 `--dry-run` (since decision 29 (2) a bundled read-only script, not a CLI pattern; plugin 0.1.3).
-Steps 1 and 2 of the follow-up, the relations side and the placements, are delivered (2026-10-20,
-"S2b follow-up step 1 as delivered" and "S2b follow-up step 2 as delivered" below).
+Steps 1 to 3 of the follow-up, the relations side, the placements and the surfaces, are delivered
+(2026-10-20, "S2b follow-up step 1 as delivered" to "S2b follow-up step 3 as delivered" below).
 
 Left for S2b: `importImpact`, the dry runs (`POST …/imports?dryRun=true`, `PUT …?dryRun=true`,
 `analyzr import --dry-run`), the deletion impact in `models delete`, and the absent keys of
@@ -2878,7 +2897,8 @@ question. Open:
 Left: S2b's follow-up (judgements made non-current, tasks queued or cancelled, the placement task
 due, placements changed or missing; the integrate plugin's next release with the key-map rebuild,
 a pre-approved `--dry-run` and `normalize-bpmn` writing `null` for an empty `exporterVersion`;
-its steps 1 and 2, the relations side and the placements, delivered the same day, below; the
+its steps 1 to 3, the relations side, the placements and the surfaces, delivered the same day,
+below; the
 pre-approved `--dry-run` is to become a read-only script by decision 29 (2), plugin 0.1.3 in step
 4); then S3c and S6.
 
@@ -3036,11 +3056,12 @@ are in HANDOFF §4 ("Taken during the M6 S2b follow-up step 1"); no owner questi
   space no claim assigns.
 
 Left: step 2 (placements: `placementsChanged`, `placementTask`; delivered the same day, "S2b
-follow-up step 2 as delivered" below), step 3 (the surfaces: the
-„Vorschau“'s cost line, the claimed-task warning with a second click, the CLI's lines, the deletion
-listing), optionally 3b (`ProjectSummary.pairsToJudge` in „Als Nächstes“), step 4 (plugin 0.1.3:
-the key-map rebuild, `analyzr-read.mjs` by decision 29 (2), `exporterVersion`), step 5 (the
-identity rows of decision 29 (1), migrations 0021/0022); then S3c and S6.
+follow-up step 2 as delivered" below), step 3 (the surfaces: the „Vorschau“'s cost line, the
+claimed-task warning with a second click, the CLI's lines, the deletion listing; delivered the same
+day, "S2b follow-up step 3 as delivered" below), optionally 3b (`ProjectSummary.pairsToJudge` in
+„Als Nächstes“), step 4 (plugin 0.1.3: the key-map rebuild, `analyzr-read.mjs` by decision 29 (2),
+`exporterVersion`), step 5 (the identity rows of decision 29 (1), migrations 0021/0022); then S3c
+and S6.
 
 **S2b follow-up step 2 as delivered** (2026-10-20, on the branch, every gate green, with a review
 round's fixes; [DEVELOPMENT.md](DEVELOPMENT.md) "M6 S2b follow-up step 2 (2026-10-20)" and
@@ -3211,17 +3232,204 @@ question. Open:
 - **A non-owner's preview** leaves out the neighbours of calls an owner's rules for derived calls
   would accept (no rule data outside an owner's preview), so its `due` can be too low.
 - **Across batches** the placement task's counts are approximate (above), as the pairs are; step
-  3's cost line is planned to start with „etwa“ for more than one batch (§3.5 "Follow-up", step
-  3).
+  3's cost line starts with „etwa“ for more than one batch (delivered the same day, "S2b follow-up
+  step 3 as delivered" below).
 - **`readChain` takes the first live chain with a head** (M4 has only `main`).
 
 Left: step 3 (the surfaces, as planned in §3.5 "Follow-up": the „Vorschau“'s cost line, whose
 placement part „N Prozesse zu platzieren (… davon erneut)“ with the held-claim rule also appears for
 a deferred task, the placements line and list, the claimed-task warning with a second click, the
-CLI's lines, the deletion listing), optionally 3b (`ProjectSummary.pairsToJudge` in „Als Nächstes“),
+CLI's lines, the deletion listing; delivered the same day, "S2b follow-up step 3 as delivered"
+below), optionally 3b (`ProjectSummary.pairsToJudge` in „Als Nächstes“),
 step 4 (plugin 0.1.3: the key-map rebuild, `analyzr-read.mjs` by decision 29 (2),
 `exporterVersion`), step 5 (the identity rows of decision 29 (1), migrations 0021/0022); then S3c
 and S6.
+
+**S2b follow-up step 3 as delivered** (2026-10-20, on the branch, every gate green, with a review
+round's fixes; [DEVELOPMENT.md](DEVELOPMENT.md) "M6 S2b follow-up step 3 (2026-10-20)",
+[UX-SIMPLIFICATION.md](UX-SIMPLIFICATION.md) §6 and §7 "M6 S2b follow-up step 3's texts as
+delivered"): the agent work of a dry run on the surfaces (§3.5 "Follow-up"), that is the web's
+„Vorschau“, the lines of `analyzr import --dry-run` and the listing of `analyzr models delete`. For
+the first analysis: before „Importieren“ the consultant sees how much agent work an import sets
+off (pairs to judge, processes to place), which agent work it repeats („davon erneut“) and whether
+it destroys an agent's running work (the warning and a second click), so imports can be timed and
+batched without losing agent runs; on a first import the line shows the agent work it sets off.
+Web and CLI only: no route, no migration, no contract change (only comments in
+`packages/contracts/src/impact-merge.ts`), the client not regenerated; MCP, the procedures, the
+plugin and the recordings are untouched.
+
+- **The cost line** (the new `apps/web/src/lib/agent-cost.ts`, in the entry; `impactLines(impact,
+  batches)` in `lib/upload.ts`) always takes the last of the „Vorschau“'s three lines, on a first
+  import too; an unchanged re-import has none, so „Danach: keine Änderung an Relationen und
+  Befunden.“ stays. The relations part only when `pairs` is above 0: „214 mögliche Relationen zu
+  beurteilen“ („1 mögliche Relation zu beurteilen“), then „(56 davon erneut)“ when `rejudged` is
+  above 0. The placement part (`processesToPlace`) when the write triggers the chain's placement
+  task and it has processes to place: a task the write queues (`queued`) places every process due
+  (`max(due, newlyDue)`, since across batches `due` is the largest batch's count and `newlyDue`
+  their sum), one waiting (`open`) or held by an agent (`deferred`, its follow-up) the newly due
+  ones: „7 Prozesse zu platzieren“ („1 Prozess zu platzieren“), then „(5 davon erneut)“ when
+  `again` is above 0. The parts are joined by „, “, with „etwa “ in front for more than one batch
+  („etwa 7.300 mögliche Relationen zu beurteilen“). For example: „Danach: 3 Aufrufe automatisch
+  verknüpft · 2 angenommene Relationen mit geändertem oder fehlendem Endpunkt · 214 mögliche
+  Relationen zu beurteilen (56 davon erneut), 7 Prozesse zu platzieren“. No text calls `pairs` new
+  or exact (an upper bound while other models' tasks wait, step 1); the pairs judged again are the
+  reliable part. Every count of the impact lines is now formatted the German way („1.234 Aufrufe
+  automatisch verknüpft“).
+- **The placements line**, ranked right after the endpoints line: „1 angenommene Platzierung mit
+  geändertem oder fehlendem Prozess“ („2 angenommene Platzierungen …“). The cost line can push it,
+  or the endpoints line, into „Was ändert sich?“ (the order UX-SIMPLIFICATION.md §6 planned, the
+  agent work in the last of the three lines; HANDOFF §4 (b)).
+- **„Was ändert sich?“** gains two lists: „Angenommene Platzierungen mit geändertem oder fehlendem
+  Prozess (n)“ after the endpoints list, its items „lager/versand#Process_1 → „Versand“ (fehlt)“,
+  „a#P → Außerhalb der Kette (geändert)“ for `@outside` and a step without a name by its element
+  id; and last „Mögliche Relationen, die erneut beurteilt werden (n)“, its items the relation
+  type's label, from and to („Nachricht a#Send → b#Catch“). There is no list of all pairs to judge
+  and none of the processes to place (the impact carries counts only), and the relations tasks
+  queued are not listed; so the disclosure now shows only when some list has items.
+- **The warning** (`preview-claimed`, a destructive alert above the buttons, as in the amend form)
+  while the import cancels relations tasks an agent holds (`relationsTasks.claimed` above 0; their
+  work is lost). One: „Ein Agent bearbeitet „vertrieb/auftrag“ gerade; seine Arbeit geht verloren.“
+  with „Der Import bricht seine Analyse ab; sie wird danach neu eingeplant.“ Several: „Agenten
+  bearbeiten gerade 5 dieser Modelle; ihre Arbeit geht verloren.“ with „„a“, „b“, „c“ und 2
+  weitere. Der Import bricht ihre Analysen ab; sie werden danach neu eingeplant.“ (two: „„a“ und
+  „b“. …“; three: „„a“, „b“ und „c“. …“). No handle, no lease. A placement task an agent holds keeps
+  its work and gets no warning. While the warning shows, the fallback „Danach: keine Änderung an
+  Relationen und Befunden.“ is hidden.
+- **The second click** (`useSecondClick`, which the amend form's `useClaimedConfirm` now shares):
+  only while the warning shows, the first click on „Importieren“ sends nothing and turns it into
+  „Trotzdem importieren“ (the destructive variant, described by the warning through
+  `aria-describedby`); the second click imports. „Abbrechen“ closes the preview as before, which
+  disarms, and a new preview disarms. A double click arms only (`repeated`: while a second click is
+  needed, a click with `detail` above 1 sends nothing and its default is prevented; a keyboard's
+  click, `detail` 0, still confirms), in all three places that ask a second time: the „Vorschau“,
+  the amend form's „Speichern“ and the action panel's submit.
+- **The batch note** (`batchNoteText`): „Vorschau je 50 Dateien; Aufrufe zwischen den Teilen
+  erscheinen hier als unaufgelöst.“, and when new models lie in two or more batches „Vorschau je 50
+  Dateien; Aufrufe zwischen den Teilen erscheinen hier als unaufgelöst, mögliche Relationen zwischen
+  neuen Modellen verschiedener Teile fehlen in der Zahl.“ (the „etwa“ rule, §3.5 "Follow-up", step
+  3).
+- **`analyzr import --dry-run`** (`formatImpact`), right after `change the facts of …`:
+  - `  agent work: queue 3 relations tasks, 214 pairs to judge (56 judged again); placement task:
+    queued, 9 processes to place (1 again)`; with nothing to do `  agent work: none`; without a
+    relations task `  agent work: no relations task; placement task: nothing due`; a waiting task
+    `placement task: already queued, 1 process to place, 9 due in all`; a held one `placement task:
+    an agent holds it; 2 processes to place in its follow-up (1 again), 3 due in all` or `… nothing
+    new to place in its follow-up`; "N due in all" only for those two; across batches `about 214
+    pairs`, `about 7 processes to place`, `about 9 due in all`. The relations part names the queued
+    tasks also with `0 pairs to judge`.
+  - `  cancel relations tasks: 2 (vertrieb/auftrag claimed by agent:claude, 34 pairs assigned;
+    finanzen/rechnung queued)`, then for a claimed task `  warning: an agent is working on the
+    relations task of vertrieb/auftrag right now; the import cancels the task and the agent's work
+    is lost`, for several `  warning: agents are working on the relations tasks of 7 of these models
+    right now (a, b, c, d, e, … 2 more); the import cancels them and their work is lost`.
+  - After the endpoints line: `  change or lose the process of accepted placements: 2:
+    lager/versand#Process_1 on "Versand" (missing), lager/zoll#Process_2 on @outside (changed)`
+    (`@outside` and a step without a name by the step id).
+  - The batch line: `  previewed in 2 batches, each against the project's head: a call into a later
+    batch shows as unresolved, and the pairs between new models of different batches are not
+    counted`.
+  - `--json` is unchanged: it has carried the fields since steps 1 and 2 (the e2e test now checks
+    `relationsTasks` in it).
+- **`analyzr models delete`** (`deletionImpactText`): each model's line adds, only when non-zero,
+  `relations task cancelled` or `relations task cancelled while an agent works on it (its work is
+  lost)`, `2 accepted placements lose their process (missing)` (`1 accepted placement loses its
+  process (missing)`) and `3 processes become due for placement` (`1 process becomes due …`); once
+  after the listing, when a deletion makes processes due: `Deleting queues no placement task;
+  afterwards analyzr value-chain requeue -p <project> queues it unless one waits.` The stale module
+  comment ("comes with M6 S2") is replaced.
+
+Deviations from the plan, with reasons:
+
+- **The processes to place** (the plan named no number): `newlyDue` for a waiting or held task
+  (the waiting task covers the rest anyway), every process due for a task the write queues (from the
+  review: after a deletion, which queues no task, the next import queues one for processes due
+  before). `again` stays a part of the number, so „davon erneut“ holds.
+- **The held task's CLI wording carries counts** (`… to place in its follow-up (1 again)`), not the
+  plan's text without numbers.
+- **The relations part only when `pairs` is above 0**; the CLI still names the queued tasks.
+- **„Abbrechen“ closes the preview** as before, which disarms; no separate "disarm but keep" state,
+  as in the amend form.
+- **The several-model warning names at most three models**, then „und N weitere“ (the plan's
+  example mixed counts).
+- **The deletion's requeue hint** comes once after the listing and names the project, not per model
+  (from the review).
+- **Shared with the amend form:** `useSecondClick`, `possibleRelationsText` and `CLAIMED_WARNING`
+  (in `lib/agent-cost.ts`: `CLAIMED_WARNING` moved there and re-exported by the lazy
+  `lib/amendments.ts`, whose `useClaimedConfirm` and `rejudgeText` now use `useSecondClick` and
+  `possibleRelationsText`).
+- **The UI load step „Vorschau (erneuter Import)“** was first left out (the claim scenario is in
+  `upload-preview.spec.ts`) and came with the review round, as the step's plan asked.
+
+The review round (a surface-correctness lens and a UX-and-regression lens) found 14 points, one
+major; 12 are fixed with tests and 2 rejected. Fixed: (1) major, from both lenses: on a first
+import previewed in several batches „etwa“ / "about" hid a large undercount, since the pairs
+between new models of different batches count in no batch (the batch notes now say so; the
+comments in `agent-cost.ts`, `impact-merge.ts` and the CLI's `agentWorkLine` corrected; „etwa“
+stays, HANDOFF §4 (c)); (2) from both: „Was ändert sich?“ opened onto nothing when the cost line
+was the only line (the disclosure only with items; this also covers a line that only says what the
+rules accept); (3) from both: a placement task the import queues for processes due before showed
+no placement part, and the web and the CLI disagreed (`processesToPlace`, HANDOFF §4 (a)); (4) a
+double click went past the warning (`repeated`, in all three places); (5) from both: one sentence
+mixed „1234“ and „1.234“ (German numbers throughout); (6) the heaviest „Vorschau“ was never measured
+(the UI load step); (7) the fallback contradicted the warning (hidden beside it); (8) the requeue
+hint repeated on every model's line (once). Rejected: the cost line pushing the endpoints line into
+the list (the order UX-SIMPLIFICATION.md §6 planned, the agent work in the last of the three lines,
+kept: HANDOFF §4 (b)); a screen-reader live region when the button arms (not a regression, the amend
+form has none either; it would go into all three second-click places, left open for the owner:
+HANDOFF §4 (g) and §8).
+
+Tests: web `lib.test.ts` (the third slot, the singular forms, German numbers, „etwa“, the placement
+part per outcome with the queued task's count, the placements line's rank, both lists' items, the
+warning for one and for several, the batch note), `upload-panel.test.tsx` (the cost line with a
+deferred placement task, both lists, both warning texts without a handle; the first click sends
+nothing, a double click arms only, „Abbrechen“ and a new preview each disarm, the second click
+imports; the disclosure only with a list, no fallback beside the warning), `amendments.test.tsx` (a
+double click on the action panel's submit arms only), `bundle.test.ts` (`lib/agent-cost.ts` in the
+entry, `amendments.ts` lazy); CLI `import.test.ts` (the relations part, every placement outcome,
+"about", the cancelled and claimed warnings in singular and plural past the cap, the placements
+line, the merge), `manifest.test.ts` (the pinned block gains `  agent work: none` and the batch
+line's clause on the pairs), `models.test.ts` (the listing with a claimed task, placements and the
+hint once; the singular forms), `cli.e2e.test.ts` (`import --dry-run` in text and `--json`, the
+deletion listing's `relations task cancelled`); Playwright `upload-preview.spec.ts` (new: on a
+project of its own from `_sample` an agent puts no-links on one model's pairs and keeps another
+model's claim; a re-export of both through „Hochladen“ shows the cost line with „davon erneut“, the
+list of the pairs judged again and the exact warning; a double click turns „Importieren“ into
+„Trotzdem importieren“ and the heads stay unchanged over REST, „Abbrechen“ disarms and a new preview
+asks again, the second click imports, and the holder's submit gets 409 `task-cancelled`),
+`smoke.spec.ts` (a first bundle import names the agent work in its last line and shows no warning),
+`ui-load.spec.ts` (the new step).
+
+What it costs and leaves open. Every gate green on the final tree (server 1,775, web 653, CLI 275
+plus 7 skipped, contracts 177, bpmn-facts 200, integrate 145, eval/tools 108, relations 88,
+agent-sim 57, procedures 37, demo 27, notices 9, client 4; dependency-cruiser 150 modules, no
+violations; the eval reports unchanged). Live-run neutral: claim inputs, MCP snapshots, procedures,
+the plugin and recordings unchanged. The bundle entry is 227.6 KB gzip (+1.0 over step 2's 226.6,
+ceiling 240; `lib/agent-cost.ts` in the entry, `amendments.ts` still lazy). The UI load guard: UX7's
+„Vorschau“ (a first import of the raw Signavio export) 20 controls, 133 words and 6 badges (128
+words before; the 5 more are „· 7 mögliche Relationen zu beurteilen“); the new step „Vorschau
+(erneuter Import)“ on the worked `nordwind-handel` (`finanzen/rechnungsstellung` re-exported, a dry
+run only) 16 controls, 95 words and 1 badge at 1440 px, 16 controls, 93 words and 1 badge at 390
+px, no horizontal scroll; no budget constant changed. The e2e run on the final tree: the full Playwright suite 111 passed and 21 skipped, the demo
+check 152 of 152, `demo.spec.ts` 14 of 14 (before it, the implementing
+agent's full Playwright run on its scratch stack had 110 passed and 21 skipped; the review round's
+runs `smoke.spec.ts` 5 of 5 and `upload-preview.spec.ts` with `ui-load.spec.ts` 31 of 31). The
+readings the owner may overrule are in HANDOFF §4 ("Taken during the M6 S2b follow-up step 3"); one
+open UX point for the owner (HANDOFF §8). Open:
+
+- **No list of the pairs to judge and none of the processes to place**: the impact carries counts
+  only; the pairs judged again are listed.
+- **The number across batches**: `pairs` stays an upper bound while other models' tasks wait, and
+  across batches it is no bound either way; on a first import in parts it falls far short (the
+  batch notes say so). Step 3b's backlog count is the full fix.
+- **The deletion's requeue hint** shows also when a placement task already waits (a deletion's
+  impact is always `not-triggered`, so it cannot tell); `requeue` then answers that one waits.
+- **Arming is not announced to a screen reader**: the warning is announced when the preview renders
+  and the button points to it, but its new name is not reliably read out (as in the amend form).
+
+Left: optionally 3b (`ProjectSummary.pairsToJudge` in „Als Nächstes“ and the CLI's waiting line, the
+first run's size that a preview in batches cannot give), step 4 (plugin 0.1.3: the key-map rebuild,
+`analyzr-read.mjs` by decision 29 (2), `exporterVersion`; its report can reuse the web texts
+above), step 5 (the identity rows of decision 29 (1), migrations 0021/0022); then S3c and S6.
 
 **S3 "Toolkit".** S3a (part of the „erste Anfänge“): §3.11, report committed, CI drift check,
 and the `get_landscape` size per model of the seeded `nordwind-handel` with the v1 limit in §6.

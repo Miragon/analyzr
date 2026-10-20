@@ -1155,3 +1155,201 @@ describe('analyzr import', () => {
     });
   });
 });
+
+describe('formatImpact: the agent work (S2b follow-up)', () => {
+  const list = <T>(count: number, items: T[] = []) => ({ count, items });
+  const base: ImportImpact = {
+    files: [
+      {
+        modelKey: 'vertrieb/auftrag',
+        factsChanged: true,
+        processesAdded: [],
+        processesRemoved: [],
+        trust: { class: 'modelled', reasons: [] },
+      },
+    ],
+    acceptedCalls: list(0),
+    callsProposed: { ...list(0), wasAccepted: 0, byReason: [] },
+    proposalsAdded: list(0),
+    proposalsWithdrawn: list(0),
+    endpointsChanged: list(0),
+    findingsAdded: list(0),
+    findingsResolved: list(0),
+    absentKeys: list(0),
+    relationsTasks: {
+      queued: list(0),
+      cancelled: list(0),
+      claimed: 0,
+      pairs: 0,
+      rejudged: list(0),
+    },
+  };
+  const tasks = (
+    queued: number,
+    pairs: number,
+    rejudged: number,
+    cancelled: ImportImpact['relationsTasks']['cancelled']['items'] = [],
+    claimed = cancelled.filter((t) => t.state === 'claimed').length,
+  ): Pick<ImportImpact, 'relationsTasks'> => ({
+    relationsTasks: {
+      queued: list(queued, ['vertrieb/auftrag']),
+      cancelled: list(cancelled.length, cancelled),
+      claimed,
+      pairs,
+      rejudged: list(rejudged),
+    },
+  });
+  const placement = (
+    outcome: NonNullable<ImportImpact['placementTask']>['outcome'],
+    due: number,
+    newlyDue: number,
+    again: number,
+  ): Pick<ImportImpact, 'placementTask'> => ({ placementTask: { outcome, due, newlyDue, again } });
+  /** The lines of `formatImpact` from the second on (after the dry run's headline). */
+  const lines = (impact: ImportImpact, batchCount = 1) =>
+    formatImpact(impact, 'demo', batchCount).split('\n').slice(1, -1);
+  const work = (impact: ImportImpact, batchCount = 1) =>
+    lines(impact, batchCount).find((l) => l.startsWith('  agent work: '));
+
+  it('names the relations tasks queued, the pairs and those judged again, right after the facts', () => {
+    expect(lines(base).slice(0, 2)).toEqual([
+      '  change the facts of 1 model (0 processes added, 0 removed)',
+      '  agent work: none',
+    ]);
+    expect(work({ ...base, ...tasks(3, 214, 56) })).toBe(
+      '  agent work: queue 3 relations tasks, 214 pairs to judge (56 judged again)',
+    );
+    expect(work({ ...base, ...tasks(1, 1, 0) })).toBe(
+      '  agent work: queue 1 relations task, 1 pair to judge',
+    );
+    expect(work({ ...base, ...tasks(1, 0, 0) })).toBe(
+      '  agent work: queue 1 relations task, 0 pairs to judge',
+    );
+    // several batches add up counts against the head
+    expect(work({ ...base, ...tasks(3, 214, 56) }, 2)).toBe(
+      '  agent work: queue 3 relations tasks, about 214 pairs to judge (56 judged again)',
+    );
+  });
+
+  it('names the placement task by its outcome, with the processes due', () => {
+    const relations = tasks(3, 214, 56);
+    expect(work({ ...base, ...relations, ...placement('queued', 7, 7, 5) })).toBe(
+      '  agent work: queue 3 relations tasks, 214 pairs to judge (56 judged again); placement task: queued, 7 processes to place (5 again)',
+    );
+    expect(work({ ...base, ...relations, ...placement('open', 9, 1, 0) })).toBe(
+      '  agent work: queue 3 relations tasks, 214 pairs to judge (56 judged again); placement task: already queued, 1 process to place, 9 due in all',
+    );
+    expect(work({ ...base, ...relations, ...placement('deferred', 3, 2, 1) })).toBe(
+      '  agent work: queue 3 relations tasks, 214 pairs to judge (56 judged again); placement task: an agent holds it; 2 processes to place in its follow-up (1 again), 3 due in all',
+    );
+    expect(work({ ...base, ...relations, ...placement('deferred', 0, 0, 0) })).toBe(
+      '  agent work: queue 3 relations tasks, 214 pairs to judge (56 judged again); placement task: an agent holds it; nothing new to place in its follow-up',
+    );
+    // a task the write queues places every process due, also those due before (a deletion's)
+    expect(work({ ...base, ...relations, ...placement('queued', 4, 0, 0) })).toBe(
+      '  agent work: queue 3 relations tasks, 214 pairs to judge (56 judged again); placement task: queued, 4 processes to place',
+    );
+    expect(work({ ...base, ...relations, ...placement('queued', 9, 2, 1) })).toBe(
+      '  agent work: queue 3 relations tasks, 214 pairs to judge (56 judged again); placement task: queued, 9 processes to place (1 again)',
+    );
+    expect(work({ ...base, ...relations, ...placement('nothing-due', 0, 0, 0) })).toBe(
+      '  agent work: queue 3 relations tasks, 214 pairs to judge (56 judged again); placement task: nothing due',
+    );
+    // not triggered (no file changes facts): no placement part; nothing else: none
+    expect(work({ ...base, ...relations, ...placement('not-triggered', 5, 0, 0) })).toBe(
+      '  agent work: queue 3 relations tasks, 214 pairs to judge (56 judged again)',
+    );
+    expect(work({ ...base, ...placement('not-triggered', 5, 0, 0) })).toBe('  agent work: none');
+    expect(work({ ...base, ...placement('nothing-due', 0, 0, 0) })).toBe(
+      '  agent work: no relations task; placement task: nothing due',
+    );
+    // several batches; merged, `due` is the largest batch's and `newlyDue` their sum
+    expect(work({ ...base, ...tasks(3, 214, 56), ...placement('queued', 9, 7, 5) }, 3)).toBe(
+      '  agent work: queue 3 relations tasks, about 214 pairs to judge (56 judged again); placement task: queued, about 9 processes to place (5 again)',
+    );
+    expect(work({ ...base, ...placement('queued', 3, 5, 1) }, 2)).toBe(
+      '  agent work: no relations task; placement task: queued, about 5 processes to place (1 again)',
+    );
+    expect(work({ ...base, ...relations, ...placement('open', 9, 7, 5) }, 3)).toBe(
+      '  agent work: queue 3 relations tasks, about 214 pairs to judge (56 judged again); placement task: already queued, about 7 processes to place (5 again), about 9 due in all',
+    );
+  });
+
+  it('names the tasks it cancels and warns when an agent holds one', () => {
+    const claimed = (modelKey: string, assigned: number | null = 34) => ({
+      modelKey,
+      state: 'claimed' as const,
+      claimedBy: 'agent:claude',
+      assigned,
+    });
+    const queued = (modelKey: string) => ({
+      modelKey,
+      state: 'queued' as const,
+      claimedBy: null,
+      assigned: null,
+    });
+    expect(
+      lines({
+        ...base,
+        ...tasks(2, 40, 0, [claimed('vertrieb/auftrag'), queued('finanzen/rechnung')]),
+      }).slice(1, 4),
+    ).toEqual([
+      '  agent work: queue 2 relations tasks, 40 pairs to judge',
+      '  cancel relations tasks: 2 (vertrieb/auftrag claimed by agent:claude, 34 pairs assigned; finanzen/rechnung queued)',
+      "  warning: an agent is working on the relations task of vertrieb/auftrag right now; the import cancels the task and the agent's work is lost",
+    ]);
+    // queued ones only: no warning
+    expect(lines({ ...base, ...tasks(1, 4, 0, [queued('b')]) }).slice(2, 4)).toEqual([
+      '  cancel relations tasks: 1 (b queued)',
+      '  accept rule-tier calls: 0',
+    ]);
+    // several held, past the cap: named first, the rest counted
+    const held = ['a', 'b', 'c', 'd', 'e', 'f'].map((k) => claimed(k, k === 'f' ? null : 1));
+    expect(lines({ ...base, ...tasks(6, 40, 0, held, 7) }).slice(2, 4)).toEqual([
+      '  cancel relations tasks: 6 (a claimed by agent:claude, 1 pair assigned; b claimed by agent:claude, 1 pair assigned; c claimed by agent:claude, 1 pair assigned; d claimed by agent:claude, 1 pair assigned; e claimed by agent:claude, 1 pair assigned; … 1 more)',
+      '  warning: agents are working on the relations tasks of 7 of these models right now (a, b, c, d, e, … 2 more); the import cancels them and their work is lost',
+    ]);
+  });
+
+  it('names the accepted placements whose process changes, after the relations’ ends', () => {
+    const impact: ImportImpact = {
+      ...base,
+      placementsChanged: list(2, [
+        {
+          step: 'step-versand',
+          stepName: 'Versand',
+          process: 'lager/versand#Process_1',
+          endpointState: 'missing' as const,
+        },
+        {
+          step: '@outside',
+          stepName: null,
+          process: 'lager/zoll#Process_2',
+          endpointState: 'changed' as const,
+        },
+      ]),
+    };
+    const out = lines(impact);
+    const at = out.indexOf('  change or lose an end of accepted relations: 0');
+    expect(out[at + 1]).toBe(
+      '  change or lose the process of accepted placements: 2: lager/versand#Process_1 on "Versand" (missing), lager/zoll#Process_2 on @outside (changed)',
+    );
+    // none, or a project without a chain: no line
+    expect(lines({ ...base, placementsChanged: list(0) }).join('\n')).not.toContain('placements');
+    expect(lines(base).join('\n')).not.toContain('placements');
+  });
+
+  it('merges the batches and keeps `--json`’s fields', () => {
+    const one: ImportImpact = {
+      ...base,
+      ...tasks(1, 10, 2),
+      ...placement('queued', 3, 2, 1),
+    };
+    const merged = mergeImpacts([one, { ...one, ...placement('deferred', 1, 1, 0) }]);
+    expect(merged.relationsTasks).toMatchObject({ pairs: 20, rejudged: { count: 4 } });
+    expect(merged.placementTask).toEqual({ outcome: 'deferred', due: 3, newlyDue: 3, again: 1 });
+    expect(work(merged, 2)).toBe(
+      '  agent work: queue 2 relations tasks, about 20 pairs to judge (4 judged again); placement task: an agent holds it; about 3 processes to place in its follow-up (1 again)',
+    );
+  });
+});

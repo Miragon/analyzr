@@ -6,8 +6,8 @@ feasibility critique · Branch: `feat/integration-and-gaps` (the first wave UX2a
 delivered on it on 2026-10-18, §7; the owner's walkthrough the same day, §7 "Owner
 walkthrough"; UX7, UX8, S2b's „Vorschau“, UX3, UX4 and UX5 delivered the same day, UX6 and
 UX9 on 2026-10-19: every slice delivered; M6 S2c-1's texts on these screens the same day, S2c-2's
-fast path for derived calls, S2c-3's rules for derived calls and S2c-4's „Vor der Vertrauensregel
-angenommen“ on 2026-10-20, §7) ·
+fast path for derived calls, S2c-3's rules for derived calls, S2c-4's „Vor der Vertrauensregel
+angenommen“ and S2b follow-up step 3's agent work in the „Vorschau“ on 2026-10-20, §7) ·
 Source: four user-need audits of the web UI on the agent-created scratch stack
 `analyzr-uxaudit` (seeded `nordwind-handel` with its chain and a simulation agent run,
 `signavio-beispiel` from the CLI bundle import, two projects made from the raw synthetic Signavio
@@ -518,7 +518,10 @@ Appendix A.
    Modellen) werden von den Agenten neu beurteilt“ → „Die Agenten beurteilen 15 mögliche Relationen
    neu, sobald du den Agenten startest.“; after „Speichern“ the toast offers „Agent starten“ (§2.6).
    Clicks to set a call target: 4–5 → 3 (action, pick, „Speichern“). M6 §4.8 c's "cost before every
-   save" holds.
+   save" holds. Since M6 S2b's follow-up step 3 the same second click also comes before an import
+   that cancels a relations task an agent holds („Trotzdem importieren“ in the „Vorschau“, §6), and
+   in all three places that ask a second time (the amend form, the action panel, the „Vorschau“) a
+   double click arms only: its later click sends nothing.
 5. **Note field**: „Notiz (optional)“ with its two-sentence hint in every link, place and
    choose-copy panel → a link „+ Notiz“. (G18)
 6. **„Gültige Kopie wählen“**: rows titled by model path („einkauf/archiv/bestellfreigabe-2019“,
@@ -1151,24 +1154,39 @@ delivered"). They fit without a new column, tab or panel:
 - **„Vorschau“ before „Importieren“ (S2b)**: a drop shows the dry run in the result's own layout
   (UX7): headline „Vorschau: 5 Modelle neu · 1 Fehler · 1 übersprungen“, the outcome column „wird
   neu“, „neue Revision“, „unverändert“, „Fehler“, at most three impact lines („Danach: 3 Aufrufe
-  automatisch verknüpft · 2 Relationen mit geändertem Endpunkt · 12 mögliche Relationen neu zu
-  beurteilen“), the capped lists behind „Was ändert sich?“, one primary „Importieren“ and
+  automatisch verknüpft · 2 angenommene Relationen mit geändertem oder fehlendem Endpunkt · 12
+  mögliche Relationen zu beurteilen“, the agent work in the last, as delivered in S2b's follow-up
+  step 3), the capped lists behind „Was ändert sich?“, one primary „Importieren“ and
   „Abbrechen“; after importing, the same panel turns into the result with the next-step box. When
   every key shares one top folder: „Alle Kurznamen beginnen mit „gemeinsame-dokumente/“ – lege den
   Unterordner ab, wenn das nicht Teil der Namen sein soll.“ (keys are fixed for good, M6 §3.4, so
-  the preview shows on a first import too). Above 50 files: „Vorschau je 50 Dateien; Aufrufe
-  zwischen den Teilen erscheinen hier als unaufgelöst.“ One click more, no new screen. Since M6
+  the preview shows on a first import too). Above 50 files or 25 MB: „Vorschau je 50 Dateien;
+  Aufrufe zwischen den Teilen erscheinen hier als unaufgelöst.“ (since S2b's follow-up step 3
+  extended on a first import, §7). One click more, no new screen. Since M6
   S2c-1 the impact lines add „12 Aufrufe nur vorgeschlagen (ohne Camunda-Engine) – nach dem
   Import gesammelt annehmen“ for the unique calls of derived models, and „Was ändert sich?“ the
   list „Aufrufe als Vorschlag“ („(bisher angenommen)“ for a call whose acceptance ends); since
   S2c-2 the result's „Als Nächstes“ names them first: „12 eindeutige Aufrufe warten auf deine
   Bestätigung · Gesammelt annehmen“; since S2c-3 an owner's preview adds what their rules for
   derived calls accept at once, „· deine Regel „Aufrufe: Export ohne Engine“ nimmt 12 davon
-  gleich an“.
+  gleich an“. Since S2b's follow-up step 3 the last line names the agent work the import sets
+  off, on a first import too: „214 mögliche Relationen zu beurteilen (56 davon erneut), 7 Prozesse
+  zu platzieren“ (each part only when it counts something, „etwa“ in front for more than one
+  batch); a placements line „1 angenommene Platzierung mit geändertem oder fehlendem Prozess“
+  right after the endpoints line; in „Was ändert sich?“ (shown only when a list has items) the
+  lists „Angenommene Platzierungen mit geändertem oder fehlendem Prozess“ and „Mögliche Relationen,
+  die erneut beurteilt werden“; while the import cancels a relations task an agent holds, the
+  destructive warning „Ein Agent bearbeitet „vertrieb/auftrag“ gerade; seine Arbeit geht
+  verloren.“ above the buttons, and the second click (§3.4 item 4): the first click on
+  „Importieren“ sends nothing and turns it into „Trotzdem importieren“; on a first import in
+  parts the batch note adds „…, mögliche Relationen zwischen neuen Modellen verschiedener Teile
+  fehlen in der Zahl.“ (§7 "M6 S2b follow-up step 3's texts as delivered").
 - **Deletion impact** (S2b): stays in `analyzr models delete`; the web has no model deletion. If
   the owner wants it, it goes into the model view's „Mehr“ as „Modell löschen …“ with the impact as
   the confirmation dialog, in the chain save's pattern (only non-zero lines, „Weiter bearbeiten“ /
-  „Trotzdem löschen“).
+  „Trotzdem löschen“). Since S2b's follow-up step 3 the CLI's listing also names the relations
+  task a deletion cancels, the accepted placements losing their process and the processes it
+  makes due.
 
 ## 7. Slices
 
@@ -2053,11 +2071,10 @@ UX3 builds the header's „Mehr“, „Herkunft“ is a ghost button next to the
 **S2b's „Vorschau“ as delivered** (2026-10-18, on the branch; M6 §8 "S2b step 3"): §6's last
 bullet but one. A drop shows the dry run first in the result's layout: the headline „Vorschau: 5
 Modelle neu · 1 Fehler · 1 übersprungen“, the outcome column „Wird neu“, „Neue Revision“,
-„Unverändert“, „Fehler“, at most three impact lines („Danach: …“; the pairs to re-judge wait for
-S2b's follow-up: the server counts them since its step 1, 2026-10-20, and the line comes with its
-step 3), „Was ändert sich?“ closed, the shared-top-folder hint, the batch note, „Importieren“
-and „Abbrechen“; after importing the same panel is the result with „Als Nächstes“ (UX7). The
-deletion impact stays in the CLI (the web has no model deletion).
+„Unverändert“, „Fehler“, at most three impact lines („Danach: …“; since S2b's follow-up step 3,
+2026-10-20, the last names the agent work, below), „Was ändert sich?“ closed, the shared-top-folder
+hint, the batch note, „Importieren“ and „Abbrechen“; after importing the same panel is the result
+with „Als Nächstes“ (UX7). The deletion impact stays in the CLI (the web has no model deletion).
 
 **UX9 "Relationen results, Annahmeregeln, projects summary".** Files: `components/relation-table.tsx`,
 `lib/relation-filters.ts`; `routes/project-rules-page.tsx`, `components/rules/` `rule-table.tsx`,
@@ -2264,6 +2281,53 @@ accepts them again at once), and „Behalten“ ends the question for good. Text
 
 The UI load guard's measured projects were imported since the trust rule, so none shows the line;
 the dialog's body mounts only when it opens, so the rules page makes no new request.
+
+**M6 S2b follow-up step 3's texts as delivered** (2026-10-20, on the branch, every gate green; M6
+§8 "S2b follow-up step 3 as delivered", DEVELOPMENT.md "M6 S2b follow-up step 3"). The agent work
+of a dry run reaches „Hochladen“'s „Vorschau“ (§6) as text in its lines and lists, one alert and
+the second click of §3.4 item 4; no new control otherwise. So before „Importieren“ the consultant
+sees how much agent work an import sets off (pairs to judge, processes to place), which it repeats
+(„davon erneut“) and whether it destroys an agent's running work, and can time and batch imports
+without losing agent runs; on a first import the line shows the agent work it sets off. Texts in
+`src/lib/agent-cost.ts`, `src/lib/upload.ts` and `components/upload-panel.tsx`.
+
+- **The cost line**, always the last of the three lines, on a first import too: „214 mögliche
+  Relationen zu beurteilen (56 davon erneut), 7 Prozesse zu platzieren (5 davon erneut)“ („1
+  mögliche Relation zu beurteilen“, „1 Prozess zu platzieren“); „(N davon erneut)“ only when some
+  are judged or placed again; the relations part only when there are pairs, the placement part
+  only when the import sets off the placement task and it has processes to place; „etwa 7.300
+  mögliche Relationen zu beurteilen“ for more than one batch. An unchanged re-import keeps
+  „Danach: keine Änderung an Relationen und Befunden.“ Every count of the lines in German numbers
+  („1.234 Aufrufe automatisch verknüpft“).
+- **The placements line**, right after the endpoints line: „1 angenommene Platzierung mit
+  geändertem oder fehlendem Prozess“ („2 angenommene Platzierungen …“); next to the cost line it
+  can move into the list.
+- **„Was ändert sich?“**, shown only when a list has items: after the endpoints list „Angenommene
+  Platzierungen mit geändertem oder fehlendem Prozess (n)“ („lager/versand#Process_1 → „Versand“
+  (fehlt)“, „a#P → Außerhalb der Kette (geändert)“, a step without a name by its id); last
+  „Mögliche Relationen, die erneut beurteilt werden (n)“ („Nachricht a#Send → b#Catch“).
+- **The warning**, a destructive alert above the buttons while the import cancels relations tasks
+  an agent holds: „Ein Agent bearbeitet „vertrieb/auftrag“ gerade; seine Arbeit geht verloren.“ –
+  „Der Import bricht seine Analyse ab; sie wird danach neu eingeplant.“; for several „Agenten
+  bearbeiten gerade 5 dieser Modelle; ihre Arbeit geht verloren.“ – „„a“, „b“, „c“ und 2 weitere.
+  Der Import bricht ihre Analysen ab; sie werden danach neu eingeplant.“ (two: „„a“ und „b“. …“;
+  three: „„a“, „b“ und „c“. …“). No handle; „Danach: keine Änderung …“ is hidden beside it.
+- **The second click**: while the warning shows, the first click turns „Importieren“ into
+  „Trotzdem importieren“ (destructive) and sends nothing, the second imports; „Abbrechen“ closes
+  the preview as before, and a new preview asks again; a double click arms only.
+- **The batch note** for more than one batch (above 50 files or 25 MB): „Vorschau je 50 Dateien;
+  Aufrufe zwischen den Teilen erscheinen hier als unaufgelöst.“, with new models in two or more
+  parts „Vorschau je 50 Dateien; Aufrufe zwischen den Teilen erscheinen hier als unaufgelöst,
+  mögliche Relationen zwischen neuen Modellen verschiedener Teile fehlen in der Zahl.“
+
+`analyzr import --dry-run` and the listing of `analyzr models delete` say the same in English (M6
+§8). The UI load guard (the review round's run on `analyzr-s2bf3i`): UX7's „Vorschau“ (a first
+import of the raw Signavio export) 20 controls, 133 words and 6 badges (128 words before; the 5
+more are „· 7 mögliche Relationen zu beurteilen“); the new step „Vorschau (erneuter Import)“ on the
+worked `nordwind-handel` (`finanzen/rechnungsstellung` re-exported, a dry run only, then
+„Abbrechen“) 16 controls, 95 words and 1 badge at 1440 px, 16 controls, 93 words and 1 badge at 390
+px, no horizontal scroll; no budget constant changed. Not verified: a real phone, a screen reader
+(arming announces nothing new, as in the amend form; HANDOFF §8).
 
 ## 8. Keep as is
 

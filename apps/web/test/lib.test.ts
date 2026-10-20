@@ -1,8 +1,15 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import type { TrustReason } from '@analyzr/client';
+import type { ImpactPlacement, ImportImpact, TrustReason } from '@analyzr/client';
 import { describe, expect, it } from 'vitest';
+
+import {
+  agentCostText,
+  claimedImportWarning,
+  possibleRelationsText,
+  processesToPlace,
+} from '../src/lib/agent-cost';
 
 import {
   DOCKER_CONTAINER,
@@ -23,6 +30,7 @@ import { BPMN_FILE_SUFFIXES } from '@analyzr/contracts/paths';
 import {
   BPMN_ACCEPT,
   BPMN_SUFFIX_TEXT,
+  batchNoteText,
   callsWaitingText,
   elementTypeLabel,
   entriesFromFileList,
@@ -33,8 +41,10 @@ import {
   impactLines,
   isSkippedXml,
   mergeImpacts,
+  placementChangeText,
   planUpload,
   previewHeadline,
+  rejudgedText,
   sharedTopFolder,
   skippedReasonText,
   stripRoot,
@@ -484,6 +494,41 @@ describe('upload result (UX7)', () => {
     expect(sharedTopFolder(['gemeinsam/a'])).toBeNull();
   });
 
+  it('notes what a preview of several batches cannot see, the pairs between new models of two batches too (S2b follow-up)', () => {
+    const batch = (...paths: string[]) => paths.map((path) => ({ path }));
+    const outcome = (path: string, o: string) => ({ path, outcome: o });
+    const calls =
+      'Vorschau je 50 Dateien; Aufrufe zwischen den Teilen erscheinen hier als unaufgelöst';
+    expect(batchNoteText([batch('a.bpmn', 'b.bpmn')], [outcome('a.bpmn', 'created')])).toBeNull();
+    // a re-import: the pairs between two batches' models count in both, which „etwa“ covers
+    expect(
+      batchNoteText(
+        [batch('a.bpmn'), batch('b.bpmn')],
+        [outcome('a.bpmn', 'revised'), outcome('b.bpmn', 'revised')],
+      ),
+    ).toBe(`${calls}.`);
+    // new models in one batch only: their pairs with the head's models count
+    expect(
+      batchNoteText(
+        [batch('a.bpmn'), batch('b.bpmn', 'c.bpmn')],
+        [
+          outcome('a.bpmn', 'unchanged'),
+          outcome('b.bpmn', 'created'),
+          outcome('c.bpmn', 'created'),
+        ],
+      ),
+    ).toBe(`${calls}.`);
+    // a first import in parts: the pairs between them count in no batch
+    expect(
+      batchNoteText(
+        [batch('a.bpmn'), batch('b.bpmn')],
+        [outcome('a.bpmn', 'created'), outcome('b.bpmn', 'created')],
+      ),
+    ).toBe(
+      `${calls}, mögliche Relationen zwischen neuen Modellen verschiedener Teile fehlen in der Zahl.`,
+    );
+  });
+
   it('adds what an owner’s rules for derived calls accept at once to the „Vorschau“ line (M6 S2c-3)', () => {
     const list = (count: number) => ({ count, items: [] });
     const call = { type: 'call' as const, from: 'a#C' as const, to: 'b#P' as const };
@@ -606,6 +651,225 @@ describe('upload result (UX7)', () => {
       ],
     });
     expect('autoAcceptedCalls' in mergeImpacts([impact, impact])).toBe(false);
+  });
+
+  it('names the agent work a preview sets off in the last of its three lines (S2b follow-up)', () => {
+    const list = <T>(count: number, items: T[] = []) => ({ count, items });
+    const tasks = (
+      pairs: number,
+      rejudged: number,
+      cancelled: ImportImpact['relationsTasks']['cancelled']['items'] = [],
+      claimed = cancelled.filter((t) => t.state === 'claimed').length,
+    ): ImportImpact['relationsTasks'] => ({
+      queued: list(pairs > 0 ? 1 : 0, pairs > 0 ? ['a'] : []),
+      cancelled: list(cancelled.length, cancelled),
+      claimed,
+      pairs,
+      rejudged: list(rejudged),
+    });
+    const impact: ImportImpact = {
+      files: [],
+      acceptedCalls: list(3),
+      callsProposed: { ...list(0), wasAccepted: 0, byReason: [] },
+      proposalsAdded: list(4),
+      proposalsWithdrawn: list(0),
+      endpointsChanged: list(2),
+      findingsAdded: list(1),
+      findingsResolved: list(0),
+      absentKeys: list(0),
+      relationsTasks: tasks(0, 0),
+    };
+    // Without agent work (an unchanged re-import), the lines of S2b.
+    expect(impactLines(impact)).toEqual([
+      '3 Aufrufe automatisch verknüpft',
+      '2 angenommene Relationen mit geändertem oder fehlendem Endpunkt',
+      '4 neue Vorschläge der Regeln zu prüfen',
+    ]);
+    // The cost takes the third slot; the pairs judged again in brackets; de-DE numbers.
+    const placement = (
+      outcome: NonNullable<ImportImpact['placementTask']>['outcome'],
+      newlyDue: number,
+      again = 0,
+      due = newlyDue + 2,
+    ) => ({ placementTask: { outcome, due, newlyDue, again } });
+    expect(
+      impactLines({ ...impact, relationsTasks: tasks(214, 56), ...placement('queued', 7, 0, 7) }),
+    ).toEqual([
+      '3 Aufrufe automatisch verknüpft',
+      '2 angenommene Relationen mit geändertem oder fehlendem Endpunkt',
+      '214 mögliche Relationen zu beurteilen (56 davon erneut), 7 Prozesse zu platzieren',
+    ]);
+    expect(agentCostText({ relationsTasks: tasks(1234, 0) })).toBe(
+      '1.234 mögliche Relationen zu beurteilen',
+    );
+    expect(agentCostText({ relationsTasks: tasks(1, 1) })).toBe(
+      '1 mögliche Relation zu beurteilen (1 davon erneut)',
+    );
+    expect(possibleRelationsText(2)).toBe('2 mögliche Relationen');
+    // On a first import too, with fewer lines before it.
+    expect(
+      impactLines(
+        {
+          ...impact,
+          acceptedCalls: list(0),
+          endpointsChanged: list(0),
+          relationsTasks: tasks(12, 0),
+        },
+        1,
+      ),
+    ).toEqual([
+      '4 neue Vorschläge der Regeln zu prüfen',
+      '1 neuer Befund',
+      '12 mögliche Relationen zu beurteilen',
+    ]);
+    // Several batches add up counts against the head: „etwa“.
+    expect(agentCostText({ relationsTasks: tasks(7300, 0) }, 3)).toBe(
+      'etwa 7.300 mögliche Relationen zu beurteilen',
+    );
+    // The placement part: a task the write queues places every process due, also those due
+    // before (a deletion queues none); one waiting or held (its follow-up) the newly due ones;
+    // with those placed again.
+    const none = tasks(0, 0);
+    expect(agentCostText({ relationsTasks: none, ...placement('queued', 1, 1, 1) })).toBe(
+      '1 Prozess zu platzieren (1 davon erneut)',
+    );
+    expect(agentCostText({ relationsTasks: none, ...placement('queued', 0, 0, 4) })).toBe(
+      '4 Prozesse zu platzieren',
+    );
+    expect(agentCostText({ relationsTasks: none, ...placement('queued', 2, 1, 9) })).toBe(
+      '9 Prozesse zu platzieren (1 davon erneut)',
+    );
+    expect(agentCostText({ relationsTasks: none, ...placement('deferred', 2) })).toBe(
+      '2 Prozesse zu platzieren',
+    );
+    expect(agentCostText({ relationsTasks: none, ...placement('open', 3, 2) }, 2)).toBe(
+      'etwa 3 Prozesse zu platzieren (2 davon erneut)',
+    );
+    for (const p of [
+      placement('not-triggered', 4),
+      placement('open', 0),
+      placement('deferred', 0),
+      placement('nothing-due', 0, 0, 0),
+    ])
+      expect(agentCostText({ relationsTasks: none, ...p })).toBeNull();
+    // merged batches: `due` the largest batch's, `newlyDue` their sum, never fewer than that
+    expect(processesToPlace({ outcome: 'queued', due: 3, newlyDue: 5, again: 1 })).toBe(5);
+    expect(processesToPlace({ outcome: 'open', due: 9, newlyDue: 1, again: 0 })).toBe(1);
+    expect(processesToPlace({ outcome: 'not-triggered', due: 9, newlyDue: 9, again: 0 })).toBe(0);
+    // A project without a chain, nothing to judge: no cost.
+    expect(agentCostText({ relationsTasks: none })).toBeNull();
+
+    // Accepted placements whose process changes rank right after the relations' ends.
+    const placements = (count: number) => ({ placementsChanged: list<ImpactPlacement>(count) });
+    expect(impactLines({ ...impact, acceptedCalls: list(0), ...placements(1) })).toEqual([
+      '2 angenommene Relationen mit geändertem oder fehlendem Endpunkt',
+      '1 angenommene Platzierung mit geändertem oder fehlendem Prozess',
+      '4 neue Vorschläge der Regeln zu prüfen',
+    ]);
+    expect(
+      impactLines({
+        ...impact,
+        endpointsChanged: list(0),
+        ...placements(2),
+        relationsTasks: tasks(5, 0),
+      }),
+    ).toEqual([
+      '3 Aufrufe automatisch verknüpft',
+      '2 angenommene Platzierungen mit geändertem oder fehlendem Prozess',
+      '5 mögliche Relationen zu beurteilen',
+    ]);
+
+    // Every count in German: one sentence never mixes „1234“ and „1.234“.
+    expect(
+      impactLines({
+        ...impact,
+        acceptedCalls: list(1234),
+        endpointsChanged: list(0),
+        ...placements(2345),
+        relationsTasks: tasks(3456, 0),
+      }),
+    ).toEqual([
+      '1.234 Aufrufe automatisch verknüpft',
+      '2.345 angenommene Platzierungen mit geändertem oder fehlendem Prozess',
+      '3.456 mögliche Relationen zu beurteilen',
+    ]);
+
+    // „Was ändert sich?“: the pairs judged again by type, the placements by process and step.
+    expect(rejudgedText({ type: 'message', from: 'a#Send', to: 'b#Catch' })).toBe(
+      'Nachricht a#Send → b#Catch',
+    );
+    expect(
+      placementChangeText({
+        step: 'step-versand',
+        stepName: 'Versand',
+        process: 'lager/versand#Process_1',
+        endpointState: 'missing',
+      }),
+    ).toBe('lager/versand#Process_1 → „Versand“ (fehlt)');
+    expect(
+      placementChangeText({
+        step: '@outside',
+        stepName: null,
+        process: 'a#P',
+        endpointState: 'changed',
+      }),
+    ).toBe('a#P → Außerhalb der Kette (geändert)');
+    expect(
+      placementChangeText({
+        step: 'step-x',
+        stepName: null,
+        process: 'a#P',
+        endpointState: 'changed',
+      }),
+    ).toBe('a#P → step-x (geändert)');
+
+    // The warning for relations tasks an agent holds: one by key, several by count.
+    const cancelled = (key: string, state: 'queued' | 'claimed') => ({
+      modelKey: key,
+      state,
+      claimedBy: state === 'claimed' ? 'agent:claude' : null,
+      assigned: state === 'claimed' ? 4 : null,
+    });
+    expect(claimedImportWarning(tasks(5, 0, [cancelled('b', 'queued')]))).toBeNull();
+    expect(
+      claimedImportWarning(
+        tasks(5, 0, [cancelled('vertrieb/auftrag', 'claimed'), cancelled('b', 'queued')]),
+      ),
+    ).toEqual({
+      title: 'Ein Agent bearbeitet „vertrieb/auftrag“ gerade; seine Arbeit geht verloren.',
+      description: 'Der Import bricht seine Analyse ab; sie wird danach neu eingeplant.',
+    });
+    expect(
+      claimedImportWarning(
+        tasks(
+          5,
+          0,
+          ['a', 'b', 'c', 'd', 'e'].map((k) => cancelled(k, 'claimed')),
+        ),
+      ),
+    ).toEqual({
+      title: 'Agenten bearbeiten gerade 5 dieser Modelle; ihre Arbeit geht verloren.',
+      description:
+        '„a“, „b“, „c“ und 2 weitere. Der Import bricht ihre Analysen ab; sie werden danach neu eingeplant.',
+    });
+    expect(
+      claimedImportWarning(
+        tasks(
+          5,
+          0,
+          ['a', 'b', 'c'].map((k) => cancelled(k, 'claimed')),
+        ),
+      )?.description,
+    ).toBe(
+      '„a“, „b“ und „c“. Der Import bricht ihre Analysen ab; sie werden danach neu eingeplant.',
+    );
+    // claimed counts past the cap: the listed ones first, the rest counted
+    expect(
+      claimedImportWarning(tasks(5, 0, [cancelled('a', 'claimed'), cancelled('b', 'claimed')], 102))
+        ?.description,
+    ).toBe(
+      '„a“, „b“ und 100 weitere. Der Import bricht ihre Analysen ab; sie werden danach neu eingeplant.',
+    );
   });
 
   it('says what waits for the agent as `analyzr import` does', () => {

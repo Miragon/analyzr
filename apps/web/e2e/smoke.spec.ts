@@ -231,6 +231,11 @@ test('upload: a bundle folder with its manifest imports as `analyzr import` does
   await page.getByTestId('folder-input').setInputFiles(bundle);
   // M6 S2b: the preview names the new models first; „Importieren“ sends the same
   await expect(page.getByTestId('import-headline')).toHaveText('Vorschau: 6 Modelle neu');
+  // S2b follow-up: a first import names the agent work it sets off, in the last line
+  await expect(page.getByTestId('preview-impact')).toHaveText(
+    / · \d+ mögliche Relationen? zu beurteilen$/,
+  );
+  await expect(page.getByTestId('preview-claimed')).toHaveCount(0);
   await page.getByTestId('preview-import').click();
   await expect(page.getByTestId('import-headline')).toHaveText('6 Modelle importiert');
   await expect(page.getByTestId('upload-bundle')).toHaveText(

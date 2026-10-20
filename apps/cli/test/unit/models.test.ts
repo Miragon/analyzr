@@ -10,6 +10,7 @@ import { rm } from 'node:fs/promises';
 import type { Model } from '@analyzr/contracts';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
+import { deletionImpactText } from '../../src/commands/models.ts';
 import { runCli } from '../../src/program.ts';
 import {
   AGENT_TOKEN,
@@ -220,7 +221,21 @@ describe('analyzr models delete', () => {
   function deletingApi() {
     return fakeApi({
       [MODELS]: pagedModels(all),
-      'GET /api/v1/projects/p/models/mdl_b/deletion-impact': () => Response.json(impact(0)),
+      // S2b follow-up: the model's task an agent holds, and with a value chain its placements
+      'GET /api/v1/projects/p/models/mdl_b/deletion-impact': () =>
+        Response.json({
+          ...impact(0),
+          relationsTasks: {
+            ...impact(0).relationsTasks,
+            cancelled: {
+              count: 1,
+              items: [{ modelKey: 'b', state: 'claimed', claimedBy: 'agent:claude', assigned: 3 }],
+            },
+            claimed: 1,
+          },
+          placementsChanged: { count: 2, items: [] },
+          placementTask: { outcome: 'not-triggered', due: 4, newlyDue: 3, again: 1 },
+        }),
       // an owner's dry run: their rules for derived calls take a call the deletion makes unique
       'GET /api/v1/projects/p/models/mdl_a_eins/deletion-impact': () =>
         Response.json({
@@ -231,6 +246,9 @@ describe('analyzr models delete', () => {
             ofProposed: 0,
             byRule: [{ ruleId: 'aar_01J9Z3N4X5Q6R7S8T9V0W1X2Y3', ruleName: 'Aufrufe', count: 1 }],
           },
+          // a second deletion making a process due: the requeue hint is still printed once
+          placementsChanged: { count: 0, items: [] },
+          placementTask: { outcome: 'not-triggered', due: 1, newlyDue: 1, again: 0 },
         }),
       'DELETE /api/v1/projects/p/models/mdl_a_eins': () => new Response(null, { status: 204 }),
       'DELETE /api/v1/projects/p/models/mdl_b': () => new Response(null, { status: 204 }),
@@ -258,13 +276,38 @@ describe('analyzr models delete', () => {
         '  b       waiting_for_agent   r1    c7  0 open items',
         '  a/eins  waiting_for_review  r1    c7  2 open items',
         // M6 S2b: each deletion's impact, against the project's head
-        '  b: 0 accepted relations lose an end (missing), 3 rule stances withdrawn, findings 0 added, 0 resolved',
-        '  a/eins: 1 accepted relation loses an end (missing), 3 rule stances withdrawn, 1 call only proposed (trust rule), 1 call accepted by your rules for derived calls, findings 1 added, 0 resolved',
+        '  b: 0 accepted relations lose an end (missing), 3 rule stances withdrawn, findings 0 added, 0 resolved, relations task cancelled while an agent works on it (its work is lost), 2 accepted placements lose their process (missing), 3 processes become due for placement',
+        '  a/eins: 1 accepted relation loses an end (missing), 3 rule stances withdrawn, 1 call only proposed (trust rule), 1 call accepted by your rules for derived calls, findings 1 added, 0 resolved, 1 process becomes due for placement',
+        // S2b follow-up: once for the listing, since no deletion queues the placement task
+        'Deleting queues no placement task; afterwards analyzr value-chain requeue -p p queues it unless one waits.',
         'Uploading a key again revives its model with a new revision.',
         '',
       ].join('\n'),
     );
     expect(t.err()).toContain('nothing deleted; run again with --yes');
+  });
+
+  it('names the queued task it cancels, one placement and one process due (S2b follow-up)', () => {
+    const base = impact(0);
+    const text = deletionImpactText({
+      ...base,
+      relationsTasks: {
+        ...base.relationsTasks,
+        cancelled: {
+          count: 1,
+          items: [{ modelKey: 'b', state: 'queued', claimedBy: null, assigned: null }],
+        },
+      },
+      placementsChanged: { count: 1, items: [] },
+      placementTask: { outcome: 'not-triggered', due: 1, newlyDue: 1, again: 0 },
+    });
+    expect(text).toBe(
+      '0 accepted relations lose an end (missing), 3 rule stances withdrawn, findings 0 added, 0 resolved, relations task cancelled, 1 accepted placement loses its process (missing), 1 process becomes due for placement',
+    );
+    // nothing open, no chain: the S2b parts only
+    expect(deletionImpactText(base)).toBe(
+      '0 accepted relations lose an end (missing), 3 rule stances withdrawn, findings 0 added, 0 resolved',
+    );
   });
 
   it('stops on an unknown key before deleting anything', async () => {
