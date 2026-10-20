@@ -504,9 +504,12 @@ describe('analyzr-read refuses', () => {
     const before = server.log.length;
     try {
       expect(await fetchAfter(false)).toBe('failed');
-      expect([tunnelled, server.log.length]).toEqual([1, before]);
+      // Node may retry the dropped connection (once on macOS, a dozen times on Linux in CI).
+      const reached = tunnelled;
+      expect(reached).toBeGreaterThan(0);
+      expect(server.log.length).toBe(before);
       expect(await fetchAfter(true)).toBe('200');
-      expect([tunnelled, server.log.length]).toEqual([1, before + 1]);
+      expect([tunnelled, server.log.length]).toEqual([reached, before + 1]);
     } finally {
       await new Promise<void>((resolve) => proxy.close(() => resolve()));
     }
