@@ -19,9 +19,11 @@
  * integrate plugin's golden bundle under its pinned keys, `analyzr models
  * external-ids`, unchanged bytes, the import warnings).
  */
+import { execFile } from 'node:child_process';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { PassThrough } from 'node:stream';
+import { promisify } from 'node:util';
 
 import { Client } from '@modelcontextprotocol/client';
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
@@ -1644,6 +1646,140 @@ describe('analyzr import with the manifest and models external-ids (M6 S2a)', ()
     expect(r.out).toContain(
       'm6-s2a: 2 import warnings (external-id-moved 1, manifest-sha-mismatch 1); the files were imported\n',
     );
+  });
+});
+
+describe("the integrate plugin's analyzr-read.mjs against the server (M6 S2b follow-up step 4)", () => {
+  const bundle = path.join(REPO_ROOT, 'tools/integrate/test/fixtures/signavio/bundle');
+  const scripts = path.join(REPO_ROOT, 'plugins/analyzr-integrate/scripts');
+  const ws = () => path.join(dir, 'integrate-ws');
+
+  // analyzr-read writes only into an existing workspace's reports/ (skill step 0 makes it).
+  beforeAll(async () => {
+    await mkdir(path.join(ws(), 'reports'), { recursive: true });
+    await writeFile(path.join(ws(), 'analyzr-workspace.json'), '{}\n');
+  });
+
+  /** Runs one of the plugin's bundled scripts as the skill does, with the owner key file. */
+  async function plugin(script: string, args: string[]) {
+    try {
+      const { stdout, stderr } = await promisify(execFile)(
+        process.execPath,
+        [path.join(scripts, script), ...args],
+        { cwd: dir, env: cleanEnv({ ANALYZR_OWNER_KEY_FILE: keyFile }) },
+      );
+      return { code: 0, stdout, stderr };
+    } catch (err) {
+      const e = err as { code?: number; stdout?: string; stderr?: string };
+      return { code: e.code ?? -1, stdout: e.stdout ?? '', stderr: e.stderr ?? '' };
+    }
+  }
+
+  async function seqOf(project: string): Promise<number | undefined> {
+    return (await status()).projects.find((p) => p.key === project)?.seq;
+  }
+
+  it.each(['m6-s2a', 'nordwind-handel'])(
+    'previews the golden bundle into %s exactly as analyzr import --dry-run --json, writing nothing',
+    async (project) => {
+      const details = path.join(ws(), 'reports', `${project}.preview.json`);
+      const seq = await seqOf(project);
+      const models = (await analyzr(['models', 'list', '-p', project, '--json'])).out;
+      const r = await plugin('analyzr-read.mjs', [
+        'preview',
+        bundle,
+        '-p',
+        project,
+        '--url',
+        server.url,
+        '--json-out',
+        details,
+      ]);
+      expect(r).toMatchObject({ code: 0, stderr: '' });
+      const dry = await analyzr(['import', bundle, '-p', project, '--dry-run', '--json']);
+      expect(dry.code).toBe(0);
+      expect(JSON.parse(await readFile(details, 'utf8'))).toEqual(JSON.parse(dry.out));
+      const summary = JSON.parse(dry.out) as {
+        counts: Record<string, number>;
+        impact: { relationsTasks: { queued: { count: number }; pairs: number } };
+      };
+      expect(JSON.parse(r.stdout)).toMatchObject({
+        project,
+        credential: 'owner-key',
+        batches: 1,
+        counts: { ...summary.counts, skipped: 0 },
+        agentWork: {
+          relations: {
+            queued: summary.impact.relationsTasks.queued.count,
+            pairs: summary.impact.relationsTasks.pairs,
+          },
+        },
+        details,
+      });
+      expect(await seqOf(project)).toBe(seq);
+      expect((await analyzr(['models', 'list', '-p', project, '--json'])).out).toBe(models);
+    },
+  );
+
+  it('feeds external-ids into normalize-bpmn plan --from-analyzr: the key map and rule of the manifest', async () => {
+    const reports = path.join(ws(), 'reports');
+    const ids = path.join(reports, 'm6-s2a.external-ids.json');
+    const models = path.join(reports, 'm6-s2a.models.json');
+    const common = ['-p', 'm6-s2a', '--url', server.url];
+    expect(
+      (await plugin('analyzr-read.mjs', ['external-ids', ...common, '--json-out', ids])).code,
+    ).toBe(0);
+    expect(
+      (await plugin('analyzr-read.mjs', ['models', ...common, '--json-out', models])).code,
+    ).toBe(0);
+    expect(JSON.parse(await readFile(ids, 'utf8'))).toEqual(
+      JSON.parse((await analyzr(['models', 'external-ids', '-p', 'm6-s2a', '--json'])).out),
+    );
+    const plan = await plugin('normalize-bpmn.mjs', [
+      'plan',
+      path.join(REPO_ROOT, 'tools/integrate/test/fixtures/signavio/2026-10-14-signavio'),
+      '--workspace',
+      ws(),
+      '--system',
+      'signavio',
+      '--whole-system',
+      '--existing',
+      models,
+      '--from-analyzr',
+      ids,
+    ]);
+    expect(plan.code).toBe(0);
+    // The test above moved "Versand" to versand/versand without a tool folder: one tool id on
+    // two keys, the older keeps it; the newer has no folder to be identified by.
+    const versand = (
+      JSON.parse(await readFile(ids, 'utf8')) as {
+        items: { key: string; externalId: string | null }[];
+      }
+    ).items.find((i) => i.key === 'logistik/versand');
+    expect(JSON.parse(plan.stdout)).toMatchObject({
+      firstImport: false,
+      rebuilt: {
+        restored: true,
+        entries: 6,
+        rule: { strip: 'Gemeinsame Dokumente', prefix: null },
+        ruleFits: { matching: 6, of: 6 },
+        duplicates: {
+          count: 1,
+          items: [
+            {
+              externalId: versand?.externalId,
+              keys: ['logistik/versand', 'versand/versand'],
+              kept: 'logistik/versand',
+              keptBy: 'oldest',
+            },
+          ],
+        },
+        skipped: { count: 1, items: [{ key: 'versand/versand', externalId: null }] },
+        conflicts: { count: 0 },
+      },
+      counts: { models: 6, known: 6, new: 0, moved: 0 },
+      written: null,
+    });
   });
 });
 

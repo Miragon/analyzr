@@ -1,11 +1,11 @@
 // The bundled scripts and the plugin's notices are generated (scripts/bundle.ts): they must match
 // a fresh build, import nothing but Node built-ins, and work without node_modules.
 import { execFile } from 'node:child_process';
-import { copyFile, mkdir, readFile } from 'node:fs/promises';
+import { chmod, copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
 
-import { beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import {
   build,
@@ -17,7 +17,14 @@ import {
 } from '../scripts/bundle.ts';
 import { inspectExport } from '../src/inspect.ts';
 
-import { SIGNAVIO_BUNDLE, SIGNAVIO_EXPORT, SIGNAVIO_EXPORTED_AT, tempDir } from './support.ts';
+import { fakeAnalyzr, type FakeAnalyzr } from './fake-analyzr.ts';
+import {
+  PACKAGE_ROOT,
+  SIGNAVIO_BUNDLE,
+  SIGNAVIO_EXPORT,
+  SIGNAVIO_EXPORTED_AT,
+  tempDir,
+} from './support.ts';
 
 const run = promisify(execFile);
 const STALE = 'stale: run `pnpm --filter @analyzr/integrate generate` and commit the result';
@@ -54,7 +61,8 @@ describe('plugins/analyzr-integrate generated files', () => {
       expect(code, script).not.toMatch(/\brequire\(|import\(/);
       // Nothing of the machine or the pnpm store layout (region comments name packages).
       expect(code, script).not.toContain(REPO_ROOT);
-      expect(code, script).not.toMatch(/\/Users\/|\/home\/|node_modules|\.\.\/\.\.\/\.\./);
+      // (`'node_modules'` itself is a folder analyzr-read skips, as the CLI does.)
+      expect(code, script).not.toMatch(/\/Users\/|\/home\/|node_modules[\\/]|\.\.\/\.\.\/\.\./);
       const regions = [...code.matchAll(/^\/\/#region (.+)$/gm)].map((m) => m[1] ?? '');
       expect(regions.length, script).toBeGreaterThan(0);
       for (const region of regions) {
@@ -77,9 +85,52 @@ describe('plugins/analyzr-integrate generated files', () => {
     ]);
     for (const p of fresh.packages) expect(p.texts.length, p.name).toBeGreaterThan(0);
   });
+
+  it('keep analyzr-read.mjs free of third-party code: Node, its sources and the zod-free contracts', () => {
+    const code = fresh.files.get(`${PLUGIN_DIR}/scripts/analyzr-read.mjs`) ?? '';
+    expect(fresh.packages.filter((p) => p.scripts.includes('analyzr-read.mjs'))).toEqual([]);
+    expect(code).not.toMatch(/\bzod\b|bpmn-moddle|saxen/);
+    // The merge and the file rule the CLI and the web share, not a copy.
+    expect(code).toContain('function mergeImpacts(');
+    expect(code).toContain('function modelKeyOwners(');
+  });
 });
 
 describe('the bundled scripts, copied away from node_modules', () => {
+  let analyzr: FakeAnalyzr;
+  beforeAll(async () => {
+    analyzr = await fakeAnalyzr();
+  });
+  afterAll(async () => {
+    await analyzr.close();
+  });
+
+  it('analyzr-read previews the golden bundle as its sources do', async () => {
+    const dir = await tempDir();
+    const keyFile = path.join(dir, 'owner-key');
+    await writeFile(keyFile, `analyzr_ok_${'k'.repeat(43)}`);
+    await chmod(keyFile, 0o600);
+    const env = { PATH: process.env['PATH'] ?? '', HOME: dir, ANALYZR_OWNER_KEY_FILE: keyFile };
+    const args = ['preview', SIGNAVIO_BUNDLE, '-p', 'kunde-x', '--url', analyzr.url];
+    const script = path.join(dir, 'analyzr-read.mjs');
+    await copyFile(path.join(REPO_ROOT, PLUGIN_DIR, 'scripts/analyzr-read.mjs'), script);
+    const bundled = await run(process.execPath, [script, ...args], { cwd: dir, env });
+    const source = await run(
+      process.execPath,
+      [path.join(PACKAGE_ROOT, 'src/cli/analyzr-read.ts'), ...args],
+      {
+        cwd: dir,
+        env,
+      },
+    );
+    expect(JSON.parse(bundled.stdout)).toMatchObject({ counts: { created: 6 }, batches: 1 });
+    expect(bundled.stdout).toBe(source.stdout);
+    expect(analyzr.log.map((r) => `${r.method} ${r.url}`)).toEqual([
+      'POST /api/v1/projects/kunde-x/imports?dryRun=true',
+      'POST /api/v1/projects/kunde-x/imports?dryRun=true',
+    ]);
+  });
+
   it('inspect prints what the sources compute', async () => {
     const dir = await tempDir();
     const script = path.join(dir, 'inspect.mjs');

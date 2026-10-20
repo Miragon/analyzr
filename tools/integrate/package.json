@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "license": "MIT",
-  "description": "Sources and tests of the scripts of the Claude Code plugin plugins/analyzr-integrate (M6 §3.7): inspect and normalize-bpmn, bundled into self-contained plugins/analyzr-integrate/scripts/*.mjs by `pnpm --filter @analyzr/integrate generate`; imported by nothing in apps/ or packages/",
+  "description": "Sources and tests of the scripts of the Claude Code plugin plugins/analyzr-integrate (M6 §3.7): inspect, normalize-bpmn and the read-only analyzr-read, bundled into self-contained plugins/analyzr-integrate/scripts/*.mjs by `pnpm --filter @analyzr/integrate generate`; imported by nothing in apps/ or packages/",
   "type": "module",
   "engines": {
     "node": ">=24"

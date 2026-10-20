@@ -5,6 +5,10 @@ import { createHash } from 'node:crypto';
 import { cp, mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
+import {
+  ImportManifest as ManifestSchema,
+  tidyDeclared as storedAs,
+} from '@analyzr/contracts/import-manifest';
 import { isImportPath, modelKeyFromPath, modelKeyOwners } from '@analyzr/contracts/paths';
 import { describe, expect, it } from 'vitest';
 
@@ -12,12 +16,14 @@ import {
   BundleError,
   coverageOf,
   MANIFEST_FILE,
+  MAX_SYSTEM_VERSION_CHARS,
   normalizeExportedAt,
   parseInventory,
   scanExport,
   writeBundle,
   type ImportManifest,
 } from '../src/bundle.ts';
+import { storedPath, tidyDeclared } from '../src/declared.ts';
 import { applyPlan, emptyKeymap, planKeys, type Keymap } from '../src/keymap.ts';
 import { NORMALIZE_BPMN_VERSION } from '../src/version.ts';
 
@@ -411,5 +417,78 @@ describe('normalizeExportedAt', () => {
     expect(normalizeExportedAt('2026-10-14T09:12:00+02:00')).toBe('2026-10-14T09:12:00+02:00');
     expect(() => normalizeExportedAt('14.10.2026')).toThrow(/ISO 8601/);
     expect(() => normalizeExportedAt('2026-13-40')).toThrow(BundleError);
+  });
+});
+
+describe('the declared systemVersion (M6 S2b follow-up step 4)', () => {
+  /** The systemVersion of a bundle whose models declare these exporterVersions (`null`: none). */
+  async function systemVersion(versions: readonly (string | null)[]): Promise<string | null> {
+    const dir = await tempDir();
+    const exportPath = path.join(dir, 'export');
+    await mkdir(exportPath);
+    for (const [i, v] of versions.entries()) {
+      const attrs = v === null ? '' : ` exporter="Tool" exporterVersion="${v}"`;
+      await writeFile(path.join(exportPath, `m${i}.bpmn`), bpmn('<task id="T" />', { attrs }));
+    }
+    const { models } = await scanExport(exportPath);
+    const keymap = applyPlan(
+      emptyKeymap(),
+      planKeys(emptyKeymap(), models, { system: 'tool', scope: null }),
+      null,
+    );
+    const out = path.join(dir, 'bundle');
+    await writeBundle({ exportPath, outDir: out, system: 'tool', keymap });
+    return (await manifestOf(out)).source.systemVersion;
+  }
+
+  it('declares a blank or absent version as none, a padded one trimmed', async () => {
+    expect(await systemVersion([''])).toBeNull();
+    expect(await systemVersion(['  '])).toBeNull();
+    expect(await systemVersion(['', null])).toBeNull();
+    expect(await systemVersion(['  ', null])).toBeNull();
+    expect(await systemVersion([' 19.6.0 '])).toBe('19.6.0');
+    expect(await systemVersion([' 19.6.0', '19.6.0 '])).toBe('19.6.0');
+    expect(await systemVersion(['19.6.0', '19.7.0'])).toBeNull();
+    expect(await systemVersion(['1'.repeat(MAX_SYSTEM_VERSION_CHARS)])).toBe(
+      '1'.repeat(MAX_SYSTEM_VERSION_CHARS),
+    );
+    // Over the manifest's 100 characters analyzr would refuse the bundle.
+    expect(await systemVersion(['1'.repeat(MAX_SYSTEM_VERSION_CHARS + 1)])).toBeNull();
+  });
+
+  it('keeps to the limit the contracts set for source.systemVersion', async () => {
+    const manifest = JSON.parse(
+      await readFile(path.join(SIGNAVIO_BUNDLE, MANIFEST_FILE), 'utf8'),
+    ) as ImportManifest;
+    const declaring = (systemVersion: string) =>
+      ManifestSchema.safeParse({ ...manifest, source: { ...manifest.source, systemVersion } })
+        .success;
+    expect(declaring('1'.repeat(MAX_SYSTEM_VERSION_CHARS))).toBe(true);
+    expect(declaring('1'.repeat(MAX_SYSTEM_VERSION_CHARS + 1))).toBe(false);
+  });
+
+  it('tidies as analyzr stores an informational value (tidyDeclared of the contracts)', () => {
+    for (const value of [
+      null,
+      undefined,
+      '',
+      '   ',
+      ' 19.6.0 ',
+      'a\tb\nc',
+      '\u0000x\u001f',
+      '\uD800v',
+      'v\uDFFF',
+      '\uD83D\uDE00',
+      '\u00A0x\u00A0',
+    ]) {
+      expect(tidyDeclared(value, Number.POSITIVE_INFINITY), JSON.stringify(value)).toBe(
+        storedAs(value),
+      );
+    }
+    expect(tidyDeclared(' 1234 ', 4)).toBe('1234');
+    expect(tidyDeclared('12345', 4)).toBeNull();
+    // A tool path as analyzr keeps it (a key map rebuilt from analyzr holds that form).
+    expect(storedPath('Ordner/Prozess ')).toBe(storedAs('Ordner/Prozess '));
+    expect(storedPath(' A\tB/C\n')).toBe(storedAs(' A\tB/C\n'));
   });
 });

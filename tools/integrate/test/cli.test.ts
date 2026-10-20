@@ -6,7 +6,15 @@ import { promisify } from 'node:util';
 
 import { describe, expect, it } from 'vitest';
 
-import { bpmn, PACKAGE_ROOT, REPO_ROOT, SIGNAVIO_EXPORT, tempDir } from './support.ts';
+import {
+  bpmn,
+  PACKAGE_ROOT,
+  REPO_ROOT,
+  SIGNAVIO_BUNDLE,
+  SIGNAVIO_EXPORT,
+  SIGNAVIO_RULE,
+  tempDir,
+} from './support.ts';
 
 const execFileAsync = promisify(execFile);
 
@@ -204,6 +212,92 @@ describe('normalize-bpmn', () => {
     expect(
       await cli('normalize-bpmn', ['plan', ...base, '--existing', path.join(ws, 'missing.json')]),
     ).toMatchObject({ code: 1, stderr: matching(/does not exist/) });
+  });
+
+  it('plan --from-analyzr: rebuilds a lost key map from analyzr, recorded only with --write', async () => {
+    const ws = await tempDir();
+    const manifest = JSON.parse(
+      await readFile(path.join(SIGNAVIO_BUNDLE, 'analyzr-import.json'), 'utf8'),
+    ) as { files: { key: string; externalId?: string; externalPath: string }[] };
+    // What analyzr-read.mjs external-ids and models write after an import of the golden bundle.
+    const identities = path.join(ws, 'reports', 'x.external-ids.json');
+    const models = path.join(ws, 'reports', 'x.models.json');
+    await mkdir(path.join(ws, 'reports'));
+    await writeFile(
+      identities,
+      JSON.stringify({
+        items: manifest.files.map((f) => ({
+          key: f.key,
+          system: 'signavio',
+          externalId: f.externalId ?? null,
+          externalPath: f.externalPath,
+        })),
+      }),
+    );
+    await writeFile(
+      models,
+      JSON.stringify(
+        manifest.files.map((f, i) => ({ id: `mdl_${i}`, key: f.key, stage: 'judged' })),
+      ),
+    );
+    const args = [
+      SIGNAVIO_EXPORT,
+      '--workspace',
+      ws,
+      '--system',
+      'signavio',
+      '--whole-system',
+      '--existing',
+      models,
+      '--from-analyzr',
+      identities,
+    ];
+    const dry = await cli('normalize-bpmn', ['plan', ...args]);
+    expect(dry.code).toBe(0);
+    expect(JSON.parse(dry.stdout)).toMatchObject({
+      firstImport: false,
+      rebuilt: {
+        restored: true,
+        entries: 6,
+        rule: SIGNAVIO_RULE,
+        ruleFits: { matching: 6, of: 6 },
+        duplicates: { count: 0 },
+      },
+      counts: { models: 6, known: 6, new: 0, flagged: 0 },
+      written: null,
+    });
+    await expect(readFile(path.join(ws, 'keymap.json'))).rejects.toThrow(/ENOENT/);
+    // --reset would drop keys analyzr has.
+    expect(await cli('normalize-bpmn', ['plan', ...args, '--reset'])).toMatchObject({
+      code: 1,
+      stderr: matching(/analyzr has 6 models of signavio already.*--reset/),
+    });
+    expect((await cli('normalize-bpmn', ['plan', ...args, '--write'])).code).toBe(0);
+    const keymap = JSON.parse(await readFile(path.join(ws, 'keymap.json'), 'utf8')) as {
+      systems: Record<string, { rule: unknown; entries: unknown[] }>;
+    };
+    expect(keymap.systems['signavio']).toMatchObject({ rule: SIGNAVIO_RULE });
+    expect(keymap.systems['signavio']?.entries).toHaveLength(6);
+    // Recorded: the rule is fixed, a plan without analyzr knows every file.
+    expect(await cli('normalize-bpmn', ['plan', ...args, '--strip', 'Archiv'])).toMatchObject({
+      code: 1,
+      stderr: matching(/fixed since its first plan --write/),
+    });
+    const again = await cli('normalize-bpmn', [
+      'plan',
+      SIGNAVIO_EXPORT,
+      '--workspace',
+      ws,
+      '--system',
+      'signavio',
+    ]);
+    expect(JSON.parse(again.stdout)).toMatchObject({ counts: { known: 6 } });
+    expect(JSON.parse(again.stdout)).not.toHaveProperty('rebuilt');
+    await writeFile(identities, JSON.stringify([{ key: 'x' }]));
+    expect(await cli('normalize-bpmn', ['plan', ...args])).toMatchObject({
+      code: 1,
+      stderr: matching(/expected the output of analyzr models external-ids --json/),
+    });
   });
 
   it('refuses to write into the export or an analyzr checkout', async () => {

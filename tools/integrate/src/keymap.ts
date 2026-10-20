@@ -5,11 +5,14 @@
  * first import fixes them: a re-export reuses the key of every model the map
  * knows, by its tool id (also after a folder move in the tool), else by its
  * tool path. A tool id identifies a model only when it is unique in the export
- * and not generic (`Definitions_1`, a template's id). Planning is pure;
- * writing happens only after the consultant confirmed the plan.
+ * and not generic (`Definitions_1`, a template's id). A lost or stale map is
+ * rebuilt from the identities analyzr keeps (`rebuildFromAnalyzr`, M6 S2b
+ * follow-up step 4). Planning and rebuilding are pure; writing happens only
+ * after the consultant confirmed the plan.
  */
 import { isModelKey, modelKeyFromPath } from '@analyzr/contracts/paths';
 
+import { storedPath } from './declared.ts';
 import { shortHash } from './ids.ts';
 
 export const KEYMAP_FORMAT = 'analyzr-keymap/1';
@@ -166,6 +169,9 @@ export function assertFolders(folders: readonly string[], option: string): void 
   }
 }
 
+/** True for a strip folder a rule can name: a relative, `/`-separated tool path. */
+const isStripFolder = (strip: string): boolean => strip !== '' && !/^\/|\/$|\\/.test(strip);
+
 /** Checks a rule: `prefix` a valid model key, `strip` a relative tool path. */
 export function assertRule(rule: KeyRule): void {
   if (rule.prefix !== null && !isModelKey(rule.prefix)) {
@@ -173,7 +179,7 @@ export function assertRule(rule: KeyRule): void {
       `invalid key prefix ${JSON.stringify(rule.prefix)}: a model key such as signavio`,
     );
   }
-  if (rule.strip !== null && (rule.strip === '' || /^\/|\/$|\\/.test(rule.strip))) {
+  if (rule.strip !== null && !isStripFolder(rule.strip)) {
     throw new KeymapError(
       `invalid strip folder ${JSON.stringify(rule.strip)}: a folder path below the export, / separated`,
     );
@@ -267,6 +273,20 @@ export function parseKeymap(value: unknown): Keymap {
 /** An entry's identity in the map: its tool id, else its tool path (unique per system). */
 function identityOf(m: { externalId: string | null; externalPath: string }): string {
   return m.externalId !== null ? `id:${m.externalId}` : `path:${m.externalPath}`;
+}
+
+/** The identity as analyzr keeps it: a tool path in its stored, tidied form ({@link storedPath}). */
+function storedIdentityOf(m: { externalId: string | null; externalPath: string }): string {
+  return m.externalId !== null ? `id:${m.externalId}` : `path:${storedPath(m.externalPath)}`;
+}
+
+/**
+ * True if two tool paths name one place: equal, or equal as analyzr stores
+ * them (a key map rebuilt from analyzr holds `Ordner/Prozess` for the
+ * export's `Ordner/Prozess .bpmn`).
+ */
+function samePlace(a: string, b: string): boolean {
+  return a === b || storedPath(a) === storedPath(b);
 }
 
 /** True if `externalPath` is one of the folders or lies inside one. */
@@ -408,32 +428,39 @@ export function planKeys(
   }
   // 2. By tool path, unless the file and the entry carry different tool ids: a
   // file whose id identifies nothing (none, generic, twice in the export) or
-  // that the map knew without one keeps its key at the same place.
-  for (const f of files) {
-    if (matched.has(f)) continue;
-    const raw = rawIds.get(f) ?? null;
-    const candidates = entries
-      .filter(
-        (e) =>
-          !used.has(e) &&
-          e.externalPath === f.externalPath &&
-          (e.externalId === null || raw === null || e.externalId === raw),
-      )
-      .sort(
-        (a, b) =>
-          Number(b.externalId === raw) - Number(a.externalId === raw) || compare(a.key, b.key),
-      );
-    const entry = candidates[0];
-    if (entry !== undefined) {
-      matched.set(f, entry);
-      used.add(entry);
+  // that the map knew without one keeps its key at the same place. The same
+  // path first, then the same path as analyzr stores it (a map rebuilt from
+  // analyzr: ends trimmed, control characters spaces).
+  for (const same of [
+    (a: string, b: string) => a === b,
+    (a: string, b: string) => storedPath(a) === storedPath(b),
+  ]) {
+    for (const f of files) {
+      if (matched.has(f)) continue;
+      const raw = rawIds.get(f) ?? null;
+      const candidates = entries
+        .filter(
+          (e) =>
+            !used.has(e) &&
+            same(e.externalPath, f.externalPath) &&
+            (e.externalId === null || raw === null || e.externalId === raw),
+        )
+        .sort(
+          (a, b) =>
+            Number(b.externalId === raw) - Number(a.externalId === raw) || compare(a.key, b.key),
+        );
+      const entry = candidates[0];
+      if (entry !== undefined) {
+        matched.set(f, entry);
+        used.add(entry);
+      }
     }
   }
   for (const [f, entry] of matched) {
     f.key = entry.key;
     // The map keeps the identity it had when the file's own id identifies nothing now.
     f.externalId ??= entry.externalId;
-    if (entry.externalPath === f.externalPath) {
+    if (samePlace(entry.externalPath, f.externalPath)) {
       f.status = 'known';
     } else {
       f.status = 'moved';
@@ -548,4 +575,374 @@ export function formatKeymap(keymap: Keymap): string {
     Object.entries(keymap.systems).sort(([a], [b]) => compare(a, b)),
   );
   return `${JSON.stringify({ format: keymap.format, systems }, null, 2)}\n`;
+}
+
+// ------------------------------------------------------------ rebuilt from analyzr
+
+/**
+ * A live model's identity in its source system as analyzr lists it (`GET
+ * …/external-ids`, `analyzr models external-ids --json`, `analyzr-read.mjs
+ * external-ids`): from its head's uploaded revision, `externalId` `null`
+ * when the manifest named none, `externalPath` `null` when it named no tool
+ * folder.
+ */
+export interface AnalyzrIdentity {
+  key: string;
+  system: string;
+  externalId: string | null;
+  externalPath: string | null;
+}
+
+/** How many of a system's keys a key rule derives from their tool paths. */
+export interface RuleFits {
+  matching: number;
+  of: number;
+}
+
+/**
+ * Keys of analyzr that carry one identity of the system: a tool id (not
+ * generic), or without one the same tool path. `kept` is the key that keeps
+ * it in the map, or `null` when nobody can tell (no model ids): the others
+ * are likely imported twice (`analyzr models delete`).
+ */
+export interface RebuildDuplicate {
+  externalId: string | null;
+  /** For a tool path without a tool id: the path. */
+  externalPath: string | null;
+  /** `kept` first, then the others, oldest model first (else by key). */
+  keys: string[];
+  kept: string | null;
+  /**
+   * Why `kept` keeps it: `oldest`, its model is the oldest (the smallest
+   * model id); `keymap`, the map already gives it that key, though another
+   * model is older or no age is known (an entry never changes); `path`, the
+   * oldest key with a tool path (an older one has none, so no entry can hold
+   * it); `null` with `kept` `null`.
+   */
+  keptBy: 'oldest' | 'keymap' | 'path' | null;
+}
+
+/** An identity of analyzr the rebuild did not take into the map, and why. */
+export interface RebuildConflict {
+  key: string;
+  externalId: string | null;
+  externalPath: string;
+  /**
+   * `key-of-other-system`: another system of the map has the key;
+   * `identity-taken`: an entry of the system has that tool id or path under
+   * another key (`holder`).
+   */
+  reason: 'key-of-other-system' | 'identity-taken';
+  holder: string;
+}
+
+/** What {@link rebuildFromAnalyzr} took from analyzr, for the consultant's confirmation. */
+export interface RebuildReport {
+  system: string;
+  /**
+   * The system was missing from the map and is rebuilt (rule 1); `false`:
+   * the map had it (entries were added, rule 3), or analyzr has none of its
+   * models with a tool path (its first import; the map stays as it was).
+   */
+  restored: boolean;
+  /** The entries added to the map, by key. */
+  entries: KeymapEntry[];
+  /** The system's rule: inferred or given when restored, else the stored one. */
+  rule: KeyRule;
+  /** How many of analyzr's keys of the system (with a tool path) the rule derives. */
+  ruleFits: RuleFits;
+  duplicates: RebuildDuplicate[];
+  /** Keys analyzr has without a tool path: no entry can identify them. */
+  skipped: { key: string; externalId: string | null }[];
+  conflicts: RebuildConflict[];
+}
+
+export interface RebuildOptions {
+  system: string;
+  /**
+   * Model key → model id (`mdl_` and a ULID, so the smaller id is the older
+   * model; `analyzr models list --json`, `analyzr-read.mjs models`): decides
+   * which of several keys keeps a tool id.
+   */
+  modelIds?: ReadonlyMap<string, string>;
+  /** The rule of a system missing from the map, instead of the inferred one. */
+  rule?: KeyRule;
+}
+
+/** True if `key` is `derived` or what {@link freeKey} makes of it for a collision (`-2`, `-3`, …). */
+function derivesTo(key: string, derived: string): boolean {
+  if (key === derived) return true;
+  const suffix = /-(?:[2-9]|[1-9]\d+)$/.exec(key)?.[0];
+  if (suffix === undefined) return false;
+  return key.slice(0, -suffix.length) === derived.slice(0, 200 - suffix.length).replace(/-+$/, '');
+}
+
+/** True if `rule` derives `pair.key` from its tool path (the file ending is not part of it). */
+export function ruleFits(pair: { key: string; externalPath: string }, rule: KeyRule): boolean {
+  const derived = deriveKey(`${pair.externalPath}.bpmn`, rule);
+  return derived !== null && derivesTo(pair.key, derived);
+}
+
+/** Folders and segments a rule names: the simpler rule wins a tie. */
+const ruleWeight = (rule: KeyRule): [number, number] => [
+  Number(rule.strip !== null) + Number(rule.prefix !== null),
+  (rule.strip?.split('/').length ?? 0) + (rule.prefix?.split('/').length ?? 0),
+];
+
+/** Every leading folder of a tool path (`A`, `A/B` of `A/B/c`). */
+function foldersOf(externalPath: string): string[] {
+  const segments = externalPath.split('/').slice(0, -1);
+  return segments.map((_, i) => segments.slice(0, i + 1).join('/'));
+}
+
+/**
+ * The key rule that derives most of a system's keys from their tool paths
+ * (M6 S2b follow-up step 4, a key map rebuilt from analyzr): `strip` none or
+ * a leading folder of a path, `prefix` none or leading key segments every key
+ * shares. A key fits when the rule derives it, also with the suffix of a
+ * collision (`-2`). The best fit wins, a tie the simpler rule (fewer parts,
+ * then fewer segments, then the first in code-point order).
+ */
+export function inferRule(pairs: readonly { key: string; externalPath: string }[]): {
+  rule: KeyRule;
+  ruleFits: RuleFits;
+} {
+  const none: KeyRule = { strip: null, prefix: null };
+  if (pairs.length === 0) return { rule: none, ruleFits: { matching: 0, of: 0 } };
+  const [first = [], ...rest] = pairs.map((p) => p.key.split('/'));
+  let shared = first.length - 1;
+  for (const segments of rest) {
+    let n = 0;
+    while (n < Math.min(shared, segments.length - 1) && segments[n] === first[n]) n++;
+    shared = n;
+  }
+  const prefixes = [
+    null,
+    ...first
+      .slice(0, shared)
+      .map((_, i) => first.slice(0, i + 1).join('/'))
+      .filter((p) => isModelKey(p)),
+  ];
+  // A rule's fits: those without its strip folder as with no strip, plus the change for the
+  // keys below it, so each pair derives once per own folder and prefix (n × depth, not n²).
+  const base = new Map<string | null, number>();
+  const below = new Map<string, number>();
+  for (const pair of pairs) {
+    for (const prefix of prefixes) {
+      const plain = Number(ruleFits(pair, { strip: null, prefix }));
+      base.set(prefix, (base.get(prefix) ?? 0) + plain);
+      // Only folders a rule can name (a hand-written manifest's `/Root/x` or `A\B/x` gives none).
+      for (const strip of foldersOf(pair.externalPath).filter(isStripFolder)) {
+        const id = `${prefix ?? ''}\u0000${strip}`;
+        below.set(id, (below.get(id) ?? 0) + Number(ruleFits(pair, { strip, prefix })) - plain);
+      }
+    }
+  }
+  const candidates: { rule: KeyRule; matching: number }[] = prefixes.map((prefix) => ({
+    rule: { strip: null, prefix },
+    matching: base.get(prefix) ?? 0,
+  }));
+  for (const [id, change] of below) {
+    const at = id.indexOf('\u0000');
+    const prefix = id.slice(0, at) === '' ? null : id.slice(0, at);
+    candidates.push({
+      rule: { strip: id.slice(at + 1), prefix },
+      matching: (base.get(prefix) ?? 0) + change,
+    });
+  }
+  const best = candidates.sort((a, b) => {
+    const [ap, as] = ruleWeight(a.rule);
+    const [bp, bs] = ruleWeight(b.rule);
+    return (
+      b.matching - a.matching ||
+      ap - bp ||
+      as - bs ||
+      compare(a.rule.strip ?? '', b.rule.strip ?? '') ||
+      compare(a.rule.prefix ?? '', b.rule.prefix ?? '')
+    );
+  })[0] ?? { rule: none, matching: 0 };
+  return { rule: best.rule, ruleFits: { matching: best.matching, of: pairs.length } };
+}
+
+/** The older of two models by id (a ULID after `mdl_`); a key without an id counts as unknown. */
+function byAge(
+  keys: readonly string[],
+  modelIds: ReadonlyMap<string, string> | undefined,
+): { sorted: string[]; known: boolean } {
+  const known = modelIds !== undefined && keys.every((k) => modelIds.has(k));
+  const sorted = [...keys].sort((a, b) =>
+    known ? compare(modelIds.get(a) ?? '', modelIds.get(b) ?? '') || compare(a, b) : compare(a, b),
+  );
+  return { sorted, known };
+}
+
+/**
+ * The key map with a system rebuilt from analyzr's identities (M6 S2b
+ * follow-up step 4), for a workspace whose `keymap.json` is lost or stale;
+ * pure, `plan --write` stays the only writer:
+ *
+ * 1. A system missing from the map gets analyzr's live identities of that
+ *    system as its entries, the key rule inferred from them
+ *    ({@link inferRule}) or `options.rule`, the whole system as its scope
+ *    and nothing excluded. A key without a tool path is skipped and listed.
+ * 2. A tool id (not generic: those identify nothing, as in a plan) that
+ *    several keys carry stays with the key the map already gives it, else
+ *    with the key of the oldest model (the smallest model id) that has a
+ *    tool path; the others keep their tool path only and are listed as
+ *    `duplicates` (`keptBy` says why). Without model ids nobody keeps it
+ *    (the plan then matches by path). Keys left with the same tool path and
+ *    no tool id are resolved alike, the others dropped from the map
+ *    (listed; without model ids all of them).
+ * 3. A system the map has gets the keys analyzr has and the map lacks,
+ *    unless an entry of it has that tool id or path (`conflicts`; a path as
+ *    analyzr stores it, tidied); its entries, rule, scope and folders left
+ *    out are never changed.
+ * 4. Keys of other systems stay as they are; one of them in analyzr's list
+ *    of this system is a conflict.
+ *
+ * A plan against the result treats the system as known (`firstImport`
+ * false), so every file of a re-export that analyzr has keeps its key.
+ */
+export function rebuildFromAnalyzr(
+  keymap: Keymap,
+  identities: readonly AnalyzrIdentity[],
+  options: RebuildOptions,
+): { keymap: Keymap; report: RebuildReport } {
+  const { system, modelIds } = options;
+  assertSystem(system);
+  if (options.rule !== undefined) assertRule(options.rule);
+  const stored = keymap.systems[system];
+  const live = identities
+    .filter((i) => i.system === system)
+    .map((i) => ({
+      ...i,
+      externalId: i.externalId !== null && isGenericExternalId(i.externalId) ? null : i.externalId,
+    }))
+    .sort((a, b) => compare(a.key, b.key));
+
+  // Rule 2: one key per tool id; the map's holder first, else the oldest model with a tool path.
+  const duplicates: RebuildDuplicate[] = [];
+  const holderOf = (identity: string): string | undefined =>
+    stored?.entries.find((e) => storedIdentityOf(e) === identity)?.key;
+  const withPath = new Set(live.filter((i) => i.externalPath !== null).map((i) => i.key));
+  const settle = (
+    keys: string[],
+    identity: string,
+    describe: { externalId: string | null; externalPath: string | null },
+  ): string | null => {
+    const held = holderOf(identity);
+    const { sorted, known } = byAge(keys, modelIds);
+    const [oldest = null] = sorted;
+    const kept =
+      held !== undefined && keys.includes(held)
+        ? held
+        : known
+          ? (sorted.find((k) => withPath.has(k)) ?? oldest)
+          : null;
+    duplicates.push({
+      ...describe,
+      keys: kept === null ? sorted : [kept, ...sorted.filter((k) => k !== kept)],
+      kept,
+      keptBy:
+        kept === null
+          ? null
+          : known && kept === oldest
+            ? 'oldest'
+            : kept === held
+              ? 'keymap'
+              : 'path',
+    });
+    return kept;
+  };
+  const byId = new Map<string, string[]>();
+  for (const i of live) {
+    if (i.externalId !== null) byId.set(i.externalId, [...(byId.get(i.externalId) ?? []), i.key]);
+  }
+  const keeps = new Map<string, string | null>();
+  for (const [id, keys] of byId) {
+    if (keys.length > 1) {
+      keeps.set(id, settle(keys, `id:${id}`, { externalId: id, externalPath: null }));
+    }
+  }
+  const skipped: RebuildReport['skipped'] = [];
+  let entries: KeymapEntry[] = [];
+  for (const i of live) {
+    const kept = i.externalId === null ? undefined : keeps.get(i.externalId);
+    const externalId = kept === undefined || kept === i.key ? i.externalId : null;
+    if (i.externalPath === null) skipped.push({ key: i.key, externalId });
+    else entries.push({ key: i.key, externalId, externalPath: i.externalPath });
+  }
+  // Without a tool id the path identifies a model: one key per path.
+  const byPath = new Map<string, string[]>();
+  for (const e of entries) {
+    if (e.externalId === null) {
+      byPath.set(e.externalPath, [...(byPath.get(e.externalPath) ?? []), e.key]);
+    }
+  }
+  const dropped = new Set<string>();
+  for (const [p, keys] of byPath) {
+    if (keys.length < 2) continue;
+    const kept = settle(keys, `path:${p}`, { externalId: null, externalPath: p });
+    for (const k of keys) if (k !== kept) dropped.add(k);
+  }
+  entries = entries.filter((e) => !dropped.has(e.key));
+
+  // Rules 3 and 4: what the map has stays as it is.
+  const conflicts: RebuildConflict[] = [];
+  const otherKeys = new Map<string, string>();
+  for (const [s, sys] of Object.entries(keymap.systems)) {
+    if (s !== system) for (const e of sys.entries) otherKeys.set(e.key, s);
+  }
+  const own = new Map((stored?.entries ?? []).map((e) => [e.key, e]));
+  const taken = new Map((stored?.entries ?? []).map((e) => [storedIdentityOf(e), e.key]));
+  const added: KeymapEntry[] = [];
+  for (const e of entries) {
+    if (own.has(e.key)) continue;
+    const other = otherKeys.get(e.key);
+    const holder = taken.get(storedIdentityOf(e));
+    if (other !== undefined || holder !== undefined) {
+      conflicts.push({
+        ...e,
+        reason: other !== undefined ? 'key-of-other-system' : 'identity-taken',
+        holder: other ?? holder ?? '',
+      });
+      continue;
+    }
+    taken.set(storedIdentityOf(e), e.key);
+    added.push(e);
+  }
+
+  const pairs = live.flatMap((i) =>
+    i.externalPath === null ? [] : [{ key: i.key, externalPath: i.externalPath }],
+  );
+  const inferred = stored === undefined && options.rule === undefined ? inferRule(pairs) : null;
+  const rule = stored?.rule ?? options.rule ?? inferred?.rule ?? { strip: null, prefix: null };
+  const fits = inferred?.ruleFits ?? {
+    matching: pairs.filter((p) => ruleFits(p, rule)).length,
+    of: pairs.length,
+  };
+  // Nothing of a system missing from the map in analyzr: its first import, the map unchanged.
+  const restored = stored === undefined && added.length > 0;
+  const next: SystemKeymap | undefined = stored
+    ? { ...stored, entries: [...stored.entries, ...added].sort((a, b) => compare(a.key, b.key)) }
+    : restored
+      ? { rule, scope: null, exclude: [], lastExport: null, entries: added }
+      : undefined;
+  return {
+    // Checked as a read key map is: unique keys over all systems, unique identities per system.
+    keymap:
+      next === undefined
+        ? keymap
+        : parseKeymap({ format: KEYMAP_FORMAT, systems: { ...keymap.systems, [system]: next } }),
+    report: {
+      system,
+      restored,
+      entries: added,
+      rule,
+      ruleFits: fits,
+      duplicates,
+      skipped,
+      conflicts,
+    },
+  };
 }

@@ -7,7 +7,7 @@
  */
 import type { BundleResult } from './bundle.ts';
 import type { InspectReport } from './inspect.ts';
-import type { KeyPlan } from './keymap.ts';
+import type { KeyPlan, RebuildReport } from './keymap.ts';
 import type { LossCode } from './normalize.ts';
 
 /** A long list cut to its first entries: `count` is the full length. */
@@ -49,9 +49,12 @@ const SHORT_LIST = 20;
 /**
  * The plan for the confirmation: counts, examples, then every file that needs
  * a look (moved, flagged, colliding, and on a re-import every new one), absent
- * and excluded models.
+ * and excluded models; after `--from-analyzr`, before the counts, what the
+ * key map took from analyzr (`rebuilt`: the entries added, the rule and how many keys it
+ * derives, keys several models carry, keys without a tool path, identities
+ * the map gives another key).
  */
-export function compactPlan(plan: KeyPlan): Record<string, unknown> {
+export function compactPlan(plan: KeyPlan, rebuilt?: RebuildReport): Record<string, unknown> {
   const attention = plan.files
     .filter(
       (f) =>
@@ -75,6 +78,19 @@ export function compactPlan(plan: KeyPlan): Record<string, unknown> {
     exclude: plan.exclude,
     firstImport: plan.firstImport,
     reset: plan.reset,
+    ...(rebuilt === undefined
+      ? {}
+      : {
+          rebuilt: {
+            restored: rebuilt.restored,
+            entries: rebuilt.entries.length,
+            rule: rebuilt.rule,
+            ruleFits: rebuilt.ruleFits,
+            duplicates: capped(rebuilt.duplicates, SHORT_LIST),
+            skipped: capped(rebuilt.skipped, SHORT_LIST),
+            conflicts: capped(rebuilt.conflicts, SHORT_LIST),
+          },
+        }),
     counts: { models: plan.files.length, ...plan.counts },
     examples: plan.examples,
     attention: capped(attention, LIST),

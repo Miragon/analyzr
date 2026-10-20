@@ -3,16 +3,17 @@
 Status: in progress (2026-10-15); owner decisions 24, 25, 28 and 29 (§2, HANDOFF §4); S0 (this
 concept, revised after review), S1, S3a, S3b, S4, S5a, S5c-1, S5c-2 (answering by action and model
 amendments, decision 25, §4.8), S2a (provenance, manifest, stable identity; its web parts came
-with the UI simplification's UX8, §8 "S2a as delivered"), S2b (the dry runs) with steps 1 to 3b
-of its follow-up (the agent work in the dry runs, relations side, placements, the surfaces and the
-size of the agents' next run, §8 "S2b follow-up step 1 as delivered", "S2b follow-up step 2 as
-delivered", "S2b follow-up step 3 as delivered" and "S2b follow-up step 3b as delivered"),
+with the UI simplification's UX8, §8 "S2a as delivered"), S2b (the dry runs) with steps 1 to 4
+of its follow-up (the agent work in the dry runs, relations side, placements, the surfaces, the
+size of the agents' next run and the integrate plugin 0.1.3, §8 "S2b follow-up step 1 as
+delivered", "S2b follow-up step 2 as delivered", "S2b follow-up step 3 as delivered", "S2b
+follow-up step 3b as delivered" and "S2b follow-up step 4 as delivered"),
 S2c-1 (the trust class and the rule tier, §8 "S2c-1 as delivered"), S2c-2 (the fast path for
 derived calls, §8 "S2c-2 as delivered"), S2c-3 (owners' rules for derived calls, §8 "S2c-3 as
 delivered") and S2c-4 („Vor der Vertrauensregel angenommen“, §8 "S2c-4 as delivered"; with it
-all of S2c) done, the „erste Anfänge“ await the owner's review; next the rest of S2b's follow-up
-(step 4 the integrate plugin 0.1.3, then step 5 the identity rows of decision 29 (1)), then S3c,
-then S6; after
+all of S2c) done, the „erste Anfänge“ await the owner's review, and the integrate skill's
+pre-approval awaits one live check by the owner (HANDOFF §8); next step 5 of S2b's follow-up (the
+identity rows of decision 29 (1)), then S3c, then S6; after
 the owner's live runs S5b, S7 and facts v2 · Branch:
 `feat/integration-and-gaps` ·
 Spec: [CONCEPT.md](CONCEPT.md) §1–§7 · Previous: [M4-VALUE-CHAIN.md](M4-VALUE-CHAIN.md) · Paused:
@@ -74,8 +75,9 @@ the command or screen and the slice that adds it ("today" means it exists now):
 3. **Import.** Create the project and import the bundle: `analyzr import <bundle> -p <project>
    --create --name …`, or „Neues Projekt“ and „Hochladen“ with the bundle folder in the web
    (today). The preview („Vorschau“ in the web, `--dry-run` in the CLI) came with S2b; the skill
-   recommends it instead of a probe project since plugin 0.1.2 (S2c-2, §3.7 step 5) and, from
-   plugin 0.1.3, runs it itself through a bundled read-only script (decision 29 (2)). A bundle
+   recommends it instead of a probe project since plugin 0.1.2 (S2c-2, §3.7 step 5) and, since
+   plugin 0.1.3 (S2b's follow-up step 4), runs it itself through a bundled read-only script
+   (decision 29 (2)) into an existing project. A bundle
    without a Camunda engine (most exports) gets its unique calls as proposals (the trust rule,
    §3.10): one bulk accept, „Gesammelt annehmen“ after „Importieren“ or the link `analyzr import`
    prints opens the dialog with them selected and one click accepts them before step 5 (S2c-2).
@@ -252,8 +254,8 @@ CLI pattern but a read-only script bundled with the plugin, `analyzr-read.mjs`, 
 `POST …/imports` with `dryRun=true` built in, talks to loopback hosts only and follows no
 redirect; the real import stays with the consultant. A rule over the CLI form is not safe:
 `import b -p p --create --name --dry-run` parses `--dry-run` as the value of `--name` and imports for real, the
-CLI's prefix differs per workspace, and `--url` could send the key elsewhere. It comes with
-plugin 0.1.3 (step 4 of the follow-up).
+CLI's prefix differs per workspace, and `--url` could send the key elsewhere. It came with
+plugin 0.1.3 (step 4 of the follow-up, §8 "S2b follow-up step 4 as delivered").
 
 ## 3. Part A: Integration toolkit
 
@@ -276,7 +278,7 @@ plugin 0.1.3 (step 4 of the follow-up).
   `analyzr import` without `--token`/`ANALYZR_TOKEN` falls back to the owner key file that user
   can read (`apps/cli/src/credentials.ts` `anyCredential`). So the guard is the client's approval
   of every command that is not pre-approved: the skill pre-approves only its own read-only
-  scripts (`inspect.mjs`; from plugin 0.1.3 `analyzr-read.mjs` for analyzr's reads: the models,
+  scripts (`inspect.mjs`; since plugin 0.1.3 `analyzr-read.mjs` for analyzr's reads: the models,
   the external ids and the dry run), and the consultant does not run it in a bypass or auto-approve mode
   (Codex with approvals on). By decision 29 (2) no rule over any CLI form is pre-approved, so the
   dry run is pre-approved only as the plugin's read-only script (§3.7 step 5), never as a pattern
@@ -419,7 +421,8 @@ fixes a landscape's keys for good, and three rules hold from the first customer 
    workspace is lost or a colleague does the re-export, the skill rebuilds `keymap.json` from
    `GET /projects/{p}/external-ids?system=<s>` (S2a: key, `externalId` and `externalPath` of each
    live model's head revision, read from its uploaded revision, or from the newest revision a
-   manifest declared when the head came without one).
+   manifest declared when the head came without one; the skill's part since plugin 0.1.3,
+   `normalize-bpmn.mjs plan --from-analyzr`, §3.7 step 3).
 2. **Element ids come from tool ids, never regenerated.** A converter derives every id from the
    source object's id (`<Type>_<NCName-safe source id>`, a prefix for ids starting with a digit,
    a deterministic suffix on collisions, ≤ 255 characters, `packages/contracts/src/refs.ts`). A
@@ -615,6 +618,7 @@ plugins/analyzr-integrate/
   keymap.json                         # (system, externalId) → key, the key rule and scope per system
   bundles/<YYYY-MM-DD>-<system>/      # the bundles (§3.2)
   reports/<YYYY-MM-DD>-<system>.md    # the German reports
+  reports/<YYYY-MM-DD>-<system>.*.json  # the scripts' results (plan, bundle, models, external-ids, preview)
 ```
 
 **Reaching analyzr.** The skill runs outside the checkout, and no documented setup puts an
@@ -632,7 +636,11 @@ in `analyzr-workspace.json`:
    „Vorschau“ from S2), the chain through the `.vc.json` import on the chain page (both exist
    today).
 
-The report always gives the command and the web path. In S3c the generate script also bundles
+The report always gives the command and the web path. The skill's own reads and its preview do
+not depend on that path: since plugin 0.1.3 they go through the plugin's `analyzr-read.mjs`
+(step 5), which talks only to an analyzr on this machine (127.0.0.1, `[::1]`, `localhost`) with
+`ANALYZR_TOKEN` or the owner key file, found as the CLI finds it; the CLI's read commands and dry
+run are its fallbacks, each approved once by the consultant. In S3c the generate script also bundles
 `apps/cli` into `plugins/analyzr-integrate/scripts/analyzr.mjs` (self-contained, drift test), so
 `node "$CLAUDE_PLUGIN_ROOT/scripts/analyzr.mjs" import …` works anywhere with Node 24.
 
@@ -658,31 +666,59 @@ import with `--create --name …`.
    (from S2b also from the dry run) and asks before it changes the map. It asks „Vollständiger
    Export oder Ausschnitt?“ and records a partial export's tool folders as `source.scope` and in
    `keymap.json`. A missing or stale `keymap.json` is rebuilt from analyzr (§3.4, from S2a; the
-   skill's part still open after plugin 0.1.2, planned for plugin 0.1.3, S2b's follow-up step 4):
-   a tool id several keys carry (after
-   `external-id-moved`, one tool model twice) keeps the older key, the other entries get
-   `externalId: null` and go to the consultant; the key rule is inferred from the (`externalPath`,
-   key) pairs and confirmed by the consultant.
+   skill's part since plugin 0.1.3, S2b's follow-up step 4, §8 "S2b follow-up step 4 as
+   delivered"): the skill reads the project's models and identities with `analyzr-read.mjs
+   models` and `external-ids` and plans with `--existing` and `--from-analyzr` whenever it could
+   read them (analyzr has the project and answers). A system missing from the map gets analyzr's
+   keys, tool ids and folders, with the key rule inferred from the (`externalPath`, key) pairs (the
+   rule that derives most keys, a tie to the simpler one) and confirmed by the consultant; a system
+   the map has gets the keys it lacks, and its entries never change. A tool id several keys carry
+   (after `external-id-moved`, one tool model twice) stays with the key the map gives it, else with
+   the older model's (the smallest model id) that has a tool folder; the other keys keep their
+   folder only and go to the consultant as likely duplicate imports, with the `models delete`
+   command; without model ids none keeps it and the plan matches by path. Keys without a tool folder
+   are skipped and named, an identity the map gives another key is a conflict. The skill reports it
+   in German („Die Schlüsselzuordnung für „signavio“ fehlte; ich habe sie aus analyzr
+   wiederhergestellt: 6 Modelle, Regel „ohne den Ordner „Gemeinsame Dokumente““ (passt zu 6 von
+   6).“, „Die Werkzeug-ID „…“ tragen „a“ und „b“: „a“ (älter) behält sie; „b“ ist vermutlich doppelt
+   importiert.“).
 4. **Emit the bundle** (§3.2) under `bundles/`, every file at its pinned key's path; the
    inventory, if any, gives the coverage line and the request list.
 5. **Preview** (from S2b): `analyzr import <bundle> -p <project> --dry-run`, with `--token` if
-   the workspace names a read-only token (§3.1). Until plugin 0.1.2 (S2c-2) the report suggested a
-   probe project for a first import (`analyzr import <bundle> -p <kunde>-probe --create`; no route
-   deletes a project, so probe projects stay in the list); since then it recommends the dry run,
-   which needs an existing project. **Decision 29 (2)** (2026-10-20): the skill runs the preview
-   itself only through the plugin's read-only script `scripts/analyzr-read.mjs` (planned:
-   `preview <bundle> -p <project> --url <u>`; plugin 0.1.3, S2b's follow-up step 4), which
-   `allowed-tools` pre-approves: its guarded requests are only `GET …/models`, `GET …/external-ids` and `POST …/imports` with
-   `dryRun=true` built in, to loopback hosts only and without redirects, so it cannot import. No
-   rule over the CLI form is pre-approved (`import b -p p --create --name --dry-run` parses
-   `--dry-run` as `--name`'s value and imports for real; the CLI's prefix differs per workspace;
-   `--url` could send the key elsewhere); the CLI's `--dry-run` stays the fallback the
-   consultant approves, and the real import stays with the consultant (step 7).
+   the workspace names a read-only token (§3.1; since plugin 0.1.3 a read token is
+   `ANALYZR_TOKEN`, set in the shell that starts Claude Code, never in the workspace, which holds
+   no secrets, and `analyzr-read.mjs` refuses `--token`). Until plugin 0.1.2 (S2c-2) the report
+   suggested a probe project for a first import (`analyzr import <bundle> -p <kunde>-probe
+   --create`; no route deletes a project, so probe projects stay in the list); since then it
+   recommends the dry run, which needs an existing project. **Decision 29 (2)** (2026-10-20): the
+   skill runs the preview itself only through the plugin's read-only script
+   `scripts/analyzr-read.mjs` (since plugin 0.1.3, S2b's follow-up step 4: `preview <bundle> -p
+   <project> --url <analyzrUrl> --json-out <workspace>/reports/<…>.preview.json`), which
+   `allowed-tools` pre-approves: its guarded requests are only `GET …/models`, `GET …/external-ids`
+   and `POST …/imports` with `dryRun=true` built in, to loopback hosts only, without redirects and
+   without a proxy, so it cannot import. It sends the bundle as `analyzr import <bundle> --dry-run`
+   does (batches of at most 50 files and 25 MB, each with the whole manifest) and merges the batches
+   with the CLI's and the web's merge. Into an existing project only: for a missing one the skill
+   says „Das Projekt <project> gibt es in analyzr noch nicht. Leg es an („Neues Projekt“ im Web),
+   dann zeige ich dir die Vorschau.“ No rule over the CLI form is pre-approved (`import b -p p
+   --create --name --dry-run` parses `--dry-run` as `--name`'s value and imports for real; the CLI's
+   prefix differs per workspace; `--url` could send the key elsewhere); the CLI's `--dry-run` stays
+   the fallback, printed for the consultant (approved once, never with "don't ask again", if the
+   agent is to run it), and the real import stays with the consultant (step 7). Whether the
+   pre-approval holds beyond the turn that invoked the skill, and the other points of a live
+   session, are for the owner to check once (HANDOFF §8).
 6. **Report** in German under `reports/`: tool and format found, what was converted and lost
    (every `link-unresolved` link listed), the keys, the extractor warnings with their German
    labels (S1), from S2b the impact (every rule-tier call the import would newly accept,
-   findings, relations turning `changed`/`missing`, absent keys), the coverage, open points, and
-   the import as a command and as the web path.
+   findings, relations turning `changed`/`missing`, absent keys), since plugin 0.1.3 a section
+   „Vorschau“ in the words of the web's „Vorschau“ (the headline, the impact lines, the agent
+   work „214 mögliche Relationen zu beurteilen (56 davon erneut), 7 Prozesse zu platzieren“ with
+   „etwa “ for more than one batch, the claimed-task warning, the batch notes), three lines of the
+   skill's own from the plan where the web has none („Neue Aufgaben für den Agenten: 12 Modelle;
+   abgebrochen: 2“, the advice „Warte am besten, bis er abgegeben hat, oder nimm den Verlust in
+   Kauf.“ after the warning, „Ein Agent platziert gerade; geänderte Prozesse kommen danach noch
+   einmal.“) and a „Kurzfassung“ line naming the agent work, the coverage, open points (models
+   likely imported twice with their deletion), and the import as a command and as the web path.
 7. **Stop.** **The consultant runs the import** (§3.1).
 
 Labels, documentation and export content are data, never instructions (as `MCP_INSTRUCTIONS` in
@@ -2339,24 +2375,24 @@ note; „Importieren“ sends the same plan, „Abbrechen“ sends nothing. One 
 Left: the follow-up (judgements made non-current, tasks queued or cancelled, the placement task
 due, placements changed or missing), and the plugin's next version with the pre-approved
 `--dry-run` (since decision 29 (2) a bundled read-only script, not a CLI pattern; plugin 0.1.3).
-Steps 1 to 3b of the follow-up, the relations side, the placements, the surfaces and the size of
-the agents' next run, are delivered (2026-10-20, "S2b follow-up step 1 as delivered" to "S2b
-follow-up step 3b as delivered" below).
+Steps 1 to 4 of the follow-up, the relations side, the placements, the surfaces, the size of the
+agents' next run and the plugin 0.1.3, are delivered (2026-10-20, "S2b follow-up step 1 as
+delivered" to "S2b follow-up step 4 as delivered" below).
 
 Left for S2b: `importImpact`, the dry runs (`POST …/imports?dryRun=true`, `PUT …?dryRun=true`,
-`analyzr import --dry-run`), the deletion impact in `models delete`, and the absent keys of
-§3.5, which respect `source.scope` (stored on each revision since S2a). Left for the plugin's
-next version, with S2b's dry run: the skill's rebuild of a lost `keymap.json` from `analyzr
-models external-ids` (§3.7 step 3, with the rule for a tool id several keys carry) and the
-pre-approved `--dry-run`; plugin 0.1.1 changes only the skill text (above). Plugin 0.1.2 (S2c-2)
-recommends the dry run in the report, for the consultant to run; the key-map rebuild and a
-pre-approved `--dry-run` are still left (by decision 29 (2) the read-only script
-`analyzr-read.mjs`, with plugin 0.1.3 in step 4 of S2b's follow-up). Left for the plugin's
-next version as well, and still left after 0.1.2 (no script changed): `normalize-bpmn` writing
-`null` for an empty or blank `exporterVersion` (analyzr already stores it as absent).
-Left for the UI simplification slice ([UX-SIMPLIFICATION.md](UX-SIMPLIFICATION.md)): S2a's web
-parts, that is „Herkunft“ in the model view, the badges in the models table and the manifest of a
-dropped folder in „Hochladen“.
+`analyzr import --dry-run`), the deletion impact in `models delete`, and the absent keys of §3.5,
+which respect `source.scope` (stored on each revision since S2a). Left for the plugin's next
+version, with S2b's dry run: the skill's rebuild of a lost `keymap.json` from `analyzr models
+external-ids` (§3.7 step 3, with the rule for a tool id several keys carry) and the pre-approved
+`--dry-run`; plugin 0.1.1 changes only the skill text (above). Plugin 0.1.2 (S2c-2) recommends the
+dry run in the report, for the consultant to run; the key-map rebuild and a pre-approved `--dry-run`
+were still left (by decision 29 (2) the read-only script `analyzr-read.mjs`; both delivered with
+plugin 0.1.3 in step 4 of S2b's follow-up, "S2b follow-up step 4 as delivered" below). Left for the
+plugin's next version as well, and still left after 0.1.2 (no script changed): `normalize-bpmn`
+writing `null` for an empty or blank `exporterVersion` (analyzr already stores it as absent;
+delivered with plugin 0.1.3 as well). Left for the UI simplification slice
+([UX-SIMPLIFICATION.md](UX-SIMPLIFICATION.md)): S2a's web parts, that is „Herkunft“ in the model
+view, the badges in the models table and the manifest of a dropped folder in „Hochladen“.
 
 Tests: server unit tests (`provenance.test.ts`: the golden manifest of `tools/integrate`, also
 with a byte order mark, every refusal (also a NUL or a lone surrogate in an identity field or the
@@ -2615,13 +2651,14 @@ line equals the dialog's selection), `demo.spec.ts`.
 What it costs and leaves open. Nothing changes for Camunda landscapes a human imports, so the
 corpus, the seeds, the demo and the owner's live runs are unchanged (eval reports, MCP snapshots,
 procedures, recordings). On the UI load guard's `signavio-beispiel`, „Übersicht“ reads „1
-eindeutigen Aufruf zuerst bestätigen · Gesammelt annehmen“ instead of „Oder jetzt schon:
-Vorschläge prüfen (1) …“ (122 → 113 words at 1440, the controls unchanged), and the dialog behind
-it measures 22 controls and 112 words. Calls nobody accepts stay unsettled, and the claims assign
-them to judge as before. Left: S2c-3 (owners' rules for these proposals by derived kind and
-converter, the toast's rule offer; delivered 2026-10-20, below), S2c-4 („Vor der Vertrauensregel
-angenommen“; delivered 2026-10-20, below), the skill's key-map rebuild, a pre-approved `--dry-run` (since decision 29 (2) a read-only script) and `normalize-bpmn` writing `null` for an empty
-`exporterVersion`.
+eindeutigen Aufruf zuerst bestätigen · Gesammelt annehmen“ instead of „Oder jetzt schon: Vorschläge
+prüfen (1) …“ (122 → 113 words at 1440, the controls unchanged), and the dialog behind it measures
+22 controls and 112 words. Calls nobody accepts stay unsettled, and the claims assign them to judge
+as before. Left: S2c-3 (owners' rules for these proposals by derived kind and converter, the toast's
+rule offer; delivered 2026-10-20, below), S2c-4 („Vor der Vertrauensregel angenommen“; delivered
+2026-10-20, below), the skill's key-map rebuild, a pre-approved `--dry-run` (since decision 29 (2) a
+read-only script) and `normalize-bpmn` writing `null` for an empty `exporterVersion` (all three
+delivered with plugin 0.1.3, "S2b follow-up step 4 as delivered" below).
 
 **S2c-3 as delivered** (2026-10-20, on the branch, every gate green, with a review round's fixes;
 [DEVELOPMENT.md](DEVELOPMENT.md) "M6 S2c-3 (2026-10-20)" and "Auto-accept rules (owner decision
@@ -2782,7 +2819,8 @@ that the owner may overrule are in HANDOFF §4 ("Taken during M6 S2c-3"). Open:
 
 Left: S2c-4 („Vor der Vertrauensregel angenommen“; delivered the same day, below), the skill's
 key-map rebuild, a pre-approved `--dry-run` (since decision 29 (2) a read-only script) and
-`normalize-bpmn` writing `null` for an empty `exporterVersion`.
+`normalize-bpmn` writing `null` for an empty `exporterVersion` (all three delivered with plugin
+0.1.3, "S2b follow-up step 4 as delivered" below).
 
 **S2c-4 as delivered** (2026-10-20, on the branch, every gate green, with a review round's fixes;
 [DEVELOPMENT.md](DEVELOPMENT.md) "M6 S2c-4 (2026-10-20)" and "The trust rule (M6 S2c-1)").
@@ -2921,10 +2959,9 @@ question. Open:
 Left: S2b's follow-up (judgements made non-current, tasks queued or cancelled, the placement task
 due, placements changed or missing; the integrate plugin's next release with the key-map rebuild,
 a pre-approved `--dry-run` and `normalize-bpmn` writing `null` for an empty `exporterVersion`;
-its steps 1 to 3, the relations side, the placements and the surfaces, delivered the same day,
-below; the
-pre-approved `--dry-run` is to become a read-only script by decision 29 (2), plugin 0.1.3 in step
-4); then S3c and S6.
+its steps 1 to 4, the relations side, the placements, the surfaces, the size of the agents' next
+run and the plugin 0.1.3, delivered the same day, below; the pre-approved `--dry-run` became a
+read-only script by decision 29 (2), plugin 0.1.3 in step 4); then S3c and S6.
 
 **S2b follow-up step 1 as delivered** (2026-10-20, on the branch, every gate green, with a review
 round's fixes; [DEVELOPMENT.md](DEVELOPMENT.md) "M6 S2b follow-up step 1 (2026-10-20)" and
@@ -3085,8 +3122,9 @@ follow-up step 2 as delivered" below), step 3 (the surfaces: the „Vorschau“'
 claimed-task warning with a second click, the CLI's lines, the deletion listing; delivered the same
 day, "S2b follow-up step 3 as delivered" below), optionally 3b (`ProjectSummary.pairsToJudge` in
 „Als Nächstes“; delivered the same day, "S2b follow-up step 3b as delivered" below), step 4 (plugin
-0.1.3: the key-map rebuild, `analyzr-read.mjs` by decision 29 (2), `exporterVersion`), step 5 (the
-identity rows of decision 29 (1), migrations 0021/0022); then S3c and S6.
+0.1.3: the key-map rebuild, `analyzr-read.mjs` by decision 29 (2), `exporterVersion`; delivered the
+same day, "S2b follow-up step 4 as delivered" below), step 5 (the identity rows of decision 29 (1),
+migrations 0021/0022); then S3c and S6.
 
 **S2b follow-up step 2 as delivered** (2026-10-20, on the branch, every gate green, with a review
 round's fixes; [DEVELOPMENT.md](DEVELOPMENT.md) "M6 S2b follow-up step 2 (2026-10-20)" and
@@ -3265,10 +3303,11 @@ Left: step 3 (the surfaces, as planned in §3.5 "Follow-up": the „Vorschau“'
 placement part „N Prozesse zu platzieren (… davon erneut)“ with the held-claim rule also appears for
 a deferred task, the placements line and list, the claimed-task warning with a second click, the
 CLI's lines, the deletion listing; delivered the same day, "S2b follow-up step 3 as delivered"
-below), optionally 3b (`ProjectSummary.pairsToJudge` in „Als Nächstes“; delivered the same day,
-"S2b follow-up step 3b as delivered" below), step 4 (plugin 0.1.3: the key-map rebuild,
-`analyzr-read.mjs` by decision 29 (2), `exporterVersion`), step 5 (the identity rows of decision 29
-(1), migrations 0021/0022); then S3c and S6.
+below), optionally 3b (`ProjectSummary.pairsToJudge` in „Als Nächstes“; delivered the same day, "S2b
+follow-up step 3b as delivered" below), step 4 (plugin 0.1.3: the key-map rebuild,
+`analyzr-read.mjs` by decision 29 (2), `exporterVersion`; delivered the same day, "S2b follow-up
+step 4 as delivered" below), step 5 (the identity rows of decision 29 (1), migrations 0021/0022);
+then S3c and S6.
 
 **S2b follow-up step 3 as delivered** (2026-10-20, on the branch, every gate green, with a review
 round's fixes; [DEVELOPMENT.md](DEVELOPMENT.md) "M6 S2b follow-up step 3 (2026-10-20)",
@@ -3455,9 +3494,10 @@ open UX point for the owner (HANDOFF §8). Open:
 
 Left: optionally 3b (`ProjectSummary.pairsToJudge` in „Als Nächstes“ and the CLI's waiting line, the
 first run's size that a preview in batches cannot give; delivered the same day, "S2b follow-up step
-3b as delivered" below), step 4 (plugin 0.1.3: the key-map rebuild,
-`analyzr-read.mjs` by decision 29 (2), `exporterVersion`; its report can reuse the web texts
-above), step 5 (the identity rows of decision 29 (1), migrations 0021/0022); then S3c and S6.
+3b as delivered" below), step 4 (plugin 0.1.3: the key-map rebuild, `analyzr-read.mjs` by decision
+29 (2), `exporterVersion`; its report can reuse the web texts above, which it does; delivered the
+same day, "S2b follow-up step 4 as delivered" below), step 5 (the identity rows of decision 29 (1),
+migrations 0021/0022); then S3c and S6.
 
 **S2b follow-up step 3b as delivered** (2026-10-20, on the branch, every gate green, with a review
 round's fixes; [DEVELOPMENT.md](DEVELOPMENT.md) "M6 S2b follow-up step 3b (2026-10-20)" and "The
@@ -3616,8 +3656,247 @@ Open:
   starten“.
 
 Left: step 4 (plugin 0.1.3: the key-map rebuild, `analyzr-read.mjs` by decision 29 (2),
-`exporterVersion`), step 5 (the identity rows of decision 29 (1), migrations 0021/0022); then S3c
-and S6.
+`exporterVersion`; delivered the same day, "S2b follow-up step 4 as delivered" below), step 5 (the
+identity rows of decision 29 (1), migrations 0021/0022); then S3c and S6.
+
+**S2b follow-up step 4 as delivered** (2026-10-20, on the branch, every gate green, with a review
+round's fixes; [DEVELOPMENT.md](DEVELOPMENT.md) "M6 S2b follow-up step 4 (2026-10-20)" and "The
+integrate plugin and `tools/integrate`"; owner decision 29 (2), §2): the integrate plugin 0.1.3
+(§3.7 steps 3, 5 and 6). The skill previews an import itself through the plugin's own read-only
+script, which cannot import, recovers a lost key map from analyzr, and reports the agent work in
+the web's words. For the first analysis: a consultant's first import of a big export goes through
+without duplicate models (a lost `keymap.json` is rebuilt from analyzr before any key is derived
+afresh, and a tool id on two keys is named with its deletion for the consultant) and with the agent
+work known up front (the pairs to judge, the processes to place, the work repeated, an agent's
+running work the import would cancel), with no import by the agent. Only `plugins/analyzr-integrate`
+and `tools/integrate` change, plus a CLI e2e section: no route, no migration, no contract change,
+the client not regenerated; the server, the web, MCP, the procedures, the claim inputs, the
+pipeline plugin and the recordings are untouched, and the integrate plugin is never loaded in live
+runs.
+
+- **`exporterVersion`** (`src/bundle.ts`, the new `src/declared.ts`): `normalize-bpmn` declares it
+  as `source.systemVersion` tidied as analyzr stores it (`tidyDeclared`, a local copy of the
+  contracts' function with the manifest's limit added, since integrate bundles zod-free contract
+  modules only; a test pins the two together within the limit): lone surrogates as U+FFFD, control
+  characters as spaces, the ends trimmed; blank or over 100 characters (the manifest's limit, pinned
+  against `ImportManifest`: 100 taken, 101 refused) `null`. Inspect stays raw.
+  `NORMALIZE_BPMN_VERSION` stays 0.1.0: the model bytes (`CONVERTER_OUTPUTS['0.1.0']`) are
+  unchanged, and a new converter version would change `derived.converter`, which owners' rules for
+  derived calls match exactly (S2c-3); the comment in `src/version.ts` now says the converter
+  version guards the model bytes and the declared derivation, while an informational value moves
+  with the plugin version.
+- **The key-map rebuild** (`rebuildFromAnalyzr`, `inferRule`, `ruleFits` in `src/keymap.ts`, pure;
+  `normalize-bpmn.mjs plan … --from-analyzr <external-ids.json>`; `plan --write` stays the only
+  writer; `analyzr-keymap/1` unchanged, the result checked with `parseKeymap`): (1) a system
+  missing from the map gets analyzr's live identities of that system, the rule inferred (or
+  `--strip`/`--prefix`), the whole system as scope, nothing excluded; a key without a tool path is
+  skipped and listed; with none of the system's models in analyzr the map stays and the plan is a
+  first import; (2) a tool id (generic ones count as none) on several keys stays with the key the
+  map gives it (`keptBy: keymap`), else with the oldest model's key, the smallest `mdl_` ULID from
+  `--existing` (`oldest`), or the oldest with a tool path when that one has none (`path`); the
+  others keep their tool path only and are listed as `duplicates`; without model ids nobody keeps
+  it (`null`); keys left with one path and no tool id are settled alike, the others dropped from
+  the map and listed; (3) a system the map has gets only the keys it lacks, unless an entry
+  already holds that identity (`conflicts`), and its entries, rule, scope and exclusions never
+  change; (4) a key another system holds is a conflict; (5) the rule: `strip` none or a leading
+  folder a rule can name, `prefix` none or leading key segments every key shares that form a
+  valid key; a key fits when derived exactly or with a collision's `-n`; most fits wins, a tie
+  the simpler rule (fewer parts, fewer segments, code-point order). Paths compare in the form
+  analyzr stores them (`storedPath`), so a file whose tool path analyzr stored tidied is `known`.
+  `existingKeysOf` keeps `id` from `--existing`; `compactPlan(plan, rebuilt)` prints `rebuilt:
+  {restored, entries, rule, ruleFits, duplicates, skipped, conflicts}` after the plan's header and
+  before the counts; with rebuilt entries the plan has `firstImport: false`.
+- **`analyzr-read.mjs`** (`src/analyzr.ts`, `src/preview.ts`, the entry `src/cli/analyzr-read.ts`,
+  in the bundle's `ENTRIES`; `ANALYZR_READ_VERSION` 0.1.0): `models -p <p> --url <u> --json-out
+  <f.models.json>` (every page of `GET …/models`, as `analyzr models list --json` prints them),
+  `external-ids -p <p> --url <u> [--system <s>] --json-out <f.external-ids.json>` (as `analyzr
+  models external-ids --json`) and `preview <bundle> -p <p> --url <u> [--json-out
+  <f.preview.json>]`, which walks the bundle as the CLI does (`isImportPath`, the manifest's
+  pinned keys, `modelKeyOwners`, local failures as `createProblem` writes them, batches of at most
+  50 files and 25 MB in `comparePaths` order), sends each batch with the whole manifest to `POST
+  …/imports?dryRun=true`, merges them with `mergeImpacts` of `@analyzr/contracts/impact-merge` and
+  prints compact JSON (`credential`, `batches`, `batchesWithNew`, `counts`, `manifest`, `files`,
+  `skipped`, the impact's counts, `agentWork` with the relations' `queued`, `cancelled`, `claimed`,
+  `claimedKeys`, `pairs`, `rejudged` and the placement's `outcome`, `toPlace` as the web's
+  `processesToPlace`, `again`); the file gets what `analyzr import --dry-run --json` prints. Its
+  guard: the three requests built by `requestFor` and checked again by `assertAllowed` right
+  before `fetch`; `--url` http(s) to 127.0.0.1, `[::1]` or `localhost` without user name,
+  password, path, query or fragment; `redirect: 'error'`; `NO_PROXY=*` before any request and a
+  refusal while Node's proxy support is on with `HTTP(S)_PROXY`; strict parsing (no `--create`,
+  `--name`, `--dry-run`, `--token`); the credential `ANALYZR_TOKEN` (an agent token by its
+  pattern, an owner key there refused) or the owner key file, found and checked as
+  `apps/cli/src/credentials.ts` does, never printed; `--json-out` only the script's own three
+  kinds of file in an existing `reports/` next to `analyzr-workspace.json`, no symbolic or hard
+  link, `O_NOFOLLOW`, no folder created, never inside the bundle or a checkout
+  (`assertOutputFile`);
+  `preview` only for a folder with `analyzr-import.json`.
+- **The skill** (`SKILL.md`): the two rules of `allowed-tools`,
+  `Bash(node ${CLAUDE_SKILL_DIR}/../../scripts/inspect.mjs *)` and
+  `Bash(node ${CLAUDE_SKILL_DIR}/../../scripts/analyzr-read.mjs *)`; both run exactly as shown
+  and each on its own (nothing in front of `node`, nothing after the command, no `$(…)` or
+  backticks in an argument, `--url` the workspace's `analyzrUrl`). Ground rule 2: the agent's own
+  analyzr commands are the health check and `analyzr-read.mjs`; only where the script cannot run,
+  each approved once by the consultant and never with "don't ask again", the CLI's `models list`
+  and `models external-ids` (step 3) and, on the consultant's wish, its dry run (step 5); never
+  `analyzr import` without `--dry-run`, never with `--create` or `--name`; the script reads the
+  credential, the agent never does. Step 3 reads `models` and `external-ids`, plans with
+  `--existing` and `--from-analyzr` whenever it could read them and reports `rebuilt` in German:
+  „Die Schlüsselzuordnung für „<system>“ fehlte; ich habe sie aus analyzr wiederhergestellt:
+  <entries> Modelle, Regel „<rule>“ (passt zu <matching> von <of>).“ (the rule as „Pfad wie im
+  Werkzeug“, „ohne den Ordner „…““, „mit dem Präfix „…/““), „Neue Modelle bekommen ihre Schlüssel
+  nach dieser Regel; die übrigen Schlüssel bleiben, wie sie sind.“ when it fits fewer than all, „Die
+  Schlüsselzuordnung für „<system>“ kannte <entries> Modelle nicht, die analyzr hat; ich habe sie
+  ergänzt.“, per duplicate by `keptBy` („Die Werkzeug-ID „…“ tragen „a“ und „b“: „a“ (älter)
+  behält sie; „b“ ist vermutlich doppelt importiert.“; „„a“ behält sie, weil deine
+  Schlüsselzuordnung sie „a“ gibt; …“; „„a“ behält sie, weil das ältere „b“ in analyzr keine
+  Ordnerangabe hat; …“; without model ids „… darum behält sie keines: Die Dateien werden über
+  ihren Pfad erkannt.“), the skipped keys and the conflicts. Step 5 runs `analyzr-read.mjs preview
+  "<absolute bundle path>" -p <project> --url "<analyzrUrl>" --json-out
+  "<workspace>/reports/<YYYY-MM-DD>-<system>.preview.json"` into an existing project only (for a
+  missing one: „Das Projekt <project> gibt es in analyzr noch nicht. Leg es an („Neues Projekt“
+  im Web), dann zeige ich dir die Vorschau.“); otherwise it prints `<cli> --url "<analyzrUrl>"
+  import "<absolute bundle path>" -p <project> --dry-run` for the consultant or points to the web.
+  Step 6: the „Kurzfassung“ has four lines, the second the agent work („Danach für die Agenten: 214
+  mögliche Relationen zu beurteilen (56 davon erneut), 7 Prozesse zu platzieren“, with
+  `batchesWithNew` above 1 „ (ohne die Paare zwischen den Teilen; die ganze Zahl steht nach dem
+  Import unter „Als Nächstes“)“, without agent work „Danach für die Agenten: nichts zu beurteilen
+  oder zu platzieren“); the new section 9 „Vorschau“ in the web's words (the headline „Vorschau: 5
+  Modelle neu · 1 neue Revision · …“, the impact lines of `impactLines`, the cost line with
+  `processesToPlace` and „etwa “ for more than one batch, the claimed-task warnings of
+  `claimedImportWarning`, both batch notes; the skill's own lines where the web has none: from the
+  plan „Neue Aufgaben für den Agenten: 12 Modelle; abgebrochen: 2“, the advice „Warte am besten,
+  bis er abgegeben hat, oder nimm den Verlust in Kauf.“ after each claimed-task warning and „Ein
+  Agent platziert gerade; geänderte Prozesse kommen danach noch einmal.“ for a deferred placement
+  task, and for a preview with an agent token that the files count as agent uploads and „Deine
+  Regeln für abgeleitete Aufrufe fehlen in dieser Vorschau; die Zahlen für die Agenten können
+  darum abweichen.“); `external-id-moved` in a
+  preview reads „Werkzeug-ID gehört schon zu <Schlüssel>: Der Import würde das Modell doppelt
+  anlegen“, the skill then recommends no import and goes back to step 3; „Offene Punkte“ lists the
+  models likely imported twice with `models delete`; „Import“ is section 11 and says, after a
+  preview with `ANALYZR_TOKEN`, „Starte den Import in einem Terminal ohne ANALYZR_TOKEN (vorher
+  `unset ANALYZR_TOKEN`): Sonst nimmt die CLI das Token statt des Owner-Zugangs.“ The guard setup
+  describes `analyzr-read.mjs` and the read token for its sandbox (`<cli> --url "<analyzrUrl>"
+  token create -p <project> -n integrate-preview -s analyzr:read`, set as `ANALYZR_TOKEN`) and
+  offers no lasting rule.
+- **The release**: `plugin.json` 0.1.3 (its description names the rebuild and the preview),
+  `RELEASES['0.1.3']` = `c1915b05d18beea39d4436899be3edeff98ca4e7318aacfd2726d12333317f61` with a
+  comment, the bundle regenerated (`analyzr-read.mjs` new, `normalize-bpmn.mjs` changed,
+  `inspect.mjs` and the plugin's notices unchanged), `claude plugin validate --strict` (Claude Code
+  2.1.303) passed; `pnpm notices` left `THIRD-PARTY-NOTICES.md` unchanged; `marketplace.json` and
+  the procedures' `RELEASED` and `PLUGIN_RELEASES` untouched.
+
+Deviations from the plan, with reasons:
+
+- **`exporterVersion` changes what analyzr stores in two edge cases** (the plan expected no
+  change): models declaring one version with and without spaces around it now give that version
+  (before none, since the raw values differed), and one over 100 characters gives none (before
+  analyzr refused the bundle). The model bytes are unchanged, so `NORMALIZE_BPMN_VERSION` stays
+  (HANDOFF §4).
+- **The older key is not always the smallest ULID**: the key the map already gives the tool id
+  keeps it (a stale map is never rewritten), and an oldest key without a tool path yields to the
+  oldest one with a path (it could not be identified in a re-export); `keptBy` says which, and the
+  skill has a text for each, so „(älter)“ is said only where it holds.
+- **Duplicates before skipping**: duplicates are found before keys without a path are skipped, so
+  a tool id moved to a key without a folder shows as both (the CLI e2e case).
+- **Paths compared as analyzr stores them** (not in the plan): a tool path analyzr stored
+  tidied would otherwise have planned the export's file as new, a duplicate model.
+- **`--strip`/`--prefix` with `--from-analyzr`** override the inferred rule, only while the map
+  lacks the system; **`--reset` with `--from-analyzr`** is refused while analyzr has models of the
+  system (their keys never change).
+- **`preview` needs a manifest**: a folder without `analyzr-import.json` is refused, so a
+  pre-approved run never sends an arbitrary folder.
+- **`--json-out` restricted**: only the script's own three kinds of file, in an existing `reports/`
+  next to `analyzr-workspace.json`, no symbolic or hard link, `O_NOFOLLOW`, no folder created, so a
+  pre-approved command cannot overwrite `settings.json`, `keymap.json` or anything outside the
+  workspace's reports.
+- **No proxy**: `NO_PROXY=*` and the refusal under Node's proxy support (Node 24.15 tunnels even
+  a request to 127.0.0.1 through a configured proxy, which would see the credential).
+- **`ANALYZR_TOKEN` checked by its pattern** (`analyzr_at_…`; an owner key there refused), so a
+  malformed value never reaches an error message.
+- **Exit codes**: a refused URL exits 1, not 2; `preview` exits 1 when a file would fail, as the
+  CLI does, with the JSON printed. **`external-ids --system`** is optional.
+- **A CLI fallback for step 3's reads**: where the script cannot run (no credential in the
+  sandbox, analyzr not on this machine) the CLI's `models list` and `models external-ids`, each
+  approved once.
+- **No `permissions.allow` rule offered** until the owner's live check (the plan: only if the turn
+  limit is confirmed); the implementer's offer was removed in the review round.
+- **The report's texts** are the shipped ones of steps 3 and 3b (`agentCostText`,
+  `processesToPlace`, `claimedImportWarning`, `batchNoteText`) wherever the web has one, not the
+  plan's example sentences; three plan sentences without a web counterpart stay as the skill's
+  own (the queued and cancelled tasks, the advice after the claimed-task warning, the deferred
+  placement task); the „Kurzfassung“ has four lines.
+- **The drift test's store-path check** looks for `node_modules/` instead of the bare word, since
+  `analyzr-read` skips that folder by name.
+
+The review round (its findings on security, the key-map rebuild, the skill and the release): 25
+findings fixed, 1 fixed in part, 1 rejected, and the docs item left to this docs pass. Fixed, among
+them: (1) the proxy guard could be bypassed by other spellings of Node's proxy option (now
+`NO_PROXY=*` first and every spelling refused; a test shows the plain run reaching the proxy and the
+bypass going direct); (2) `--json-out` followed a dangling symbolic link and could write outside
+`reports/` (the restrictions above); (3) a malformed token could be printed in an error (the
+pattern, the secret stripped from every error); (4) the skill did not forbid extending a
+pre-approved command (the rule above, a test on its command lines); (5) a tool path analyzr stored
+tidied planned a duplicate model (`storedPath`); (6) „(älter)“ could be false (`keptBy`); (7) a
+tool id was lost when its oldest holder had no path; (8) `inferRule` could propose a strip folder
+the map refuses; (9) the 100-character limit was not pinned against the contracts; (10) the
+`version.ts` comment; (11) no fallback when the script cannot reach analyzr; (12) the
+„Kurzfassung“'s cross-batch remark and its text without agent work; (13) the agent-token note
+without the owners' rules; (14) ground rule 2 contradicting step 5; (15) `external-id-moved` in a
+preview; (16) `ANALYZR_TOKEN` reaching the real import; (17) the `permissions.allow` offer; (18)
+singulars, the auto-accept wording, „über den Owner-Zugang“, the workspace comment and „50 Dateien
+und 25 MB“; (19) a weak import test (every spelling of an import command now checked, only the
+report's „Import“ prints the real one). In part: the refusal under Node's proxy support stays next
+to `NO_PROXY=*` as a second guard, so a guard sandbox that sets it with a proxy falls back to the
+consultant's dry run. Rejected: a `GET /health` before sending the credential (decision 29 (2)
+allows exactly three requests, and any local process can fake the answer; the skill instead
+requires `--url` to be the workspace's `analyzrUrl`).
+
+Tests: integrate `analyzr-read.test.ts` (new, against `test/fake-analyzr.ts`: the three commands,
+batches of 50 and 11 with the whole manifest each, every refusal, no request but the three over all
+runs), `keymap.test.ts` (`rebuildFromAnalyzr` and `inferRule`, 14 tests), `cli.test.ts` (`plan
+--from-analyzr`, `--reset` refused), `bundle.test.ts` (the declared `systemVersion`, the limit,
+`tidyDeclared` against the contracts'), `drift.test.ts` (`analyzr-read.mjs` free of third-party
+code and zod, its bundled copy run away from `node_modules`), `plugin.test.ts` (the files,
+`allowed-tools`, the pre-approved command lines, no `permissions.allow`, every import command a dry
+run outside the report's „Import“, `RELEASES['0.1.3']`); CLI e2e `cli.e2e.test.ts` (new section,
+real server: the bundled preview equal to `analyzr import --dry-run --json` on `m6-s2a` and
+`nordwind-handel` with `seq` and the models unchanged; `external-ids` into `plan --from-analyzr`:
+`restored`, the strip rule „Gemeinsame Dokumente“, 6 of 6 fitting, every model known, one duplicate
+kept by the oldest key, one skipped key).
+
+What it costs and leaves open. Every gate green (server 1,783, web 659, CLI 281 plus 7 skipped,
+contracts 178, bpmn-facts 200, integrate 205, eval/tools 108, relations 91, agent-sim 57, procedures
+37, demo 27, notices 9, client 4; dependency-cruiser 150 modules, no violations; the eval reports
+unchanged). Live-run neutral. The implementer's scratch stack previewed the golden bundle into
+`nordwind-handel` with the bundled script and a read token (5 new, 1 revised, 6 relations tasks
+queued, 38 pairs, 1 task cancelled) and got 404 for a missing project; the docs pass's own stack,
+built from the reviewed tree, gave the same. The e2e run on the final tree: the scratch stack
+`analyzr-s2b4` (image `analyzr-s2b4:dev` from the final tree, ports 7690 and 55690, `analyzr seed`):
+the full Playwright suite 111 passed and 21 skipped, the test names and the UI load numbers as in
+step 3b's run; the demo stack `analyzr-s2b4-demo` (port 7691): `pnpm --filter @analyzr/demo check`
+152 of 152 and `demo.spec.ts` 14 of 14; the bundled `analyzr-read.mjs` with a read token on
+`analyzr-s2b4`: the golden bundle previewed into `nordwind-handel` (5 new, 1 revised, 6 relations
+tasks queued, 38 pairs, 1 task cancelled), `lastSeq` unchanged, `models` and `external-ids` written
+into the workspace's `reports/`, 404 with exit 1 for a missing project, a hard-linked `--json-out`
+and the command `import` refused; the stacks, their volumes and images and the workspace removed.
+The readings the owner may overrule are in HANDOFF §4 ("Taken during the M6 S2b follow-up step 4");
+the live checks for the owner are in HANDOFF §8. Open:
+
+- **The pre-approval in a live session**: whether the two rules count as two, whether
+  `${CLAUDE_SKILL_DIR}` expands in `allowed-tools`, whether the pre-approval lasts beyond the
+  invoking turn (steps 3 and 5 follow the consultant's answers; else one approval each, or a
+  lasting rule with the expanded path), whether compound commands, prefixes, redirects and
+  substitutions make Claude Code ask, and what the guard sandbox allows (loopback, the key denied,
+  `ANALYZR_TOKEN` passed, Node's proxy support): none of it was tried (no LLM call).
+- **A preview with a read token** classifies the files as agent uploads and knows none of the
+  owner's rules for derived calls, so its calls show as proposals and its agent numbers can
+  differ; the report says so.
+- **A folder moved in the tool** keeps the old path in `external-ids` until step 5's identity rows
+  (decision 29 (1)), so a key map rebuilt after such a re-export plans the file as `moved` again
+  (its key stays) and the skill asks about it once more.
+- **The reference notes** stay unverified (§10.4), as does the guard setup (§3.1).
+
+Left: step 5 (the identity rows of decision 29 (1), migrations 0021/0022); then S3c and S6.
 
 **S3 "Toolkit".** S3a (part of the „erste Anfänge“): §3.11, report committed, CI drift check,
 and the `get_landscape` size per model of the seeded `nordwind-handel` with the v1 limit in §6.
@@ -3729,19 +4008,22 @@ built-ins only and name no local path, and runs them copied away from `node_modu
   nearest id above, type, name and position>`, stable when unrelated elements are added and
   counted as `id-rewritten` (reason `missing`): §3.4 rule 2 has no source id to derive it from,
   and without one the extractor skips the element (`missing-id`).
-- The workspace gains `inventory/` for catalogs and `reports/<…>.{models,plan,bundle}.json` for
-  the scripts' complete results; `keymap.json` records per system the key rule, the scope and the
-  folders to leave out (formats `analyzr-keymap/1` and `analyzr-workspace/1`).
+- The workspace gains `inventory/` for catalogs and `reports/<…>.{models,plan,bundle}.json` for the
+  scripts' complete results (since plugin 0.1.3 also `external-ids` and `preview`); `keymap.json`
+  records per system the key rule, the scope and the folders to leave out (formats
+  `analyzr-keymap/1` and `analyzr-workspace/1`).
 - The skill pre-approves only `inspect.mjs`; §3.1's pre-approved dry run waits for S2b
-  (`allowed-tools` lasts for the invoking turn only; since decision 29 (2) a read-only script,
-  `analyzr-read.mjs` in plugin 0.1.3, takes its place). The guard setup it offers (a
-  `permissions.deny` rule `Read(~/.local/state/analyzr/**)`, the sandbox with a
-  `credentials.files` deny, `autoAllowBashIfSandboxed` and `allowUnsandboxedCommands` false)
-  follows the setting descriptions of Claude Code 2.1.300 but was not tried in a live session, so
-  §3.1's "the exact rules are verified in S3b" stays open; the skill asks the consultant to check
-  `/permissions` and `/sandbox`. Codex's sandbox modes restrict writes, not reads, so the Codex
-  sandbox without read access to the key that §3.1 names does not exist: its approvals are the
-  guard (`examples/agents/codex/README.md`).
+  (Claude Code may keep `allowed-tools` for the invoking turn only; since decision 29 (2) a
+  read-only script, `analyzr-read.mjs` in plugin 0.1.3, takes its place, delivered in S2b's
+  follow-up step 4; whether the pre-approval lasts for the invoking turn only is still for the
+  owner's live check, HANDOFF §8). The guard setup it offers (a `permissions.deny` rule
+  `Read(~/.local/state/analyzr/**)`, the sandbox with a `credentials.files` deny,
+  `autoAllowBashIfSandboxed` and `allowUnsandboxedCommands` false) follows the setting descriptions
+  of Claude Code 2.1.300 but was not tried in a live session, so §3.1's "the exact rules are
+  verified in S3b" stays open; the skill asks the consultant to check `/permissions` and `/sandbox`.
+  Codex's sandbox modes restrict writes, not reads, so the Codex sandbox without read access to the
+  key that §3.1 names does not exist: its approvals are the guard
+  (`examples/agents/codex/README.md`).
 - The skill unpacks a zip export into `exports/` itself after the consultant's yes, as it copies
   a folder there; the zip itself is not copied.
 - Not in v0: the report's warning above §6's v1 limit, which S3a fixed in parallel; the next
@@ -3798,9 +4080,11 @@ Choices the spec left open:
 - Releases: `RELEASES` in `tools/integrate/test/plugin.test.ts` pins a sha256 over the plugin's
   files per plugin version, and `CONVERTER_OUTPUTS` in `tools/integrate/test/bundle.test.ts` the
   golden bundle's models per `NORMALIZE_BPMN_VERSION`, so a change of the plugin moves its
-  version and a change of what normalize-bpmn writes moves the converter's. The golden bundle of
-  the synthetic Signavio-style fixture (`tools/integrate/test/fixtures/signavio/bundle`, rewritten
-  with `ANALYZR_UPDATE_GOLDEN=1`) is what the CLI and web tests read.
+  version and a change of the model bytes normalize-bpmn writes or of the derivation it declares
+  moves the converter's (since plugin 0.1.3 a purely informational value, such as the declared
+  `systemVersion`, moves with the plugin version only). The golden bundle of the synthetic
+  Signavio-style fixture (`tools/integrate/test/fixtures/signavio/bundle`, rewritten with
+  `ANALYZR_UPDATE_GOLDEN=1`) is what the CLI and web tests read.
 
 End to end, by the implementing agent (the consultant's three answers given by the agent): the
 skill on the synthetic export gave a bundle of 6 models, 3 of them converted (one UTF-16 file, 4

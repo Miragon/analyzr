@@ -24,6 +24,7 @@ export const PLUGIN_DIR = 'plugins/analyzr-integrate';
 
 /** Bundled script (in `<plugin>/scripts/`) → entry source (below tools/integrate). */
 export const ENTRIES: Readonly<Record<string, string>> = {
+  'analyzr-read.mjs': 'src/cli/analyzr-read.ts',
   'inspect.mjs': 'src/cli/inspect.ts',
   'normalize-bpmn.mjs': 'src/cli/normalize-bpmn.ts',
 };

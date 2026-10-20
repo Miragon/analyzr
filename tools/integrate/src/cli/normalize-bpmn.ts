@@ -10,10 +10,14 @@ import {
   applyPlan,
   emptyKeymap,
   formatKeymap,
+  KeymapError,
   parseKeymap,
   planKeys,
+  rebuildFromAnalyzr,
+  type AnalyzrIdentity,
   type KeyRule,
   type Keymap,
+  type RebuildReport,
 } from '../keymap.ts';
 import { normalizeBpmn } from '../normalize.ts';
 import { NORMALIZE_BPMN_VERSION } from '../version.ts';
@@ -26,7 +30,8 @@ const USAGE = `Usage:
       [--strip <tool folder>] [--prefix <key prefix>]
       [--scope <tool folder>]... [--whole-system]
       [--exclude <tool folder>]... [--no-exclude]
-      [--existing <models.json>] [--reset] [--write] [--json-out <file>]
+      [--existing <models.json>] [--from-analyzr <external-ids.json>]
+      [--reset] [--write] [--json-out <file>]
   node normalize-bpmn.mjs bundle <export> --workspace <dir> --system <system> --out <dir>
       [--exported-at <date>] [--inventory <inventory.json>] [--json-out <file>]
   node normalize-bpmn.mjs inventory <catalog.csv> --name <column> --out <inventory.json>
@@ -43,8 +48,15 @@ plan       plans the model key of every BPMN file of <export> against
            --whole-system a complete export; --exclude leaves tool folders
            (archive, copies) out of keys and bundles, recorded per system
            (--no-exclude clears it); --existing reads the project's models
-           (analyzr models list --json) and flags new keys analyzr already
-           has; --reset drops the system's rule and keys, only while nothing
+           (analyzr models list --json, analyzr-read.mjs models) and flags
+           new keys analyzr already has; --from-analyzr reads analyzr's
+           identities (analyzr models external-ids --json, analyzr-read.mjs
+           external-ids) and plans against the key map rebuilt from them: a
+           system missing from keymap.json gets analyzr's keys and the rule
+           that derives most of them (or --strip/--prefix), one the map has
+           gets the keys it lacks; a tool id several keys carry stays with the
+           key the map gives it, else the oldest model with a tool folder (by
+           the model ids of --existing); only --write records it. --reset drops the system's rule and keys, only while nothing
            of the system is imported (other systems' keys stay taken).
 bundle     writes the import bundle (analyzr-import/1) into the empty folder
            <dir>: every model normalized at its key's path, analyzr-import.json,
@@ -91,20 +103,61 @@ async function readJson(file: string): Promise<unknown> {
   }
 }
 
-/** The keys of `analyzr models list --json` (objects with `key`) or a list of keys. */
-function existingKeysOf(value: unknown, file: string): string[] {
+const isObject = (v: unknown): v is Record<string, unknown> =>
+  typeof v === 'object' && v !== null && !Array.isArray(v);
+
+/**
+ * The keys of `analyzr models list --json` (objects with `key`, and `id`,
+ * the model id that tells the older of two models) or a list of keys.
+ */
+function existingKeysOf(
+  value: unknown,
+  file: string,
+): { keys: string[]; modelIds: Map<string, string> } {
   if (Array.isArray(value)) {
-    const keys = value.map((v: unknown) =>
+    const models = value.map((v: unknown) =>
       typeof v === 'string'
-        ? v
-        : typeof v === 'object' && v !== null && typeof (v as { key?: unknown }).key === 'string'
-          ? (v as { key: string }).key
+        ? { key: v, id: null }
+        : isObject(v) && typeof v['key'] === 'string'
+          ? { key: v['key'], id: typeof v['id'] === 'string' ? v['id'] : null }
           : null,
     );
-    if (keys.every((k) => k !== null)) return keys;
+    if (models.every((m) => m !== null)) {
+      return {
+        keys: models.map((m) => m.key),
+        modelIds: new Map(models.flatMap((m) => (m.id === null ? [] : [[m.key, m.id] as const]))),
+      };
+    }
   }
   throw new Error(
     `${file}: expected the output of analyzr models list --json (a list of models with key)`,
+  );
+}
+
+const isNullableString = (v: unknown): v is string | null => v === null || typeof v === 'string';
+
+/** analyzr's identities: the output of `analyzr models external-ids --json` (`{items}`) or its list. */
+function identitiesOf(value: unknown, file: string): AnalyzrIdentity[] {
+  const items = isObject(value) ? value['items'] : value;
+  if (Array.isArray(items)) {
+    const identities = items.map((v: unknown) =>
+      isObject(v) &&
+      typeof v['key'] === 'string' &&
+      typeof v['system'] === 'string' &&
+      isNullableString(v['externalId'] ?? null) &&
+      isNullableString(v['externalPath'] ?? null)
+        ? {
+            key: v['key'],
+            system: v['system'],
+            externalId: (v['externalId'] ?? null) as string | null,
+            externalPath: (v['externalPath'] ?? null) as string | null,
+          }
+        : null,
+    );
+    if (identities.every((i) => i !== null)) return identities;
+  }
+  throw new Error(
+    `${file}: expected the output of analyzr models external-ids --json ({"items": [{key, system, externalId, externalPath}]})`,
   );
 }
 
@@ -148,6 +201,7 @@ async function planCommand(argv: readonly string[]): Promise<void> {
     exclude: { type: 'string', multiple: true },
     'no-exclude': { type: 'boolean' },
     existing: { type: 'string' },
+    'from-analyzr': { type: 'string' },
     reset: { type: 'boolean' },
     write: { type: 'boolean' },
     'json-out': { type: 'string' },
@@ -174,34 +228,53 @@ async function planCommand(argv: readonly string[]): Promise<void> {
   const scope =
     values['whole-system'] === true ? null : values.scope === undefined ? undefined : values.scope;
   const exclude = values['no-exclude'] === true ? [] : values.exclude;
-  const existingKeys =
+  const existing =
     values.existing === undefined
       ? undefined
       : existingKeysOf(await readJson(values.existing), values.existing);
+  // The key map rebuilt from analyzr's identities (M6 S2b follow-up step 4): read, never written
+  // here; --write records it with the plan.
+  let base = keymap;
+  let rebuilt: RebuildReport | undefined;
+  if (values['from-analyzr'] !== undefined) {
+    const identities = identitiesOf(await readJson(values['from-analyzr']), values['from-analyzr']);
+    const imported = identities.filter((i) => i.system === system).length;
+    if (values.reset === true && imported > 0) {
+      throw new KeymapError(
+        `analyzr has ${imported === 1 ? '1 model' : `${imported} models`} of ${system} already (--from-analyzr): their keys never change, so --reset is only for a system nothing of which is imported`,
+      );
+    }
+    ({ keymap: base, report: rebuilt } = rebuildFromAnalyzr(keymap, identities, {
+      system,
+      ...(existing === undefined ? {} : { modelIds: existing.modelIds }),
+      ...(rule === undefined || keymap.systems[system] !== undefined ? {} : { rule }),
+    }));
+  }
   const scanned = await scanExport(exportPath);
-  const plan = planKeys(keymap, scanned.models, {
+  const plan = planKeys(base, scanned.models, {
     system,
     ...(rule === undefined ? {} : { rule }),
     ...(scope === undefined ? {} : { scope }),
     ...(exclude === undefined ? {} : { exclude }),
-    ...(existingKeys === undefined ? {} : { existingKeys }),
+    ...(existing === undefined ? {} : { existingKeys: existing.keys }),
     reset: values.reset === true,
   });
   let written: string | null = null;
   if (values.write === true) {
     const exportName = path.basename(path.resolve(exportPath));
-    await writeFile(file, formatKeymap(applyPlan(keymap, plan, exportName)));
+    await writeFile(file, formatKeymap(applyPlan(base, plan, exportName)));
     written = file;
   }
   const details = await writeDetails(values['json-out'], {
     ...plan,
+    ...(rebuilt === undefined ? {} : { rebuilt }),
     skipped: scanned.skipped,
     keymap: file,
     written,
   });
   process.stdout.write(
     formatCompactJson({
-      ...compactPlan(plan),
+      ...compactPlan(plan, rebuilt),
       skipped: { count: scanned.skipped.length, items: scanned.skipped.slice(0, 20) },
       keymap: file,
       written,

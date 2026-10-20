@@ -12,6 +12,7 @@ import path from 'node:path';
 import { bpmnSuffixOf } from '@analyzr/contracts/paths';
 
 import { isBpmnRoot } from './bpmn-scan.ts';
+import { tidyDeclared } from './declared.ts';
 import { decodeText, looksBinary } from './encoding.ts';
 import { listExport } from './files.ts';
 import { planKeys, type ExportModel, type Keymap, type KeyPlan } from './keymap.ts';
@@ -36,6 +37,7 @@ export const INVENTORY_FORMAT = 'analyzr-inventory/1';
 /** A BPMN model of the export with what planning and the report need. */
 export interface ScannedModel extends ExportModel {
   absolute: string;
+  /** The root's `exporterVersion`, tidied ({@link tidyDeclared}); `null` for none or blank. */
   exporterVersion: string | null;
 }
 
@@ -46,6 +48,9 @@ export interface ScannedExport {
   hidden: number;
   symlinks: number;
 }
+
+/** Most characters of the manifest's `source.systemVersion` (analyzr refuses a longer one). */
+export const MAX_SYSTEM_VERSION_CHARS = 100;
 
 /** The tool path of an export file: its path without a BPMN file ending. */
 export function externalPathOf(filePath: string): string {
@@ -96,7 +101,8 @@ export async function scanExport(exportPath: string): Promise<ScannedExport> {
       absolute: f.absolute,
       externalId: id === '' ? null : id,
       externalPath: externalPathOf(f.path),
-      exporterVersion: attribute(root, 'exporterVersion') ?? null,
+      // `exporterVersion=""` and a value of spaces declare nothing (M6 S2b follow-up step 4).
+      exporterVersion: tidyDeclared(attribute(root, 'exporterVersion'), MAX_SYSTEM_VERSION_CHARS),
     });
   }
   return { models, skipped, hidden: listing.hidden, symlinks: listing.symlinks };

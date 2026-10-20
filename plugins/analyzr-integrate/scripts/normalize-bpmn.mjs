@@ -495,6 +495,16 @@ function summarizeBpmn(root) {
 	};
 }
 //#endregion
+//#region src/declared.ts
+function tidyDeclared(value, max) {
+	if (value == null) return null;
+	const tidy = value.replace(/\p{Cs}/gu, "�").replace(/\p{Cc}/gu, " ").trim();
+	return tidy === "" || tidy.length > max ? null : tidy;
+}
+function storedPath(externalPath) {
+	return tidyDeclared(externalPath, Number.POSITIVE_INFINITY) ?? "";
+}
+//#endregion
 //#region src/encoding.ts
 var EncodingError = class extends Error {
 	code;
@@ -685,19 +695,20 @@ function assertSystem(system) {
 function assertFolders(folders, option) {
 	for (const f of folders) if (f === "" || /^\/|\/$|\\/.test(f)) throw new KeymapError(`invalid ${option} folder ${JSON.stringify(f)}: a folder path below the export, / separated`);
 }
+const isStripFolder = (strip) => strip !== "" && !/^\/|\/$|\\/.test(strip);
 function assertRule(rule) {
 	if (rule.prefix !== null && !isModelKey(rule.prefix)) throw new KeymapError(`invalid key prefix ${JSON.stringify(rule.prefix)}: a model key such as signavio`);
-	if (rule.strip !== null && (rule.strip === "" || /^\/|\/$|\\/.test(rule.strip))) throw new KeymapError(`invalid strip folder ${JSON.stringify(rule.strip)}: a folder path below the export, / separated`);
+	if (rule.strip !== null && !isStripFolder(rule.strip)) throw new KeymapError(`invalid strip folder ${JSON.stringify(rule.strip)}: a folder path below the export, / separated`);
 }
-const isObject$2 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
+const isObject$3 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
 const isStringOrNull = (v) => v === null || typeof v === "string";
 function parseKeymap(value) {
-	if (!isObject$2(value) || value["format"] !== "analyzr-keymap/1" || !isObject$2(value["systems"])) throw new KeymapError(`not a key map: expected {"format": "${KEYMAP_FORMAT}", "systems": {…}}`);
+	if (!isObject$3(value) || value["format"] !== "analyzr-keymap/1" || !isObject$3(value["systems"])) throw new KeymapError(`not a key map: expected {"format": "${KEYMAP_FORMAT}", "systems": {…}}`);
 	const systems = {};
 	const keys = new Map();
 	for (const [system, raw] of Object.entries(value["systems"])) {
 		assertSystem(system);
-		if (!isObject$2(raw) || !isObject$2(raw["rule"]) || !Array.isArray(raw["entries"])) throw new KeymapError(`system ${system}: expected rule and entries`);
+		if (!isObject$3(raw) || !isObject$3(raw["rule"]) || !Array.isArray(raw["entries"])) throw new KeymapError(`system ${system}: expected rule and entries`);
 		const ruleRaw = raw["rule"];
 		if (!isStringOrNull(ruleRaw["strip"]) || !isStringOrNull(ruleRaw["prefix"])) throw new KeymapError(`system ${system}: rule.strip and rule.prefix are strings or null`);
 		const rule = {
@@ -717,7 +728,7 @@ function parseKeymap(value) {
 		const entries = [];
 		const identities = new Set();
 		for (const e of raw["entries"]) {
-			if (!isObject$2(e) || typeof e["key"] !== "string" || !isStringOrNull(e["externalId"]) || typeof e["externalPath"] !== "string") throw new KeymapError(`system ${system}: every entry has key, externalId and externalPath`);
+			if (!isObject$3(e) || typeof e["key"] !== "string" || !isStringOrNull(e["externalId"]) || typeof e["externalPath"] !== "string") throw new KeymapError(`system ${system}: every entry has key, externalId and externalPath`);
 			const entry = {
 				key: e["key"],
 				externalId: e["externalId"],
@@ -747,6 +758,12 @@ function parseKeymap(value) {
 }
 function identityOf(m) {
 	return m.externalId !== null ? `id:${m.externalId}` : `path:${m.externalPath}`;
+}
+function storedIdentityOf(m) {
+	return m.externalId !== null ? `id:${m.externalId}` : `path:${storedPath(m.externalPath)}`;
+}
+function samePlace(a, b) {
+	return a === b || storedPath(a) === storedPath(b);
 }
 function inFolders(externalPath, folders) {
 	return folders.some((s) => externalPath === s || externalPath.startsWith(`${s}/`));
@@ -830,10 +847,10 @@ function planKeys(keymap, models, options) {
 			used.add(entry);
 		}
 	}
-	for (const f of files) {
+	for (const same of [(a, b) => a === b, (a, b) => storedPath(a) === storedPath(b)]) for (const f of files) {
 		if (matched.has(f)) continue;
 		const raw = rawIds.get(f) ?? null;
-		const entry = entries.filter((e) => !used.has(e) && e.externalPath === f.externalPath && (e.externalId === null || raw === null || e.externalId === raw)).sort((a, b) => Number(b.externalId === raw) - Number(a.externalId === raw) || compare$1(a.key, b.key))[0];
+		const entry = entries.filter((e) => !used.has(e) && same(e.externalPath, f.externalPath) && (e.externalId === null || raw === null || e.externalId === raw)).sort((a, b) => Number(b.externalId === raw) - Number(a.externalId === raw) || compare$1(a.key, b.key))[0];
 		if (entry !== void 0) {
 			matched.set(f, entry);
 			used.add(entry);
@@ -842,7 +859,7 @@ function planKeys(keymap, models, options) {
 	for (const [f, entry] of matched) {
 		f.key = entry.key;
 		f.externalId ??= entry.externalId;
-		if (entry.externalPath === f.externalPath) f.status = "known";
+		if (samePlace(entry.externalPath, f.externalPath)) f.status = "known";
 		else {
 			f.status = "moved";
 			f.previousPath = entry.externalPath;
@@ -946,6 +963,222 @@ function formatKeymap(keymap) {
 		systems
 	}, null, 2)}\n`;
 }
+function derivesTo(key, derived) {
+	if (key === derived) return true;
+	const suffix = /-(?:[2-9]|[1-9]\d+)$/.exec(key)?.[0];
+	if (suffix === void 0) return false;
+	return key.slice(0, -suffix.length) === derived.slice(0, 200 - suffix.length).replace(/-+$/, "");
+}
+function ruleFits(pair, rule) {
+	const derived = deriveKey(`${pair.externalPath}.bpmn`, rule);
+	return derived !== null && derivesTo(pair.key, derived);
+}
+const ruleWeight = (rule) => [Number(rule.strip !== null) + Number(rule.prefix !== null), (rule.strip?.split("/").length ?? 0) + (rule.prefix?.split("/").length ?? 0)];
+function foldersOf(externalPath) {
+	const segments = externalPath.split("/").slice(0, -1);
+	return segments.map((_, i) => segments.slice(0, i + 1).join("/"));
+}
+function inferRule(pairs) {
+	const none = {
+		strip: null,
+		prefix: null
+	};
+	if (pairs.length === 0) return {
+		rule: none,
+		ruleFits: {
+			matching: 0,
+			of: 0
+		}
+	};
+	const [first = [], ...rest] = pairs.map((p) => p.key.split("/"));
+	let shared = first.length - 1;
+	for (const segments of rest) {
+		let n = 0;
+		while (n < Math.min(shared, segments.length - 1) && segments[n] === first[n]) n++;
+		shared = n;
+	}
+	const prefixes = [null, ...first.slice(0, shared).map((_, i) => first.slice(0, i + 1).join("/")).filter((p) => isModelKey(p))];
+	const base = new Map();
+	const below = new Map();
+	for (const pair of pairs) for (const prefix of prefixes) {
+		const plain = Number(ruleFits(pair, {
+			strip: null,
+			prefix
+		}));
+		base.set(prefix, (base.get(prefix) ?? 0) + plain);
+		for (const strip of foldersOf(pair.externalPath).filter(isStripFolder)) {
+			const id = `${prefix ?? ""}\u0000${strip}`;
+			below.set(id, (below.get(id) ?? 0) + Number(ruleFits(pair, {
+				strip,
+				prefix
+			})) - plain);
+		}
+	}
+	const candidates = prefixes.map((prefix) => ({
+		rule: {
+			strip: null,
+			prefix
+		},
+		matching: base.get(prefix) ?? 0
+	}));
+	for (const [id, change] of below) {
+		const at = id.indexOf("\0");
+		const prefix = id.slice(0, at) === "" ? null : id.slice(0, at);
+		candidates.push({
+			rule: {
+				strip: id.slice(at + 1),
+				prefix
+			},
+			matching: (base.get(prefix) ?? 0) + change
+		});
+	}
+	const best = candidates.sort((a, b) => {
+		const [ap, as] = ruleWeight(a.rule);
+		const [bp, bs] = ruleWeight(b.rule);
+		return b.matching - a.matching || ap - bp || as - bs || compare$1(a.rule.strip ?? "", b.rule.strip ?? "") || compare$1(a.rule.prefix ?? "", b.rule.prefix ?? "");
+	})[0] ?? {
+		rule: none,
+		matching: 0
+	};
+	return {
+		rule: best.rule,
+		ruleFits: {
+			matching: best.matching,
+			of: pairs.length
+		}
+	};
+}
+function byAge(keys, modelIds) {
+	const known = modelIds !== void 0 && keys.every((k) => modelIds.has(k));
+	return {
+		sorted: [...keys].sort((a, b) => known ? compare$1(modelIds.get(a) ?? "", modelIds.get(b) ?? "") || compare$1(a, b) : compare$1(a, b)),
+		known
+	};
+}
+function rebuildFromAnalyzr(keymap, identities, options) {
+	const { system, modelIds } = options;
+	assertSystem(system);
+	if (options.rule !== void 0) assertRule(options.rule);
+	const stored = keymap.systems[system];
+	const live = identities.filter((i) => i.system === system).map((i) => ({
+		...i,
+		externalId: i.externalId !== null && isGenericExternalId(i.externalId) ? null : i.externalId
+	})).sort((a, b) => compare$1(a.key, b.key));
+	const duplicates = [];
+	const holderOf = (identity) => stored?.entries.find((e) => storedIdentityOf(e) === identity)?.key;
+	const withPath = new Set(live.filter((i) => i.externalPath !== null).map((i) => i.key));
+	const settle = (keys, identity, describe) => {
+		const held = holderOf(identity);
+		const { sorted, known } = byAge(keys, modelIds);
+		const [oldest = null] = sorted;
+		const kept = held !== void 0 && keys.includes(held) ? held : known ? sorted.find((k) => withPath.has(k)) ?? oldest : null;
+		duplicates.push({
+			...describe,
+			keys: kept === null ? sorted : [kept, ...sorted.filter((k) => k !== kept)],
+			kept,
+			keptBy: kept === null ? null : known && kept === oldest ? "oldest" : kept === held ? "keymap" : "path"
+		});
+		return kept;
+	};
+	const byId = new Map();
+	for (const i of live) if (i.externalId !== null) byId.set(i.externalId, [...byId.get(i.externalId) ?? [], i.key]);
+	const keeps = new Map();
+	for (const [id, keys] of byId) if (keys.length > 1) keeps.set(id, settle(keys, `id:${id}`, {
+		externalId: id,
+		externalPath: null
+	}));
+	const skipped = [];
+	let entries = [];
+	for (const i of live) {
+		const kept = i.externalId === null ? void 0 : keeps.get(i.externalId);
+		const externalId = kept === void 0 || kept === i.key ? i.externalId : null;
+		if (i.externalPath === null) skipped.push({
+			key: i.key,
+			externalId
+		});
+		else entries.push({
+			key: i.key,
+			externalId,
+			externalPath: i.externalPath
+		});
+	}
+	const byPath = new Map();
+	for (const e of entries) if (e.externalId === null) byPath.set(e.externalPath, [...byPath.get(e.externalPath) ?? [], e.key]);
+	const dropped = new Set();
+	for (const [p, keys] of byPath) {
+		if (keys.length < 2) continue;
+		const kept = settle(keys, `path:${p}`, {
+			externalId: null,
+			externalPath: p
+		});
+		for (const k of keys) if (k !== kept) dropped.add(k);
+	}
+	entries = entries.filter((e) => !dropped.has(e.key));
+	const conflicts = [];
+	const otherKeys = new Map();
+	for (const [s, sys] of Object.entries(keymap.systems)) if (s !== system) for (const e of sys.entries) otherKeys.set(e.key, s);
+	const own = new Map((stored?.entries ?? []).map((e) => [e.key, e]));
+	const taken = new Map((stored?.entries ?? []).map((e) => [storedIdentityOf(e), e.key]));
+	const added = [];
+	for (const e of entries) {
+		if (own.has(e.key)) continue;
+		const other = otherKeys.get(e.key);
+		const holder = taken.get(storedIdentityOf(e));
+		if (other !== void 0 || holder !== void 0) {
+			conflicts.push({
+				...e,
+				reason: other !== void 0 ? "key-of-other-system" : "identity-taken",
+				holder: other ?? holder ?? ""
+			});
+			continue;
+		}
+		taken.set(storedIdentityOf(e), e.key);
+		added.push(e);
+	}
+	const pairs = live.flatMap((i) => i.externalPath === null ? [] : [{
+		key: i.key,
+		externalPath: i.externalPath
+	}]);
+	const inferred = stored === void 0 && options.rule === void 0 ? inferRule(pairs) : null;
+	const rule = stored?.rule ?? options.rule ?? inferred?.rule ?? {
+		strip: null,
+		prefix: null
+	};
+	const fits = inferred?.ruleFits ?? {
+		matching: pairs.filter((p) => ruleFits(p, rule)).length,
+		of: pairs.length
+	};
+	const restored = stored === void 0 && added.length > 0;
+	const next = stored ? {
+		...stored,
+		entries: [...stored.entries, ...added].sort((a, b) => compare$1(a.key, b.key))
+	} : restored ? {
+		rule,
+		scope: null,
+		exclude: [],
+		lastExport: null,
+		entries: added
+	} : void 0;
+	return {
+		keymap: next === void 0 ? keymap : parseKeymap({
+			format: KEYMAP_FORMAT,
+			systems: {
+				...keymap.systems,
+				[system]: next
+			}
+		}),
+		report: {
+			system,
+			restored,
+			entries: added,
+			rule,
+			ruleFits: fits,
+			duplicates,
+			skipped,
+			conflicts
+		}
+	};
+}
 //#endregion
 //#region min-dash@5.1.0/dist/index.js
 const nativeToString = Object.prototype.toString;
@@ -962,7 +1195,7 @@ function isNil(obj) {
 function isArray(obj) {
 	return nativeToString.call(obj) === "[object Array]";
 }
-function isObject$1(obj) {
+function isObject$2(obj) {
 	return nativeToString.call(obj) === "[object Object]";
 }
 function isFunction(obj) {
@@ -1472,7 +1705,7 @@ Moddle.prototype.createAny = function(name, nsUri, properties) {
 		writable: true
 	});
 	forEach(properties, function(a, key) {
-		if (isObject$1(a) && a.value !== void 0) element[a.name] = a.value;
+		if (isObject$2(a) && a.value !== void 0) element[a.name] = a.value;
 		else element[key] = a;
 	});
 	return element;
@@ -8157,7 +8390,7 @@ async function scanExport(exportPath) {
 			absolute: f.absolute,
 			externalId: id === "" ? null : id,
 			externalPath: externalPathOf(f.path),
-			exporterVersion: attribute(root, "exporterVersion") ?? null
+			exporterVersion: tidyDeclared(attribute(root, "exporterVersion"), 100)
 		});
 	}
 	return {
@@ -8184,12 +8417,12 @@ function normalizeExportedAt(value) {
 	if (ISO_DATE_TIME.test(value) && !Number.isNaN(Date.parse(value))) return value;
 	throw new BundleError("invalid-exported-at", `invalid export date ${JSON.stringify(value)}: an ISO 8601 date or date-time such as 2026-10-14 or 2026-10-14T09:12:00Z`);
 }
-const isObject = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
+const isObject$1 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
 function parseInventory(value) {
-	if (!isObject(value) || value["format"] !== "analyzr-inventory/1" || !Array.isArray(value["items"])) throw new BundleError("invalid-inventory", `not an inventory: expected {"format": "${INVENTORY_FORMAT}", "items": [{id, name, area?, externalId?}]}`);
+	if (!isObject$1(value) || value["format"] !== "analyzr-inventory/1" || !Array.isArray(value["items"])) throw new BundleError("invalid-inventory", `not an inventory: expected {"format": "${INVENTORY_FORMAT}", "items": [{id, name, area?, externalId?}]}`);
 	const ids = new Set();
 	const items = value["items"].map((raw, i) => {
-		if (!isObject(raw) || typeof raw["id"] !== "string" || typeof raw["name"] !== "string") throw new BundleError("invalid-inventory", `item ${i + 1}: id and name are strings`);
+		if (!isObject$1(raw) || typeof raw["id"] !== "string" || typeof raw["name"] !== "string") throw new BundleError("invalid-inventory", `item ${i + 1}: id and name are strings`);
 		const allowed = new Set([
 			"id",
 			"name",
@@ -8418,7 +8651,7 @@ function formatCompactJson(value) {
 }
 const LIST = 30;
 const SHORT_LIST = 20;
-function compactPlan(plan) {
+function compactPlan(plan, rebuilt) {
 	const attention = plan.files.filter((f) => f.status === "moved" || f.flags.length > 0 || f.collidesWith !== void 0 || f.status === "new" && !plan.firstImport).map((f) => ({
 		path: f.path,
 		key: f.key,
@@ -8434,6 +8667,15 @@ function compactPlan(plan) {
 		exclude: plan.exclude,
 		firstImport: plan.firstImport,
 		reset: plan.reset,
+		...rebuilt === void 0 ? {} : { rebuilt: {
+			restored: rebuilt.restored,
+			entries: rebuilt.entries.length,
+			rule: rebuilt.rule,
+			ruleFits: rebuilt.ruleFits,
+			duplicates: capped(rebuilt.duplicates, SHORT_LIST),
+			skipped: capped(rebuilt.skipped, SHORT_LIST),
+			conflicts: capped(rebuilt.conflicts, SHORT_LIST)
+		} },
 		counts: {
 			models: plan.files.length,
 			...plan.counts
@@ -8710,7 +8952,8 @@ const USAGE = `Usage:
       [--strip <tool folder>] [--prefix <key prefix>]
       [--scope <tool folder>]... [--whole-system]
       [--exclude <tool folder>]... [--no-exclude]
-      [--existing <models.json>] [--reset] [--write] [--json-out <file>]
+      [--existing <models.json>] [--from-analyzr <external-ids.json>]
+      [--reset] [--write] [--json-out <file>]
   node normalize-bpmn.mjs bundle <export> --workspace <dir> --system <system> --out <dir>
       [--exported-at <date>] [--inventory <inventory.json>] [--json-out <file>]
   node normalize-bpmn.mjs inventory <catalog.csv> --name <column> --out <inventory.json>
@@ -8727,8 +8970,15 @@ plan       plans the model key of every BPMN file of <export> against
            --whole-system a complete export; --exclude leaves tool folders
            (archive, copies) out of keys and bundles, recorded per system
            (--no-exclude clears it); --existing reads the project's models
-           (analyzr models list --json) and flags new keys analyzr already
-           has; --reset drops the system's rule and keys, only while nothing
+           (analyzr models list --json, analyzr-read.mjs models) and flags
+           new keys analyzr already has; --from-analyzr reads analyzr's
+           identities (analyzr models external-ids --json, analyzr-read.mjs
+           external-ids) and plans against the key map rebuilt from them: a
+           system missing from keymap.json gets analyzr's keys and the rule
+           that derives most of them (or --strip/--prefix), one the map has
+           gets the keys it lacks; a tool id several keys carry stays with the
+           key the map gives it, else the oldest model with a tool folder (by
+           the model ids of --existing); only --write records it. --reset drops the system's rule and keys, only while nothing
            of the system is imported (other systems' keys stay taken).
 bundle     writes the import bundle (analyzr-import/1) into the empty folder
            <dir>: every model normalized at its key's path, analyzr-import.json,
@@ -8775,12 +9025,36 @@ async function readJson(file) {
 		throw new Error(`${file} is not valid JSON`, { cause: err });
 	}
 }
+const isObject = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
 function existingKeysOf(value, file) {
 	if (Array.isArray(value)) {
-		const keys = value.map((v) => typeof v === "string" ? v : typeof v === "object" && v !== null && typeof v.key === "string" ? v.key : null);
-		if (keys.every((k) => k !== null)) return keys;
+		const models = value.map((v) => typeof v === "string" ? {
+			key: v,
+			id: null
+		} : isObject(v) && typeof v["key"] === "string" ? {
+			key: v["key"],
+			id: typeof v["id"] === "string" ? v["id"] : null
+		} : null);
+		if (models.every((m) => m !== null)) return {
+			keys: models.map((m) => m.key),
+			modelIds: new Map(models.flatMap((m) => m.id === null ? [] : [[m.key, m.id]]))
+		};
 	}
 	throw new Error(`${file}: expected the output of analyzr models list --json (a list of models with key)`);
+}
+const isNullableString = (v) => v === null || typeof v === "string";
+function identitiesOf(value, file) {
+	const items = isObject(value) ? value["items"] : value;
+	if (Array.isArray(items)) {
+		const identities = items.map((v) => isObject(v) && typeof v["key"] === "string" && typeof v["system"] === "string" && isNullableString(v["externalId"] ?? null) && isNullableString(v["externalPath"] ?? null) ? {
+			key: v["key"],
+			system: v["system"],
+			externalId: v["externalId"] ?? null,
+			externalPath: v["externalPath"] ?? null
+		} : null);
+		if (identities.every((i) => i !== null)) return identities;
+	}
+	throw new Error(`${file}: expected the output of analyzr models external-ids --json ({"items": [{key, system, externalId, externalPath}]})`);
 }
 function required(value, option) {
 	if (value === void 0 || value === "") throw new UsageError(`${option} is required`);
@@ -8826,6 +9100,7 @@ async function planCommand(argv) {
 		},
 		"no-exclude": { type: "boolean" },
 		existing: { type: "string" },
+		"from-analyzr": { type: "string" },
 		reset: { type: "boolean" },
 		write: { type: "boolean" },
 		"json-out": { type: "string" }
@@ -8845,30 +9120,43 @@ async function planCommand(argv) {
 	} : void 0;
 	const scope = values["whole-system"] === true ? null : values.scope === void 0 ? void 0 : values.scope;
 	const exclude = values["no-exclude"] === true ? [] : values.exclude;
-	const existingKeys = values.existing === void 0 ? void 0 : existingKeysOf(await readJson(values.existing), values.existing);
+	const existing = values.existing === void 0 ? void 0 : existingKeysOf(await readJson(values.existing), values.existing);
+	let base = keymap;
+	let rebuilt;
+	if (values["from-analyzr"] !== void 0) {
+		const identities = identitiesOf(await readJson(values["from-analyzr"]), values["from-analyzr"]);
+		const imported = identities.filter((i) => i.system === system).length;
+		if (values.reset === true && imported > 0) throw new KeymapError(`analyzr has ${imported === 1 ? "1 model" : `${imported} models`} of ${system} already (--from-analyzr): their keys never change, so --reset is only for a system nothing of which is imported`);
+		({keymap: base, report: rebuilt} = rebuildFromAnalyzr(keymap, identities, {
+			system,
+			...existing === void 0 ? {} : { modelIds: existing.modelIds },
+			...rule === void 0 || keymap.systems[system] !== void 0 ? {} : { rule }
+		}));
+	}
 	const scanned = await scanExport(exportPath);
-	const plan = planKeys(keymap, scanned.models, {
+	const plan = planKeys(base, scanned.models, {
 		system,
 		...rule === void 0 ? {} : { rule },
 		...scope === void 0 ? {} : { scope },
 		...exclude === void 0 ? {} : { exclude },
-		...existingKeys === void 0 ? {} : { existingKeys },
+		...existing === void 0 ? {} : { existingKeys: existing.keys },
 		reset: values.reset === true
 	});
 	let written = null;
 	if (values.write === true) {
 		const exportName = path.basename(path.resolve(exportPath));
-		await writeFile(file, formatKeymap(applyPlan(keymap, plan, exportName)));
+		await writeFile(file, formatKeymap(applyPlan(base, plan, exportName)));
 		written = file;
 	}
 	const details = await writeDetails(values["json-out"], {
 		...plan,
+		...rebuilt === void 0 ? {} : { rebuilt },
 		skipped: scanned.skipped,
 		keymap: file,
 		written
 	});
 	process.stdout.write(formatCompactJson({
-		...compactPlan(plan),
+		...compactPlan(plan, rebuilt),
 		skipped: {
 			count: scanned.skipped.length,
 			items: scanned.skipped.slice(0, 20)

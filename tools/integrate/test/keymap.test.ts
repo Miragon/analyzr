@@ -1,17 +1,28 @@
-// Key planning against keymap.json (src/keymap.ts, M6 §3.4 rule 1 and §3.7 step 3).
+// Key planning against keymap.json (src/keymap.ts, M6 §3.4 rule 1 and §3.7 step 3), and the key
+// map rebuilt from analyzr's identities (M6 S2b follow-up step 4).
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
+
 import { describe, expect, it } from 'vitest';
 
+import { scanExport } from '../src/bundle.ts';
 import {
   applyPlan,
+  assertRule,
   deriveKey,
   emptyKeymap,
   formatKeymap,
+  inferRule,
   KeymapError,
   parseKeymap,
   planKeys,
+  rebuildFromAnalyzr,
+  type AnalyzrIdentity,
   type ExportModel,
   type Keymap,
 } from '../src/keymap.ts';
+
+import { SIGNAVIO_BUNDLE, SIGNAVIO_EXPORT, SIGNAVIO_RULE } from './support.ts';
 
 const model = (path: string, externalId: string | null = null): ExportModel => ({
   path,
@@ -449,5 +460,428 @@ describe('keymap.json', () => {
   ])('refuses an invalid key map %#', (value, message) => {
     expect(() => parseKeymap(value)).toThrow(KeymapError);
     expect(() => parseKeymap(value)).toThrow(message);
+  });
+});
+
+const identity = (
+  key: string,
+  externalId: string | null,
+  externalPath: string | null,
+  system = 'signavio',
+): AnalyzrIdentity => ({ key, system, externalId, externalPath });
+
+/** The identities analyzr lists after an import of the golden bundle (its manifest's files). */
+async function goldenIdentities(): Promise<AnalyzrIdentity[]> {
+  const manifest = JSON.parse(
+    await readFile(path.join(SIGNAVIO_BUNDLE, 'analyzr-import.json'), 'utf8'),
+  ) as { files: { key: string; externalId?: string; externalPath: string }[] };
+  return manifest.files.map((f) => identity(f.key, f.externalId ?? null, f.externalPath));
+}
+
+describe('rebuildFromAnalyzr', () => {
+  it('restores a lost key map from the golden bundle’s identities: every file of the export known', async () => {
+    const { models } = await scanExport(SIGNAVIO_EXPORT);
+    const { keymap, report } = rebuildFromAnalyzr(emptyKeymap(), await goldenIdentities(), {
+      system: 'signavio',
+    });
+    expect(report).toMatchObject({
+      restored: true,
+      rule: SIGNAVIO_RULE,
+      ruleFits: { matching: 6, of: 6 },
+      duplicates: [],
+      skipped: [],
+      conflicts: [],
+    });
+    expect(report.entries).toHaveLength(6);
+    const plan = planKeys(keymap, models, { system: 'signavio' });
+    expect(plan.firstImport).toBe(false);
+    expect(plan.files.map((f) => f.status)).toEqual(Array.from({ length: 6 }, () => 'known'));
+    expect(plan.counts).toMatchObject({ known: 6, new: 0, moved: 0, absent: 0, flagged: 0 });
+    // The map the first plan --write recorded, but for the export folder it names.
+    const first = planKeys(emptyKeymap(), models, {
+      system: 'signavio',
+      rule: SIGNAVIO_RULE,
+      scope: null,
+    });
+    expect(applyPlan(keymap, plan, null)).toEqual(applyPlan(emptyKeymap(), first, null));
+  });
+
+  it('keeps a tool id on several keys with the oldest model; the others are listed as duplicates', () => {
+    const identities = [
+      identity('logistik/versand', 'sid-V', 'Logistik/Versand'),
+      identity('versand/versand', 'sid-V', 'Versand/Versand'),
+      identity('vertrieb/auftrag', 'sid-A', 'Vertrieb/Auftrag'),
+    ];
+    const modelIds = new Map([
+      ['logistik/versand', 'mdl_01JA0000000000000000000002'],
+      ['versand/versand', 'mdl_01JA0000000000000000000001'],
+      ['vertrieb/auftrag', 'mdl_01JA0000000000000000000003'],
+    ]);
+    const older = rebuildFromAnalyzr(emptyKeymap(), identities, { system: 'signavio', modelIds });
+    expect(older.report.duplicates).toEqual([
+      {
+        externalId: 'sid-V',
+        externalPath: null,
+        keys: ['versand/versand', 'logistik/versand'],
+        kept: 'versand/versand',
+        keptBy: 'oldest',
+      },
+    ]);
+    expect(older.keymap.systems['signavio']?.entries).toEqual([
+      { key: 'logistik/versand', externalId: null, externalPath: 'Logistik/Versand' },
+      { key: 'versand/versand', externalId: 'sid-V', externalPath: 'Versand/Versand' },
+      { key: 'vertrieb/auftrag', externalId: 'sid-A', externalPath: 'Vertrieb/Auftrag' },
+    ]);
+    // The re-export has the model once, in its new folder: the older key takes it.
+    const plan = planKeys(
+      older.keymap,
+      [{ path: 'Versand/Versand.bpmn', externalId: 'sid-V', externalPath: 'Versand/Versand' }],
+      { system: 'signavio' },
+    );
+    expect(plan.files[0]).toMatchObject({ key: 'versand/versand', status: 'known' });
+    expect(plan.absent.map((e) => e.key)).toEqual(['logistik/versand', 'vertrieb/auftrag']);
+
+    // Without model ids nobody can tell the older one: both keep their path only.
+    const unknown = rebuildFromAnalyzr(emptyKeymap(), identities, { system: 'signavio' });
+    expect(unknown.report.duplicates).toEqual([
+      {
+        externalId: 'sid-V',
+        externalPath: null,
+        keys: ['logistik/versand', 'versand/versand'],
+        kept: null,
+        keptBy: null,
+      },
+    ]);
+    expect(
+      unknown.keymap.systems['signavio']?.entries.filter((e) => e.externalId === 'sid-V'),
+    ).toEqual([]);
+    const byPath = planKeys(
+      unknown.keymap,
+      [{ path: 'Logistik/Versand.bpmn', externalId: 'sid-V', externalPath: 'Logistik/Versand' }],
+      { system: 'signavio' },
+    );
+    expect(byPath.files[0]).toMatchObject({ key: 'logistik/versand', status: 'known' });
+  });
+
+  it('lists a duplicate whose second key has no tool path, and skips that key', () => {
+    // An import whose manifest named the tool id but no folder (M6 S2a's external-id-moved).
+    const { keymap, report } = rebuildFromAnalyzr(
+      emptyKeymap(),
+      [
+        identity('logistik/versand', 'sid-V', 'Logistik/Versand'),
+        identity('versand/versand', 'sid-V', null),
+      ],
+      {
+        system: 'signavio',
+        modelIds: new Map([
+          ['logistik/versand', 'mdl_01JA0000000000000000000001'],
+          ['versand/versand', 'mdl_01JA0000000000000000000009'],
+        ]),
+      },
+    );
+    expect(report.duplicates).toMatchObject([
+      {
+        externalId: 'sid-V',
+        keys: ['logistik/versand', 'versand/versand'],
+        kept: 'logistik/versand',
+      },
+    ]);
+    expect(report.skipped).toEqual([{ key: 'versand/versand', externalId: null }]);
+    expect(keymap.systems['signavio']?.entries).toEqual([
+      { key: 'logistik/versand', externalId: 'sid-V', externalPath: 'Logistik/Versand' },
+    ]);
+  });
+
+  it('identifies nothing by a generic tool id, and keeps one key per path without a tool id', () => {
+    const identities = [
+      identity('a', 'Definitions_1', 'A', 'tool'),
+      identity('b', 'Definitions_1', 'B', 'tool'),
+      identity('c', null, 'C', 'tool'),
+      identity('c-2', null, 'C', 'tool'),
+      identity('d', null, null, 'tool'),
+    ];
+    const modelIds = new Map([
+      ['a', 'mdl_1'],
+      ['b', 'mdl_2'],
+      ['c', 'mdl_4'],
+      ['c-2', 'mdl_3'],
+      ['d', 'mdl_5'],
+    ]);
+    const { keymap, report } = rebuildFromAnalyzr(emptyKeymap(), identities, {
+      system: 'tool',
+      modelIds,
+    });
+    expect(report.duplicates).toEqual([
+      { externalId: null, externalPath: 'C', keys: ['c-2', 'c'], kept: 'c-2', keptBy: 'oldest' },
+    ]);
+    expect(report.skipped).toEqual([{ key: 'd', externalId: null }]);
+    expect(keymap.systems['tool']?.entries).toEqual([
+      { key: 'a', externalId: null, externalPath: 'A' },
+      { key: 'b', externalId: null, externalPath: 'B' },
+      { key: 'c-2', externalId: null, externalPath: 'C' },
+    ]);
+    // `c-2` derives from `C` with a collision's suffix, so the rule fits all four with a path.
+    expect(report.ruleFits).toEqual({ matching: 4, of: 4 });
+    // Without model ids neither path duplicate stays in the map.
+    const unknown = rebuildFromAnalyzr(emptyKeymap(), identities, { system: 'tool' });
+    expect(unknown.report.duplicates).toEqual([
+      { externalId: null, externalPath: 'C', keys: ['c', 'c-2'], kept: null, keptBy: null },
+    ]);
+    expect(unknown.keymap.systems['tool']?.entries.map((e) => e.key)).toEqual(['a', 'b']);
+  });
+
+  it('adds to a stale map only what it lacks, never changing an entry, and lists conflicts', () => {
+    const stale = parseKeymap({
+      format: 'analyzr-keymap/1',
+      systems: {
+        signavio: {
+          rule: { strip: null, prefix: 'signavio' },
+          scope: ['Vertrieb'],
+          exclude: ['Archiv'],
+          lastExport: '2026-09-01-signavio',
+          entries: [
+            { key: 'signavio/vertrieb/a', externalId: 'sid-A', externalPath: 'Vertrieb/A' },
+            { key: 'signavio/vertrieb/b', externalId: null, externalPath: 'Vertrieb/B' },
+          ],
+        },
+        aris: {
+          rule: { strip: null, prefix: 'aris' },
+          entries: [{ key: 'aris/x', externalId: 'aris-1', externalPath: 'X' }],
+        },
+      },
+    });
+    const { keymap, report } = rebuildFromAnalyzr(
+      stale,
+      [
+        // Known: never rewritten, also with another folder in analyzr.
+        identity('signavio/vertrieb/a', 'sid-A', 'Vertrieb/A neu'),
+        identity('signavio/vertrieb/c', 'sid-C', 'Vertrieb/C'),
+        // The map gives that path to another key.
+        identity('signavio/vertrieb/b-2', null, 'Vertrieb/B'),
+        // Another system of the map has the key.
+        identity('aris/x', 'sid-X', 'X'),
+        // Another system's identities are not this system's.
+        identity('aris/y', 'aris-2', 'Y', 'aris'),
+      ],
+      { system: 'signavio' },
+    );
+    expect(report).toMatchObject({
+      restored: false,
+      entries: [{ key: 'signavio/vertrieb/c', externalId: 'sid-C', externalPath: 'Vertrieb/C' }],
+      rule: { strip: null, prefix: 'signavio' },
+      conflicts: [
+        { key: 'aris/x', reason: 'key-of-other-system', holder: 'aris' },
+        {
+          key: 'signavio/vertrieb/b-2',
+          reason: 'identity-taken',
+          holder: 'signavio/vertrieb/b',
+        },
+      ],
+    });
+    expect(keymap.systems['signavio']).toEqual({
+      ...stale.systems['signavio'],
+      entries: [
+        { key: 'signavio/vertrieb/a', externalId: 'sid-A', externalPath: 'Vertrieb/A' },
+        { key: 'signavio/vertrieb/b', externalId: null, externalPath: 'Vertrieb/B' },
+        { key: 'signavio/vertrieb/c', externalId: 'sid-C', externalPath: 'Vertrieb/C' },
+      ],
+    });
+    expect(keymap.systems['aris']).toEqual(stale.systems['aris']);
+  });
+
+  it('keeps the tool id with the key the map already gives it', () => {
+    const map = rebuildFromAnalyzr(emptyKeymap(), [identity('b', 'sid-1', 'B', 'tool')], {
+      system: 'tool',
+    }).keymap;
+    const { report } = rebuildFromAnalyzr(
+      map,
+      [identity('a', 'sid-1', 'A', 'tool'), identity('b', 'sid-1', 'B', 'tool')],
+      {
+        system: 'tool',
+        modelIds: new Map([
+          ['a', 'mdl_1'],
+          ['b', 'mdl_2'],
+        ]),
+      },
+    );
+    // `a` is older, but an entry never changes: `keptBy` says so (the skill says no „älter“).
+    expect(report.duplicates).toEqual([
+      { externalId: 'sid-1', externalPath: null, keys: ['b', 'a'], kept: 'b', keptBy: 'keymap' },
+    ]);
+    expect(report.entries).toEqual([{ key: 'a', externalId: null, externalPath: 'A' }]);
+  });
+
+  it('gives a tool id whose oldest key has no tool path to the oldest key with one', () => {
+    const { keymap, report } = rebuildFromAnalyzr(
+      emptyKeymap(),
+      [
+        identity('alt', 'sid-V', null),
+        identity('logistik/versand', 'sid-V', 'Logistik/Versand'),
+        identity('versand/neu', 'sid-V', 'Versand/Neu'),
+      ],
+      {
+        system: 'signavio',
+        modelIds: new Map([
+          ['alt', 'mdl_01JA0000000000000000000001'],
+          ['logistik/versand', 'mdl_01JA0000000000000000000002'],
+          ['versand/neu', 'mdl_01JA0000000000000000000003'],
+        ]),
+      },
+    );
+    expect(report.duplicates).toEqual([
+      {
+        externalId: 'sid-V',
+        externalPath: null,
+        keys: ['logistik/versand', 'alt', 'versand/neu'],
+        kept: 'logistik/versand',
+        keptBy: 'path',
+      },
+    ]);
+    expect(report.skipped).toEqual([{ key: 'alt', externalId: null }]);
+    // The model moved in the tool once more: its tool id still finds its key.
+    const plan = planKeys(
+      keymap,
+      [{ path: 'Versand/Versand.bpmn', externalId: 'sid-V', externalPath: 'Versand/Versand' }],
+      { system: 'signavio' },
+    );
+    expect(plan.files[0]).toMatchObject({ key: 'logistik/versand', status: 'moved' });
+  });
+
+  it('knows the export’s files at the tool paths analyzr stores tidied (ends trimmed)', () => {
+    // The first import declared `Ordner/Prozess ` (a file name ending in a space); analyzr keeps
+    // `Ordner/Prozess` (tidyDeclared of the contracts), so the rebuilt map holds that.
+    const exported = [
+      { path: 'Ordner/Prozess .bpmn', externalId: null, externalPath: 'Ordner/Prozess ' },
+      { path: ' Andere.bpmn', externalId: 'sid-1', externalPath: ' Andere' },
+    ];
+    const first = applyPlan(
+      emptyKeymap(),
+      planKeys(emptyKeymap(), exported, { system: 'signavio', scope: null }),
+      null,
+    );
+    const stored = (first.systems['signavio']?.entries ?? []).map((e) =>
+      identity(e.key, e.externalId, e.externalPath.trim()),
+    );
+    expect(stored.map((i) => i.externalPath)).toEqual(['Andere', 'Ordner/Prozess']);
+    const { keymap } = rebuildFromAnalyzr(emptyKeymap(), stored, { system: 'signavio' });
+    const plan = planKeys(keymap, exported, {
+      system: 'signavio',
+      existingKeys: stored.map((i) => i.key),
+    });
+    expect(plan.files.map((f) => [f.path, f.key, f.status, f.flags])).toEqual([
+      [' Andere.bpmn', 'andere', 'known', []],
+      ['Ordner/Prozess .bpmn', 'ordner/prozess', 'known', []],
+    ]);
+    // A stale map holding the export's form gives that place no second key.
+    const rebuilt = rebuildFromAnalyzr(
+      first,
+      [identity('ordner/prozess-2', null, 'Ordner/Prozess')],
+      { system: 'signavio' },
+    );
+    expect(rebuilt.report).toMatchObject({
+      entries: [],
+      conflicts: [{ key: 'ordner/prozess-2', reason: 'identity-taken', holder: 'ordner/prozess' }],
+    });
+  });
+
+  it('keeps the map as it is when analyzr has nothing of the system (its first import)', () => {
+    const { keymap, report } = rebuildFromAnalyzr(
+      emptyKeymap(),
+      [identity('x', 'aris-1', 'X', 'aris'), identity('y', null, null)],
+      { system: 'signavio' },
+    );
+    expect(keymap).toEqual(emptyKeymap());
+    expect(report).toMatchObject({ restored: false, entries: [], skipped: [{ key: 'y' }] });
+    expect(planKeys(keymap, EXPORT, { system: 'signavio', rule: RULE }).firstImport).toBe(true);
+  });
+
+  it('takes the rule given for a missing system, and a stored rule stays fixed', () => {
+    const identities = [
+      identity(
+        'vertrieb/auftragsabwicklung',
+        'sid-A',
+        'Gemeinsame Dokumente/Vertrieb/Auftragsabwicklung',
+      ),
+    ];
+    const given = rebuildFromAnalyzr(emptyKeymap(), identities, {
+      system: 'signavio',
+      rule: { strip: null, prefix: null },
+    });
+    expect(given.report).toMatchObject({
+      rule: { strip: null, prefix: null },
+      ruleFits: { matching: 0, of: 1 },
+    });
+    const inferred = rebuildFromAnalyzr(emptyKeymap(), identities, { system: 'signavio' });
+    expect(inferred.report.rule).toEqual({ strip: 'Gemeinsame Dokumente', prefix: null });
+    // A rebuilt rule is the system's rule: plan refuses another one.
+    expect(() =>
+      planKeys(inferred.keymap, EXPORT, { system: 'signavio', rule: { strip: null, prefix: 'x' } }),
+    ).toThrow(/fixed since its first plan --write/);
+  });
+});
+
+describe('inferRule', () => {
+  it('finds the strip folder and the prefix that derive the keys, collisions’ suffixes included', () => {
+    expect(
+      inferRule([
+        { key: 'aris/vertrieb/a', externalPath: 'Export/Vertrieb/A' },
+        { key: 'aris/vertrieb/a-2', externalPath: 'Export/Vertrieb/A' },
+        { key: 'aris/finanzen/b', externalPath: 'Export/Finanzen/B' },
+        { key: 'aris/archiv/c', externalPath: 'Archiv/C' },
+      ]),
+    ).toEqual({ rule: { strip: 'Export', prefix: 'aris' }, ruleFits: { matching: 4, of: 4 } });
+  });
+
+  it('gives a tie to the simpler rule', () => {
+    // Keys that all start with b/ from a folder B: the plain path fits as well as strip B + prefix b.
+    expect(
+      inferRule([
+        { key: 'b/y', externalPath: 'B/y' },
+        { key: 'b/z', externalPath: 'B/z' },
+      ]),
+    ).toEqual({ rule: { strip: null, prefix: null }, ruleFits: { matching: 2, of: 2 } });
+    // One fits either strip: the first folder in code-point order.
+    expect(
+      inferRule([
+        { key: 'x', externalPath: 'B/x' },
+        { key: 'y', externalPath: 'A/y' },
+      ]),
+    ).toEqual({ rule: { strip: 'A', prefix: null }, ruleFits: { matching: 1, of: 2 } });
+    expect(inferRule([])).toEqual({
+      rule: { strip: null, prefix: null },
+      ruleFits: { matching: 0, of: 0 },
+    });
+  });
+
+  it('proposes only a strip folder a rule can name (hand-written tool paths)', () => {
+    for (const pairs of [
+      [
+        { key: 'x', externalPath: 'A\\B/X' },
+        { key: 'y', externalPath: 'A\\B/Y' },
+      ],
+      [
+        { key: 'x', externalPath: '/Root/X' },
+        { key: 'y', externalPath: '/Root/Y' },
+      ],
+    ]) {
+      const { rule } = inferRule(pairs);
+      expect(() => assertRule(rule), JSON.stringify(pairs)).not.toThrow();
+    }
+    expect(() =>
+      rebuildFromAnalyzr(
+        emptyKeymap(),
+        [identity('x', 'i1', '/Root/X'), identity('y', 'i2', '/Root/Y')],
+        { system: 'signavio' },
+      ),
+    ).not.toThrow();
+  });
+
+  it('counts the keys the best rule does not derive (hand-edited keys)', () => {
+    expect(
+      inferRule([
+        { key: 'vertrieb/a', externalPath: 'Vertrieb/A' },
+        { key: 'eigener-name', externalPath: 'Vertrieb/B' },
+      ]),
+    ).toEqual({ rule: { strip: null, prefix: null }, ruleFits: { matching: 1, of: 2 } });
   });
 });
