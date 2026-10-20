@@ -417,6 +417,9 @@ export function autoAcceptRule(
     agent: null,
     llmModel: null,
     includeAdHoc: false,
+    proposedBy: 'agent',
+    derivedKind: null,
+    converter: null,
     author: OWNER,
     authorIsOwner: true,
     createdBy: OWNER,
@@ -443,6 +446,7 @@ export function ledgerEntry(
     process: null,
     decisionId: 'ast_01AUTODECISION',
     triggerId: 'ast_01TRIGGER',
+    proposedBy: 'agent',
     ruleId: 'aar_01J9Z3N4X5Q6R7S8T9V0W1X2Y3',
     revision: 2,
     ruleName: 'Schlüssel ab 95 %',
@@ -499,6 +503,7 @@ export function autoAcceptPreview(overrides: Partial<AutoAcceptPreview> = {}): A
       { principalId: 'prn_01AGENT', handle: 'agent:claude code', tokenId: null, revoked: false },
     ],
     llmModels: ['claude-sonnet-5-5'],
+    derivedGroups: [],
     ...overrides,
   };
 }

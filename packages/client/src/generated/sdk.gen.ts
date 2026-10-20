@@ -409,7 +409,7 @@ export const getModel = <ThrowOnError extends boolean = false>(
 /**
  * What deleting a model would change (nothing is deleted)
  *
- * M6 §3.5: the impact of an import, computed with the model removed from the head facts: accepted relations whose end would go missing, rule stances withdrawn, findings added and resolved; `files` and `absentKeys` are empty. Permission `read`.
+ * M6 §3.5: the impact of an import, computed with the model removed from the head facts: accepted relations whose end would go missing, rule stances withdrawn, findings added and resolved; `files` and `absentKeys` are empty. For an owner on an interactive client also the unique calls from derived models their auto-accept rules would accept (`autoAcceptedCalls`, M6 S2c-3). Permission `read`.
  */
 export const getModelDeletionImpact = <ThrowOnError extends boolean = false>(
   options: Options<GetModelDeletionImpactData, ThrowOnError>,
@@ -427,7 +427,7 @@ export const getModelDeletionImpact = <ThrowOnError extends boolean = false>(
 /**
  * Upload raw BPMN: 201 new model, 200 new revision or unchanged
  *
- * The optional header `Analyzr-Manifest` declares the file's provenance (M6 §3.2, §3.3): the base64url of the UTF-8 JSON of an `analyzr-import/1` manifest that lists exactly this file (its `key`, if given, equal to `{key}`). The declared fields are stored on the uploaded revision; a checksum mismatch or a known tool id are `importWarnings`, the file is stored all the same. Identical bytes stay `unchanged` and keep the first revision's provenance (`provenance-kept` when the manifest declares another place in the source tool) and its trust class (M6 S2c; `trust-kept` when this request would classify the file differently). `dryRun=true` (M6 §3.5) answers the would-be outcome with its warnings and the `impact` and writes nothing (permission `read`); it classifies the file by its own credential, so `impact.callsProposed` names the unique calls that would only be proposed.
+ * The optional header `Analyzr-Manifest` declares the file's provenance (M6 §3.2, §3.3): the base64url of the UTF-8 JSON of an `analyzr-import/1` manifest that lists exactly this file (its `key`, if given, equal to `{key}`). The declared fields are stored on the uploaded revision; a checksum mismatch or a known tool id are `importWarnings`, the file is stored all the same. Identical bytes stay `unchanged` and keep the first revision's provenance (`provenance-kept` when the manifest declares another place in the source tool) and its trust class (M6 S2c; `trust-kept` when this request would classify the file differently). `dryRun=true` (M6 §3.5) answers the would-be outcome with its warnings and the `impact` and writes nothing (permission `read`); it classifies the file by its own credential, so `impact.callsProposed` names the unique calls that would only be proposed, and for an owner on an interactive client `impact.autoAcceptedCalls` those of them their auto-accept rules would accept (M6 S2c-3).
  */
 export const putModelByKey = <ThrowOnError extends boolean = false>(
   options: Options<PutModelByKeyData, ThrowOnError>,
@@ -485,7 +485,7 @@ export const getRevisionFacts = <ThrowOnError extends boolean = false>(
 /**
  * Import up to 50 BPMN files; the model key is the pinned or the slugified path
  *
- * An optional part `manifest` holds the JSON of an `analyzr-import/1` manifest (M6 §3.2; the CLI sends each batch's subset): a listed file gets the key it pins (else its path decides) and the declared provenance on its uploaded revision. A checksum mismatch, a tool id another live key already has (`external-id-moved`) and a tool id that differs from the one on the key's head (`external-id-changed`) are `importWarnings`, and so is an unchanged file whose manifest entry declares another place in the source tool than analyzr keeps (`provenance-kept`) or that this request would give another trust class than the one analyzr keeps (`trust-kept`, M6 S2c); the file is imported all the same. An invalid manifest refuses the request (422 `validation-failed`, reason `invalid-manifest`). `dryRun=true` (M6 §3.5) answers the same outcomes and the `impact` and writes nothing: permission `read`, no project lock, so a read-only token can preview a bundle. A dry run classifies the files by its own credential (M6 S2c), so a read-only token previews them as agent uploads. One dry run covers one request; a call into a later batch shows as unresolved.
+ * An optional part `manifest` holds the JSON of an `analyzr-import/1` manifest (M6 §3.2; the CLI sends each batch's subset): a listed file gets the key it pins (else its path decides) and the declared provenance on its uploaded revision. A checksum mismatch, a tool id another live key already has (`external-id-moved`) and a tool id that differs from the one on the key's head (`external-id-changed`) are `importWarnings`, and so is an unchanged file whose manifest entry declares another place in the source tool than analyzr keeps (`provenance-kept`) or that this request would give another trust class than the one analyzr keeps (`trust-kept`, M6 S2c); the file is imported all the same. An invalid manifest refuses the request (422 `validation-failed`, reason `invalid-manifest`). `dryRun=true` (M6 §3.5) answers the same outcomes and the `impact` and writes nothing: permission `read`, no project lock, so a read-only token can preview a bundle. A dry run classifies the files by its own credential (M6 S2c), so a read-only token previews them as agent uploads. For an owner on an interactive client the impact also names the unique calls from derived models their auto-accept rules would accept in the same write (`autoAcceptedCalls`, M6 S2c-3); nobody else gets it. One dry run covers one request; a call into a later batch shows as unresolved.
  */
 export const importModels = <ThrowOnError extends boolean = false>(
   options: Options<ImportModelsData, ThrowOnError>,
@@ -1378,7 +1378,7 @@ export const listAutoAcceptRules = <ThrowOnError extends boolean = false>(
 /**
  * Create an auto-accept rule (owner, interactive client; off unless `enabled`)
  *
- * Revision 1 of a new rule, authored by the caller: while it is enabled, agent proposals recorded afterwards that meet it are accepted as decisions of the author (never retroactive: open proposals need `apply`). 422 `validation-failed` with `reason` `unknown-agent` or `name-taken`; a draft the schema refuses (a tier of another kind, a type on a placement rule, a confidence outside 0.5–1, control characters) is 422 `validation-failed` with `errors` naming the fields instead.
+ * Revision 1 of a new rule, authored by the caller: while it is enabled, agent proposals recorded afterwards that meet it are accepted as decisions of the author (never retroactive: open proposals need `apply`). With `proposedBy: rule` (M6 S2c-3) it accepts instead the rule tier’s proposals of unique calls from derived models whose caller declares `derivedKind` (`export`, `converted` with exactly this `converter`, or `none`); such a rule is a relation rule of tier `key`, type `call`, minimum 0.9, without agent, model or ad hoc, and never accepts a call of a revision uploaded with an agent token. 422 `validation-failed` with `reason` `unknown-agent` or `name-taken`; a draft the schema refuses (a tier of another kind, a type on a placement rule, a confidence outside 0.5–1, control characters, criteria a rule for derived calls may not name) is 422 `validation-failed` with `errors` naming the fields instead.
  */
 export const createAutoAcceptRule = <ThrowOnError extends boolean = false>(
   options: Options<CreateAutoAcceptRuleData, ThrowOnError>,
@@ -1400,7 +1400,7 @@ export const createAutoAcceptRule = <ThrowOnError extends boolean = false>(
 /**
  * What a rule (saved or not) would have accepted so far and would accept now
  *
- * Replays the project history: the agent proposals humans decided that the rule would have accepted, with the humans’ verdicts (an empirical precision; acceptances by auto-accept rules are no ground truth and counted apart), the open proposals it would accept now (what `apply` would do) with the blocked ones per reason, and a curve over minimum confidences. Nothing is written.
+ * Replays the project history: the agent proposals humans decided that the rule would have accepted, with the humans’ verdicts (an empirical precision; acceptances by auto-accept rules are no ground truth and counted apart), the open proposals it would accept now (what `apply` would do) with the blocked ones per reason, a curve over minimum confidences, and (relations) the unique calls from derived models per declared source (`derivedGroups`, M6 S2c-3). A rule for derived calls replays from the callers’ current declarations. Nothing is written.
  */
 export const previewAutoAcceptRule = <ThrowOnError extends boolean = false>(
   options: Options<PreviewAutoAcceptRuleData, ThrowOnError>,
@@ -1436,7 +1436,7 @@ export const getAutoAcceptRule = <ThrowOnError extends boolean = false>(
 /**
  * Edit, enable or disable a rule: a new revision (`If-Match: "r<revision>"` required)
  *
- * Writes the draft as the next immutable revision, authored by the caller (decisions already recorded keep their revision). `If-Match` must name the head revision: without it 428 `precondition-required`, a stale one 412 `revision-conflict` with `headRev`. A draft equal to the head answers `unchanged`, unless the head’s author is no longer an owner: then the caller takes the rule over (a new revision with the same fields). The kind of a rule never changes (422 `validation-failed` with `reason` `kind-changed`); otherwise the reasons and `errors` of the create route.
+ * Writes the draft as the next immutable revision, authored by the caller (decisions already recorded keep their revision). `If-Match` must name the head revision: without it 428 `precondition-required`, a stale one 412 `revision-conflict` with `headRev`. A draft equal to the head answers `unchanged`, unless the head’s author is no longer an owner: then the caller takes the rule over (a new revision with the same fields). The kind of a rule never changes, nor whose proposals it accepts (`proposedBy`; 422 `validation-failed` with `reason` `kind-changed`); otherwise the reasons and `errors` of the create route.
  */
 export const reviseAutoAcceptRule = <ThrowOnError extends boolean = false>(
   options: Options<ReviseAutoAcceptRuleData, ThrowOnError>,
@@ -1502,7 +1502,7 @@ export const revokeAutoAccepted = <ThrowOnError extends boolean = false>(
 /**
  * The auto-acceptances of the project and their state (every human reviewer: the review UI marks)
  *
- * One entry per acceptance an auto-accept rule recorded: the item, the rule’s name and revision, the decider, the triggering agent proposal and the state (`in-force`, `revoked`, `human-decided`). Readable by editors and owners on an interactive client (permission `review`), so every reviewer sees which acceptances were made by a rule; agent tokens get 403 `human-decision-required`. The rules themselves stay owner-only.
+ * One entry per acceptance an auto-accept rule recorded: the item, the rule’s name and revision, the decider, the triggering proposal (an agent’s, or for a rule for derived calls the rule tier’s, `proposedBy`) and the state (`in-force`, `revoked`, `human-decided`). Readable by editors and owners on an interactive client (permission `review`), so every reviewer sees which acceptances were made by a rule; agent tokens get 403 `human-decision-required`. The rules themselves stay owner-only.
  */
 export const listAutoAccepted = <ThrowOnError extends boolean = false>(
   options: Options<ListAutoAcceptedData, ThrowOnError>,

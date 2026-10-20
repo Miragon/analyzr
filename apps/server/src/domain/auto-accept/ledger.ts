@@ -112,6 +112,8 @@ export function ledgerItems(
           process: subject.process as AutoAcceptLedgerEntry['process'],
           decisionId: d.id as AutoAcceptLedgerEntry['decisionId'],
           triggerId: (d.autoAcceptTriggerId ?? d.id) as AutoAcceptLedgerEntry['triggerId'],
+          // The rule tier's proposal of a unique call from a derived model (M6 S2c-3), else an agent's.
+          proposedBy: trigger?.sourceKind === 'rule' ? 'rule' : 'agent',
           ruleId,
           revision,
           ruleName: ruleName(ruleId, revision),

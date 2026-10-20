@@ -18,10 +18,13 @@ import { useProjectFacts } from './use-project-facts';
  * How many relation items carry a bulk accept name flag (`genericFlags`: a
  * generic name, or a name more than two processes use), judged on the
  * relation as the landscape has it (its declared message or signal name),
- * else on the item's ends.
+ * else on the item's ends. A unique call from a derived model names its
+ * target by id and carries none (M6 S2c-3, as `bulkFlags`).
  */
 export function countNameFlags(
-  items: readonly Pick<AutoAcceptItem, 'id' | 'kind' | 'type' | 'from' | 'to'>[],
+  items: readonly (Pick<AutoAcceptItem, 'id' | 'kind' | 'type' | 'from' | 'to'> & {
+    proposedBy?: AutoAcceptItem['proposedBy'];
+  })[],
   relations: ReadonlyMap<string, Relation>,
   resolve: RefResolver,
   usage: NameUsage,
@@ -29,6 +32,7 @@ export function countNameFlags(
   let count = 0;
   for (const item of items) {
     if (item.kind !== 'relation' || !item.type || !item.from || !item.to) continue;
+    if (item.proposedBy === 'rule') continue;
     const relation = relations.get(item.id) ?? {
       type: item.type,
       from: item.from,

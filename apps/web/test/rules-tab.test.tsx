@@ -11,7 +11,7 @@
 import type { AutoAcceptItem, AutoAcceptRule, Health, Project } from '@analyzr/client';
 import { QueryClient, focusManager } from '@tanstack/react-query';
 import { createMemoryHistory } from '@tanstack/react-router';
-import { act, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 
@@ -173,6 +173,7 @@ const item: AutoAcceptItem = {
   step: null,
   process: null,
   triggerId: 'ast_01T',
+  proposedBy: 'agent',
   agent: { principalId: 'prn_01AGENT', handle: 'agent:claude code' },
   llmModel: 'sim-policy-1',
   tier: 'key',
@@ -318,6 +319,9 @@ describe('RuleDialog', () => {
       agentPrincipalId: null,
       llmModel: null,
       includeAdHoc: false,
+      proposedBy: 'agent',
+      derivedKind: null,
+      converter: null,
     });
 
     // Placements: two tiers, no type, the @outside hint.
@@ -406,6 +410,9 @@ describe('RuleDialog', () => {
       agentPrincipalId: 'prn_01SIM',
       llmModel: 'claude-sonnet-5-5',
       includeAdHoc: true,
+      proposedBy: 'agent',
+      derivedKind: null,
+      converter: null,
       name: 'Schlüssel ab 95 %',
       enabled: true,
       note: null,
@@ -612,6 +619,299 @@ describe('RuleDialog', () => {
     expect(
       await within(dialog).findByText('Eine andere Annahmeregel dieses Projekts heißt schon so.'),
     ).toBeTruthy();
+  });
+});
+
+describe('RuleDialog: a rule for derived calls (M6 S2c-3)', () => {
+  const GROUPS = [
+    {
+      derivedKind: 'export' as const,
+      converter: null,
+      open: 12,
+      blocked: 1,
+      accepted: 4,
+      rejected: 0,
+    },
+    {
+      derivedKind: 'converted' as const,
+      converter: 'normalize-bpmn@0.1.0',
+      open: 3,
+      blocked: 0,
+      accepted: 0,
+      rejected: 0,
+    },
+    {
+      derivedKind: 'converted' as const,
+      converter: 'normalize-bpmn@0.2.0',
+      open: 2,
+      blocked: 0,
+      accepted: 0,
+      rejected: 1,
+    },
+  ];
+
+  function open(
+    rule: AutoAcceptRule | null,
+    routes: Record<string, (c: Call) => Response | Promise<Response>> = {},
+    draft?: RuleDraft,
+  ) {
+    const calls = stubApi({
+      [`POST ${BASE}/auto-accept-rules/preview`]: () =>
+        json(autoAcceptPreview({ derivedGroups: GROUPS })),
+      [`POST ${BASE}/auto-accept-rules`]: (c) =>
+        json(
+          {
+            outcome: 'created',
+            rule: detail(autoAcceptRule({ id: RULE_ID, ...(c.body as object) })),
+          },
+          201,
+        ),
+      ...routes,
+    });
+    renderWithQuery(
+      <RuleDialog
+        project="demo"
+        rule={rule}
+        draft={draft}
+        ruleNames={[]}
+        tokens={[]}
+        open
+        onOpenChange={() => undefined}
+      />,
+    );
+    return { calls, user: userEvent.setup() };
+  }
+
+  it('asks for „Herkunft“ (with its open calls) instead of tier, confidence and type, with one hint line', async () => {
+    const { calls, user } = open(null);
+    const dialog = screen.getByTestId('rule-dialog');
+    const art = within(dialog).getByLabelText<HTMLSelectElement>('Art');
+    expect([...art.options].map((o) => o.textContent)).toEqual([
+      'Relationen',
+      'Platzierungen',
+      'Eindeutige Aufrufe aus abgeleiteten Modellen',
+    ]);
+    await user.selectOptions(art, 'calls');
+    const fields = within(dialog).getByTestId('rule-fields');
+    expect(visibleFields(fields).map((el) => el.id)).toEqual(
+      ['Name', 'Art', 'Herkunft'].map((label) => within(fields).getByLabelText(label).id),
+    );
+    expect(within(dialog).queryByLabelText('Grundlage')).toBeNull();
+    expect(within(dialog).queryByLabelText('ab Konfidenz (%)')).toBeNull();
+    expect(within(dialog).queryByLabelText('Typ')).toBeNull();
+    expect(within(dialog).getByTestId('rule-source-hint').textContent).toBe(
+      'Die Herkunft gibt der Import an; analyzr prüft sie nicht. Über ein Agenten-Token hochgeladene Modelle nimmt keine Regel an.',
+    );
+    await waitFor(() =>
+      expect(
+        [...within(dialog).getByLabelText<HTMLSelectElement>('Herkunft').options].map(
+          (o) => o.textContent,
+        ),
+      ).toEqual([
+        'Export ohne Camunda-Engine (12 offen)',
+        'Konvertiert (5 offen)',
+        'Ohne Angabe (0 offen)',
+      ]),
+    );
+    expect(within(dialog).getByLabelText<HTMLInputElement>('Name').value).toBe(
+      'Aufrufe: Export ohne Engine',
+    );
+    // „Weiter einschränken“ holds the note only; the preview has no curve.
+    await user.click(within(dialog).getByText('Weiter einschränken'));
+    expect(visibleFields(fields).map((el) => el.id)).toContain(
+      within(fields).getByLabelText('Notiz').id,
+    );
+    expect(within(dialog).queryByLabelText('Agent')).toBeNull();
+    const preview = await screen.findByTestId('rule-preview');
+    await waitFor(() =>
+      expect(within(preview).getByTestId('preview-history').textContent).toBe(
+        'Bisher: 15 von 40 entschiedenen Aufrufen aus abgeleiteten Modellen hätte die Regel angenommen – davon 14 angenommen, 1 abgelehnt, 0 korrigiert (Trefferquote 93,3 %).',
+      ),
+    );
+    expect(within(preview).queryByTestId('preview-curve')).toBeNull();
+    expect(within(preview).getByTestId('preview-open').textContent).toBe(
+      'Jetzt offen: 3 Aufrufe würden angenommen',
+    );
+    await waitFor(() =>
+      expect(calls.filter((c) => c.path.endsWith('/preview')).at(-1)?.body).toEqual({
+        kind: 'relation',
+        tier: 'key',
+        minConfidence: 0.9,
+        relationType: 'call',
+        agentPrincipalId: null,
+        llmModel: null,
+        includeAdHoc: false,
+        proposedBy: 'rule',
+        derivedKind: 'export',
+        converter: null,
+      }),
+    );
+  });
+
+  it('„Konvertiert“ picks a converter of the project’s derived calls and saves exactly it', async () => {
+    const { calls, user } = open(null);
+    const dialog = screen.getByTestId('rule-dialog');
+    await user.selectOptions(within(dialog).getByLabelText('Art'), 'calls');
+    await screen.findByTestId('rule-preview');
+    await user.selectOptions(within(dialog).getByLabelText('Herkunft'), 'converted');
+    const converter = within(dialog).getByLabelText<HTMLSelectElement>('Konverter');
+    expect([...converter.options].map((o) => o.textContent)).toEqual([
+      'normalize-bpmn@0.1.0 (3 offen)',
+      'normalize-bpmn@0.2.0 (2 offen)',
+    ]);
+    expect(converter.value).toBe('normalize-bpmn@0.1.0');
+    await user.selectOptions(converter, 'normalize-bpmn@0.2.0');
+    // four fields at most: name, Art, Herkunft, Konverter
+    expect(visibleFields(within(dialog).getByTestId('rule-fields'))).toHaveLength(4);
+    expect(within(dialog).getByLabelText<HTMLInputElement>('Name').value).toBe(
+      'Aufrufe: konvertiert mit normalize-bpmn@0.2.0',
+    );
+    await user.click(within(dialog).getByTestId('rule-save'));
+    await waitFor(() =>
+      expect(
+        calls.find((c) => c.method === 'POST' && c.path.endsWith('/auto-accept-rules'))?.body,
+      ).toEqual({
+        kind: 'relation',
+        tier: 'key',
+        minConfidence: 0.9,
+        relationType: 'call',
+        agentPrincipalId: null,
+        llmModel: null,
+        includeAdHoc: false,
+        proposedBy: 'rule',
+        derivedKind: 'converted',
+        converter: 'normalize-bpmn@0.2.0',
+        name: 'Aufrufe: konvertiert mit normalize-bpmn@0.2.0',
+        enabled: false,
+        note: null,
+      }),
+    );
+  });
+
+  it('„Konvertiert“ from a draft without a converter offers the project’s converters to choose', async () => {
+    const { calls, user } = open(
+      null,
+      {},
+      { derived: { derivedKind: 'converted', converter: null } },
+    );
+    const dialog = screen.getByTestId('rule-dialog');
+    // the sources load although the rule is not complete yet
+    await waitFor(() =>
+      expect(
+        [...within(dialog).getByLabelText<HTMLSelectElement>('Konverter').options].map(
+          (o) => o.textContent,
+        ),
+      ).toEqual([
+        'Konverter wählen …',
+        'normalize-bpmn@0.1.0 (3 offen)',
+        'normalize-bpmn@0.2.0 (2 offen)',
+      ]),
+    );
+    expect(within(dialog).queryByTestId('rule-preview')).toBeNull();
+    await user.selectOptions(within(dialog).getByLabelText('Konverter'), 'normalize-bpmn@0.1.0');
+    await waitFor(() =>
+      expect(calls.filter((c) => c.path.endsWith('/preview')).at(-1)?.body).toMatchObject({
+        derivedKind: 'converted',
+        converter: 'normalize-bpmn@0.1.0',
+      }),
+    );
+    expect(within(dialog).getByLabelText<HTMLInputElement>('Name').value).toBe(
+      'Aufrufe: konvertiert mit normalize-bpmn@0.1.0',
+    );
+  });
+
+  it('„Konverter“ lists the most open calls first, says when it loads, and why a save waits', async () => {
+    // the sources still load: no converter is offered yet, and „Kein Konverter“ is not said
+    let answer: (r: Response) => void = () => undefined;
+    const { calls, user } = open(
+      null,
+      {
+        [`POST ${BASE}/auto-accept-rules/preview`]: () =>
+          new Promise<Response>((resolve) => {
+            answer = resolve;
+          }),
+      },
+      { derived: { derivedKind: 'converted', converter: null } },
+    );
+    const dialog = screen.getByTestId('rule-dialog');
+    const options = () =>
+      [...within(dialog).getByLabelText<HTMLSelectElement>('Konverter').options].map(
+        (o) => o.textContent,
+      );
+    await waitFor(() => expect(calls.some((c) => c.path.endsWith('/preview'))).toBe(true));
+    expect(options()).toEqual(['Lädt …']);
+    // a save without a converter says why nothing happens
+    await user.click(within(dialog).getByTestId('rule-save'));
+    expect(within(dialog).getByText('Wähle einen Konverter.')).toBeTruthy();
+    answer(
+      json(
+        autoAcceptPreview({
+          derivedGroups: GROUPS.map((g) =>
+            g.converter === 'normalize-bpmn@0.2.0' ? { ...g, open: 7 } : g,
+          ),
+        }),
+      ),
+    );
+    await waitFor(() =>
+      expect(options()).toEqual([
+        'Konverter wählen …',
+        'normalize-bpmn@0.2.0 (7 offen)',
+        'normalize-bpmn@0.1.0 (3 offen)',
+      ]),
+    );
+    expect(
+      calls.filter((c) => c.method === 'POST' && c.path.endsWith('/auto-accept-rules')),
+    ).toEqual([]);
+  });
+
+  it('„Konvertiert“ without converted calls in the project says so', async () => {
+    const { user } = open(
+      null,
+      {
+        [`POST ${BASE}/auto-accept-rules/preview`]: () =>
+          json(autoAcceptPreview({ derivedGroups: GROUPS.filter((g) => g.converter === null) })),
+      },
+      { derived: { derivedKind: 'converted', converter: null } },
+    );
+    const dialog = screen.getByTestId('rule-dialog');
+    await waitFor(() =>
+      expect(
+        [...within(dialog).getByLabelText<HTMLSelectElement>('Konverter').options].map(
+          (o) => o.textContent,
+        ),
+      ).toEqual(['Kein Konverter im Projekt']),
+    );
+    await user.click(within(dialog).getByTestId('rule-save'));
+    expect(
+      within(dialog).getByText(
+        'Noch kein Aufruf im Projekt stammt aus einem Konverter; wähle eine andere Herkunft.',
+      ),
+    ).toBeTruthy();
+  });
+
+  it('opens prefilled from a draft and edits a saved one with its „Art“ fixed', () => {
+    open(null, {}, { derived: { derivedKind: 'converted', converter: 'normalize-bpmn@0.2.0' } });
+    const dialog = screen.getByTestId('rule-dialog');
+    expect(within(dialog).getByLabelText<HTMLSelectElement>('Art').value).toBe('calls');
+    expect(within(dialog).getByLabelText<HTMLSelectElement>('Herkunft').value).toBe('converted');
+    expect(within(dialog).getByLabelText<HTMLSelectElement>('Konverter').value).toBe(
+      'normalize-bpmn@0.2.0',
+    );
+    cleanup();
+    open(
+      autoAcceptRule({
+        id: RULE_ID,
+        name: 'Signavio-Export',
+        relationType: 'call',
+        minConfidence: 0.9,
+        proposedBy: 'rule',
+        derivedKind: 'none',
+      }),
+    );
+    const edit = screen.getByTestId('rule-dialog');
+    expect(within(edit).getByLabelText<HTMLSelectElement>('Art').disabled).toBe(true);
+    expect(within(edit).getByLabelText<HTMLSelectElement>('Art').value).toBe('calls');
+    expect(within(edit).getByLabelText<HTMLSelectElement>('Herkunft').value).toBe('none');
   });
 });
 
@@ -958,6 +1258,33 @@ describe('RuleTable', () => {
     );
     expect(calls.some((c) => c.method === 'PUT')).toBe(false);
   });
+
+  it('a rule for derived calls names its source; enabled it acts on new call proposals (M6 S2c-3)', async () => {
+    const rule = autoAcceptRule({
+      id: RULE_ID,
+      name: 'Aufrufe: konvertiert mit x@1',
+      relationType: 'call',
+      minConfidence: 0.9,
+      proposedBy: 'rule',
+      derivedKind: 'converted',
+      converter: 'x@1',
+    });
+    const { user } = await table([rule], {
+      [`POST ${BASE}/auto-accept-rules/${RULE_ID}/apply`]: dryRoute({}),
+      [`PUT ${BASE}/auto-accept-rules/${RULE_ID}`]: (c) =>
+        json({ outcome: 'revised', rule: detail({ ...rule, ...(c.body as object), revision: 2 }) }),
+    });
+    const row = await screen.findByTestId('rule-row');
+    expect(within(row).getByTestId('rule-criteria').textContent).toBe(
+      'Eindeutige Aufrufe aus abgeleiteten Modellen · Konvertiert mit x@1',
+    );
+    expect(controls(row)).toHaveLength(3);
+    await user.click(within(row).getByRole('switch'));
+    const toast = await findToast('Regel „Aufrufe: konvertiert mit x@1“ aktiviert');
+    expect(toast.textContent).toContain(
+      'Sie wirkt auf neue Aufrufvorschläge aus abgeleiteten Modellen.',
+    );
+  });
 });
 
 describe('the system rule', () => {
@@ -1155,7 +1482,7 @@ describe('ApplyDialog and RevokeDialog', () => {
     const user = userEvent.setup();
     const dialog = screen.getByTestId('revoke-dialog');
     expect((await within(dialog).findByTestId('revoke-summary')).textContent).toBe(
-      '2 automatische Annahmen: 1 geht zurück in die Prüfung (ein Agentenvorschlag ist noch offen); 1 wird veraltet und von den Agenten neu beurteilt (kein offener Vorschlag mehr). 1 wurde inzwischen von einem Menschen entschieden und bleibt unverändert.',
+      '2 automatische Annahmen: 1 geht zurück in die Prüfung (ein Vorschlag ist noch offen); 1 wird veraltet und von den Agenten neu beurteilt (kein offener Vorschlag mehr). 1 wurde inzwischen von einem Menschen entschieden und bleibt unverändert.',
     );
     await waitFor(() =>
       expect(within(dialog).getAllByTestId('revoke-item')[0]?.textContent).toBe(
@@ -1262,7 +1589,7 @@ describe('the page „Annahmeregeln“', () => {
     page([]);
     const rulesPage = await screen.findByTestId('rules-page');
     expect(within(rulesPage).getByTestId('rules-safeguard').textContent).toBe(
-      'analyzr nimmt neue Agentenvorschläge ab deiner Konfidenz selbst an – nie bei einer offenen Frage, einem Einwand oder wenn du schon entschieden hast.',
+      'analyzr nimmt neue Vorschläge, die eine aktive Regel trifft, selbst an – nie bei einer offenen Frage, einem Einwand oder wenn du schon entschieden hast.',
     );
     expect(within(rulesPage).getByTestId('system-rule').textContent).toBe(
       'Eindeutige Aufrufe aus Camunda-Modellen nimmt analyzr beim Hochladen an · immer aktiv · 10 angenommen',
@@ -1377,5 +1704,25 @@ describe('the page „Annahmeregeln“', () => {
     await user.click(within(dialog).getByRole('button', { name: 'Abbrechen' }));
     await waitFor(() => expect(screen.queryByTestId('apply-dialog')).toBeNull());
     await waitFor(() => expect(document.activeElement).toBe(within(row).getByTestId('rule-more')));
+  });
+  it('after a bulk accept of derived calls (`?new=calls`) opens a rule for their source (M6 S2c-3)', async () => {
+    const { router } = page(
+      [],
+      [],
+      '/projects/demo/rules?new=calls&derivedKind=converted&converter=normalize-bpmn%400.1.0',
+      {
+        [`POST ${BASE}/auto-accept-rules/preview`]: () => json(autoAcceptPreview()),
+      },
+    );
+    const dialog = await screen.findByTestId('rule-dialog');
+    expect(within(dialog).getByLabelText<HTMLSelectElement>('Art').value).toBe('calls');
+    expect(within(dialog).getByLabelText<HTMLSelectElement>('Herkunft').value).toBe('converted');
+    expect(within(dialog).getByLabelText<HTMLSelectElement>('Konverter').value).toBe(
+      'normalize-bpmn@0.1.0',
+    );
+    expect(within(dialog).getByLabelText<HTMLInputElement>('Name').value).toBe(
+      'Aufrufe: konvertiert mit normalize-bpmn@0.1.0',
+    );
+    await waitFor(() => expect(router.state.location.search).toEqual({}));
   });
 });

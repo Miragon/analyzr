@@ -6,7 +6,7 @@ feasibility critique · Branch: `feat/integration-and-gaps` (the first wave UX2a
 delivered on it on 2026-10-18, §7; the owner's walkthrough the same day, §7 "Owner
 walkthrough"; UX7, UX8, S2b's „Vorschau“, UX3, UX4 and UX5 delivered the same day, UX6 and
 UX9 on 2026-10-19: every slice delivered; M6 S2c-1's texts on these screens the same day, S2c-2's
-fast path for derived calls on 2026-10-20, §7) ·
+fast path for derived calls and S2c-3's rules for derived calls on 2026-10-20, §7) ·
 Source: four user-need audits of the web UI on the agent-created scratch stack
 `analyzr-uxaudit` (seeded `nordwind-handel` with its chain and a simulation agent run,
 `signavio-beispiel` from the CLI bundle import, two projects made from the raw synthetic Signavio
@@ -603,14 +603,18 @@ Appendix A.
    öffnen“); the 21 stay in the queue. The 40-word description → „Markierte mögliche Relationen
    wählst du bewusst selbst aus.“ After a bulk accept, owners get one line: „Gleicher Name ab
    100 % künftig automatisch annehmen? · Annahmeregel anlegen“, opening the rule dialog prefilled
-   (rules match agent proposals only, decision 19; whether the flags block is Q8). The lexical bulk
+   (agent rules match agent proposals only, decision 19; since M6 S2c-3 a rule for derived calls
+   matches the rule tier's call proposals; whether the flags block is Q8). The lexical bulk
    („Ähnlich: 13 annehmen…“, preselecting pairs at 65 % and 66 %) goes (Q7). (R6, R7) Since M6
    S2c-2 the unique calls of derived models come first as their own group, which „Gesammelt
    annehmen“ and the system rule card's count open with exactly those selected; a flagged one
    stays in that group, flagged and without a checkbox, instead of under „Genauer ansehen“, the
    other unflagged pairs are headed „Gleicher Name (n)“ only next to that group, and after
    accepting only such calls the toast says „Eindeutige Aufrufe aus abgeleiteten Modellen.“ with
-   no rule offer until S2c-3 (§7 "M6 S2c-2's texts as delivered").
+   no rule offer (§7 "M6 S2c-2's texts as delivered"); since S2c-3 it asks owners „Eindeutige
+   Aufrufe aus abgeleiteten Modellen künftig automatisch annehmen?“ with „Annahmeregel anlegen“
+   instead, unless no source can be named or a rule already names it (§7 "M6 S2c-3's texts as
+   delivered").
 6. **Filters** „Stufe“ and „Modell“ → „Grundlage“ and „Modell“ (§4); hidden while the list is
    empty. (R8, R24)
 7. **„Vorgemerkt“** (`held-list.tsx`): rows without open text areas (today two large text areas
@@ -727,7 +731,8 @@ Appendix A.
    Modelle warten auf den Agenten · Agent starten“ (the popover of §2.6, or „Agent verbinden“
    without a token), „9 offene Fragen gibt es schon jetzt · Offene Fragen ansehen“. (O5, O16)
    Since M6 S2c-2 it starts with „12 eindeutige Aufrufe warten auf deine Bestätigung · Gesammelt
-   annehmen“ while such calls wait (reviewers only; §7 "M6 S2c-2's texts as delivered").
+   annehmen“ while such calls wait (reviewers only; §7 "M6 S2c-2's texts as delivered"); since
+   S2c-3 the calls an owner's rule accepted in the import are no longer counted there.
 3. **Warnings grouped by element and cause** (O6): today „9 Hinweise“, each „Unbekannter oder
    fehlerhafter Inhalt“ plus bpmn-moddle English („unparsable content <task> detected … illegal ID
    <Aufgabe_Bonität_prüfen>“, „unresolved reference <4711>“). A warning carries only the code, that
@@ -809,12 +814,19 @@ Appendix A.
    when taken); „Agent“, „LLM-Modell“, „Auch Ad-hoc-Vorschläge“ and „Notiz“ behind „Weiter
    einschränken“; one „Speichern“ with an „Aktiv“ switch instead of „Speichern (aus)“ and „Speichern
    und aktivieren“; the curve under „Nach Konfidenz aufschlüsseln“, only rows whose numbers change.
-   The bulk accept's offer (§3.6 item 5) opens this dialog prefilled. (R13)
+   The bulk accept's offer (§3.6 item 5) opens this dialog prefilled. (R13) Since M6 S2c-3 a third
+   „Art“, „Eindeutige Aufrufe aus abgeleiteten Modellen“, shows „Herkunft“ (and „Konverter“ for
+   „Konvertiert“) instead of „Grundlage“, „ab Konfidenz“ and „Typ“, one hint line, only „Notiz“
+   behind „Weiter einschränken“ and no curve, so the dialog shows at most three fields („Art“,
+   „Herkunft“, „Konverter“) and the name (§7 "M6 S2c-3's texts as delivered").
 5. **Preview and apply** also say „davon N mit allgemeinem oder mehrfach genutztem Namen (in der
    Sammelannahme markiert)“ from the same `bulkFlags`; whether flags should block is Q8. (R14)
 6. **Texts**: the safeguard sentence once on the page („analyzr nimmt neue Agentenvorschläge ab
    deiner Konfidenz selbst an – nie bei einer offenen Frage, einem Einwand oder wenn du schon
-   entschieden hast.“), the dialogs only what is specific to them; the system rule card one line
+   entschieden hast.“; since M6 S2c-3 „analyzr nimmt neue Vorschläge, die eine aktive Regel
+   trifft, selbst an – nie bei einer offenen Frage, einem Einwand oder wenn du schon entschieden
+   hast.“, since a rule may now accept the rule tier's call proposals), the dialogs only what is
+   specific to them; the system rule card one line
    „Eindeutige Aufrufe nimmt analyzr beim Hochladen an · immer aktiv · 10 angenommen“ (no
    „calledElement“, no „Verfahren analyzr-rules/1.0.0“); no „Neue Regel“ next to „Erste Regel
    anlegen“. (R21) Since M6 S2c-1 the card reads „Eindeutige Aufrufe aus Camunda-Modellen nimmt
@@ -1147,7 +1159,9 @@ delivered"). They fit without a new column, tab or panel:
   Import gesammelt annehmen“ for the unique calls of derived models, and „Was ändert sich?“ the
   list „Aufrufe als Vorschlag“ („(bisher angenommen)“ for a call whose acceptance ends); since
   S2c-2 the result's „Als Nächstes“ names them first: „12 eindeutige Aufrufe warten auf deine
-  Bestätigung · Gesammelt annehmen“.
+  Bestätigung · Gesammelt annehmen“; since S2c-3 an owner's preview adds what their rules for
+  derived calls accept at once, „· deine Regel „Aufrufe: Export ohne Engine“ nimmt 12 davon
+  gleich an“.
 - **Deletion impact** (S2b): stays in `analyzr models delete`; the web has no model deletion. If
   the owner wants it, it goes into the model view's „Mehr“ as „Modell löschen …“ with the impact as
   the confirmation dialog, in the chain save's pattern (only non-zero lines, „Weiter bearbeiten“ /
@@ -2147,7 +2161,7 @@ it opens (P5; above 500 the dialog selects 500 and says „die übrigen N danach
   annehmen …“ it selects every unflagged pair as before. Closing drops `?bulk`, so a reload does
   not reopen it, and the focus goes back to the page. After accepting only such calls the toast
   reads „12 Relationen angenommen“ with „Eindeutige Aufrufe aus abgeleiteten Modellen.“ and no
-  rule offer (owners' rules for them come with S2c-3).
+  rule offer (owners' rules for them came with S2c-3, below).
 
 The UI load guard on `analyzr-s2c2`: `signavio-beispiel`'s only open review item is such a call,
 so „Übersicht“ shows the calls line instead of the review line: 20 controls and 113 / 98 words at
@@ -2155,6 +2169,58 @@ so „Übersicht“ shows the calls line instead of the review line: 20 controls
 „Gesammelt annehmen“ 22 controls and 112 words (no budget); its line's number equals the
 dialog's selection and the API's count, and closing it with Escape leaves the focus on
 „Vorschläge prüfen“. Everything else unchanged.
+
+**M6 S2c-3's texts as delivered** (2026-10-20, on the branch, every gate green; M6 §8 "S2c-3 as
+delivered", DEVELOPMENT.md "M6 S2c-3"). Owners' rules for derived calls (decision 19 as extended
+by 24.2 and narrowed by 28 (1)) reach the screens as one more „Art“ in the existing dialog, one
+toast action and text; no new control elsewhere. So the first analysis of a derived landscape
+needs the bulk accept once: right after it the toast offers the rule for that source, and once it
+is on, the unique calls each later import of that source proposes are accepted without a click,
+marked and revocable; calls already waiting need the rule applied (the offer comes once, at the
+moment it helps, prefilled per P4, and the rule stays off until the owner turns it on).
+
+- **The bulk accept's toast** (§3.6 item 5): after accepting only derived calls, owners get
+  „Eindeutige Aufrufe aus abgeleiteten Modellen künftig automatisch annehmen?“ with „Annahmeregel
+  anlegen“, which opens „Neue Regel“ prefilled for the source most of the accepted calls' callers
+  declare (`?new=calls&derivedKind=…&converter=…`). No offer when no source can be named (every
+  caller uploaded with an agent token, reconstructed, as told, or converted without a converter)
+  or when a rule, on or off, already names it; then the toast keeps „Eindeutige Aufrufe aus
+  abgeleiteten Modellen.“
+- **The rule dialog** (§3.11 item 4): the third „Art“ „Eindeutige Aufrufe aus abgeleiteten
+  Modellen“ shows „Herkunft“ („Export ohne Camunda-Engine (N offen)“, „Konvertiert (N offen)“,
+  „Ohne Angabe (N offen)“) and, for „Konvertiert“, „Konverter“ (the project's converters, the most
+  open calls first, „x (N offen)“; „Lädt …“, „Konverter wählen …“, „Kein Konverter im Projekt“;
+  on save „Wähle einen Konverter.“ or „Noch kein Aufruf im Projekt stammt aus einem Konverter;
+  wähle eine andere Herkunft.“) instead of „Grundlage“, „ab Konfidenz“ and „Typ“; one hint line
+  „Die Herkunft gibt der Import an; analyzr prüft sie nicht. Über ein Agenten-Token hochgeladene
+  Modelle nimmt keine Regel an.“; „Weiter einschränken“ holds only „Notiz“; the suggested name
+  „Aufrufe: Export ohne Engine“, „Aufrufe: konvertiert mit normalize-bpmn@0.1.0“ or „Aufrufe: ohne
+  Angabe“ (at most 100 characters, cut with „…“). Its preview: „Bisher: X von Y entschiedenen
+  Aufrufen aus abgeleiteten Modellen hätte die Regel angenommen – …“, „Jetzt offen: N Aufrufe …“,
+  no curve and no name flags. The „Art“ is fixed when editing.
+- **„Annahmeregeln“** (§3.11 items 3 and 6): the page lead „analyzr nimmt neue Vorschläge, die eine
+  aktive Regel trifft, selbst an – nie bei einer offenen Frage, einem Einwand oder wenn du schon
+  entschieden hast.“; such a rule's criteria „Eindeutige Aufrufe aus abgeleiteten Modellen · Export
+  ohne Camunda-Engine“ (or „… · Konvertiert mit …“, „… · Ohne Angabe“); the toast after turning it
+  on „Sie wirkt auf neue Aufrufvorschläge aus abgeleiteten Modellen.“ (an agent rule keeps „Sie
+  wirkt auf neue Agentenvorschläge.“); the blocked reasons „Über ein Agenten-Token hochgeladen“
+  and „Ergänzung nicht mehr anwendbar“; „Nach Agent widerrufen…“ lists no rule tier.
+- **Marks and revocation**: „…; ausgelöst vom Aufrufvorschlag aus einem abgeleiteten Modell
+  (90 %)“ on the review screen (the badge's tooltip „… mit 90 %“), the proposer in the apply and
+  revoke lists „Aufrufvorschlag aus einem abgeleiteten Modell“; neutral texts for every rule: „Ist
+  noch ein Vorschlag offen, steht das Element wieder in der Prüfung; sonst wird es veraltet und die
+  Agenten beurteilen es neu.“, „… zurück in die Prüfung (ein Vorschlag ist noch offen)“, „kein
+  Vorschlag war mehr offen: …“.
+- **„Vorschau“** (§6): an owner's preview names what their rules accept at once: „12 Aufrufe nur
+  vorgeschlagen (ohne Camunda-Engine) · deine Regel „Aufrufe: Export ohne Engine“ nimmt 12 davon
+  gleich an“ („… und 3 bereits vorgeschlagene“ for calls proposed before; „deine Regeln nehmen“ for
+  several rules; „– nach dem Import gesammelt annehmen“ only while calls proposed anew are left;
+  without them „1 bereits vorgeschlagener Aufruf – deine Regel „…“ nimmt ihn gleich an“).
+
+The UI load guard on `analyzr-s2c3`: „Annahmeregeln“ 13 controls and 82 words with one rule (80
+before), the longer page lead; every other screen as in S2c-2's run. No measured project has a
+rule for derived calls, so the dialog's default („Relationen“) still shows four criteria and the
+name.
 
 ## 8. Keep as is
 

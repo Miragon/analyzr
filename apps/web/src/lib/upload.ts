@@ -726,6 +726,34 @@ function mergeProposedCalls(impacts: readonly ImportImpact[]): ImportImpact['cal
 }
 
 /**
+ * The calls an owner's rules for derived calls would accept, of several
+ * batches (M6 S2c-3): totals per rule added up in first-seen order; absent
+ * when no batch has them (only an owner's preview has them).
+ */
+function mergeAutoAccepted(
+  impacts: readonly ImportImpact[],
+): Pick<ImportImpact, 'autoAcceptedCalls'> {
+  const lists = impacts.flatMap((i) => (i.autoAcceptedCalls ? [i.autoAcceptedCalls] : []));
+  if (lists.length === 0) return {};
+  const byRule = new Map<
+    string,
+    NonNullable<ImportImpact['autoAcceptedCalls']>['byRule'][number]
+  >();
+  for (const r of lists.flatMap((l) => l.byRule)) {
+    const seen = byRule.get(r.ruleId);
+    byRule.set(r.ruleId, seen ? { ...seen, count: seen.count + r.count } : { ...r });
+  }
+  return {
+    autoAcceptedCalls: {
+      count: lists.reduce((n, l) => n + l.count, 0),
+      items: lists.flatMap((l) => l.items).slice(0, 100),
+      ofProposed: lists.reduce((n, l) => n + l.ofProposed, 0),
+      byRule: [...byRule.values()],
+    },
+  };
+}
+
+/**
  * The impacts of a preview's batches as one, as `analyzr import --dry-run`
  * merges them: files and counts added up, items concatenated up to the
  * server's cap of 100; the absent keys are the first batch's (each batch
@@ -736,6 +764,7 @@ export function mergeImpacts(impacts: readonly ImportImpact[]): ImportImpact {
     files: impacts.flatMap((i) => i.files),
     acceptedCalls: mergeList(impacts, 'acceptedCalls'),
     callsProposed: mergeProposedCalls(impacts),
+    ...mergeAutoAccepted(impacts),
     proposalsAdded: mergeList(impacts, 'proposalsAdded'),
     proposalsWithdrawn: mergeList(impacts, 'proposalsWithdrawn'),
     endpointsChanged: mergeList(impacts, 'endpointsChanged'),
@@ -766,25 +795,71 @@ export function previewHeadline(
   return `Vorschau: ${parts.length === 0 ? 'nichts zu importieren' : parts.join(' · ')}`;
 }
 
+/** „deine Regel „Signavio-Export“ nimmt“, or „deine Regeln nehmen“ for more than one (M6 S2c-3). */
+function rulesWho(auto: NonNullable<ImportImpact['autoAcceptedCalls']>): string {
+  const [one] = auto.byRule;
+  return auto.byRule.length === 1 && one
+    ? `deine Regel „${one.ruleName}“ nimmt`
+    : 'deine Regeln nehmen';
+}
+
+/**
+ * What an owner's rules for derived calls accept at once in the import's
+ * write (M6 S2c-3, `autoAcceptedCalls`, only an owner's preview has it):
+ * after the calls the import proposes, „deine Regel „Signavio-Export“ nimmt
+ * 12 davon gleich an“, with „und 3 bereits vorgeschlagene“ for calls
+ * proposed before that the import proposes again (`ofProposed` tells them
+ * apart); without calls proposed anew, a line of its own („1 bereits
+ * vorgeschlagener Aufruf – deine Regel „…“ nimmt ihn gleich an“). `null`
+ * for none.
+ */
+export function autoAcceptedText(impact: ImportImpact): string | null {
+  const auto = impact.autoAcceptedCalls;
+  if (!auto || auto.count === 0) return null;
+  const who = rulesWho(auto);
+  const proposed = impact.callsProposed.count;
+  const of = Math.min(auto.ofProposed, auto.count, proposed);
+  const again = auto.count - of;
+  if (proposed === 0) {
+    return again === 1
+      ? `1 bereits vorgeschlagener Aufruf – ${who} ihn gleich an`
+      : `${again} bereits vorgeschlagene Aufrufe – ${who} sie gleich an`;
+  }
+  const parts = [
+    of > 0 ? `${of} davon` : null,
+    again > 0 ? `${again} bereits ${again === 1 ? 'vorgeschlagenen' : 'vorgeschlagene'}` : null,
+  ].filter((p) => p !== null);
+  return `${who} ${parts.join(' und ')} gleich an`;
+}
+
 /**
  * At most three lines of what the import would change, the weightiest
  * first: calls the rule tier would link, unique calls of derived models it
  * only proposes (M6 S2c, the trust rule, with the reason most of them rest
- * on), accepted relations whose end changes or goes missing, rule
- * proposals added, stances withdrawn, models of the system the bundle no
- * longer names (kept), findings added.
+ * on; since S2c-3 with what an owner's rules for derived calls accept at
+ * once, {@link autoAcceptedText}, and without „gesammelt annehmen“ when
+ * they take every call proposed anew),
+ * accepted relations whose end changes or goes missing, rule proposals
+ * added, stances withdrawn, models of the system the bundle no longer names
+ * (kept), findings added.
  */
 export function impactLines(impact: ImportImpact): string[] {
   const n = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
   // The reason most calls rest on (the server counts each under its caller's first one).
   const reason = [...impact.callsProposed.byReason].sort((a, b) => b.count - a.count)[0]?.reason;
+  const proposed = impact.callsProposed.count;
+  // How many of the calls proposed anew the rules take; the rest waits for „gesammelt annehmen“.
+  const taken = Math.min(impact.autoAcceptedCalls?.ofProposed ?? 0, proposed);
+  const rules = autoAcceptedText(impact);
   const lines = [
     impact.acceptedCalls.count > 0
       ? `${n(impact.acceptedCalls.count, 'Aufruf', 'Aufrufe')} automatisch verknüpft`
       : null,
-    impact.callsProposed.count > 0
-      ? `${n(impact.callsProposed.count, 'Aufruf', 'Aufrufe')} nur vorgeschlagen${reason ? ` (${trustReasonLabel(reason)})` : ''} – nach dem Import gesammelt annehmen`
-      : null,
+    proposed > 0
+      ? `${n(proposed, 'Aufruf', 'Aufrufe')} nur vorgeschlagen${reason ? ` (${trustReasonLabel(reason)})` : ''}` +
+        (taken >= proposed ? '' : ' – nach dem Import gesammelt annehmen') +
+        (rules ? ` · ${rules}` : '')
+      : rules,
     impact.endpointsChanged.count > 0
       ? `${n(impact.endpointsChanged.count, 'angenommene Relation', 'angenommene Relationen')} mit geändertem oder fehlendem Endpunkt`
       : null,

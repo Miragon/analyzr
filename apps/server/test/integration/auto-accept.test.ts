@@ -624,6 +624,32 @@ describe('relations: revocation outcomes', () => {
     expect(queued.map((e) => e.payload['modelKey'])).toContain(ORDER);
   });
 
+  it('queues the models again when the agent’s proposal is gone, though the rule tier still proposes the pair', async () => {
+    const p = await relationProject('aa-super-key');
+    const { rule } = await createRule(p.key, { name: 'Gleicher Name ab 90 %' });
+    await submitModel(p, ORDER, [msg(SHIPPED)]);
+    expect((await relation(p.key, SHIPPED)).status).toBe('accepted');
+    // A new version of the order model; its analysis judges the pair no more.
+    await t.putModel(
+      p.key,
+      ORDER,
+      fakeBpmn(orderSpec([{ kind: 'task', id: 'Task_Pack', name: 'Packen' }])),
+    );
+    const { result } = await submitModel(p, ORDER, []);
+    expect(result.withdrawn).toBe(1);
+
+    const before = (await events(p.id)).at(-1)?.seq ?? 0;
+    await json(await revoke(p.key, { ruleId: rule.id, expectedCount: 1 }, false));
+    // The rule tier's proposal keeps the pair in review, but the agent's judgement was lost
+    // (an agent rule's acceptance; M6 S2c-3 changed this only for rules for derived calls).
+    expect(await relation(p.key, SHIPPED)).toMatchObject({
+      status: 'proposed',
+      provenance: { sourceKind: 'rule' },
+    });
+    const queued = (await events(p.id, before)).filter((e) => e.type === 'analysis.queued');
+    expect(queued.map((e) => e.payload['modelKey'])).toContain(ORDER);
+  });
+
   it('keeps an acceptance when the agent token is revoked; revoking by agent withdraws it', async () => {
     const p = await relationProject('aa-token');
     await createRule(p.key, { name: 'Regel', tier: 'lexical' });
@@ -891,6 +917,9 @@ describe('a rule whose author is no longer an owner', () => {
       agentPrincipalId: null,
       llmModel: null,
       includeAdHoc: false,
+      proposedBy: 'agent',
+      derivedKind: null,
+      converter: null,
     });
     const ruleId = created.rule.id;
     await database.db.execute(

@@ -15,6 +15,8 @@
  *   are `auto_accept_rule` and `auto_accept_rule_revision` (0010),
  *   `open_question_answer` (0012), `open_question_answer_withdrawal`
  *   (0014), `model_amendment` and `model_amendment_withdrawal` (0016);
+ *   0018 (M6 S2c-3) adds three columns to `auto_accept_rule_revision`
+ *   (`ADD COLUMN … DEFAULT` fires no row trigger, so 0010's stay);
  *   `value_chain_step` only ever takes its tombstone (0007); `placement_input`
  *   is mutable memory (M4b).
  *
@@ -136,6 +138,10 @@ export const PLACEMENT_TIERS = ['key', 'lexical', 'semantic', 'manual'] as const
 export const AUTO_ACCEPT_KINDS = ['relation', 'placement'] as const;
 /** Tiers an auto-accept rule names: relations `key`, `lexical`, `semantic`; placements `lexical`, `semantic`. */
 export const AUTO_ACCEPT_TIERS = ['key', 'lexical', 'semantic'] as const;
+/** Whose proposals an auto-accept rule accepts (M6 S2c-3): agents', or the rule tier's derived calls. */
+export const AUTO_ACCEPT_PROPOSERS = ['agent', 'rule'] as const;
+/** The declared derivation a rule for derived calls names (owner decision 28 (1)). */
+export const AUTO_ACCEPT_DERIVED_KINDS = ['export', 'converted', 'none'] as const;
 /** What an open question is about (M6 §4.2). */
 export const OPEN_QUESTION_SUBJECT_TYPES = values(OpenQuestionSubjectType.options);
 /** Kinds of an answer to an open question (M6 §4.5). */
@@ -1181,6 +1187,15 @@ export const autoAcceptRuleRevision = pgTable(
     llmModel: text(),
     /** Also ad-hoc proposals (default: pipeline proposals only). */
     includeAdHoc: boolean().notNull().default(false),
+    /**
+     * Whose proposals (M6 S2c-3): `agent`, or `rule`, the rule tier's proposals
+     * of unique calls from derived models; rows from before read as `agent`.
+     */
+    proposedBy: text({ enum: AUTO_ACCEPT_PROPOSERS }).notNull().default('agent'),
+    /** A rule for derived calls: the caller's declared derivation (`none`: no kind declared). */
+    derivedKind: text({ enum: AUTO_ACCEPT_DERIVED_KINDS }),
+    /** A rule for converted calls: the converter, `name@version`, matched exactly. */
+    converter: text(),
     /** The author: decisions of this revision are recorded under this principal. */
     principalId: text()
       .notNull()
@@ -1223,6 +1238,14 @@ export const autoAcceptRuleRevision = pgTable(
     check(
       'auto_accept_rule_revision_name_check',
       sql`char_length(${t.name}) between 1 and 100 and (${t.llmModel} is null or char_length(${t.llmModel}) between 1 and 100)`,
+    ),
+    // M6 S2c-3: an agent rule names no derivation; a rule for derived calls is a relation rule
+    // of tier key, type call at 0.9 without agent, model or ad hoc, names export, converted or
+    // none, and a converter exactly for converted (owner decision 28 (1)). NULL-safe: a CHECK
+    // whose expression is NULL passes.
+    check(
+      'auto_accept_rule_revision_proposer_check',
+      sql`(${t.proposedBy} = 'agent' and ${t.derivedKind} is null and ${t.converter} is null) or (${t.proposedBy} = 'rule' and ${t.kind} = 'relation' and ${t.tier} = 'key' and coalesce(${t.relationType}, '') = 'call' and ${t.minConfidence} = 0.9::double precision and ${t.agentPrincipalId} is null and ${t.llmModel} is null and ${t.includeAdHoc} = false and ${t.derivedKind} is not null and ${oneOf(t.derivedKind, AUTO_ACCEPT_DERIVED_KINDS)} and (${t.derivedKind} = 'converted') = (${t.converter} is not null) and (${t.converter} is null or char_length(${t.converter}) between 1 and 120))`,
     ),
   ],
 );

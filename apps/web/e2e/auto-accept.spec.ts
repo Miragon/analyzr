@@ -271,7 +271,7 @@ test('revoking the rule returns both to „Prüfen“, marked „widerrufen“',
   await page.getByRole('menuitem', { name: 'Widerrufen…' }).click();
   const dialog = page.getByTestId('revoke-dialog');
   await expect(dialog.getByTestId('revoke-summary')).toHaveText(
-    '2 automatische Annahmen: 2 gehen zurück in die Prüfung (ein Agentenvorschlag ist noch offen).',
+    '2 automatische Annahmen: 2 gehen zurück in die Prüfung (ein Vorschlag ist noch offen).',
   );
   await dialog.getByLabel('Grund (optional)').fill('Stichprobe');
   await shot(page, 'd19-07-revoke');
@@ -407,7 +407,7 @@ test('the rule dialog loads a newer revision after a 412; one agent’s acceptan
     revoke.getByRole('heading', { name: 'Annahmen von e2e-rules widerrufen' }),
   ).toBeVisible();
   await expect(revoke.getByTestId('revoke-summary')).toHaveText(
-    '1 automatische Annahme: 1 geht zurück in die Prüfung (ein Agentenvorschlag ist noch offen). 2 waren schon widerrufen.',
+    '1 automatische Annahme: 1 geht zurück in die Prüfung (ein Vorschlag ist noch offen). 2 waren schon widerrufen.',
   );
   await revoke.getByRole('button', { name: '1 widerrufen' }).click();
   await expect(revoke).toBeHidden();

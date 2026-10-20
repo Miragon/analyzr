@@ -1186,6 +1186,9 @@
           "callsProposed": {
             "$ref": "#/components/schemas/ImpactProposedCalls"
           },
+          "autoAcceptedCalls": {
+            "$ref": "#/components/schemas/ImpactAutoAcceptedCalls"
+          },
           "proposalsAdded": {
             "type": "object",
             "properties": {
@@ -1473,6 +1476,90 @@
           "wasAccepted"
         ],
         "description": "A unique call from a derived model, proposed."
+      },
+      "ImpactAutoAcceptedCalls": {
+        "type": "object",
+        "properties": {
+          "count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ImpactAutoAcceptedCall"
+            },
+            "maxItems": 100
+          },
+          "ofProposed": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "byRule": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "ruleId": {
+                  "$ref": "#/components/schemas/AutoAcceptRuleId"
+                },
+                "ruleName": {
+                  "type": "string"
+                },
+                "count": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              },
+              "required": [
+                "ruleId",
+                "ruleName",
+                "count"
+              ]
+            }
+          }
+        },
+        "required": [
+          "count",
+          "items",
+          "ofProposed",
+          "byRule"
+        ],
+        "description": "Unique calls from derived models auto-accept rules would accept, by rule."
+      },
+      "ImpactAutoAcceptedCall": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/RelationType"
+          },
+          "from": {
+            "$ref": "#/components/schemas/Ref"
+          },
+          "to": {
+            "$ref": "#/components/schemas/Ref"
+          },
+          "ruleId": {
+            "$ref": "#/components/schemas/AutoAcceptRuleId"
+          },
+          "ruleName": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "from",
+          "to",
+          "ruleId",
+          "ruleName"
+        ],
+        "description": "A unique call from a derived model an auto-accept rule would accept."
+      },
+      "AutoAcceptRuleId": {
+        "type": "string",
+        "pattern": "^aar_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "description": "Auto-accept rule id (`aar_` + ULID).",
+        "example": "aar_01J9Z3N4X5Q6R7S8T9V0W1X2Y3"
       },
       "ImpactEndpoint": {
         "type": "object",
@@ -10186,6 +10273,25 @@
           "includeAdHoc": {
             "type": "boolean"
           },
+          "proposedBy": {
+            "$ref": "#/components/schemas/AutoAcceptProposer"
+          },
+          "derivedKind": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AutoAcceptDerivedKind"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "converter": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "author": {
             "$ref": "#/components/schemas/AutoAcceptPrincipal"
           },
@@ -10219,6 +10325,9 @@
           "agent",
           "llmModel",
           "includeAdHoc",
+          "proposedBy",
+          "derivedKind",
+          "converter",
           "author",
           "authorIsOwner",
           "createdBy",
@@ -10227,12 +10336,6 @@
           "stats"
         ],
         "description": "An auto-accept rule at its head revision."
-      },
-      "AutoAcceptRuleId": {
-        "type": "string",
-        "pattern": "^aar_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
-        "description": "Auto-accept rule id (`aar_` + ULID).",
-        "example": "aar_01J9Z3N4X5Q6R7S8T9V0W1X2Y3"
       },
       "AutoAcceptKind": {
         "type": "string",
@@ -10291,6 +10394,23 @@
           "revoked"
         ],
         "description": "An agent a rule can be narrowed to."
+      },
+      "AutoAcceptProposer": {
+        "type": "string",
+        "enum": [
+          "agent",
+          "rule"
+        ],
+        "description": "Whose proposals a rule accepts: agent proposals, or the rule tier’s proposals of unique calls from derived models."
+      },
+      "AutoAcceptDerivedKind": {
+        "type": "string",
+        "enum": [
+          "export",
+          "converted",
+          "none"
+        ],
+        "description": "The declared derivation a rule for derived calls names: export, converted or none (no kind declared)."
       },
       "AutoAcceptPrincipal": {
         "type": "object",
@@ -10494,6 +10614,25 @@
           "includeAdHoc": {
             "type": "boolean"
           },
+          "proposedBy": {
+            "$ref": "#/components/schemas/AutoAcceptProposer"
+          },
+          "derivedKind": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AutoAcceptDerivedKind"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "converter": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "author": {
             "$ref": "#/components/schemas/AutoAcceptPrincipal"
           },
@@ -10533,6 +10672,9 @@
           "agent",
           "llmModel",
           "includeAdHoc",
+          "proposedBy",
+          "derivedKind",
+          "converter",
           "author",
           "authorIsOwner",
           "createdBy",
@@ -10602,6 +10744,25 @@
           "includeAdHoc": {
             "type": "boolean"
           },
+          "proposedBy": {
+            "$ref": "#/components/schemas/AutoAcceptProposer"
+          },
+          "derivedKind": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AutoAcceptDerivedKind"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "converter": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "author": {
             "$ref": "#/components/schemas/AutoAcceptPrincipal"
           },
@@ -10627,6 +10788,9 @@
           "agentPrincipalId",
           "llmModel",
           "includeAdHoc",
+          "proposedBy",
+          "derivedKind",
+          "converter",
           "author",
           "clientId",
           "at"
@@ -10698,6 +10862,33 @@
           "includeAdHoc": {
             "type": "boolean",
             "default": false
+          },
+          "proposedBy": {
+            "$ref": "#/components/schemas/AutoAcceptProposer"
+          },
+          "derivedKind": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AutoAcceptDerivedKind"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "converter": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
           }
         },
         "required": [
@@ -10760,6 +10951,12 @@
             "items": {
               "type": "string"
             }
+          },
+          "derivedGroups": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AutoAcceptDerivedGroup"
+            }
           }
         },
         "required": [
@@ -10768,7 +10965,8 @@
           "open",
           "curve",
           "agents",
-          "llmModels"
+          "llmModels",
+          "derivedGroups"
         ],
         "description": "What a rule would accept, so far and now."
       },
@@ -10913,6 +11111,9 @@
               }
             ]
           },
+          "proposedBy": {
+            "$ref": "#/components/schemas/AutoAcceptProposer"
+          },
           "agent": {
             "$ref": "#/components/schemas/AutoAcceptPrincipal"
           },
@@ -10943,6 +11144,7 @@
           "step",
           "process",
           "triggerId",
+          "proposedBy",
           "agent",
           "llmModel",
           "tier",
@@ -10972,6 +11174,8 @@
         "enum": [
           "not-agent",
           "no-matching-rule",
+          "agent-upload",
+          "amendment-conflict",
           "stale-proposal",
           "not-open",
           "endpoint-not-ok",
@@ -11040,6 +11244,45 @@
         ],
         "description": "The preview at one minimum confidence."
       },
+      "AutoAcceptDerivedGroup": {
+        "type": "object",
+        "properties": {
+          "derivedKind": {
+            "$ref": "#/components/schemas/AutoAcceptDerivedKind"
+          },
+          "converter": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "open": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "blocked": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "accepted": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "rejected": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "derivedKind",
+          "converter",
+          "open",
+          "blocked",
+          "accepted",
+          "rejected"
+        ],
+        "description": "The unique calls from derived models of one declared source."
+      },
       "AutoAcceptCriteria": {
         "type": "object",
         "properties": {
@@ -11088,6 +11331,33 @@
           "includeAdHoc": {
             "type": "boolean",
             "default": false
+          },
+          "proposedBy": {
+            "$ref": "#/components/schemas/AutoAcceptProposer"
+          },
+          "derivedKind": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AutoAcceptDerivedKind"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "converter": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
           }
         },
         "required": [
@@ -11305,6 +11575,9 @@
               }
             ]
           },
+          "proposedBy": {
+            "$ref": "#/components/schemas/AutoAcceptProposer"
+          },
           "ruleId": {
             "$ref": "#/components/schemas/AutoAcceptRuleId"
           },
@@ -11418,6 +11691,7 @@
           "process",
           "decisionId",
           "triggerId",
+          "proposedBy",
           "ruleId",
           "revision",
           "ruleName",
@@ -11597,6 +11871,9 @@
               }
             ]
           },
+          "proposedBy": {
+            "$ref": "#/components/schemas/AutoAcceptProposer"
+          },
           "ruleId": {
             "$ref": "#/components/schemas/AutoAcceptRuleId"
           },
@@ -11703,6 +11980,7 @@
           "process",
           "decisionId",
           "triggerId",
+          "proposedBy",
           "ruleId",
           "revision",
           "ruleName",
@@ -12456,7 +12734,7 @@
           "models"
         ],
         "summary": "What deleting a model would change (nothing is deleted)",
-        "description": "M6 §3.5: the impact of an import, computed with the model removed from the head facts: accepted relations whose end would go missing, rule stances withdrawn, findings added and resolved; `files` and `absentKeys` are empty. Permission `read`.",
+        "description": "M6 §3.5: the impact of an import, computed with the model removed from the head facts: accepted relations whose end would go missing, rule stances withdrawn, findings added and resolved; `files` and `absentKeys` are empty. For an owner on an interactive client also the unique calls from derived models their auto-accept rules would accept (`autoAcceptedCalls`, M6 S2c-3). Permission `read`.",
         "parameters": [
           {
             "schema": {
@@ -12543,7 +12821,7 @@
           "models"
         ],
         "summary": "Upload raw BPMN: 201 new model, 200 new revision or unchanged",
-        "description": "The optional header `Analyzr-Manifest` declares the file's provenance (M6 §3.2, §3.3): the base64url of the UTF-8 JSON of an `analyzr-import/1` manifest that lists exactly this file (its `key`, if given, equal to `{key}`). The declared fields are stored on the uploaded revision; a checksum mismatch or a known tool id are `importWarnings`, the file is stored all the same. Identical bytes stay `unchanged` and keep the first revision's provenance (`provenance-kept` when the manifest declares another place in the source tool) and its trust class (M6 S2c; `trust-kept` when this request would classify the file differently). `dryRun=true` (M6 §3.5) answers the would-be outcome with its warnings and the `impact` and writes nothing (permission `read`); it classifies the file by its own credential, so `impact.callsProposed` names the unique calls that would only be proposed.",
+        "description": "The optional header `Analyzr-Manifest` declares the file's provenance (M6 §3.2, §3.3): the base64url of the UTF-8 JSON of an `analyzr-import/1` manifest that lists exactly this file (its `key`, if given, equal to `{key}`). The declared fields are stored on the uploaded revision; a checksum mismatch or a known tool id are `importWarnings`, the file is stored all the same. Identical bytes stay `unchanged` and keep the first revision's provenance (`provenance-kept` when the manifest declares another place in the source tool) and its trust class (M6 S2c; `trust-kept` when this request would classify the file differently). `dryRun=true` (M6 §3.5) answers the would-be outcome with its warnings and the `impact` and writes nothing (permission `read`); it classifies the file by its own credential, so `impact.callsProposed` names the unique calls that would only be proposed, and for an owner on an interactive client `impact.autoAcceptedCalls` those of them their auto-accept rules would accept (M6 S2c-3).",
         "parameters": [
           {
             "schema": {
@@ -13001,7 +13279,7 @@
           "models"
         ],
         "summary": "Import up to 50 BPMN files; the model key is the pinned or the slugified path",
-        "description": "An optional part `manifest` holds the JSON of an `analyzr-import/1` manifest (M6 §3.2; the CLI sends each batch's subset): a listed file gets the key it pins (else its path decides) and the declared provenance on its uploaded revision. A checksum mismatch, a tool id another live key already has (`external-id-moved`) and a tool id that differs from the one on the key's head (`external-id-changed`) are `importWarnings`, and so is an unchanged file whose manifest entry declares another place in the source tool than analyzr keeps (`provenance-kept`) or that this request would give another trust class than the one analyzr keeps (`trust-kept`, M6 S2c); the file is imported all the same. An invalid manifest refuses the request (422 `validation-failed`, reason `invalid-manifest`). `dryRun=true` (M6 §3.5) answers the same outcomes and the `impact` and writes nothing: permission `read`, no project lock, so a read-only token can preview a bundle. A dry run classifies the files by its own credential (M6 S2c), so a read-only token previews them as agent uploads. One dry run covers one request; a call into a later batch shows as unresolved.",
+        "description": "An optional part `manifest` holds the JSON of an `analyzr-import/1` manifest (M6 §3.2; the CLI sends each batch's subset): a listed file gets the key it pins (else its path decides) and the declared provenance on its uploaded revision. A checksum mismatch, a tool id another live key already has (`external-id-moved`) and a tool id that differs from the one on the key's head (`external-id-changed`) are `importWarnings`, and so is an unchanged file whose manifest entry declares another place in the source tool than analyzr keeps (`provenance-kept`) or that this request would give another trust class than the one analyzr keeps (`trust-kept`, M6 S2c); the file is imported all the same. An invalid manifest refuses the request (422 `validation-failed`, reason `invalid-manifest`). `dryRun=true` (M6 §3.5) answers the same outcomes and the `impact` and writes nothing: permission `read`, no project lock, so a read-only token can preview a bundle. A dry run classifies the files by its own credential (M6 S2c), so a read-only token previews them as agent uploads. For an owner on an interactive client the impact also names the unique calls from derived models their auto-accept rules would accept in the same write (`autoAcceptedCalls`, M6 S2c-3); nobody else gets it. One dry run covers one request; a call into a later batch shows as unresolved.",
         "parameters": [
           {
             "schema": {
@@ -18864,7 +19142,7 @@
           "auto-accept"
         ],
         "summary": "Create an auto-accept rule (owner, interactive client; off unless `enabled`)",
-        "description": "Revision 1 of a new rule, authored by the caller: while it is enabled, agent proposals recorded afterwards that meet it are accepted as decisions of the author (never retroactive: open proposals need `apply`). 422 `validation-failed` with `reason` `unknown-agent` or `name-taken`; a draft the schema refuses (a tier of another kind, a type on a placement rule, a confidence outside 0.5–1, control characters) is 422 `validation-failed` with `errors` naming the fields instead.",
+        "description": "Revision 1 of a new rule, authored by the caller: while it is enabled, agent proposals recorded afterwards that meet it are accepted as decisions of the author (never retroactive: open proposals need `apply`). With `proposedBy: rule` (M6 S2c-3) it accepts instead the rule tier’s proposals of unique calls from derived models whose caller declares `derivedKind` (`export`, `converted` with exactly this `converter`, or `none`); such a rule is a relation rule of tier `key`, type `call`, minimum 0.9, without agent, model or ad hoc, and never accepts a call of a revision uploaded with an agent token. 422 `validation-failed` with `reason` `unknown-agent` or `name-taken`; a draft the schema refuses (a tier of another kind, a type on a placement rule, a confidence outside 0.5–1, control characters, criteria a rule for derived calls may not name) is 422 `validation-failed` with `errors` naming the fields instead.",
         "parameters": [
           {
             "schema": {
@@ -18962,7 +19240,7 @@
           "auto-accept"
         ],
         "summary": "What a rule (saved or not) would have accepted so far and would accept now",
-        "description": "Replays the project history: the agent proposals humans decided that the rule would have accepted, with the humans’ verdicts (an empirical precision; acceptances by auto-accept rules are no ground truth and counted apart), the open proposals it would accept now (what `apply` would do) with the blocked ones per reason, and a curve over minimum confidences. Nothing is written.",
+        "description": "Replays the project history: the agent proposals humans decided that the rule would have accepted, with the humans’ verdicts (an empirical precision; acceptances by auto-accept rules are no ground truth and counted apart), the open proposals it would accept now (what `apply` would do) with the blocked ones per reason, a curve over minimum confidences, and (relations) the unique calls from derived models per declared source (`derivedGroups`, M6 S2c-3). A rule for derived calls replays from the callers’ current declarations. Nothing is written.",
         "parameters": [
           {
             "schema": {
@@ -19144,7 +19422,7 @@
           "auto-accept"
         ],
         "summary": "Edit, enable or disable a rule: a new revision (`If-Match: \"r<revision>\"` required)",
-        "description": "Writes the draft as the next immutable revision, authored by the caller (decisions already recorded keep their revision). `If-Match` must name the head revision: without it 428 `precondition-required`, a stale one 412 `revision-conflict` with `headRev`. A draft equal to the head answers `unchanged`, unless the head’s author is no longer an owner: then the caller takes the rule over (a new revision with the same fields). The kind of a rule never changes (422 `validation-failed` with `reason` `kind-changed`); otherwise the reasons and `errors` of the create route.",
+        "description": "Writes the draft as the next immutable revision, authored by the caller (decisions already recorded keep their revision). `If-Match` must name the head revision: without it 428 `precondition-required`, a stale one 412 `revision-conflict` with `headRev`. A draft equal to the head answers `unchanged`, unless the head’s author is no longer an owner: then the caller takes the rule over (a new revision with the same fields). The kind of a rule never changes, nor whose proposals it accepts (`proposedBy`; 422 `validation-failed` with `reason` `kind-changed`); otherwise the reasons and `errors` of the create route.",
         "parameters": [
           {
             "schema": {
@@ -19509,7 +19787,7 @@
           "auto-accept"
         ],
         "summary": "The auto-acceptances of the project and their state (every human reviewer: the review UI marks)",
-        "description": "One entry per acceptance an auto-accept rule recorded: the item, the rule’s name and revision, the decider, the triggering agent proposal and the state (`in-force`, `revoked`, `human-decided`). Readable by editors and owners on an interactive client (permission `review`), so every reviewer sees which acceptances were made by a rule; agent tokens get 403 `human-decision-required`. The rules themselves stay owner-only.",
+        "description": "One entry per acceptance an auto-accept rule recorded: the item, the rule’s name and revision, the decider, the triggering proposal (an agent’s, or for a rule for derived calls the rule tier’s, `proposedBy`) and the state (`in-force`, `revoked`, `human-decided`). Readable by editors and owners on an interactive client (permission `review`), so every reviewer sees which acceptances were made by a rule; agent tokens get 403 `human-decision-required`. The rules themselves stay owner-only.",
         "parameters": [
           {
             "schema": {

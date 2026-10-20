@@ -22,7 +22,9 @@ import type {
   AnalysisTaskId,
   AssertionId,
   AssertionKind,
+  AutoAcceptDerivedKind,
   AutoAcceptKind,
+  AutoAcceptProposer,
   AutoAcceptRelationType,
   AutoAcceptRuleId,
   AutoAcceptTier,
@@ -1167,6 +1169,12 @@ export interface AutoAcceptRuleRevisionRecord {
   agentPrincipalId: PrincipalId | null;
   llmModel: string | null;
   includeAdHoc: boolean;
+  /** Whose proposals (M6 S2c-3): agents', or the rule tier's of unique calls from derived models. */
+  proposedBy: AutoAcceptProposer;
+  /** A rule for derived calls: the caller's declared derivation (`none`: no kind declared). */
+  derivedKind: AutoAcceptDerivedKind | null;
+  /** A rule for converted calls: the converter, matched exactly. */
+  converter: string | null;
   /** The author: decisions of this revision are recorded under this principal. */
   principalId: PrincipalId;
   clientId: string | null;

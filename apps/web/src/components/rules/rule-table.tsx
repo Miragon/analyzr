@@ -19,12 +19,11 @@ import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/compon
 import { ApiError, errorMessage } from '@/lib/api';
 import type { AutoFilter } from '@/lib/auto-accept';
 import {
-  AUTO_ACCEPT_KINDS,
+  actsOnText,
+  criteriaLabel,
   draftOf,
-  formatThreshold,
   narrowingOf,
   openMatchesText,
-  tierLabel,
 } from '@/lib/auto-accept-rules';
 import { useReviseRule } from '@/lib/auto-accept-rule-actions';
 import { autoAcceptApplyDryRunQuery, meQuery } from '@/lib/auto-accept-queries';
@@ -223,7 +222,9 @@ function RowMenu({
  * (only the counts above 0) and three controls, the „Aktiv“ switch,
  * „Bearbeiten“ and „Mehr“ („Verlauf“, „Widerrufen…“ while acceptances are
  * in force); an active rule whose dry run finds open proposals offers them
- * in one line. The switch is on only while the rule accepts (enabled, its
+ * in one line. A rule for derived calls (M6 S2c-3) names its source as its
+ * criteria and, enabled, says it acts on new call proposals from derived
+ * models. The switch is on only while the rule accepts (enabled, its
  * author still an owner). Enabling and disabling write a new revision with
  * `If-Match`; enabling asks first when it makes the caller the deciding
  * person (or the caller is unknown) or when open proposals already match
@@ -261,7 +262,7 @@ export function RuleTable({
               ? `Regel „${r.rule.name}“ aktiviert`
               : `Regel „${r.rule.name}“ deaktiviert`,
             description: r.rule.enabled
-              ? 'Sie wirkt auf neue Agentenvorschläge.'
+              ? actsOnText(r.rule)
               : 'Ihre Annahmen bleiben und lassen sich weiter widerrufen.',
           });
           if (review && r.rule.enabled) onApply(r.rule);
@@ -343,12 +344,16 @@ export function RuleTable({
           </TableHeader>
           <TableBody>
             {rules.map((rule) => {
-              const narrowing = narrowingOf({
-                ...rule,
-                agentHandle: rule.agent?.handle ?? rule.agentPrincipalId,
-                agentRevoked: rule.agent?.revoked ?? false,
-              });
-              const criteria = `${AUTO_ACCEPT_KINDS[rule.kind].label} · ${tierLabel(rule.tier)} · ab ${formatThreshold(rule.minConfidence)}`;
+              // A rule for derived calls (M6 S2c-3) has no narrowing: its type and minimum are fixed.
+              const narrowing =
+                rule.proposedBy === 'rule'
+                  ? []
+                  : narrowingOf({
+                      ...rule,
+                      agentHandle: rule.agent?.handle ?? rule.agentPrincipalId,
+                      agentRevoked: rule.agent?.revoked ?? false,
+                    });
+              const criteria = criteriaLabel(rule);
               return (
                 <TableRow
                   key={rule.id}

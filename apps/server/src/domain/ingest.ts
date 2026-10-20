@@ -20,7 +20,11 @@
  * The trust rule (M6 S2c, decision 24.2): every uploaded revision gets its
  * trust class (`trust.ts` `trustOf`) as `source.trust`, written last by the
  * server; an amended revision gets none (readers follow `upstream`), and
- * unchanged bytes keep the class they have.
+ * unchanged bytes keep the class they have. Right after the recompute, the
+ * owner's enabled rules for derived calls may accept the rule tier's
+ * proposals of unique calls from derived models it recorded (M6 S2c-3, the
+ * fifth auto-accept write path, `auto-accept/apply.ts`
+ * `autoAcceptDerivedCalls`), caused by the request's actor.
  */
 import { createHash } from 'node:crypto';
 
@@ -40,6 +44,7 @@ import {
 
 import { sourceKindOf, type Actor } from './actor.ts';
 import { deriveHead, planOf, type Derivation } from './amendments/derive.ts';
+import { autoAcceptDerivedCalls, enabledDerivedCallRules } from './auto-accept/apply.ts';
 import {
   amendmentToken,
   liveAmendments,
@@ -47,9 +52,15 @@ import {
   type LiveAmendment,
 } from './amendments/plan.ts';
 import { DomainError } from './errors.ts';
-import { absentKeys, importImpact, type FileHeads } from './import-impact.ts';
+import {
+  absentKeys,
+  importImpact,
+  type DerivedCallRules,
+  type FileHeads,
+} from './import-impact.ts';
 import { touchNoLinkRelations } from './no-links.ts';
-import { policy } from './policy.ts';
+import { evaluate, policy, roleIn } from './policy.ts';
+import { naturalKey } from './relation-state.ts';
 import type {
   AnalysisPort,
   ExtractFailure,
@@ -239,10 +250,12 @@ export interface HeadChange {
 /**
  * The tail every head change runs, once for all changed models (ingest,
  * amendment writes and withdrawals, M6 §4.8 c "Concurrency"): the rule tier
- * over the head facts with endpoint states and findings, the version of
- * relations whose no-links may change currency, the value chain's
- * placements, the models' relations tasks, and the chain's placement task
- * when facts changed. The caller holds the project lock.
+ * over the head facts with endpoint states and findings, the owner's rules
+ * for derived calls over the proposals of unique calls from derived models
+ * it recorded (M6 S2c-3, caused by `actor`), the version of relations whose
+ * no-links may change currency, the value chain's placements, the models'
+ * relations tasks, and the chain's placement task when facts changed. The
+ * caller holds the project lock.
  */
 export async function afterHeadChange(
   tx: Tx,
@@ -253,7 +266,13 @@ export async function afterHeadChange(
   changed: readonly HeadChange[],
 ): Promise<void> {
   if (changed.length === 0) return;
-  await recomputeProject({ tx, projectId, rulesPrincipalId, analysis: deps.analysis });
+  const { derivedProposals } = await recomputeProject({
+    tx,
+    projectId,
+    rulesPrincipalId,
+    analysis: deps.analysis,
+  });
+  await autoAcceptDerivedCalls(tx, actor, projectId, derivedProposals, deps.expectedProcedure());
   // A new facts_hash can flip the currency of the model's no-links (a revert too).
   await touchNoLinkRelations(
     tx,
@@ -647,7 +666,8 @@ export async function cancelTask(
 /**
  * Deletes a model (CONCEPT §3): marks it deleted, cancels its open task,
  * and recomputes rules and endpoint states, so partner relations turn
- * `missing`; the relations on the pairs of its live no-links move their
+ * `missing` (a call the deletion makes unique may meet an owner's rule for
+ * derived calls, M6 S2c-3); the relations on the pairs of its live no-links move their
  * version. On the value chain, placements of its processes turn `missing`
  * and the rule tier's proposals of them are withdrawn (M4). Revisions and
  * facts stay (append-only history); uploading the key again revives the
@@ -678,12 +698,14 @@ export async function deleteModel(
     await tx.models.update(project.id, model.id, { deletedSeq: seq });
     const open = await tx.tasks.latest(project.id, model.id, ['queued', 'claimed']);
     if (open) await cancelTask(tx, actor, project.id, model, open, 'model deleted');
-    await recomputeProject({
+    const { derivedProposals } = await recomputeProject({
       tx,
       projectId: project.id,
       rulesPrincipalId,
       analysis: deps.analysis,
     });
+    // A call the deletion makes unique (a duplicate id gone) may meet an owner's rule (M6 S2c-3).
+    await autoAcceptDerivedCalls(tx, actor, project.id, derivedProposals, deps.expectedProcedure());
     // Its no-links are no longer current (the relations also turn `missing`).
     await touchNoLinkRelations(tx, project.id, [model.key], deps.expectedProcedure());
     await syncValueChainAfterModels(tx, project.id, rulesPrincipalId);
@@ -714,6 +736,29 @@ function rulesPrincipalOf(
   history: readonly { sourceKind: string; principalId: PrincipalId }[],
 ): PrincipalId {
   return history.find((a) => a.sourceKind === 'rule')?.principalId ?? 'prn_rules';
+}
+
+/**
+ * What an owner's dry run needs of their rules for derived calls (M6
+ * S2c-3): only for an actor who passes `admin` (an owner on an interactive
+ * client), so an agent or read-only token, an editor or a viewer never gets
+ * rule data (`null`); an owner without such an enabled rule gets no rules.
+ */
+async function derivedCallRulesFor(
+  tx: Tx,
+  actor: Actor,
+  project: ProjectRecord,
+): Promise<DerivedCallRules | null> {
+  if (evaluate(actor, 'admin', await roleIn(tx, actor, project)) !== null) return null;
+  const rules = await enabledDerivedCallRules(tx, project.id);
+  if (rules.length === 0) return { rules, liveNoLinks: new Map() };
+  const liveNoLinks = new Map<string, number>();
+  for (const n of await tx.noLinks.listHistory(project.id)) {
+    if (n.withdrawnSeq !== null) continue;
+    const key = naturalKey(n.type, n.fromRef, n.toRef);
+    liveNoLinks.set(key, (liveNoLinks.get(key) ?? 0) + 1);
+  }
+  return { rules, liveNoLinks };
 }
 
 /** What a dry run reads in one transaction: the head, its trust, relations, histories and findings. */
@@ -755,8 +800,10 @@ function incomingTrust(
  * `importImpact`; nothing is written and no lock is taken. Permission
  * `read`, so a read-only token can preview a bundle; the trust rule
  * classifies the files by the credential of the dry run (M6 S2c), unchanged
- * files keep their stored class. `manifest` names the bundle's system, scope
- * and listed keys for the absent keys.
+ * files keep their stored class. For an owner on an interactive client the
+ * impact also names the derived calls their rules would accept
+ * (`autoAcceptedCalls`, M6 S2c-3); nobody else gets it. `manifest` names
+ * the bundle's system, scope and listed keys for the absent keys.
  *
  * @throws {DomainError} from the policy (`read` on the project)
  */
@@ -788,6 +835,7 @@ export async function previewIngest(
       seen,
       head: await readHead(tx, project.id),
       sources: await tx.revisions.uploadedSources(project.id),
+      auto: await derivedCallRulesFor(tx, actor, project),
     };
   });
 
@@ -866,6 +914,7 @@ export async function previewIngest(
     read.head.findings,
     heads,
     absentKeys(read.sources, manifest, imported),
+    read.auto ?? undefined,
   );
   return { project: read.project, results, impact };
 }
@@ -873,7 +922,9 @@ export async function previewIngest(
 /**
  * What deleting a model would change (M6 §3.5, `GET …/deletion-impact`):
  * the impact with the model's facts removed from the head; `files` and
- * `absentKeys` are empty. Permission `read`, nothing written.
+ * `absentKeys` are empty; for an owner the derived calls their rules would
+ * accept (a duplicate process id gone, M6 S2c-3). Permission `read`,
+ * nothing written.
  *
  * @throws {DomainError} `not-found` for unknown, deleted or foreign models
  */
@@ -887,7 +938,12 @@ export async function deletionImpact(
     const { project } = await policy.require(tx, actor, 'read', projectRef);
     const model = await tx.models.findInProject(project.id, modelId);
     if (!model) throw new DomainError('not-found', 'model not found');
-    return { project, model, head: await readHead(tx, project.id) };
+    return {
+      project,
+      model,
+      head: await readHead(tx, project.id),
+      auto: await derivedCallRulesFor(tx, actor, project),
+    };
   });
   const projectFacts = {
     models: read.head.projectFacts.models.filter((m) => m.modelKey !== read.model.key),
@@ -907,5 +963,6 @@ export async function deletionImpact(
     read.head.findings,
     [],
     [],
+    read.auto ?? undefined,
   );
 }

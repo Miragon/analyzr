@@ -1,7 +1,8 @@
 /**
  * Auto-accept rules (owner decision 19), pure part: the checks of a draft
  * beyond its schema, the fields an edit compares, and decision 9 as the
- * read-only system rule. Synthetic data only.
+ * read-only system rule; the criteria a rule for derived calls may and may
+ * not name (M6 S2c-3, owner decision 28 (1)). Synthetic data only.
  */
 import { AutoAcceptRuleDraft, type PrincipalId } from '@analyzr/contracts';
 import { describe, expect, it } from 'vitest';
@@ -26,7 +27,7 @@ const draft = (over: Record<string, unknown> = {}) =>
   });
 
 describe('a draft', () => {
-  it('defaults to off, pipeline proposals only, without narrowing', () => {
+  it('defaults to off, pipeline proposals only, without narrowing, an agent rule', () => {
     expect(draft()).toMatchObject({
       enabled: false,
       includeAdHoc: false,
@@ -34,6 +35,9 @@ describe('a draft', () => {
       agentPrincipalId: null,
       llmModel: null,
       note: null,
+      proposedBy: 'agent',
+      derivedKind: null,
+      converter: null,
     });
   });
 
@@ -86,6 +90,104 @@ describe('a draft', () => {
 
   it('compares names ignoring case and surrounding blanks', () => {
     expect(nameKey('  Schlüssel ')).toBe(nameKey('SCHLÜSSEL'));
+  });
+});
+
+describe('a rule for derived calls (M6 S2c-3)', () => {
+  const derived = (over: Record<string, unknown> = {}) => ({
+    name: 'Aufrufe: Export ohne Engine',
+    kind: 'relation',
+    tier: 'key',
+    minConfidence: 0.9,
+    relationType: 'call',
+    proposedBy: 'rule',
+    derivedKind: 'export',
+    ...over,
+  });
+  const ok = (over: Record<string, unknown> = {}) =>
+    AutoAcceptRuleDraft.safeParse(derived(over)).success;
+
+  it('names export, converted with exactly one converter, or none', () => {
+    expect(ok()).toBe(true);
+    expect(ok({ derivedKind: 'none' })).toBe(true);
+    expect(ok({ derivedKind: 'converted', converter: 'normalize-bpmn@0.1.0' })).toBe(true);
+    expect(
+      AutoAcceptRuleDraft.parse(derived({ derivedKind: 'converted', converter: ' x@1 ' }))
+        .converter,
+    ).toBe('x@1');
+    expect(ok({ derivedKind: 'converted' })).toBe(false);
+    expect(ok({ derivedKind: 'converted', converter: '' })).toBe(false);
+    expect(ok({ derivedKind: 'converted', converter: 'x'.repeat(121) })).toBe(false);
+    expect(ok({ derivedKind: 'converted', converter: 'a\u0007b' })).toBe(false);
+    expect(ok({ converter: 'normalize-bpmn@0.1.0' })).toBe(false);
+    expect(ok({ derivedKind: null })).toBe(false);
+  });
+
+  it('never names reconstructed or as told (decision 28 (1) „Streng“)', () => {
+    expect(ok({ derivedKind: 'reconstructed' })).toBe(false);
+    expect(ok({ derivedKind: 'as-told' })).toBe(false);
+  });
+
+  it('is fixed to a relation rule of tier key, type call, 0.9, without agent, model or ad hoc', () => {
+    for (const over of [
+      { kind: 'placement', tier: 'lexical', relationType: null },
+      { tier: 'lexical' },
+      { relationType: null },
+      { relationType: 'message' },
+      { minConfidence: 0.95 },
+      { minConfidence: 0.5 },
+      { agentPrincipalId: AGENT },
+      { llmModel: 'some-model' },
+      { includeAdHoc: true },
+    ]) {
+      expect(ok(over), JSON.stringify(over)).toBe(false);
+    }
+  });
+
+  it('is refused for an agent rule that names a derivation', () => {
+    expect(AutoAcceptRuleDraft.safeParse({ ...draft(), derivedKind: 'export' }).success).toBe(
+      false,
+    );
+    expect(AutoAcceptRuleDraft.safeParse({ ...draft(), converter: 'x@1' }).success).toBe(false);
+  });
+
+  it('is checked in the domain as well', () => {
+    const agents = new Set([AGENT]);
+    const parsed = AutoAcceptRuleDraft.parse(derived());
+    expect(ruleDraftProblem(parsed, [], agents)).toBeNull();
+    for (const over of [
+      { minConfidence: 0.95 },
+      { relationType: 'message' as const },
+      { includeAdHoc: true },
+      { llmModel: 'm' },
+      { derivedKind: null },
+      { derivedKind: 'converted' as const },
+      { converter: 'x@1' },
+    ]) {
+      expect(ruleDraftProblem({ ...parsed, ...over }, [], agents), JSON.stringify(over)).toBe(
+        'derived-criteria',
+      );
+    }
+    expect(ruleDraftProblem({ ...draft(), derivedKind: 'export' }, [], agents)).toBe(
+      'derived-criteria',
+    );
+    expect(
+      ruleDraftProblem({ ...parsed, derivedKind: 'converted', converter: 'a\u0000b' }, [], agents),
+    ).toBe('control-characters');
+  });
+
+  it('saving an older (agent) rule unchanged writes nothing; the new fields count as changes', () => {
+    const head = draftFields(draft());
+    expect(head).toMatchObject({ proposedBy: 'agent', derivedKind: null, converter: null });
+    expect(sameFields(head, draftFields(draft()))).toBe(true);
+    const calls = draftFields(AutoAcceptRuleDraft.parse(derived()));
+    expect(
+      sameFields(calls, draftFields(AutoAcceptRuleDraft.parse(derived({ derivedKind: 'none' })))),
+    ).toBe(false);
+    const converted = (converter: string) =>
+      draftFields(AutoAcceptRuleDraft.parse(derived({ derivedKind: 'converted', converter })));
+    expect(sameFields(converted('x@1'), converted('x@1'))).toBe(true);
+    expect(sameFields(converted('x@1'), converted('x@2'))).toBe(false);
   });
 });
 

@@ -42,7 +42,7 @@ import { useProjectPermissions } from '@/lib/permissions';
 import { agentTokensQuery, autoAcceptRulesQuery, keys, projectQuery } from '@/lib/queries';
 import { autoAcceptApplyDryRunQuery, meQuery } from '@/lib/auto-accept-queries';
 
-import { projectRulesRoute } from './project-rules';
+import { projectRulesRoute, type RulesSearch } from './project-rules';
 
 type Open =
   | { kind: 'create'; draft?: RuleDraft }
@@ -53,6 +53,20 @@ type Open =
 
 /** „Gleicher Name ab 100 %“ (its name follows the criteria): the rule a bulk accept of the key tier offers (UX5). */
 const KEY_RULE_DRAFT: RuleDraft = { tier: 'key', percent: '100' };
+
+/**
+ * A rule for derived calls (M6 S2c-3), prefilled with the source the bulk
+ * accept of such calls offers (`?new=calls&derivedKind=…&converter=…`);
+ * without a source, „Export ohne Camunda-Engine“.
+ */
+function callsRuleDraft(search: RulesSearch): RuleDraft {
+  return {
+    derived: {
+      derivedKind: search.derivedKind ?? 'export',
+      converter: search.derivedKind === 'converted' ? (search.converter ?? null) : null,
+    },
+  };
+}
 
 /** A control of the page by its test id, or of a rule's row with `ruleId`. */
 function control(testId: string, ruleId?: string): HTMLElement | null {
@@ -137,9 +151,14 @@ export function RulesPage() {
   const agents = inForceAgents(autoIndex);
   const search = projectRulesRoute.useSearch();
   const navigate = projectRulesRoute.useNavigate();
-  // `?new=key` (after a bulk accept of „Gleicher Name“): the new rule prefilled, the URL cleaned.
+  // `?new=key` (after a bulk accept of „Gleicher Name“) or `?new=calls` (after one of unique
+  // calls from derived models, M6 S2c-3): the new rule prefilled, the URL cleaned.
   const [open, setOpen] = useState<Open>(() =>
-    search.new === 'key' ? { kind: 'create', draft: KEY_RULE_DRAFT } : null,
+    search.new === 'key'
+      ? { kind: 'create', draft: KEY_RULE_DRAFT }
+      : search.new === 'calls'
+        ? { kind: 'create', draft: callsRuleDraft(search) }
+        : null,
   );
   useEffect(() => {
     if (search.new) void navigate({ search: {}, replace: true });
@@ -197,7 +216,7 @@ export function RulesPage() {
         <div className="flex max-w-3xl flex-col gap-1">
           <h2 className="text-lg font-semibold">Annahmeregeln</h2>
           <p className="text-sm text-muted-foreground" data-testid="rules-safeguard">
-            analyzr nimmt neue Agentenvorschläge ab deiner Konfidenz selbst an – nie bei einer
+            analyzr nimmt neue Vorschläge, die eine aktive Regel trifft, selbst an – nie bei einer
             offenen Frage, einem Einwand oder wenn du schon entschieden hast.
           </p>
         </div>

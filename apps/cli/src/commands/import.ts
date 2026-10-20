@@ -5,18 +5,24 @@ import {
   getProject,
   importModels,
   listAnalyses,
+  listAutoAcceptRules,
   listRelations,
+  type AutoAcceptRule,
   type Project,
+  type Relation,
 } from '@analyzr/client';
 import {
   IMPORT_MANIFEST_FILE,
+  MAX_AUTO_ACCEPT_NAME_CHARS,
   MAX_PAGE_LIMIT,
   MAX_IMPACT_ITEMS,
   bpmnSuffixOf,
   isBulkDerivedCall,
   modelKeyFromPath,
   reviewPath,
+  tidyDeclared,
   TrustReason,
+  type AutoAcceptDerivedKind,
   type ExtractWarning,
   type ImportFileOutcome,
   type ImportImpact,
@@ -243,6 +249,34 @@ function mergeProposedCalls(impacts: readonly ImportImpact[]): ImportImpact['cal
 }
 
 /**
+ * The calls an owner's rules for derived calls would accept, of several
+ * batches (M6 S2c-3): totals added up per rule, in first-seen order; absent
+ * when no batch has them (not an owner's dry run).
+ */
+function mergeAutoAccepted(
+  impacts: readonly ImportImpact[],
+): Pick<ImportImpact, 'autoAcceptedCalls'> {
+  const lists = impacts.flatMap((i) => (i.autoAcceptedCalls ? [i.autoAcceptedCalls] : []));
+  if (lists.length === 0) return {};
+  const byRule = new Map<
+    string,
+    NonNullable<ImportImpact['autoAcceptedCalls']>['byRule'][number]
+  >();
+  for (const r of lists.flatMap((l) => l.byRule)) {
+    const seen = byRule.get(r.ruleId);
+    byRule.set(r.ruleId, seen ? { ...seen, count: seen.count + r.count } : { ...r });
+  }
+  return {
+    autoAcceptedCalls: {
+      count: lists.reduce((n, l) => n + l.count, 0),
+      items: lists.flatMap((l) => l.items).slice(0, MAX_IMPACT_ITEMS),
+      ofProposed: lists.reduce((n, l) => n + l.ofProposed, 0),
+      byRule: [...byRule.values()],
+    },
+  };
+}
+
+/**
  * The impacts of a dry run's batches as one (M6 §3.5): the files and the
  * counts added up, the items concatenated up to the cap; the absent keys are
  * the first batch's (every batch sends the whole manifest, so all name the
@@ -254,6 +288,7 @@ export function mergeImpacts(impacts: readonly ImportImpact[]): ImportImpact {
     files: impacts.flatMap((i) => i.files),
     acceptedCalls: empty,
     callsProposed: mergeProposedCalls(impacts),
+    ...mergeAutoAccepted(impacts),
     proposalsAdded: empty,
     proposalsWithdrawn: empty,
     endpointsChanged: empty,
@@ -334,6 +369,14 @@ export function formatImpact(impact: ImportImpact, project: string, batches = 1)
   if (trust !== null) {
     lines.push(
       `  ${trust}${sample(impact.callsProposed.items.map(arrow), impact.callsProposed.count)}`,
+    );
+  }
+  // An owner's dry run (M6 S2c-3): what their rules for derived calls accept in the same write.
+  const auto = impact.autoAcceptedCalls;
+  if (auto && auto.count > 0) {
+    const rules = auto.byRule.map((r) => `${JSON.stringify(r.ruleName)} ${r.count}`).join(', ');
+    lines.push(
+      `  accept by your rules for derived calls: ${auto.count} (${rules})${sample(auto.items.map(arrow), auto.count)}`,
     );
   }
   list('add rule proposals:', impact.proposalsAdded);
@@ -657,14 +700,14 @@ const isDerivedFile = (f: ImportFileOutcome): boolean => f.trust?.class === 'der
 /**
  * The open unique calls from derived models a bulk accept takes as they
  * stand (M6 S2c, `GET …/relations`, permission `read`, so any credential
- * works): every page of the key tier's open call proposals, counted with
+ * works): every page of the key tier's open call proposals, filtered with
  * `isBulkDerivedCall` as the web counts the selection `?bulk=calls` opens
  * (no agent's question, no no-link). The project's state, not this
  * import's effect.
  */
-export async function waitingCalls(api: Api, project: string): Promise<number> {
+export async function waitingCalls(api: Api, project: string): Promise<Relation[]> {
   const what = `list the open call proposals of ${project}`;
-  let count = 0;
+  const out: Relation[] = [];
   let cursor: string | undefined;
   do {
     const page = await call(
@@ -682,10 +725,139 @@ export async function waitingCalls(api: Api, project: string): Promise<number> {
         },
       }),
     );
-    count += page.items.filter(isBulkDerivedCall).length;
+    out.push(...page.items.filter(isBulkDerivedCall));
     cursor = page.nextCursor ?? undefined;
   } while (cursor !== undefined);
-  return count;
+  return out;
+}
+
+/** A declared source a rule for derived calls can name (M6 S2c-3). */
+export interface DerivedSource {
+  derivedKind: AutoAcceptDerivedKind;
+  /** For `converted`: the converter as analyzr stores it (tidied). */
+  converter: string | null;
+}
+
+/**
+ * The source most of the waiting calls' callers declare that a rule for
+ * derived calls can name (M6 S2c-3), counted per waiting call
+ * ({@link waitingCalls}) whose caller is a derived file of this import, by
+ * the bundle's manifest: `export`, `converted` with its converter, or
+ * `none` (no kind declared). Files an agent token uploaded (no rule accepts
+ * their calls), reconstructed and as-told files and a conversion without
+ * converter count for nothing; ties go to the first call. `null` without
+ * such a call.
+ */
+export function ruleSource(
+  summary: Pick<ImportSummary, 'files'>,
+  manifest: Pick<LoadedManifest, 'byPath'> | null,
+  waiting: readonly Pick<Relation, 'from'>[],
+): DerivedSource | null {
+  const byKey = new Map<string, DerivedSource>();
+  for (const f of summary.files) {
+    if (f.modelKey === null) continue;
+    if (f.trust?.class !== 'derived' || f.trust.reasons.includes('agent-upload')) continue;
+    const declared = manifest?.byPath.get(f.path)?.derived;
+    const kind = declared?.kind ?? 'none';
+    const converter = kind === 'converted' ? tidyDeclared(declared?.converter) : null;
+    if (kind === 'reconstructed' || kind === 'as-told') continue;
+    if (kind === 'converted' && converter === null) continue;
+    byKey.set(f.modelKey, { derivedKind: kind, converter });
+  }
+  const counted = new Map<string, { source: DerivedSource; n: number }>();
+  for (const c of waiting) {
+    const source = byKey.get(c.from.slice(0, c.from.indexOf('#')));
+    if (!source) continue;
+    const key = `${source.derivedKind}\u0000${source.converter ?? ''}`;
+    const entry = counted.get(key) ?? { source, n: 0 };
+    entry.n++;
+    counted.set(key, entry);
+  }
+  let best: { source: DerivedSource; n: number } | null = null;
+  for (const entry of counted.values()) if (!best || entry.n > best.n) best = entry;
+  return best?.source ?? null;
+}
+
+/**
+ * `value` as one POSIX shell word: as it is when it has only characters no
+ * shell treats specially, else in single quotes (a `'` as `'\''`), so a
+ * pasted suggestion never runs `$(…)` or backticks a manifest planted.
+ */
+export function shellArg(value: string): string {
+  return /^[A-Za-z0-9@%+=:,./_-]+$/.test(value) ? value : `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
+/** `name` + `suffix` within the 100 characters a rule name may have, cut with „…“ (as the web). */
+function fitRuleName(name: string, suffix = ''): string {
+  if (name.length + suffix.length <= MAX_AUTO_ACCEPT_NAME_CHARS) return name + suffix;
+  const budget = MAX_AUTO_ACCEPT_NAME_CHARS - suffix.length - 1;
+  let cut = '';
+  for (const ch of name) {
+    if (cut.length + ch.length > budget) break;
+    cut += ch;
+  }
+  return `${cut.trimEnd()}…${suffix}`;
+}
+
+/**
+ * The German name the web suggests for a rule for derived calls
+ * (`suggestedRuleName`): by its source, within 100 characters, „(2)“ … while
+ * another rule of the project has it (names are unique ignoring case).
+ */
+export function ruleName(source: DerivedSource, taken: readonly string[] = []): string {
+  const base =
+    source.derivedKind === 'converted'
+      ? fitRuleName(`Aufrufe: konvertiert mit ${source.converter ?? ''}`)
+      : source.derivedKind === 'export'
+        ? 'Aufrufe: Export ohne Engine'
+        : 'Aufrufe: ohne Angabe';
+  const used = new Set(taken.map((n) => n.trim().toLowerCase()));
+  if (!used.has(base.toLowerCase())) return base;
+  for (let n = 2; ; n++) {
+    const candidate = fitRuleName(base, ` (${n})`);
+    if (!used.has(candidate.toLowerCase())) return candidate;
+  }
+}
+
+/**
+ * The step that lets an owner rule accept the calls of `source` (M6 S2c-3),
+ * one indented line, its arguments shell-quoted ({@link shellArg}): with a
+ * rule of the project naming that source, `analyzr rules apply <id>` while
+ * it is on (rules are never retroactive; apply shows its dry run first),
+ * else `analyzr rules enable <id>`; without one, `analyzr rules add --name …
+ * --derived … [--converter …]`, which creates it off (it says how to turn
+ * it on).
+ */
+export function ruleStep(
+  project: string,
+  source: DerivedSource,
+  rules: readonly Pick<
+    AutoAcceptRule,
+    'id' | 'name' | 'enabled' | 'proposedBy' | 'derivedKind' | 'converter'
+  >[],
+): string {
+  const p = shellArg(project);
+  const naming = rules.filter(
+    (r) =>
+      r.proposedBy === 'rule' &&
+      r.derivedKind === source.derivedKind &&
+      (source.derivedKind !== 'converted' || r.converter === source.converter),
+  );
+  const existing = naming.find((r) => r.enabled) ?? naming[0];
+  if (existing) {
+    return existing.enabled
+      ? `  or let the owner rule ${JSON.stringify(existing.name)} accept them: analyzr rules apply ${existing.id} -p ${p}`
+      : `  or turn on the owner rule ${JSON.stringify(existing.name)} for that source: analyzr rules enable ${existing.id} -p ${p}`;
+  }
+  const converter =
+    source.derivedKind === 'converted' ? ` --converter ${shellArg(source.converter ?? '')}` : '';
+  const name = shellArg(
+    ruleName(
+      source,
+      rules.map((r) => r.name),
+    ),
+  );
+  return `  or add an owner rule that accepts that source's next calls: analyzr rules add --name ${name} --derived ${source.derivedKind}${converter} -p ${p}`;
 }
 
 /**
@@ -697,9 +869,15 @@ export async function waitingCalls(api: Api, project: string): Promise<number> {
  * (`<url>/projects/<p>/review?bulk=calls`). The models are this import's
  * derived files, `unchanged` ones included (they keep their class), each
  * under its first reason, so the parts add up; without such files the line
- * names the calls alone.
+ * names the calls alone. With `rule` (the owner key, M6 S2c-3) a third line
+ * names the owner rule for their source ({@link ruleStep}).
  */
-export function trustSteps(summary: ImportSummary, calls: number, url: string): string[] {
+export function trustSteps(
+  summary: ImportSummary,
+  calls: number,
+  url: string,
+  rule: string | null = null,
+): string[] {
   if (calls === 0) return [];
   const derived = summary.files.filter(isDerivedFile);
   const byReason = new Map<TrustReason, number>();
@@ -722,6 +900,7 @@ export function trustSteps(summary: ImportSummary, calls: number, url: string): 
   return [
     `next: ${models}${what} in the web review before the agent runs:`,
     `  ${url.replace(/\/+$/, '')}${reviewPath(summary.project)}?bulk=calls`,
+    ...(rule ? [rule] : []),
   ];
 }
 
@@ -755,6 +934,27 @@ export function formatNextSteps(
     );
   }
   return `${lines.join('\n')}\n`;
+}
+
+/**
+ * {@link ruleStep} with the project's rules (one request, the owner key);
+ * `null` when they cannot be listed (the step is information only).
+ */
+async function ownerRuleStep(
+  api: Api,
+  project: string,
+  source: DerivedSource,
+): Promise<string | null> {
+  try {
+    const list = await call(
+      api,
+      `list the auto-accept rules of ${project}`,
+      listAutoAcceptRules({ client: api.client, path: { project } }),
+    );
+    return ruleStep(project, source, list.items);
+  } catch {
+    return null;
+  }
 }
 
 /** The project, created with `name` unless it exists (creating needs the owner). */
@@ -852,20 +1052,26 @@ export async function importCommand(io: CliIo, dir: string, opts: ImportOptions)
     // Never sent with the models (M6 §3.2): the human pushes the chain, after a dry run.
     const chain = path.resolve(io.cwd, dir, summary.manifest.valueChain);
     io.stdout(
-      `value chain: the bundle has ${summary.manifest.valueChain}; push it with analyzr value-chain push ${JSON.stringify(chain)} -p ${opts.project} --dry-run, then without --dry-run (owner key)\n`,
+      `value chain: the bundle has ${summary.manifest.valueChain}; push it with analyzr value-chain push ${shellArg(chain)} -p ${shellArg(opts.project)} --dry-run, then without --dry-run (owner key)\n`,
     );
   }
   if (!opts.json && !nothing) {
     try {
       const waiting = await waitingTasks(api, opts.project);
       // Only after derived models: their calls are the ones the trust rule only proposed.
-      const calls = summary.files.some(isDerivedFile) ? await waitingCalls(api, opts.project) : 0;
+      const calls = summary.files.some(isDerivedFile) ? await waitingCalls(api, opts.project) : [];
+      // The owner key may let a rule for derived calls accept them (M6 S2c-3); a token never.
+      const source =
+        credential.kind === 'owner-key' && calls.length > 0
+          ? ruleSource(summary, prepared.manifest, calls)
+          : null;
+      const rule = source ? await ownerRuleStep(api, opts.project, source) : null;
       io.stdout(
         formatNextSteps(
           opts.project,
           waiting,
           identitySteps(summary),
-          trustSteps(summary, calls, api.url),
+          trustSteps(summary, calls.length, api.url, rule),
         ),
       );
     } catch (err) {

@@ -16,12 +16,13 @@ import {
 } from '@/components/ui/dialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ApiError } from '@/lib/api';
+import { proposerName } from '@/lib/auto-accept';
 import { useNameFlags } from '@/lib/auto-accept-flags';
 import { useSubjectNames } from '@/lib/auto-accept-names';
 import { AUTO_ACCEPT_BLOCK_LABELS, nameFlagsText } from '@/lib/auto-accept-rules';
 import { useApplyRule } from '@/lib/auto-accept-rule-actions';
 import { autoAcceptApplyDryRunQuery } from '@/lib/auto-accept-queries';
-import { formatConfidence, handleName } from '@/lib/labels';
+import { formatConfidence } from '@/lib/labels';
 import { toast } from '@/lib/toast';
 
 import { SubjectText } from './subject';
@@ -164,7 +165,7 @@ function ApplyBody({
                   <SubjectText
                     subject={i}
                     names={names}
-                    details={[handleName(i.agent.handle), formatConfidence(i.confidence)]}
+                    details={[proposerName(i), formatConfidence(i.confidence)]}
                   />
                 </li>
               ))}

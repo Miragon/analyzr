@@ -1,5 +1,7 @@
 import type { AutoAcceptLedgerEntry, AutoAcceptRevocationResult } from '@analyzr/client';
 
+import { handleName } from './labels';
+
 /**
  * Auto-accept marks in the review views (owner decision 19): the join of the
  * ledger (`GET …/auto-accepted`, every reviewer) onto relations, placements
@@ -18,6 +20,21 @@ export const LATER_VERDICTS: Record<NonNullable<AutoAcceptLedgerEntry['laterVerd
 /** The mark of an item a rule accepted: „Automatisch angenommen – Regel „…““. */
 export function autoAcceptLabel(ruleName: string): string {
   return `Automatisch angenommen – Regel „${ruleName}“`;
+}
+
+/** What a unique call's proposal from a derived model is called in the marks (M6 S2c-3). */
+export const DERIVED_CALL_PROPOSAL = 'Aufrufvorschlag aus einem abgeleiteten Modell';
+
+/**
+ * Who proposed what an acceptance or a dry run's item rests on: the agent's
+ * name, or for the rule tier's proposal of a unique call from a derived
+ * model „Aufrufvorschlag aus einem abgeleiteten Modell“ (M6 S2c-3).
+ */
+export function proposerName(e: {
+  proposedBy: AutoAcceptLedgerEntry['proposedBy'];
+  agent: { handle: string };
+}): string {
+  return e.proposedBy === 'rule' ? DERIVED_CALL_PROPOSAL : handleName(e.agent.handle);
 }
 
 // ------------------------------------------------------------- ledger join
@@ -117,10 +134,15 @@ export interface InForceAgent {
   count: number;
 }
 
-/** The agents whose proposals triggered acceptances still in force (per-agent revoke). */
+/**
+ * The agents whose proposals triggered acceptances still in force (per-agent
+ * revoke); acceptances of the rule tier's derived call proposals are no
+ * agent's (M6 S2c-3) and left out.
+ */
 export function inForceAgents(index: AutoAcceptIndex): InForceAgent[] {
   const out = new Map<string, InForceAgent>();
   for (const e of index.inForce.values()) {
+    if (e.proposedBy === 'rule') continue;
     const a = out.get(e.agent.principalId) ?? { ...e.agent, count: 0 };
     a.count += 1;
     out.set(e.agent.principalId, a);
@@ -146,7 +168,7 @@ export function revocationSummary(r: AutoAcceptRevocationResult): string {
   const outcomes: string[] = [];
   if (r.toProposed > 0) {
     outcomes.push(
-      `${plural(r.toProposed, 'geht', 'gehen')} zurück in die Prüfung (ein Agentenvorschlag ist noch offen)`,
+      `${plural(r.toProposed, 'geht', 'gehen')} zurück in die Prüfung (ein Vorschlag ist noch offen)`,
     );
   }
   if (r.toObsolete > 0) {

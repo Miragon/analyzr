@@ -6,6 +6,7 @@ import {
   MAX_IMPORT_FILES,
   MAX_MODEL_BYTES,
   type ImportFileOutcome,
+  type ImportImpact,
   type TrustReason,
 } from '@analyzr/contracts';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -13,8 +14,14 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   agentTokenNotice,
   amendmentsText,
+  formatImpact,
   formatNextSteps,
   formatWarningCounts,
+  mergeImpacts,
+  ruleName,
+  ruleSource,
+  ruleStep,
+  shellArg,
   trustSteps,
   type ImportSummary,
 } from '../../src/commands/import.ts';
@@ -749,6 +756,7 @@ describe('analyzr import', () => {
     /** An open call proposal of the key tier (`GET …/relations` answers only those). */
     const proposal = (n: number, extra: Record<string, unknown> = {}) => ({
       id: `rel_${n}`,
+      from: `a#Call_${n}`,
       type: 'call',
       status: 'proposed',
       tier: 'key',
@@ -863,6 +871,9 @@ describe('analyzr import', () => {
           proposal(5),
           proposal(6, { attrs: { calledElement: 'P_6', match: 'duplicate-process-id' } }),
         ]),
+        // the owner key: the project's rules, none for that source yet
+        'GET /api/v1/projects/demo/auto-accept-rules': () =>
+          json({ items: [], system: { accepted: 0, proposed: 3 } }),
       });
       const t = testIo({ ANALYZR_OWNER_KEY_FILE: keyFile }, api.fetch, { cwd: dir });
       expect(await runCli(['import', 'trust-next', '-p', 'demo', '--url', URL_BASE], t.io)).toBe(0);
@@ -871,6 +882,8 @@ describe('analyzr import', () => {
           'demo: 1 relations tasks waiting, placement task waiting: no',
           'next: 2 models are derived (no engine 2); 3 unique calls are proposals: accept them in the web review before the agent runs:',
           REVIEW,
+          // the owner key: a rule for derived calls of that source (M6 S2c-3), created off
+          "  or add an owner rule that accepts that source's next calls: analyzr rules add --name 'Aufrufe: ohne Angabe' --derived none -p demo",
           'then: let an agent work them, e.g. in Claude Code with the plugin analyzr:',
           '  /analyzr:relations demo',
         ].join('\n'),
@@ -945,6 +958,193 @@ describe('analyzr import', () => {
           ['next: trust'],
         ),
       ).toContain('next: identity\nnext: trust\nthen: let an agent work them');
+    });
+
+    it('suggests the rule for derived calls of the source most waiting calls’ callers declare (M6 S2c-3)', () => {
+      const declared = (entries: Record<string, Record<string, unknown> | undefined>) => ({
+        byPath: new Map(
+          Object.entries(entries).map(([p, derived]) => [
+            p,
+            { path: p, ...(derived ? { derived } : {}) } as never,
+          ]),
+        ),
+      });
+      const files: ImportFileOutcome[] = [
+        derived(['no-engine'])('a.bpmn'),
+        derived(['converted'])('b.bpmn'),
+        derived(['no-engine', 'converted'])('c.bpmn'),
+        // an agent token's upload is never accepted by a rule: it does not count
+        derived(['no-engine', 'agent-upload'])('d.bpmn'),
+        derived(['no-engine', 'agent-upload'])('e.bpmn'),
+        derived(['no-engine', 'reconstructed'])('f.bpmn'),
+        created('g.bpmn'),
+      ];
+      const manifest = declared({
+        'a.bpmn': { kind: 'export' },
+        'b.bpmn': { kind: 'converted', converter: ' normalize-bpmn@0.1.0 ' },
+        'c.bpmn': { kind: 'converted', converter: 'normalize-bpmn@0.1.0' },
+        'd.bpmn': { kind: 'export' },
+        'e.bpmn': { kind: 'export' },
+        'f.bpmn': { kind: 'reconstructed', llmModel: 'm' },
+      });
+      /** Waiting calls from these callers (model keys). */
+      const from = (...keys: string[]) => keys.map((k, i) => ({ from: `${k}#Call_${i}` }));
+      // counted per waiting call: the converted callers' 2 calls over the export caller's 1;
+      // the agent uploads' 3 calls and a caller outside this import count for nothing
+      const waiting = from('a', 'b', 'c', 'd', 'd', 'e', 'other/model');
+      expect(ruleSource({ files }, manifest, waiting)).toEqual({
+        derivedKind: 'converted',
+        converter: 'normalize-bpmn@0.1.0',
+      });
+      expect(ruleSource({ files }, manifest, from('a', 'a', 'a', 'b'))).toEqual({
+        derivedKind: 'export',
+        converter: null,
+      });
+      // by calls, not files: five export files without calls lose to one file with its calls
+      const fives = ['p1', 'p2', 'p3', 'p4', 'p5'].map((k) => derived(['no-engine'])(`${k}.bpmn`));
+      expect(
+        ruleSource(
+          { files: [...fives, derived(['no-engine'])('n.bpmn')] },
+          declared(Object.fromEntries(fives.map((f) => [f.path, { kind: 'export' }]))),
+          from('n', 'n'),
+        ),
+      ).toEqual({ derivedKind: 'none', converter: null });
+      expect(ruleSource({ files }, manifest, [])).toBeNull();
+      // no manifest: no kind declared
+      expect(ruleSource({ files: files.slice(0, 1) }, null, from('a'))).toEqual({
+        derivedKind: 'none',
+        converter: null,
+      });
+      // only agent uploads, reconstructed files or a conversion without converter: nothing to name
+      expect(ruleSource({ files: files.slice(3, 6) }, manifest, from('d', 'e', 'f'))).toBeNull();
+      expect(
+        ruleSource(
+          { files: [derived(['converted'])('b.bpmn')] },
+          declared({ 'b.bpmn': { kind: 'converted' } }),
+          from('b'),
+        ),
+      ).toBeNull();
+
+      const converted = { derivedKind: 'converted' as const, converter: 'normalize-bpmn@0.1.0' };
+      const exported = { derivedKind: 'export' as const, converter: null };
+      // no rule names it: add one (it starts off; `rules add` says how to turn it on)
+      expect(ruleStep('demo', converted, [])).toBe(
+        "  or add an owner rule that accepts that source's next calls: analyzr rules add --name 'Aufrufe: konvertiert mit normalize-bpmn@0.1.0' --derived converted --converter normalize-bpmn@0.1.0 -p demo",
+      );
+      const rule = (extra: Record<string, unknown>) => ({
+        id: 'aar_01J9Z3N4X5Q6R7S8T9V0W1X2Y1' as const,
+        name: 'Aufrufe: Export ohne Engine',
+        enabled: true,
+        proposedBy: 'rule' as const,
+        derivedKind: 'export' as const,
+        converter: null,
+        ...extra,
+      });
+      // a rule names it: apply it while it is on (never retroactive), else turn it on
+      expect(ruleStep('demo', exported, [rule({})])).toBe(
+        '  or let the owner rule "Aufrufe: Export ohne Engine" accept them: analyzr rules apply aar_01J9Z3N4X5Q6R7S8T9V0W1X2Y1 -p demo',
+      );
+      expect(ruleStep('demo', exported, [rule({ enabled: false })])).toBe(
+        '  or turn on the owner rule "Aufrufe: Export ohne Engine" for that source: analyzr rules enable aar_01J9Z3N4X5Q6R7S8T9V0W1X2Y1 -p demo',
+      );
+      // another converter's rule, or an agent rule with that name, names another source
+      expect(
+        ruleStep('demo', converted, [
+          rule({ derivedKind: 'converted', converter: 'normalize-bpmn@0.2.0' }),
+          rule({ proposedBy: 'agent', derivedKind: null, name: 'aufrufe: export ohne engine' }),
+        ]),
+      ).toMatch(/analyzr rules add --name 'Aufrufe: konvertiert mit normalize-bpmn@0\.1\.0' /);
+      expect(
+        ruleStep('demo', exported, [
+          rule({ proposedBy: 'agent', derivedKind: null, name: 'aufrufe: export ohne engine' }),
+        ]),
+      ).toContain(
+        "analyzr rules add --name 'Aufrufe: Export ohne Engine (2)' --derived export -p demo",
+      );
+
+      // a converter of 120 characters: the name still fits the 100 a rule may have
+      const long = { derivedKind: 'converted' as const, converter: `${'k'.repeat(114)}@1.0.0` };
+      expect(ruleName(long)).toHaveLength(100);
+      expect(ruleName(long)).toMatch(/^Aufrufe: konvertiert mit k+…$/);
+      expect(ruleName(long, [ruleName(long)])).toMatch(/… \(2\)$/);
+      expect(ruleName(long, [ruleName(long)])).toHaveLength(100);
+
+      // a manifest's converter cannot plant a command in the pasted line
+      const planted = {
+        derivedKind: 'converted' as const,
+        converter: "normalize$(touch /tmp/pwned)`id`'x'@0.1.0",
+      };
+      const step = ruleStep('demo', planted, []);
+      expect(step).toContain(
+        String.raw`--converter 'normalize$(touch /tmp/pwned)` +
+          '`id`' +
+          String.raw`'\''x'\''@0.1.0'`,
+      );
+      expect(shellArg('normalize-bpmn@0.1.0')).toBe('normalize-bpmn@0.1.0');
+      expect(shellArg('Aufrufe: ohne Angabe')).toBe("'Aufrufe: ohne Angabe'");
+      expect(shellArg("it's")).toBe(String.raw`'it'\''s'`);
+
+      expect(trustSteps(summaryOf(files), 1, URL_BASE, '  or …')).toEqual([
+        expect.stringMatching(/^next: /) as unknown,
+        REVIEW,
+        '  or …',
+      ]);
+    });
+
+    it('never suggests a rule with an agent token', async () => {
+      await put('a.bpmn', '<bpmn/>', path.join(dir, 'trust-agent-rule'));
+      const api = fakeApi({
+        'POST /api/v1/projects/demo/imports': importRoute(derived(['no-engine', 'agent-upload'])),
+        ...NOTHING_WAITING,
+        ...relationsRoute([proposal(1)]),
+      });
+      const t = testIo({ ANALYZR_TOKEN: AGENT_TOKEN }, api.fetch, { cwd: dir });
+      expect(await runCli(['import', 'trust-agent-rule', '-p', 'demo'], t.io)).toBe(0);
+      expect(t.out()).toContain('next: 1 model is derived');
+      expect(t.out()).not.toContain('analyzr rules add');
+    });
+
+    it('prints and merges what an owner’s rules for derived calls accept in a dry run', () => {
+      const call = { type: 'call' as const, from: 'a#Call' as const, to: 'b#P' as const };
+      const impact = (n: number, ruleName = 'Aufrufe: Export ohne Engine'): ImportImpact => ({
+        files: [],
+        acceptedCalls: { count: 0, items: [] },
+        callsProposed: {
+          count: n,
+          items: Array.from({ length: n }, () => ({ ...call, wasAccepted: false })),
+          wasAccepted: 0,
+          byReason: [{ reason: 'no-engine' as const, count: n }],
+        },
+        autoAcceptedCalls: {
+          count: n,
+          ofProposed: n,
+          items: Array.from({ length: n }, () => ({
+            ...call,
+            ruleId: 'aar_01J9Z3N4X5Q6R7S8T9V0W1X2Y1' as const,
+            ruleName,
+          })),
+          byRule: [{ ruleId: 'aar_01J9Z3N4X5Q6R7S8T9V0W1X2Y1' as const, ruleName, count: n }],
+        },
+        proposalsAdded: { count: 0, items: [] },
+        proposalsWithdrawn: { count: 0, items: [] },
+        endpointsChanged: { count: 0, items: [] },
+        findingsAdded: { count: 0, items: [] },
+        findingsResolved: { count: 0, items: [] },
+        absentKeys: { count: 0, items: [] },
+      });
+      const merged = mergeImpacts([impact(2), impact(1)]);
+      expect(merged.autoAcceptedCalls).toMatchObject({
+        count: 3,
+        ofProposed: 3,
+        byRule: [{ ruleName: 'Aufrufe: Export ohne Engine', count: 3 }],
+      });
+      expect(formatImpact(merged, 'demo')).toContain(
+        '  accept by your rules for derived calls: 3 ("Aufrufe: Export ohne Engine" 3): a#Call → b#P',
+      );
+      // not an owner's dry run: neither the field nor the line
+      const { autoAcceptedCalls: _a, ...plain } = impact(1);
+      expect('autoAcceptedCalls' in mergeImpacts([plain, plain])).toBe(false);
+      expect(formatImpact(mergeImpacts([plain]), 'demo')).not.toContain('your rules');
     });
   });
 });

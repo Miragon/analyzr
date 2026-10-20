@@ -9,7 +9,7 @@ import { nameUsage } from '../src/lib/generic-names';
 import { MAX_BULK_DECISIONS } from '../src/lib/limits';
 import { bulkRows, type BulkPreselect } from '../src/lib/review';
 import { buildRefIndex, resolverOf } from '../src/lib/refs';
-import { fact, noLink, provenance, relation } from './support/fixtures';
+import { autoAcceptRule, fact, model, noLink, provenance, relation } from './support/fixtures';
 import { findToast, json, renderWithRouter, stubApi, type Call } from './support/render';
 
 const PATH = '/api/v1/projects/demo/decisions';
@@ -381,7 +381,8 @@ describe('BulkAcceptDialog: unique calls from derived models (M6 S2c)', () => {
     // (earlier tests' toasts may still be on screen: the one with this description)
     const toast = await findToast('Eindeutige Aufrufe aus abgeleiteten Modellen.');
     expect(toast.textContent).toContain('2 Relationen angenommen');
-    // no „Gleicher Name“ rule: an agent rule never accepts these (the calls rule is S2c-3's)
+    // no „Gleicher Name“ rule (an agent rule never accepts these), and without the callers'
+    // trust no rule for derived calls either (M6 S2c-3)
     expect(toast.textContent).not.toContain('künftig automatisch');
     expect(within(toast).queryByTestId('toast-action')).toBeNull();
     expect(bodies(sent)).toEqual([
@@ -445,6 +446,169 @@ describe('BulkAcceptDialog: unique calls from derived models (M6 S2c)', () => {
     const body = sent[0]?.body as BulkDecisionBody;
     expect(body.expectedCount).toBe(MAX_BULK_DECISIONS);
     expect(body.items.map((i) => i.id)).toEqual(many.slice(0, MAX_BULK_DECISIONS).map((r) => r.id));
+  });
+
+  it('offers an owner a rule for the calls’ source, prefilled with the most common one (M6 S2c-3)', async () => {
+    const trust = (
+      derivedKind: 'export' | 'converted' | null,
+      converter: string | null,
+      reasons: string[] = ['no-engine'],
+    ) => ({
+      class: 'derived' as const,
+      reasons: reasons as ('no-engine' | 'agent-upload' | 'converted')[],
+      derivedKind,
+      converter,
+    });
+    const three = [
+      ...calls,
+      call('rel_01CALL3', 3, { from: 'vertrieb/angebot#Call_3' }),
+      call('rel_01CALL4', 4, { from: 'lager/versand#Call_4' }),
+    ];
+    const sent = stubApi({
+      [`POST ${PATH}`]: (c) =>
+        json({
+          items: (c.body as BulkDecisionBody).items.map((i) => ({
+            ...three.find((p) => p.id === i.id),
+            status: 'accepted',
+            version: i.version + 1,
+          })),
+        }),
+      'GET /api/v1/projects/demo/models': () =>
+        json({
+          items: [
+            // the caller of two calls: converted
+            model({
+              key: 'vertrieb/auftrag',
+              trust: trust('converted', 'normalize-bpmn@0.1.0', ['converted']),
+            }),
+            model({ key: 'vertrieb/angebot', trust: trust('export', null) }),
+            // an agent token's upload: no rule accepts its calls, it counts for nothing
+            model({
+              key: 'lager/versand',
+              trust: trust('export', null, ['no-engine', 'agent-upload']),
+            }),
+          ],
+          nextCursor: null,
+        }),
+    });
+    const user = userEvent.setup();
+    const { router } = await renderWithRouter(
+      <Harness relations={[...pairs, ...three]} canOwn preselect="calls" />,
+    );
+    await screen.findByRole('dialog');
+    await waitFor(() => expect(sent.some((c) => c.path.endsWith('/models'))).toBe(true));
+    await user.click(screen.getByRole('button', { name: '4 annehmen' }));
+    const toast = await findToast(
+      'Eindeutige Aufrufe aus abgeleiteten Modellen künftig automatisch annehmen?',
+    );
+    expect(toast.textContent).toContain('4 Relationen angenommen');
+    await user.click(within(toast).getByTestId('toast-action'));
+    await waitFor(() => expect(router.state.location.pathname).toBe('/projects/demo/rules'));
+    expect(router.state.location.search).toEqual({
+      new: 'calls',
+      derivedKind: 'converted',
+      converter: 'normalize-bpmn@0.1.0',
+    });
+  });
+
+  it('offers no rule when every accepted call’s caller was uploaded with an agent token', async () => {
+    stubApi({
+      [`POST ${PATH}`]: (c) =>
+        json({
+          items: (c.body as BulkDecisionBody).items.map((i) => ({
+            ...calls.find((p) => p.id === i.id),
+            status: 'accepted',
+            version: i.version + 1,
+          })),
+        }),
+      'GET /api/v1/projects/demo/models': () =>
+        json({
+          items: [
+            model({
+              key: 'vertrieb/auftrag',
+              trust: {
+                class: 'derived',
+                reasons: ['agent-upload'],
+                derivedKind: null,
+                converter: null,
+              },
+            }),
+          ],
+          nextCursor: null,
+        }),
+    });
+    const user = userEvent.setup();
+    await renderWithRouter(<Harness relations={calls} canOwn preselect="calls" />);
+    await screen.findByRole('dialog');
+    await user.click(screen.getByRole('button', { name: '2 annehmen' }));
+    const toast = await findToast('Eindeutige Aufrufe aus abgeleiteten Modellen.');
+    expect(toast.textContent).not.toContain('künftig automatisch');
+    expect(within(toast).queryByTestId('toast-action')).toBeNull();
+  });
+
+  it('offers no rule when one already names the calls’ source (on or off)', async () => {
+    const sent = stubApi({
+      [`POST ${PATH}`]: (c) =>
+        json({
+          items: (c.body as BulkDecisionBody).items.map((i) => ({
+            ...calls.find((p) => p.id === i.id),
+            status: 'accepted',
+            version: i.version + 1,
+          })),
+        }),
+      'GET /api/v1/projects/demo/models': () =>
+        json({
+          items: [
+            model({
+              key: 'vertrieb/auftrag',
+              trust: {
+                class: 'derived',
+                reasons: ['converted'],
+                derivedKind: 'converted',
+                converter: 'normalize-bpmn@0.1.0',
+              },
+            }),
+          ],
+          nextCursor: null,
+        }),
+      'GET /api/v1/projects/demo/auto-accept-rules': () =>
+        json({
+          items: [
+            // another converter's rule names another source
+            autoAcceptRule({
+              id: 'aar_01J9Z3N4X5Q6R7S8T9V0W1X2Y1',
+              name: 'Aufrufe: konvertiert mit normalize-bpmn@0.2.0',
+              tier: 'key',
+              minConfidence: 0.9,
+              relationType: 'call',
+              proposedBy: 'rule',
+              derivedKind: 'converted',
+              converter: 'normalize-bpmn@0.2.0',
+              enabled: true,
+            }),
+            autoAcceptRule({
+              id: 'aar_01J9Z3N4X5Q6R7S8T9V0W1X2Y2',
+              name: 'Aufrufe: konvertiert mit normalize-bpmn@0.1.0',
+              tier: 'key',
+              minConfidence: 0.9,
+              relationType: 'call',
+              proposedBy: 'rule',
+              derivedKind: 'converted',
+              converter: 'normalize-bpmn@0.1.0',
+            }),
+          ],
+          system: { name: 'Eindeutige Aufrufe', label: 'analyzr-rules/1.0.0', accepted: 0 },
+        }),
+    });
+    const user = userEvent.setup();
+    await renderWithRouter(<Harness relations={calls} canOwn preselect="calls" />);
+    await screen.findByRole('dialog');
+    await waitFor(() => expect(sent.some((c) => c.path.endsWith('/auto-accept-rules'))).toBe(true));
+    await waitFor(() => expect(sent.some((c) => c.path.endsWith('/models'))).toBe(true));
+    await user.click(screen.getByRole('button', { name: '2 annehmen' }));
+    const toast = await findToast('Eindeutige Aufrufe aus abgeleiteten Modellen.');
+    expect(toast.textContent).not.toContain('künftig automatisch');
+    expect(within(toast).queryByTestId('toast-action')).toBeNull();
   });
 
   it('offers an owner the „Gleicher Name“ rule when other pairs were accepted with the calls', async () => {

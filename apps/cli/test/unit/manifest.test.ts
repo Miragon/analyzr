@@ -16,6 +16,7 @@ import {
 } from '@analyzr/contracts';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
+import { shellArg } from '../../src/commands/import.ts';
 import { findBpmnFiles, planImport } from '../../src/files.ts';
 import { runCli } from '../../src/program.ts';
 import { fakeApi, json, ownerKeyFile, tempDir, testIo } from '../support/io.ts';
@@ -218,7 +219,7 @@ describe('analyzr import with a hand-written manifest', () => {
     expect(t.out()).toContain('manifest: lists 1 file not below the folder: fehlt.bpmn\n');
     expect(t.out()).toContain('  created   vertrieb/auftrag\n');
     expect(t.out()).toContain(
-      `value chain: the bundle has value-chain.vc.json; push it with analyzr value-chain push ${JSON.stringify(path.join(root, 'value-chain.vc.json'))} -p demo --dry-run, then without --dry-run (owner key)\n`,
+      `value chain: the bundle has value-chain.vc.json; push it with analyzr value-chain push ${shellArg(path.join(root, 'value-chain.vc.json'))} -p demo --dry-run, then without --dry-run (owner key)\n`,
     );
   });
 

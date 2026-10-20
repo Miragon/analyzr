@@ -281,6 +281,10 @@ export function deletionImpactText(impact: ImportImpact): string {
     impact.callsProposed.count > 0
       ? `${plural(impact.callsProposed.count, 'call')} only proposed (trust rule)`
       : null,
+    // the owner's rules for derived calls (M6 S2c-3), e.g. a duplicate process id gone
+    impact.autoAcceptedCalls && impact.autoAcceptedCalls.count > 0
+      ? `${plural(impact.autoAcceptedCalls.count, 'call')} accepted by your rules for derived calls`
+      : null,
     `findings ${impact.findingsAdded.count} added, ${impact.findingsResolved.count} resolved`,
   ]
     .filter((p) => p !== null)

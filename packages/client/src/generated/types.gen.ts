@@ -504,6 +504,7 @@ export type ImportImpact = {
     items: Array<ImpactRelation>;
   };
   callsProposed: ImpactProposedCalls;
+  autoAcceptedCalls?: ImpactAutoAcceptedCalls;
   proposalsAdded: {
     count: number;
     items: Array<ImpactRelation>;
@@ -585,6 +586,36 @@ export type ImpactProposedCall = {
   to: Ref;
   wasAccepted: boolean;
 };
+
+/**
+ * Unique calls from derived models auto-accept rules would accept, by rule.
+ */
+export type ImpactAutoAcceptedCalls = {
+  count: number;
+  items: Array<ImpactAutoAcceptedCall>;
+  ofProposed: number;
+  byRule: Array<{
+    ruleId: AutoAcceptRuleId;
+    ruleName: string;
+    count: number;
+  }>;
+};
+
+/**
+ * A unique call from a derived model an auto-accept rule would accept.
+ */
+export type ImpactAutoAcceptedCall = {
+  type: RelationType;
+  from: Ref;
+  to: Ref;
+  ruleId: AutoAcceptRuleId;
+  ruleName: string;
+};
+
+/**
+ * Auto-accept rule id (`aar_` + ULID).
+ */
+export type AutoAcceptRuleId = string;
 
 /**
  * An accepted relation whose end changes.
@@ -3339,6 +3370,9 @@ export type AutoAcceptRule = {
   agent: AutoAcceptAgent | null;
   llmModel: string | null;
   includeAdHoc: boolean;
+  proposedBy: AutoAcceptProposer;
+  derivedKind: AutoAcceptDerivedKind | null;
+  converter: string | null;
   author: AutoAcceptPrincipal;
   authorIsOwner: boolean;
   createdBy: AutoAcceptPrincipal;
@@ -3346,11 +3380,6 @@ export type AutoAcceptRule = {
   updatedAt: Timestamp;
   stats: AutoAcceptRuleStats;
 };
-
-/**
- * Auto-accept rule id (`aar_` + ULID).
- */
-export type AutoAcceptRuleId = string;
 
 /**
  * What an auto-accept rule accepts: agent relation or placement proposals.
@@ -3376,6 +3405,16 @@ export type AutoAcceptAgent = {
   tokenId: AgentTokenId | null;
   revoked: boolean;
 };
+
+/**
+ * Whose proposals a rule accepts: agent proposals, or the rule tier’s proposals of unique calls from derived models.
+ */
+export type AutoAcceptProposer = 'agent' | 'rule';
+
+/**
+ * The declared derivation a rule for derived calls names: export, converted or none (no kind declared).
+ */
+export type AutoAcceptDerivedKind = 'export' | 'converted' | 'none';
 
 /**
  * A principal and its handle.
@@ -3435,6 +3474,9 @@ export type AutoAcceptRuleDetail = {
   agent: AutoAcceptAgent | null;
   llmModel: string | null;
   includeAdHoc: boolean;
+  proposedBy: AutoAcceptProposer;
+  derivedKind: AutoAcceptDerivedKind | null;
+  converter: string | null;
   author: AutoAcceptPrincipal;
   authorIsOwner: boolean;
   createdBy: AutoAcceptPrincipal;
@@ -3459,6 +3501,9 @@ export type AutoAcceptRuleRevision = {
   agentPrincipalId: PrincipalId | null;
   llmModel: string | null;
   includeAdHoc: boolean;
+  proposedBy: AutoAcceptProposer;
+  derivedKind: AutoAcceptDerivedKind | null;
+  converter: string | null;
   author: AutoAcceptPrincipal;
   clientId: string | null;
   at: Timestamp;
@@ -3478,6 +3523,9 @@ export type AutoAcceptRuleDraft = {
   agentPrincipalId?: PrincipalId | null;
   llmModel?: string | null;
   includeAdHoc?: boolean;
+  proposedBy?: AutoAcceptProposer;
+  derivedKind?: AutoAcceptDerivedKind | null;
+  converter?: string | null;
 };
 
 /**
@@ -3494,6 +3542,7 @@ export type AutoAcceptPreview = {
   curve: Array<AutoAcceptCurvePoint>;
   agents: Array<AutoAcceptAgent>;
   llmModels: Array<string>;
+  derivedGroups: Array<AutoAcceptDerivedGroup>;
 };
 
 /**
@@ -3526,6 +3575,7 @@ export type AutoAcceptItem = {
   step: string | null;
   process: Ref | null;
   triggerId: AssertionId | PlacementAssertionId;
+  proposedBy: AutoAcceptProposer;
   agent: AutoAcceptPrincipal;
   llmModel: string | null;
   tier: Tier;
@@ -3546,6 +3596,8 @@ export type AutoAcceptBlockedCount = {
 export type AutoAcceptBlockReason =
   | 'not-agent'
   | 'no-matching-rule'
+  | 'agent-upload'
+  | 'amendment-conflict'
   | 'stale-proposal'
   | 'not-open'
   | 'endpoint-not-ok'
@@ -3574,6 +3626,18 @@ export type AutoAcceptCurvePoint = {
 };
 
 /**
+ * The unique calls from derived models of one declared source.
+ */
+export type AutoAcceptDerivedGroup = {
+  derivedKind: AutoAcceptDerivedKind;
+  converter: string | null;
+  open: number;
+  blocked: number;
+  accepted: number;
+  rejected: number;
+};
+
+/**
  * What an auto-accept rule matches: kind, tier, minimum confidence, narrowing.
  */
 export type AutoAcceptCriteria = {
@@ -3584,6 +3648,9 @@ export type AutoAcceptCriteria = {
   agentPrincipalId?: PrincipalId | null;
   llmModel?: string | null;
   includeAdHoc?: boolean;
+  proposedBy?: AutoAcceptProposer;
+  derivedKind?: AutoAcceptDerivedKind | null;
+  converter?: string | null;
 };
 
 /**
@@ -3639,6 +3706,7 @@ export type AutoAcceptRevocationItem = {
   process: Ref | null;
   decisionId: AssertionId | PlacementAssertionId;
   triggerId: AssertionId | PlacementAssertionId;
+  proposedBy: AutoAcceptProposer;
   ruleId: AutoAcceptRuleId;
   revision: number;
   ruleName: string;
@@ -3697,6 +3765,7 @@ export type AutoAcceptLedgerEntry = {
   process: Ref | null;
   decisionId: AssertionId | PlacementAssertionId;
   triggerId: AssertionId | PlacementAssertionId;
+  proposedBy: AutoAcceptProposer;
   ruleId: AutoAcceptRuleId;
   revision: number;
   ruleName: string;

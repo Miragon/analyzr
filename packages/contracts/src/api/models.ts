@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 import { MessageFlowInfo, Fact, ProcessInfo } from '../facts.ts';
 import { Finding } from '../findings.ts';
-import { ModelId, ProjectId, RevisionId } from '../ids.ts';
+import { AutoAcceptRuleId, ModelId, ProjectId, RevisionId } from '../ids.ts';
 import { ApiProblem } from '../problem.ts';
 import { ModelKey, Ref } from '../refs.ts';
 import { RelationType } from '../relations.ts';
@@ -455,13 +455,55 @@ export const ImpactProposedCalls = impactList(ImpactProposedCall)
   });
 export type ImpactProposedCalls = z.infer<typeof ImpactProposedCalls>;
 
+/** A unique call from a derived model an owner's auto-accept rule would accept right away (M6 S2c-3). */
+export const ImpactAutoAcceptedCall = ImpactRelation.extend({
+  ruleId: AutoAcceptRuleId,
+  /** The rule's name in its head revision. */
+  ruleName: z.string(),
+}).meta({
+  id: 'ImpactAutoAcceptedCall',
+  description: 'A unique call from a derived model an auto-accept rule would accept.',
+});
+export type ImpactAutoAcceptedCall = z.infer<typeof ImpactAutoAcceptedCall>;
+
+/**
+ * The unique calls from derived models the owner's enabled auto-accept rules
+ * for derived calls would accept in the same write (M6 S2c-3): the capped
+ * list, `ofProposed` of them `callsProposed` counts (the others were
+ * proposals before the import already and the rule tier asserts them again,
+ * say because the callee changed), and `byRule` over all `count` calls, by
+ * the first matching rule in creation order.
+ */
+export const ImpactAutoAcceptedCalls = impactList(ImpactAutoAcceptedCall)
+  .extend({
+    /** How many of them `callsProposed` counts. */
+    ofProposed: z.number().int().min(0),
+    byRule: z.array(
+      z.object({
+        ruleId: AutoAcceptRuleId,
+        ruleName: z.string(),
+        count: z.number().int().min(1),
+      }),
+    ),
+  })
+  .meta({
+    id: 'ImpactAutoAcceptedCalls',
+    description: 'Unique calls from derived models auto-accept rules would accept, by rule.',
+  });
+export type ImpactAutoAcceptedCalls = z.infer<typeof ImpactAutoAcceptedCalls>;
+
 /**
  * What an import or a model's deletion would change (M6 §3.5, slice S2b),
  * computed by the pure `importImpact` over the stored head and the would-be
  * head facts; nothing is written. `files`: the created and revised files.
  * `acceptedCalls`: rule-tier calls that would become accepted (decision 9).
  * `callsProposed`: unique calls from derived models that would become rule
- * proposals instead (M6 S2c, decision 24.2). `proposalsAdded`,
+ * proposals instead (M6 S2c, decision 24.2). `autoAcceptedCalls`: those of
+ * them (or of the other rule proposals of such calls the write records) an
+ * enabled auto-accept rule for derived calls would accept in the same write
+ * (M6 S2c-3); only for a human on an interactive client who may maintain the
+ * project's rules (an owner), absent for everyone else, agents included, so
+ * no rule data reaches them. `proposalsAdded`,
  * `proposalsWithdrawn`: the other rule proposals of relations that would
  * appear, and rule stances that would be withdrawn. `endpointsChanged`:
  * accepted relations whose end would turn `changed` or `missing`.
@@ -475,6 +517,7 @@ export const ImportImpact = z
     files: z.array(ImpactFile),
     acceptedCalls: impactList(ImpactRelation),
     callsProposed: ImpactProposedCalls,
+    autoAcceptedCalls: ImpactAutoAcceptedCalls.optional(),
     proposalsAdded: impactList(ImpactRelation),
     proposalsWithdrawn: impactList(ImpactRelation),
     endpointsChanged: impactList(ImpactEndpoint),

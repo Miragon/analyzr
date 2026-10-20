@@ -4,12 +4,15 @@
  * `writeRecompute` into memory, so each plan runs over the state the
  * previous one left. A derived caller's unique call is a rule proposal with
  * its rationale; a rule decision on it ends when the caller turns derived;
- * human decisions stay; a modelled landscape plans exactly as before.
+ * human decisions stay; a modelled landscape plans exactly as before. The
+ * dry run names the derived calls an owner's rule for derived calls would
+ * accept in the write (M6 S2c-3), only the proposals the write records.
  */
 import { extractFacts } from '@analyzr/bpmn-facts';
 import {
   DERIVED_CALL_CONFIDENCE,
   MAX_IMPACT_ITEMS,
+  type AutoAcceptRuleId,
   type Finding,
   type PrincipalId,
   type ProjectFacts,
@@ -18,6 +21,7 @@ import {
 import { runRules } from '@analyzr/relations';
 import { describe, expect, it } from 'vitest';
 
+import type { AutoAcceptRuleRev } from '../../src/domain/auto-accept/evaluate.ts';
 import { headFingerprints } from '../../src/domain/fingerprints.ts';
 import { relationImpact } from '../../src/domain/import-impact.ts';
 import type { AssertionRecord, RelationRecord, Tx } from '../../src/domain/ports.ts';
@@ -370,7 +374,10 @@ ${Array.from({ length: n }, (_, i) => `    <bpmn:callActivity id="Call_${String(
     const m = memory();
     const legacy = new Map([...trustOfModels(facts)].map(([k, t]) => [k, { ...t, trust: null }]));
     const modelled = planRecompute(m.input(facts, trustOfModels(facts)));
-    expect(planRecompute(m.input(facts, legacy))).toEqual(modelled);
+    // The planned histories (M6 S2c-3) carry provisional assertion ids of their own.
+    const { histories: _legacyHistories, ...legacyPlan } = planRecompute(m.input(facts, legacy));
+    const { histories: _histories, ...modelledPlan } = modelled;
+    expect(legacyPlan).toEqual(modelledPlan);
     expect(modelled.derivedCalls.size).toBe(0);
     const step = modelled.steps.find((s) => s.kind === 'derive' && s.target.fromRef === CALL.from);
     expect(step).toMatchObject({
@@ -383,5 +390,109 @@ ${Array.from({ length: n }, (_, i) => `    <bpmn:callActivity id="Call_${String(
         rationale: null,
       },
     });
+  });
+});
+
+describe('the dry run’s acceptances by an owner’s rule for derived calls (M6 S2c-3)', () => {
+  const RULE_ID = 'aar_01J9Z3N4X5Q6R7S8T9V0W1X2Y1' as AutoAcceptRuleId;
+  const NAME = 'Aufrufe: Export ohne Engine';
+  const rule = (extra: Partial<AutoAcceptRuleRev> = {}): AutoAcceptRuleRev => ({
+    ruleId: RULE_ID,
+    revision: 1,
+    kind: 'relation',
+    name: NAME,
+    enabled: true,
+    tier: 'key',
+    minConfidence: DERIVED_CALL_CONFIDENCE,
+    relationType: 'call',
+    agentPrincipalId: null,
+    llmModel: null,
+    includeAdHoc: false,
+    proposedBy: 'rule',
+    derivedKind: 'export',
+    converter: null,
+    authorId: HUMAN,
+    authorClientId: 'analyzr-web',
+    authorIsOwner: true,
+    order: 1,
+    ...extra,
+  });
+  const exported = (facts: ProjectFacts, extra: Partial<ModelTrust> = {}) =>
+    trustOfModels(facts, { [AUFTRAG_KEY]: { trust: NO_ENGINE, derivedKind: 'export', ...extra } });
+  const none = new Map<string, number>();
+
+  it('names the calls the rule would accept, by rule; nothing without the owner’s rules', async () => {
+    const facts = await landscape(true);
+    const m = memory();
+    const impact = relationImpact(m.input(facts, exported(facts)), [], {
+      rules: [rule()],
+      liveNoLinks: none,
+    });
+    expect(impact.callsProposed.count).toBe(1);
+    expect(impact.autoAcceptedCalls).toEqual({
+      count: 1,
+      items: [{ ...CALL, ruleId: RULE_ID, ruleName: NAME }],
+      ofProposed: 1,
+      byRule: [{ ruleId: RULE_ID, ruleName: NAME, count: 1 }],
+    });
+    // Not an owner's dry run: absent.
+    expect(relationImpact(m.input(facts, exported(facts)), []).autoAcceptedCalls).toBeUndefined();
+    // An owner without such rules: none.
+    expect(
+      relationImpact(m.input(facts, exported(facts)), [], { rules: [], liveNoLinks: none })
+        .autoAcceptedCalls,
+    ).toEqual({ count: 0, items: [], ofProposed: 0, byRule: [] });
+  });
+
+  it('accepts nothing from another source, an agent upload, a conflicted target or with a no-link', async () => {
+    const facts = await landscape(true);
+    const m = memory();
+    const cases: [ReadonlyMap<string, ModelTrust>, ReadonlyMap<string, number>][] = [
+      [exported(facts, { derivedKind: 'converted', converter: 'normalize-bpmn@0.1.0' }), none],
+      [
+        exported(facts, { trust: { class: 'derived', reasons: ['no-engine', 'agent-upload'] } }),
+        none,
+      ],
+      [exported(facts, { conflictedCalls: new Set(['Call_Rechnung']) }), none],
+      [exported(facts), new Map([[CALL_KEY, 1]])],
+      [trustOfModels(facts), none],
+    ];
+    for (const [trust, liveNoLinks] of cases) {
+      expect(
+        relationImpact(m.input(facts, trust), [], { rules: [rule()], liveNoLinks })
+          .autoAcceptedCalls?.count,
+      ).toBe(0);
+    }
+  });
+
+  it('counts a proposal the rule tier asserts again apart from callsProposed (ofProposed)', async () => {
+    const facts = await landscape(true);
+    const m = memory();
+    // First uploaded with an agent token: proposed, never accepted by a rule.
+    await m.run(
+      facts,
+      exported(facts, { trust: { class: 'derived', reasons: ['no-engine', 'agent-upload'] } }),
+    );
+    expect(m.relation()).toMatchObject({ status: 'proposed', tier: 'key' });
+    // A human uploads it again: the reasons change, so the proposal is asserted again.
+    const impact = relationImpact(m.input(facts, exported(facts)), m.findings(), {
+      rules: [rule()],
+      liveNoLinks: none,
+    });
+    expect(impact.callsProposed.count).toBe(0);
+    expect(impact.autoAcceptedCalls).toMatchObject({ count: 1, ofProposed: 0 });
+  });
+
+  it('is not retroactive: a proposal written before is not recorded again', async () => {
+    const facts = await landscape(true);
+    const m = memory();
+    await m.run(facts, exported(facts));
+    expect(m.relation()).toMatchObject({ status: 'proposed', tier: 'key' });
+    expect(
+      relationImpact(m.input(facts, exported(facts)), m.findings(), {
+        rules: [rule()],
+        liveNoLinks: none,
+      }).autoAcceptedCalls?.count,
+    ).toBe(0);
   });
 });

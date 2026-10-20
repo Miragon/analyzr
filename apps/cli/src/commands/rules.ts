@@ -19,6 +19,13 @@
  *
  * The agent of `--agent` is an agent token of the project, by id (`agt_…`),
  * name or principal (`prn_…`); rules store the token's `principalId`.
+ *
+ * A rule for derived calls (M6 S2c-3, owner decision 28 (1)): `add --derived
+ * <export|converted|none> [--converter name@version]` accepts the rule
+ * tier's proposals of unique calls from derived models whose caller declares
+ * that source; it fixes kind, tier, type and minimum, so `--kind`, `--tier`,
+ * `--min`, `--type`, `--agent`, `--model` and `--ad-hoc` are refused with
+ * it. No rule accepts a call of a revision uploaded with an agent token.
  */
 import {
   applyAutoAcceptRule,
@@ -44,9 +51,12 @@ import {
 } from '@analyzr/client';
 import {
   AUTO_ACCEPT_TIERS,
+  AutoAcceptDerivedKind,
   AutoAcceptKind,
   AutoAcceptRelationType,
   AutoAcceptTier,
+  DERIVED_CALL_CONFIDENCE,
+  MAX_AUTO_ACCEPT_CONVERTER_CHARS,
   MAX_AUTO_ACCEPT_IDS,
   MIN_AUTO_ACCEPT_CONFIDENCE,
   type AutoAcceptRuleId,
@@ -81,6 +91,10 @@ export interface CriteriaFlags {
   adHoc?: boolean;
   /** A note; an empty string removes it. */
   note?: string;
+  /** M6 S2c-3: a rule for derived calls of this declared source: export, converted or none. */
+  derived?: string;
+  /** With `--derived converted`: the converter, `name@version`, exactly. */
+  converter?: string;
 }
 
 export interface AddOptions extends RulesOptions, CriteriaFlags {
@@ -102,6 +116,62 @@ export interface RevokeOptions extends ApplyOptions {
 
 /** Drops a narrowing: `--type any`, `--agent any`, `--model any`. */
 const ANY = 'any';
+
+/** The flags a rule for derived calls fixes (M6 S2c-3): refused with `--derived`. */
+const FIXED_BY_DERIVED = ['kind', 'tier', 'min', 'type', 'agent', 'model', 'adHoc'] as const;
+
+const flagName = (key: (typeof FIXED_BY_DERIVED)[number]): string =>
+  key === 'adHoc' ? '--ad-hoc' : `--${key}`;
+
+/**
+ * `--derived`: the declared source a rule for derived calls names.
+ *
+ * @throws {CliError} for anything but export, converted or none
+ */
+export function parseDerived(value: string): AutoAcceptDerivedKind {
+  const parsed = AutoAcceptDerivedKind.safeParse(value);
+  if (!parsed.success) {
+    throw new CliError(
+      `unknown --derived ${JSON.stringify(value)}: use export, converted or none (no rule accepts calls of reconstructed or as-told models)`,
+    );
+  }
+  return parsed.data;
+}
+
+/**
+ * The derived source of a rule for derived calls from `--derived` and
+ * `--converter` (`base` for an edit): a converter exactly for `converted`.
+ *
+ * @throws {CliError} for flags a rule for derived calls fixes, or a converter that does not fit
+ */
+function derivedOf(
+  flags: CriteriaFlags,
+  base: { derivedKind: AutoAcceptDerivedKind | null; converter: string | null } | null,
+): { derivedKind: AutoAcceptDerivedKind; converter: string | null } {
+  const fixed = FIXED_BY_DERIVED.filter((k) => flags[k] !== undefined);
+  if (fixed.length > 0) {
+    throw new CliError(
+      `a rule for derived calls fixes kind, tier, type and minimum (relation, key, call, ${DERIVED_CALL_CONFIDENCE * 100}%): drop ${fixed.map(flagName).join(', ')}`,
+    );
+  }
+  const derivedKind = flags.derived === undefined ? base?.derivedKind : parseDerived(flags.derived);
+  if (!derivedKind) throw new CliError('a rule for derived calls needs --derived');
+  const given = flags.converter?.trim();
+  if (derivedKind !== 'converted') {
+    if (given !== undefined) throw new CliError('--converter only with --derived converted');
+    return { derivedKind, converter: null };
+  }
+  const converter = given ?? (base?.derivedKind === 'converted' ? base.converter : null);
+  if (!converter) {
+    throw new CliError(
+      '--derived converted needs --converter, the converter as the manifest declares it (name@version)',
+    );
+  }
+  if (converter.length > MAX_AUTO_ACCEPT_CONVERTER_CHARS) {
+    throw new CliError(`--converter takes at most ${MAX_AUTO_ACCEPT_CONVERTER_CHARS} characters`);
+  }
+  return { derivedKind, converter };
+}
 
 /**
  * Parses a minimum confidence: a fraction (`0.9`, `1`) or a percentage
@@ -239,12 +309,17 @@ export function draftOf(rule: AutoAcceptRule): AutoAcceptRuleDraft {
     agentPrincipalId: rule.agentPrincipalId,
     llmModel: rule.llmModel,
     includeAdHoc: rule.includeAdHoc,
+    proposedBy: rule.proposedBy,
+    derivedKind: rule.derivedKind,
+    converter: rule.converter,
   };
 }
 
 /**
- * Merges criteria flags into a draft; `kind` never changes (a new rule
- * instead). Resolves `--agent` through `tokens` (loaded only when needed).
+ * Merges criteria flags into a draft; `kind` never changes, nor whose
+ * proposals it accepts (a new rule instead). A rule for derived calls takes
+ * `--derived` and `--converter` only (M6 S2c-3). Resolves `--agent` through
+ * `tokens` (loaded only when needed).
  *
  * @throws {CliError} for invalid flags
  */
@@ -253,6 +328,23 @@ export async function mergeFlags(
   flags: CriteriaFlags,
   tokens: () => Promise<readonly AgentToken[]>,
 ): Promise<AutoAcceptRuleDraft> {
+  if (base.proposedBy === 'rule') {
+    const next: AutoAcceptRuleDraft = {
+      ...base,
+      ...derivedOf(flags, {
+        derivedKind: base.derivedKind ?? null,
+        converter: base.converter ?? null,
+      }),
+    };
+    if (flags.name !== undefined) next.name = flags.name;
+    if (flags.note !== undefined) next.note = flags.note.trim() === '' ? null : flags.note;
+    return next;
+  }
+  if (flags.derived !== undefined || flags.converter !== undefined) {
+    throw new CliError(
+      'an agent rule never becomes a rule for derived calls; add a new rule with --derived instead',
+    );
+  }
   if (flags.kind !== undefined && parseKind(flags.kind) !== base.kind) {
     throw new CliError('the kind of a rule never changes; add a new rule instead');
   }
@@ -271,11 +363,33 @@ export async function mergeFlags(
   return next;
 }
 
-/** The draft of `add`: name, kind, tier and minimum are required. */
+/**
+ * The draft of `add`: name, kind, tier and minimum are required; with
+ * `--derived` (M6 S2c-3) name and `--derived` (and `--converter` for
+ * `converted`), the rest fixed.
+ */
 async function newDraft(
   flags: CriteriaFlags & { enable?: boolean },
   tokens: () => Promise<readonly AgentToken[]>,
 ): Promise<AutoAcceptRuleDraft> {
+  if (flags.derived !== undefined || flags.converter !== undefined) {
+    if (flags.name === undefined) throw new CliError('analyzr rules add needs --name');
+    const derived = derivedOf(flags, null);
+    return {
+      name: flags.name,
+      enabled: flags.enable === true,
+      note: flags.note === undefined || flags.note.trim() === '' ? null : flags.note,
+      kind: 'relation',
+      tier: 'key',
+      minConfidence: DERIVED_CALL_CONFIDENCE,
+      relationType: 'call',
+      agentPrincipalId: null,
+      llmModel: null,
+      includeAdHoc: false,
+      proposedBy: 'rule',
+      ...derived,
+    };
+  }
   const missing = (['name', 'kind', 'tier', 'min'] as const).filter((k) => flags[k] === undefined);
   if (missing.length > 0) {
     throw new CliError(`analyzr rules add needs ${missing.map((m) => `--${m}`).join(', ')}`);
@@ -292,6 +406,9 @@ async function newDraft(
     agentPrincipalId: null,
     llmModel: null,
     includeAdHoc: false,
+    proposedBy: 'agent',
+    derivedKind: null,
+    converter: null,
   };
   return mergeFlags(base, { ...flags, kind: undefined }, tokens);
 }
@@ -305,6 +422,9 @@ function criteriaOf(d: AutoAcceptRuleDraft): AutoAcceptCriteria {
     agentPrincipalId: d.agentPrincipalId,
     llmModel: d.llmModel,
     includeAdHoc: d.includeAdHoc,
+    proposedBy: d.proposedBy ?? 'agent',
+    derivedKind: d.derivedKind ?? null,
+    converter: d.converter ?? null,
   };
 }
 
@@ -315,7 +435,16 @@ const out = (io: CliIo, lines: string | string[]) =>
 
 const json = (io: CliIo, value: unknown) => io.stdout(`${JSON.stringify(value, null, 2)}\n`);
 
-/** `relation key ≥ 90% [call] [agent agent:x] [model m] [ad hoc]`. */
+/** The declared source of a rule for derived calls: `export`, `converted x@1`, `none (no kind declared)`. */
+function sourceText(derivedKind: string | null | undefined, converter: string | null | undefined) {
+  if (derivedKind === 'converted') return `converted ${converter ?? '?'}`;
+  return derivedKind === 'none' ? 'none (no kind declared)' : (derivedKind ?? '?');
+}
+
+/**
+ * `relation key ≥ 90% [call] [agent agent:x] [model m] [ad hoc]`; a rule for
+ * derived calls (M6 S2c-3): `rule tier (derived call): export`.
+ */
 export function criteriaText(
   r: Pick<AutoAcceptRule, 'kind' | 'tier' | 'minConfidence'> & {
     relationType?: AutoAcceptRule['relationType'] | undefined;
@@ -323,8 +452,14 @@ export function criteriaText(
     llmModel?: string | null | undefined;
     includeAdHoc?: boolean | undefined;
     agent?: AutoAcceptRule['agent'] | undefined;
+    proposedBy?: AutoAcceptRule['proposedBy'] | undefined;
+    derivedKind?: AutoAcceptRule['derivedKind'] | undefined;
+    converter?: string | null | undefined;
   },
 ): string {
+  if (r.proposedBy === 'rule') {
+    return `rule tier (derived call): ${sourceText(r.derivedKind, r.converter)}`;
+  }
   const parts = [`${r.kind} ${r.tier} ≥ ${formatPercent(r.minConfidence)}`];
   if (r.relationType) parts.push(`type ${r.relationType}`);
   if (r.agentPrincipalId) {
@@ -350,9 +485,15 @@ export function ruleLine(r: AutoAcceptRule): string {
   );
 }
 
-function systemLine(s: AutoAcceptSystemRule): string {
+/**
+ * The system rule: its counts, and while derived calls wait, that a rule
+ * for derived calls may accept that source's future ones (M6 S2c-3).
+ */
+export function systemLine(s: AutoAcceptSystemRule): string {
   const proposed =
-    s.proposed > 0 ? `, ${s.proposed} only proposed (derived callers, trust rule)` : '';
+    s.proposed > 0
+      ? `, ${s.proposed} only proposed (derived callers, trust rule; analyzr rules add --derived accepts the next ones)`
+      : '';
   return `system rule ${s.id} ${JSON.stringify(s.name)}: ${s.relationType} relations of modelled callers, always on, read-only; ${s.accepted} accepted${proposed}`;
 }
 
@@ -372,7 +513,11 @@ function subjectText(i: {
 }
 
 function itemLine(i: AutoAcceptItem): string {
-  return `  ${subjectText(i)}  (${i.agent.handle}${i.llmModel ? `, ${i.llmModel}` : ''}, ${i.tier}, ${i.confidence.toFixed(2)})`;
+  const who =
+    i.proposedBy === 'rule'
+      ? 'rule tier (derived call)'
+      : `${i.agent.handle}${i.llmModel ? `, ${i.llmModel}` : ''}`;
+  return `  ${subjectText(i)}  (${who}, ${i.tier}, ${i.confidence.toFixed(2)})`;
 }
 
 function blockedLine(blocked: ApplyAutoAcceptResult['blocked']): string[] {
@@ -383,8 +528,37 @@ function blockedLine(blocked: ApplyAutoAcceptResult['blocked']): string[] {
 
 const ratio = (v: number | null): string => (v === null ? 'n/a' : `${Math.round(v * 1000) / 10}%`);
 
-/** The preview as lines. */
-export function formatPreview(p: AutoAcceptPreview): string[] {
+/**
+ * The preview of a rule for derived calls (M6 S2c-3): the humans' verdicts
+ * on such calls, the open ones it would accept, and the sources the project
+ * has; no curve (its minimum is fixed).
+ */
+function formatDerivedPreview(p: AutoAcceptPreview): string[] {
+  const h = p.history;
+  return [
+    `history: of ${h.decided} derived calls a human decided, the rule would have accepted ${h.wouldAccept}: ` +
+      `${h.accepted} accepted, ${h.rejected} rejected, ${h.corrected} corrected, ${h.held} held (precision ${ratio(h.precision)})`,
+    `open now: ${p.open.count} ${p.open.count === 1 ? 'call' : 'calls'} would be accepted`,
+    ...p.open.items.map(itemLine),
+    ...(p.open.count > p.open.items.length
+      ? [`  … ${p.open.count - p.open.items.length} more`]
+      : []),
+    ...blockedLine(p.open.blocked),
+    ...(p.derivedGroups.length === 0
+      ? ['sources: no unique calls from derived models a rule can name']
+      : [
+          'sources (as the callers declare them now):',
+          ...p.derivedGroups.map(
+            (g) =>
+              `  ${sourceText(g.derivedKind, g.converter)}: ${g.open} open, ${g.blocked} blocked; humans accepted ${g.accepted}, rejected ${g.rejected}`,
+          ),
+        ]),
+  ];
+}
+
+/** The preview as lines; a rule for derived calls without the curve (M6 S2c-3). */
+export function formatPreview(p: AutoAcceptPreview, derived = false): string[] {
+  if (derived) return formatDerivedPreview(p);
   const h = p.history;
   const lines = [
     `history: of ${h.decided} agent-proposed items a human decided, the rule would have accepted ${h.wouldAccept}: ` +
@@ -581,7 +755,7 @@ export async function rulesAddCommand(io: CliIo, opts: AddOptions): Promise<void
     ...(saved.rule.enabled
       ? []
       : [`  off: enable it with analyzr rules enable ${saved.rule.id} -p ${opts.project}`]),
-    ...formatPreview(p),
+    ...formatPreview(p, draft.proposedBy === 'rule'),
     ...(saved.rule.enabled && p.open.count > 0
       ? [
           `rules are never retroactive: accept the ${p.open.count} open ${p.open.count === 1 ? 'proposal' : 'proposals'} with analyzr rules apply ${saved.rule.id} -p ${opts.project}`,
@@ -693,7 +867,7 @@ export async function rulesPreviewCommand(
       : await mergeFlags(draftOf(await getRule(api, opts.project, id)), opts, lazyTokens);
   const p = await preview(api, opts.project, criteriaOf(draft));
   if (opts.json) return json(io, p);
-  out(io, [`preview: ${criteriaText(draft)}`, ...formatPreview(p)]);
+  out(io, [`preview: ${criteriaText(draft)}`, ...formatPreview(p, draft.proposedBy === 'rule')]);
 }
 
 /**

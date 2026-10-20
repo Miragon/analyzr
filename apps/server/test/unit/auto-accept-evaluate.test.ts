@@ -1,17 +1,27 @@
 /**
  * Auto-accept rules (owner decision 19), pure part: the rule match (every
  * criterion, the inclusive boundary, the first match in creation order) and
- * every safeguard for relations and placements, in their order. Synthetic
- * data only.
+ * every safeguard for relations and placements, in their order; rules for
+ * derived calls (M6 S2c-3): who triggers which rule (an existing agent rule
+ * never accepts the rule tier's proposal of a derived call, a rule for
+ * derived calls never an agent's or another rule-tier proposal), the
+ * narrowing by derived kind and exact converter, and the order of
+ * `agent-upload` and `amendment-conflict`; no rule, an agent rule neither,
+ * accepts a call whose caller an agent token uploaded (owner decision 28
+ * (1)). Synthetic data only.
  */
 import type { AutoAcceptRuleId, PrincipalId } from '@analyzr/contracts';
 import { describe, expect, it } from 'vitest';
 
 import {
+  agentUploadedCaller,
+  derivedCallView,
   evaluatePlacementAutoAccept,
   evaluateRelationAutoAccept,
+  isDerivedCallProposal,
   matchRule,
   type AutoAcceptRuleRev,
+  type DerivedCallView,
   type HistoryView,
   type PlacementSubjectView,
   type TriggerView,
@@ -37,6 +47,9 @@ function rule(extra: Partial<AutoAcceptRuleRev> = {}): AutoAcceptRuleRev {
     agentPrincipalId: null,
     llmModel: null,
     includeAdHoc: false,
+    proposedBy: 'agent',
+    derivedKind: null,
+    converter: null,
     authorId: OWNER,
     authorClientId: 'analyzr-web',
     authorIsOwner: true,
@@ -57,6 +70,8 @@ function trigger(extra: Partial<TriggerView> = {}): TriggerView {
     llmModel: 'sim-1',
     pipeline: true,
     current: true,
+    derivedCall: null,
+    agentUploadedCaller: false,
     ...extra,
   };
 }
@@ -81,6 +96,14 @@ function h(
 }
 
 const proposed = { status: 'proposed', endpointState: 'ok', type: 'message' } as const;
+
+/** What a rule for derived calls reads of a call from an engine-less export (M6 S2c-3). */
+const EXPORT: DerivedCallView = {
+  derivedKind: 'export',
+  converter: null,
+  agentUpload: false,
+  amendmentConflict: false,
+};
 
 function relation(
   extra: Partial<Parameters<typeof evaluateRelationAutoAccept>[0]> = {},
@@ -152,10 +175,19 @@ describe('the rule match', () => {
 });
 
 describe('relation safeguards', () => {
-  it('never lets humans or the rule tier trigger a rule', () => {
+  it('never lets humans trigger a rule, the rule tier only with a derived call (M6 S2c-3)', () => {
     expect(reason(relation({ trigger: trigger({ sourceKind: 'human' }) }))).toBe('not-agent');
+    // A rule-tier proposal of anything but a unique call from a derived model.
     expect(reason(relation({ trigger: trigger({ sourceKind: 'rule' }) }))).toBe('not-agent');
     expect(reason(relation({ trigger: trigger({ kind: 'withdrawal' }) }))).toBe('not-agent');
+    // A derived call's proposal is evaluated, but no agent rule matches it.
+    expect(
+      reason(
+        relation({
+          trigger: trigger({ sourceKind: 'rule', derivedCall: EXPORT, principalId: RULES }),
+        }),
+      ),
+    ).toBe('no-matching-rule');
   });
 
   it('refuses a stale pipeline proposal', () => {
@@ -378,5 +410,255 @@ describe('placement safeguards', () => {
   it('needs a placement rule of the proposal’s tier', () => {
     expect(placement({ rules: [rule()] })).toBe('no-matching-rule');
     expect(placement({ trigger: trigger({ tier: 'semantic' }) })).toBe('no-matching-rule');
+  });
+});
+
+describe('rules for derived calls (M6 S2c-3)', () => {
+  const call = { ...proposed, type: 'call' } as const;
+  const derivedRule = (extra: Partial<AutoAcceptRuleRev> = {}) =>
+    rule({
+      proposedBy: 'rule',
+      relationType: 'call',
+      minConfidence: 0.9,
+      derivedKind: 'export',
+      ...extra,
+    });
+  /** The rule tier's proposal of a unique call from a derived model. */
+  const derivedTrigger = (view: Partial<DerivedCallView> = {}, extra: Partial<TriggerView> = {}) =>
+    trigger({
+      principalId: RULES,
+      sourceKind: 'rule',
+      confidence: 0.9,
+      llmModel: null,
+      pipeline: false,
+      derivedCall: { ...EXPORT, ...view },
+      ...extra,
+    });
+  const derived = (extra: Partial<Parameters<typeof evaluateRelationAutoAccept>[0]> = {}) =>
+    reason(
+      relation({
+        relation: call,
+        history: [h(RULES, 'proposal', { confidence: 0.9 })],
+        trigger: derivedTrigger(),
+        rules: [derivedRule()],
+        ...extra,
+      }),
+    );
+
+  it('accepts the rule tier’s proposal of a derived call from the named source', () => {
+    expect(derived()).toBe('accept');
+  });
+
+  it('pins: an existing agent rule (any type or call, 0.5 or 0.9) never accepts a derived call', () => {
+    for (const r of [
+      rule({ minConfidence: 0.5 }),
+      rule({ relationType: 'call' }),
+      rule({ relationType: 'call', includeAdHoc: true }),
+      rule({
+        relationType: 'call',
+        minConfidence: 0.5,
+        includeAdHoc: true,
+        agentPrincipalId: RULES,
+      }),
+    ]) {
+      expect(derived({ rules: [r] })).toBe('no-matching-rule');
+    }
+  });
+
+  it('never accepts an agent’s proposal, nor other rule-tier proposals', () => {
+    // An agent's proposal of the same call.
+    expect(
+      derived({
+        history: [h(AGENT, 'proposal', { confidence: 0.9 })],
+        trigger: trigger({ confidence: 0.9 }),
+      }),
+    ).toBe('no-matching-rule');
+    // An agent's proposal with a derived view (cannot happen; the source kind still counts).
+    expect(derived({ trigger: trigger({ confidence: 0.9, derivedCall: EXPORT }) })).toBe(
+      'no-matching-rule',
+    );
+    // The rule tier's proposals by file stem, duplicate id or message carry no derived view.
+    for (const t of [
+      trigger({ principalId: RULES, sourceKind: 'rule', confidence: 0.8, tier: 'key' }),
+      trigger({ principalId: RULES, sourceKind: 'rule', confidence: 0.5, tier: 'key' }),
+      trigger({ principalId: RULES, sourceKind: 'rule', confidence: 1, tier: 'key' }),
+    ]) {
+      expect(derived({ trigger: t })).toBe('not-agent');
+    }
+    expect(derived({ relation: { ...proposed, type: 'message' }, rules: [derivedRule()] })).toBe(
+      'no-matching-rule',
+    );
+  });
+
+  it('narrows by derived kind and the converter, exactly', () => {
+    expect(derived({ trigger: derivedTrigger({ derivedKind: 'converted' }) })).toBe(
+      'no-matching-rule',
+    );
+    expect(derived({ trigger: derivedTrigger({ derivedKind: null }) })).toBe('no-matching-rule');
+    expect(
+      derived({
+        trigger: derivedTrigger({ derivedKind: null }),
+        rules: [derivedRule({ derivedKind: 'none' })],
+      }),
+    ).toBe('accept');
+    const converted = derivedRule({ derivedKind: 'converted', converter: 'normalize-bpmn@0.1.0' });
+    expect(
+      derived({
+        trigger: derivedTrigger({ derivedKind: 'converted', converter: 'normalize-bpmn@0.1.0' }),
+        rules: [converted],
+      }),
+    ).toBe('accept');
+    for (const converter of ['normalize-bpmn@0.2.0', 'other@0.1.0', null]) {
+      expect(
+        derived({
+          trigger: derivedTrigger({ derivedKind: 'converted', converter }),
+          rules: [converted],
+        }),
+      ).toBe('no-matching-rule');
+    }
+    // Reconstructed or as told: no rule may name them.
+    for (const derivedKind of ['reconstructed', 'as-told'] as const) {
+      expect(derived({ trigger: derivedTrigger({ derivedKind }) })).toBe('no-matching-rule');
+    }
+  });
+
+  it('never accepts a call of an agent upload, nor one whose call target is in conflict', () => {
+    expect(derived({ trigger: derivedTrigger({ agentUpload: true }) })).toBe('agent-upload');
+    expect(derived({ trigger: derivedTrigger({ amendmentConflict: true }) })).toBe(
+      'amendment-conflict',
+    );
+  });
+
+  it('no agent rule accepts an agent’s proposal of a call whose caller an agent token uploaded', () => {
+    const agentCall = (t: Partial<TriggerView>, r = rule()) =>
+      reason(
+        relation({
+          relation: call,
+          history: [h(AGENT, 'proposal')],
+          trigger: trigger(t),
+          rules: [r],
+        }),
+      );
+    expect(agentCall({})).toBe('accept');
+    expect(agentCall({ agentUploadedCaller: true })).toBe('agent-upload');
+    expect(agentCall({ agentUploadedCaller: true }, rule({ relationType: 'call' }))).toBe(
+      'agent-upload',
+    );
+    // after no-matching-rule, before the subject's own state
+    expect(agentCall({ agentUploadedCaller: true, tier: 'semantic' })).toBe('no-matching-rule');
+    expect(agentCall({ agentUploadedCaller: true, current: false })).toBe('agent-upload');
+    // the flag comes from the caller's trust, for calls only
+    const trust = new Map([
+      [
+        'a/x',
+        {
+          trust: { class: 'derived', reasons: ['no-engine', 'agent-upload'] },
+          derivedKind: null,
+          converter: null,
+          conflictedCalls: new Set<string>(),
+        },
+      ],
+      [
+        'h/y',
+        {
+          trust: { class: 'derived', reasons: ['no-engine'] },
+          derivedKind: null,
+          converter: null,
+          conflictedCalls: new Set<string>(),
+        },
+      ],
+    ]);
+    expect(agentUploadedCaller({ type: 'call', fromRef: 'a/x#Call_A' }, trust)).toBe(true);
+    expect(agentUploadedCaller({ type: 'message', fromRef: 'a/x#Event_A' }, trust)).toBe(false);
+    expect(agentUploadedCaller({ type: 'call', fromRef: 'h/y#Call_A' }, trust)).toBe(false);
+    expect(agentUploadedCaller({ type: 'call', fromRef: 'gone/z#Call_A' }, trust)).toBe(false);
+  });
+
+  it('pins the order: no-matching-rule, agent-upload, amendment-conflict, then the rest', () => {
+    const both = derivedTrigger({ agentUpload: true, amendmentConflict: true }, { current: false });
+    expect(derived({ trigger: both, rules: [derivedRule({ derivedKind: 'none' })] })).toBe(
+      'no-matching-rule',
+    );
+    expect(derived({ trigger: both, relation: { ...call, status: 'held' } })).toBe('agent-upload');
+    expect(
+      derived({
+        trigger: derivedTrigger({ amendmentConflict: true }, { current: false }),
+        relation: { ...call, status: 'held' },
+      }),
+    ).toBe('amendment-conflict');
+    expect(derived({ trigger: derivedTrigger({}, { current: false }), competingCall: true })).toBe(
+      'stale-proposal',
+    );
+    expect(derived({ relation: { ...call, status: 'accepted' }, competingCall: true })).toBe(
+      'not-open',
+    );
+    expect(derived({ competingCall: true, liveNoLinks: 1 })).toBe('competing-call');
+    expect(
+      derived({
+        history: [h(RULES, 'proposal', { confidence: 0.9 }), h(OWNER, 'note')],
+        liveNoLinks: 1,
+      }),
+    ).toBe('human-involved');
+    expect(
+      derived({
+        history: [
+          h(RULES, 'proposal', { confidence: 0.9 }),
+          h(AGENT, 'proposal', { question: 'Welcher?' }),
+        ],
+        liveNoLinks: 1,
+      }),
+    ).toBe('agent-question');
+    expect(derived({ liveNoLinks: 1 })).toBe('no-link');
+  });
+
+  it('tells a derived call’s proposal and its view from the caller’s trust', () => {
+    const base = { sourceKind: 'rule', kind: 'proposal', tier: 'key', confidence: 0.9 } as const;
+    expect(
+      isDerivedCallProposal({ type: 'call' }, { ...base, rationale: 'Vertrauensregel: …' }),
+    ).toBe(true);
+    expect(isDerivedCallProposal({ type: 'call' }, { ...base, rationale: null })).toBe(false);
+    expect(
+      isDerivedCallProposal({ type: 'message' }, { ...base, rationale: 'Vertrauensregel: …' }),
+    ).toBe(false);
+    expect(
+      isDerivedCallProposal(
+        { type: 'call' },
+        { ...base, sourceKind: 'agent', rationale: 'Vertrauensregel: …' },
+      ),
+    ).toBe(false);
+    const trust = new Map([
+      [
+        'a/x',
+        {
+          trust: { class: 'derived', reasons: ['no-engine', 'agent-upload'] },
+          derivedKind: 'export' as const,
+          converter: null,
+          conflictedCalls: new Set(['Call_B']),
+        },
+      ],
+      [
+        'm/y',
+        { trust: null, derivedKind: null, converter: null, conflictedCalls: new Set<string>() },
+      ],
+      [
+        'c/z',
+        {
+          trust: { class: 'modelled', reasons: [] },
+          derivedKind: 'export' as const,
+          converter: null,
+          conflictedCalls: new Set<string>(),
+        },
+      ],
+    ]);
+    expect(derivedCallView('a/x#Call_A', trust)).toEqual({
+      derivedKind: 'export',
+      converter: null,
+      agentUpload: true,
+      amendmentConflict: false,
+    });
+    expect(derivedCallView('a/x#Call_B', trust)?.amendmentConflict).toBe(true);
+    expect(derivedCallView('m/y#Call_A', trust)).toBeNull();
+    expect(derivedCallView('c/z#Call_A', trust)).toBeNull();
+    expect(derivedCallView('gone/z#Call_A', trust)).toBeNull();
   });
 });

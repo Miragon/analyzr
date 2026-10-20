@@ -552,7 +552,7 @@ export function buildProgram(io: CliIo = processIo): Command {
   const rules = program
     .command('rules')
     .description(
-      "manage a project's auto-accept rules (owner key; owner decision 19): agent proposals at or above a confidence are accepted as the owner's decision",
+      "manage a project's auto-accept rules (owner key; owner decision 19): agent proposals at or above a confidence, or with --derived the rule tier's unique calls from derived models of one declared source, are accepted as the owner's decision",
     );
   /** The criteria flags of add, edit and preview. */
   const criteria = (cmd: Command): Command =>
@@ -575,7 +575,15 @@ export function buildProgram(io: CliIo = processIo): Command {
       )
       .option('--ad-hoc', 'also ad-hoc proposals (default: pipeline proposals only)')
       .option('--no-ad-hoc', 'pipeline proposals only')
-      .option('--note <text>', 'a note for reviewers ("" removes it)');
+      .option('--note <text>', 'a note for reviewers ("" removes it)')
+      .option(
+        '--derived <source>',
+        'a rule for derived calls (the rule tier’s unique calls from derived models): export, converted or none (no kind declared); fixes kind, tier, type and minimum; never accepts an agent token’s upload',
+      )
+      .option(
+        '--converter <name@version>',
+        'with --derived converted: the converter exactly as the manifest declares it',
+      );
   rules
     .command('list')
     .description(
@@ -599,7 +607,7 @@ export function buildProgram(io: CliIo = processIo): Command {
     rules
       .command('add')
       .description(
-        'create a rule (off unless --enable; never retroactive) and print its preview; needs --name, --kind, --tier, --min',
+        'create a rule (off unless --enable; never retroactive) and print its preview; needs --name, --kind, --tier, --min, or --name and --derived for a rule for derived calls',
       ),
   )
     .requiredOption('-p, --project <project>', 'project key or id')
@@ -641,7 +649,7 @@ export function buildProgram(io: CliIo = processIo): Command {
     rules
       .command('preview')
       .description(
-        'what a rule would have accepted so far (with the precision of the human decisions), would accept now, and the confidence curve; a saved rule (<id>, changed by flags) or an unsaved one (--kind, --tier, --min)',
+        'what a rule would have accepted so far (with the precision of the human decisions), would accept now, and the confidence curve (a rule for derived calls: the calls per declared source instead); a saved rule (<id>, changed by flags) or an unsaved one (--kind, --tier, --min, or --derived)',
       )
       .argument('[id]', 'rule id (aar_…)'),
   )

@@ -6,6 +6,12 @@
  * report the state before the rules ran). It evaluates only the proposals
  * this write recorded, never older ones (rules are not retroactive), and is a
  * no-op after one query when the project has no enabled rule of the kind.
+ *
+ * The fifth write path (M6 S2c-3, decision 24.2's extension): after every
+ * head change's recompute (ingest, amendment writes and withdrawals) and a
+ * model's deletion by a human, {@link autoAcceptDerivedCalls} evaluates the
+ * rule tier's proposals of unique calls from derived models that recompute
+ * recorded against the owner's enabled rules for derived calls.
  */
 import type {
   AutoAcceptKind,
@@ -15,6 +21,8 @@ import type {
   Role,
 } from '@analyzr/contracts';
 
+import { sourceKindOf, type Actor } from '../actor.ts';
+import { headFingerprints } from '../fingerprints.ts';
 import { isCurrent } from '../judgements.ts';
 import type {
   AssertionRecord,
@@ -26,14 +34,19 @@ import type {
   Tx,
 } from '../ports.ts';
 import type { ProposalContext } from '../proposals.ts';
-import { naturalKey } from '../relation-state.ts';
+import type { DerivedProposal } from '../recompute.ts';
+import { byRelation, naturalKey } from '../relation-state.ts';
 import { currentStances, sameProcedure } from '../status.ts';
 import { placementKey } from '../value-chain/placement-state.ts';
 import type { PlacementContext } from '../value-chain/placements.ts';
+import { trustByModel } from '../trust.ts';
 import {
+  agentUploadedCaller,
   competesWithCall,
+  derivedCallView,
   evaluatePlacementAutoAccept,
   evaluateRelationAutoAccept,
+  isDerivedCallProposal,
   triggerOf,
   type AutoAcceptRuleRev,
 } from './evaluate.ts';
@@ -59,6 +72,9 @@ export function toRuleRev(
     agentPrincipalId: r.agentPrincipalId,
     llmModel: r.llmModel,
     includeAdHoc: r.includeAdHoc,
+    proposedBy: r.proposedBy,
+    derivedKind: r.derivedKind,
+    converter: r.converter,
     authorId: r.principalId,
     authorClientId: r.clientId,
     authorIsOwner,
@@ -106,6 +122,21 @@ export async function enabledRules(
   return ruleRevs(tx, projectId, heads);
 }
 
+/**
+ * The enabled rules for derived calls (M6 S2c-3): one query; none in a
+ * project without such a rule (the authors' roles are read only then).
+ */
+export async function enabledDerivedCallRules(
+  tx: Tx,
+  projectId: ProjectId,
+): Promise<AutoAcceptRuleRev[]> {
+  const heads = (
+    await tx.autoAcceptRules.heads(projectId, { kind: 'relation', enabledOnly: true })
+  ).filter((h) => h.proposedBy === 'rule');
+  if (heads.length === 0) return [];
+  return ruleRevs(tx, projectId, heads);
+}
+
 /** A relation proposal this write recorded. */
 export interface RelationTrigger {
   relation: RelationRecord;
@@ -115,10 +146,97 @@ export interface RelationTrigger {
 const isAgentProposal = (a: { sourceKind: string; kind: string }) =>
   a.sourceKind === 'agent' && a.kind === 'proposal';
 
+const byNaturalKey = (a: RelationRecord, b: RelationRecord): number =>
+  byCodePoint(a.type, b.type) || byCodePoint(a.fromRef, b.fromRef) || byCodePoint(a.toRef, b.toRef);
+
+/**
+ * The fifth write path (M6 S2c-3, decision 24.2's extension of decision 19,
+ * owner decision 28 (1)): evaluates the rule tier's proposals of unique
+ * calls from derived models that the write's recompute recorded
+ * (`derivedProposals`, never older ones: rules stay non-retroactive)
+ * against the project's enabled rules for derived calls, and records the
+ * acceptances under each rule's author, caused by the request's `actor`, in
+ * natural key order. The caller holds the project lock; it runs in the
+ * caller's transaction right after the recompute. No query without such
+ * proposals, one without an enabled rule for derived calls. A caller
+ * uploaded with an agent token is never accepted (`agent-upload`), and a
+ * write by an agent token accepts nothing (decision 28 (1)'s spirit: the
+ * rule trusts a source a human imports; an agent's upload of a callee or
+ * its deletion of a duplicate must not decide which call is accepted). A
+ * proposal the rule tier asserts again on a relation it already proposed
+ * (an endpoint's fingerprint or the reasons changed) is a new proposal, as
+ * an agent's re-proposal after a model change is for agent rules.
+ *
+ * @param procedure the procedure relations claims name (live no-links)
+ * @returns the relations accepted
+ */
+export async function autoAcceptDerivedCalls(
+  tx: Tx,
+  actor: Actor,
+  projectId: ProjectId,
+  derivedProposals: readonly DerivedProposal[],
+  procedure: DeclaredProcedure,
+): Promise<RelationRecord[]> {
+  if (derivedProposals.length === 0 || sourceKindOf(actor) !== 'human') return [];
+  const rules = await enabledDerivedCallRules(tx, projectId);
+  if (rules.length === 0) return [];
+  const records = await tx.relations.all(projectId);
+  const byId = new Map(records.map((r) => [r.id as string, r]));
+  const histories = byRelation<AssertionRecord>(await tx.assertions.listForProject(projectId));
+  const trust = trustByModel(await tx.revisions.headTrustRows(projectId));
+  const ctx: ProposalContext = {
+    tx,
+    projectId,
+    actor,
+    fps: headFingerprints(await tx.facts.headProjectFacts(projectId)),
+    relations: new Map(records.map((r) => [naturalKey(r.type, r.fromRef, r.toRef), r])),
+    histories,
+    declared: null,
+    submissionId: null,
+  };
+  const triggers = derivedProposals.flatMap((p) => {
+    const relation = byId.get(p.relationId);
+    return relation ? [{ relation, assertionId: p.assertionId }] : [];
+  });
+  const noLinks = new Map<string, number>();
+  const pairs = triggers.map((t) => ({
+    type: 'call' as const,
+    from: t.relation.fromRef,
+    to: t.relation.toRef,
+  }));
+  for (const n of await tx.noLinks.listLive(projectId, { pairs }, procedure)) {
+    const key = naturalKey(n.type, n.fromRef, n.toRef);
+    noLinks.set(key, (noLinks.get(key) ?? 0) + 1);
+  }
+
+  const accepted: RelationRecord[] = [];
+  for (const t of [...triggers].sort((a, b) => byNaturalKey(a.relation, b.relation))) {
+    const key = naturalKey(t.relation.type, t.relation.fromRef, t.relation.toRef);
+    const relation = ctx.relations.get(key) ?? t.relation;
+    const history = ctx.histories.get(relation.id) ?? [];
+    const a = history.find((x) => x.id === t.assertionId);
+    if (!a || !isDerivedCallProposal(relation, a)) continue;
+    const live = currentStances(history).some((x) => x.id === a.id);
+    const verdict = evaluateRelationAutoAccept({
+      relation,
+      history,
+      trigger: triggerOf(a, live, derivedCallView(relation.fromRef, trust)),
+      liveNoLinks: noLinks.get(key) ?? 0,
+      competingCall: [...ctx.relations.values()].some((r) => competesWithCall(relation, r)),
+      rules,
+    });
+    if (!verdict.accept) continue;
+    accepted.push(await recordRelationAutoAccept(ctx, relation, a.id, verdict.rule));
+  }
+  return accepted;
+}
+
 /**
  * Evaluates the relation proposals this write recorded against the
  * project's enabled relation rules and records the acceptances, in natural
- * key order (deterministic events).
+ * key order (deterministic events). A call whose caller an agent token
+ * uploaded is never accepted (`agent-upload`, owner decision 28 (1)): one
+ * more query, only when a call is among the triggers and a rule is enabled.
  *
  * @param opts.procedure the procedure relations claims name (a pipeline proposal's currency)
  * @param opts.heads the head `facts_hash` per model key, if loaded
@@ -137,6 +255,9 @@ export async function autoAcceptRelations(
   const rules = await enabledRules(ctx.tx, ctx.projectId, 'relation');
   if (rules.length === 0) return [];
   const heads = opts.heads ?? (await ctx.tx.revisions.headHashes(ctx.projectId));
+  const trust = agentTriggers.some((t) => t.relation.type === 'call')
+    ? trustByModel(await ctx.tx.revisions.headTrustRows(ctx.projectId))
+    : new Map<string, never>();
   const pairs = agentTriggers.map((t) => ({
     type: t.relation.type as 'call' | 'message' | 'signal' | 'trigger',
     from: t.relation.fromRef,
@@ -188,7 +309,7 @@ export async function autoAcceptRelations(
     const verdict = evaluateRelationAutoAccept({
       relation,
       history,
-      trigger: triggerOf(a, current),
+      trigger: triggerOf(a, current, null, agentUploadedCaller(relation, trust)),
       liveNoLinks: noLinks.get(key) ?? 0,
       competingCall: relation.type === 'call' && (await competing(relation)),
       rules,

@@ -4,13 +4,18 @@
  * (`planRecompute`), read as the transitions it would make, the findings
  * before and after, the files' heads, and the live keys of the manifest's
  * system the import does not name. The dry runs and the deletion impact
- * call it; nothing is written.
+ * call it; nothing is written. For an owner (M6 S2c-3) it also evaluates
+ * the derived call proposals the plan records against their rules for
+ * derived calls, as the write's `autoAcceptDerivedCalls` does.
  */
 import {
   MAX_IMPACT_ITEMS,
   TrustReason,
   parseRef,
+  type AutoAcceptRuleId,
   type Finding,
+  type ImpactAutoAcceptedCall,
+  type ImpactAutoAcceptedCalls,
   type ImpactEndpoint,
   type ImpactFile,
   type ImpactProposedCall,
@@ -23,8 +28,15 @@ import {
   type RevisionTrust,
 } from '@analyzr/contracts';
 
+import {
+  agentUploadedCaller,
+  competesWithCall,
+  derivedCallView,
+  evaluateRelationAutoAccept,
+  type AutoAcceptRuleRev,
+} from './auto-accept/evaluate.ts';
 import type { RelationRecord } from './ports.ts';
-import { planRecompute, type RecomputeInput } from './recompute.ts';
+import { planRecompute, type RecomputeInput, type RecomputePlan } from './recompute.ts';
 import { naturalKey } from './relation-state.ts';
 
 /** The first {@link MAX_IMPACT_ITEMS} with their count. */
@@ -41,10 +53,119 @@ const relationOf = (r: Pick<RelationRecord, 'type' | 'fromRef' | 'toRef'>): Impa
 /** A finding's identity: its kind and refs (the detail is prose). */
 const findingKey = (f: Finding): string => `${f.kind}\u0000${f.refs.join('\u0000')}`;
 
-/** The relations' part of an impact: the transitions a recompute over the would-be head makes. */
+/**
+ * What the dry run needs to tell which derived call proposals the owner's
+ * rules would accept (M6 S2c-3): only for an owner, nobody else.
+ */
+export interface DerivedCallRules {
+  /** The enabled rules for derived calls, in creation order (`enabledDerivedCallRules`). */
+  rules: readonly AutoAcceptRuleRev[];
+  /** Live no-links (current or stale) per natural key. */
+  liveNoLinks: ReadonlyMap<string, number>;
+}
+
+type RelationAfter = Pick<
+  RelationRecord,
+  'id' | 'type' | 'fromRef' | 'toRef' | 'status' | 'endpointState'
+>;
+
+/**
+ * The unique calls from derived models the owner's rules would accept in
+ * the write (M6 S2c-3): the rule tier's proposals the plan records, each
+ * evaluated as `autoAcceptDerivedCalls` evaluates it after the recompute
+ * (natural key order, the relations as the plan leaves them, an acceptance
+ * taking its call element), with `byRule` over all of them and how many of
+ * them are among `proposed` (the natural keys `callsProposed` counts).
+ */
+function autoAcceptedCalls(
+  input: RecomputeInput,
+  plan: RecomputePlan,
+  auto: DerivedCallRules,
+  proposed: ReadonlySet<string>,
+): ImpactAutoAcceptedCalls {
+  const after = new Map<string, RelationAfter>();
+  for (const r of input.relations) after.set(naturalKey(r.type, r.fromRef, r.toRef), r);
+  for (const step of plan.steps) {
+    if (step.kind === 'derive' && step.insert) {
+      const t = step.target;
+      after.set(naturalKey(t.type, t.fromRef, t.toRef), { ...t, ...step.insert.state });
+    } else if (step.kind === 'refresh') {
+      const r = step.relation;
+      after.set(naturalKey(r.type, r.fromRef, r.toRef), { ...r, ...step.patch });
+    }
+  }
+  const proposals = plan.steps
+    .flatMap((step) =>
+      step.kind === 'derive' && step.derivedCaller && step.assertion?.kind === 'proposal'
+        ? [step.target]
+        : [],
+    )
+    .sort(
+      (a, b) =>
+        byCodePoint(a.type, b.type) ||
+        byCodePoint(a.fromRef, b.fromRef) ||
+        byCodePoint(a.toRef, b.toRef),
+    );
+  const accepted: ImpactAutoAcceptedCall[] = [];
+  const byRule = new Map<AutoAcceptRuleId, { ruleName: string; count: number; order: number }>();
+  for (const target of proposals) {
+    const key = naturalKey(target.type, target.fromRef, target.toRef);
+    const relation = after.get(key);
+    const history = (plan.histories.get(target.id) ?? []).map((a) => ({
+      ...a,
+      question: a.question ?? null,
+    }));
+    const proposal = history.findLast((a) => a.sourceKind === 'rule' && a.kind === 'proposal');
+    if (!relation || !proposal) continue;
+    const verdict = evaluateRelationAutoAccept({
+      relation,
+      history,
+      trigger: {
+        id: `planned-${key}`,
+        principalId: proposal.principalId,
+        sourceKind: proposal.sourceKind,
+        kind: proposal.kind,
+        tier: proposal.tier,
+        confidence: proposal.confidence,
+        question: null,
+        llmModel: null,
+        pipeline: false,
+        current: true,
+        derivedCall: derivedCallView(target.fromRef, input.trust),
+        agentUploadedCaller: agentUploadedCaller(target, input.trust),
+      },
+      liveNoLinks: auto.liveNoLinks.get(key) ?? 0,
+      competingCall: [...after.values()].some((r) => competesWithCall(relation, r)),
+      rules: auto.rules,
+    });
+    if (!verdict.accept) continue;
+    after.set(key, { ...relation, status: 'accepted' });
+    const { rule } = verdict;
+    accepted.push({ ...relationOf(target), ruleId: rule.ruleId, ruleName: rule.name });
+    const counted = byRule.get(rule.ruleId) ?? { ruleName: rule.name, count: 0, order: rule.order };
+    counted.count++;
+    byRule.set(rule.ruleId, counted);
+  }
+  return {
+    ...capped(accepted),
+    ofProposed: accepted.filter((c) => proposed.has(naturalKey(c.type, c.from, c.to))).length,
+    byRule: [...byRule]
+      .sort(([, a], [, b]) => a.order - b.order)
+      .map(([ruleId, { ruleName, count }]) => ({ ruleId, ruleName, count })),
+  };
+}
+
+const byCodePoint = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
+
+/**
+ * The relations' part of an impact: the transitions a recompute over the
+ * would-be head makes; with `auto` (an owner's dry run, M6 S2c-3) also the
+ * derived calls their rules would accept.
+ */
 export function relationImpact(
   input: RecomputeInput,
   findingsBefore: readonly Finding[],
+  auto?: DerivedCallRules,
 ): Omit<ImportImpact, 'files' | 'absentKeys'> {
   const plan = planRecompute(input);
   const accepted: ImpactRelation[] = [];
@@ -106,6 +227,16 @@ export function relationImpact(
   return {
     acceptedCalls: capped(accepted),
     callsProposed: proposedCalls(callsProposed, input.trust),
+    ...(auto
+      ? {
+          autoAcceptedCalls: autoAcceptedCalls(
+            input,
+            plan,
+            auto,
+            new Set(callsProposed.map((c) => naturalKey(c.type, c.from, c.to))),
+          ),
+        }
+      : {}),
     proposalsAdded: capped(added),
     proposalsWithdrawn: capped(withdrawn),
     endpointsChanged: capped(endpoints),
@@ -195,16 +326,17 @@ export function absentKeys(
     .sort();
 }
 
-/** The whole impact (`ImportImpact`), from its parts. */
+/** The whole impact (`ImportImpact`), from its parts; `auto` only for an owner (M6 S2c-3). */
 export function importImpact(
   input: RecomputeInput,
   findingsBefore: readonly Finding[],
   files: readonly FileHeads[],
   absent: readonly string[],
+  auto?: DerivedCallRules,
 ): ImportImpact {
   return {
     files: fileImpact(files),
-    ...relationImpact(input, findingsBefore),
+    ...relationImpact(input, findingsBefore, auto),
     absentKeys: capped(absent),
   };
 }

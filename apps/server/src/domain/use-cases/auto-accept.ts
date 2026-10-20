@@ -47,7 +47,7 @@ import {
 
 import type { Actor } from '../actor.ts';
 import { ownersAmong, toRuleRev } from '../auto-accept/apply.ts';
-import type { AutoAcceptRuleRev } from '../auto-accept/evaluate.ts';
+import { isDerivedCallProposal, type AutoAcceptRuleRev } from '../auto-accept/evaluate.ts';
 import {
   NO_STATS,
   filterLedger,
@@ -58,6 +58,7 @@ import {
 } from '../auto-accept/ledger.ts';
 import {
   blockedCounts,
+  derivedGroups,
   openPlacementCandidates,
   openRelationCandidates,
   placementItem,
@@ -100,7 +101,7 @@ import type {
 import type { ProposalContext } from '../proposals.ts';
 import { byRelation, naturalKey, relationViews } from '../relation-state.ts';
 import { currentStances, recomputeStatus, type StanceView } from '../status.ts';
-import { isOpenDerivedCall } from '../trust.ts';
+import { isOpenDerivedCall, trustByModel } from '../trust.ts';
 import { loadChainState, type ChainState } from '../value-chain/chain-state.ts';
 import {
   byPlacement,
@@ -129,11 +130,14 @@ const marked = (a: StanceView) => (a.autoAcceptRuleId ?? null) !== null;
 const PROBLEM_TEXT: Readonly<Record<RuleDraftProblem | 'kind-changed', string>> = {
   'kind-tier-mismatch': 'the tier does not fit the kind of rule',
   'type-not-for-placements': 'only a relation rule has a relation type',
+  'derived-criteria':
+    'a rule for derived calls is a relation rule of tier key, type call, minimum 0.9, without agent, model or ad hoc, naming export, converted (with its converter) or none; an agent rule names no derivation',
   'unknown-agent': 'the agent is not an agent of this project',
   'name-taken': 'another auto-accept rule of the project has this name',
   'confidence-out-of-range': 'the minimum confidence must lie between 0.5 and 1',
   'control-characters': 'name, note and model must not contain control characters',
-  'kind-changed': 'the kind of a rule never changes; create a new rule',
+  'kind-changed':
+    'the kind of a rule never changes, nor whose proposals it accepts; create a new rule',
 };
 
 function invalid(reason: RuleDraftProblem | 'kind-changed'): DomainError {
@@ -210,6 +214,8 @@ async function loadRelations(
       noLinks: await tx.noLinks.listHistory(projectId),
       heads: await tx.revisions.headHashes(projectId),
       procedure,
+      // What a rule for derived calls reads of a caller (M6 S2c-3), from its current head.
+      trust: trustByModel(await tx.revisions.headTrustRows(projectId)),
     },
   };
 }
@@ -354,6 +360,9 @@ function revisionView(r: StoredAutoAcceptRuleRevision): AutoAcceptRuleRevision {
     agentPrincipalId: r.agentPrincipalId,
     llmModel: r.llmModel,
     includeAdHoc: r.includeAdHoc,
+    proposedBy: r.proposedBy,
+    derivedKind: r.derivedKind,
+    converter: r.converter,
     author: { principalId: r.principalId, handle: r.handle },
     clientId: r.clientId,
     at: iso(r.createdAt),
@@ -382,6 +391,9 @@ function ruleView(
     agent: head.agentPrincipalId === null ? null : agentOf(ctx.agents, head.agentPrincipalId),
     llmModel: head.llmModel,
     includeAdHoc: head.includeAdHoc,
+    proposedBy: head.proposedBy,
+    derivedKind: head.derivedKind,
+    converter: head.converter,
     author: { principalId: head.principalId, handle: head.handle },
     authorIsOwner: ctx.owners.get(head.principalId) ?? false,
     createdBy: { principalId: head.createdBy, handle: head.createdByHandle },
@@ -444,6 +456,9 @@ function draftRule(actor: Actor, criteria: AutoAcceptCriteria): AutoAcceptRuleRe
     agentPrincipalId: criteria.agentPrincipalId,
     llmModel: criteria.llmModel,
     includeAdHoc: criteria.includeAdHoc,
+    proposedBy: criteria.proposedBy,
+    derivedKind: criteria.derivedKind,
+    converter: criteria.converter,
     authorId: actor.principalId,
     authorClientId: actor.clientId,
     authorIsOwner: true,
@@ -669,7 +684,10 @@ export function autoAcceptUseCases(deps: UseCaseDeps) {
           );
         }
         const { head } = found;
-        if (draft.kind !== head.kind) throw invalid('kind-changed');
+        // Whose proposals a rule accepts is part of its „Art“ (M6 S2c-3): it never changes either.
+        if (draft.kind !== head.kind || draft.proposedBy !== head.proposedBy) {
+          throw invalid('kind-changed');
+        }
         const fields = draftFields(draft);
         // A rule whose author lost the owner role matches nothing: saving it takes it over.
         const takeOver =
@@ -743,9 +761,11 @@ export function autoAcceptUseCases(deps: UseCaseDeps) {
         let openItems: AutoAcceptItem[];
         let openBlocked: ReadonlyMap<AutoAcceptBlockReason, number>;
         let openAt: (minConfidence: number) => number;
+        let groups: AutoAcceptPreview['derivedGroups'] = [];
         if (rule.kind === 'relation') {
           const { side } = await loadRelations(tx, project.id, procedureOf('relation'));
           collect(side.histories.values());
+          groups = derivedGroups(side);
           history = replayHistory({ kind: 'relation', relations: side }, rule);
           const open = openRelationCandidates(side, rule);
           openItems = open.accept.map(relationItem);
@@ -781,6 +801,7 @@ export function autoAcceptUseCases(deps: UseCaseDeps) {
             .map(([principalId, handle]) => agentOf(agents, principalId, handle))
             .sort((a, b) => (a.handle < b.handle ? -1 : a.handle > b.handle ? 1 : 0)),
           llmModels: [...models].sort(),
+          derivedGroups: groups,
         };
       });
     },
@@ -984,10 +1005,16 @@ export function autoAcceptUseCases(deps: UseCaseDeps) {
             const relation =
               ctx.relations.get(naturalKey(record.type, record.fromRef, record.toRef)) ?? record;
             const stored = await revokeRelationAutoAccept(ctx, relation, item.decision, reason, by);
-            const liveAgent = currentStances(ctx.histories.get(stored.id) ?? []).some(
-              isAgentProposal,
-            );
-            if (!liveAgent) lostModels.add(modelOf(stored.fromRef)).add(modelOf(stored.toRef));
+            // The judgement that triggered the acceptance is kept while it is live: an agent's
+            // proposal for an agent rule, the rule tier's proposal of the derived call for a rule
+            // for derived calls (M6 S2c-3: revoking it loses nothing, so nothing is queued). Else
+            // the agents judge the pair again, also when another proposal keeps it `proposed`.
+            const live = currentStances(ctx.histories.get(stored.id) ?? []);
+            const kept =
+              item.entry.proposedBy === 'rule'
+                ? live.some((a) => isDerivedCallProposal(stored, a))
+                : live.some((a) => a.kind === 'proposal' && a.sourceKind === 'agent');
+            if (!kept) lostModels.add(modelOf(stored.fromRef)).add(modelOf(stored.toRef));
             done.push({
               ...item.entry,
               status: stored.status,

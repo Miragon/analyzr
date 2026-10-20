@@ -3,8 +3,10 @@
  * replay (where a rule would have fired, the outcomes, no ground truth from
  * rule decisions, no-link liveness by seq, competing calls and steps as of
  * the proposal), the open-now evaluation that "apply" shares, the curve, the
- * ledger and its statistics, and a benchmark against quadratic blow-ups.
- * Synthetic data only.
+ * ledger and its statistics, and a benchmark against quadratic blow-ups;
+ * rules for derived calls (M6 S2c-3): open now, the replay at the rule
+ * tier's proposals, the safeguards, `derivedGroups` and the ledger's
+ * `proposedBy`. Synthetic data only.
  */
 import type {
   AutoAcceptRuleId,
@@ -20,8 +22,10 @@ import { describe, expect, it } from 'vitest';
 import type { AutoAcceptRuleRev } from '../../src/domain/auto-accept/evaluate.ts';
 import { ledgerItems, ruleStats, type LedgerSubject } from '../../src/domain/auto-accept/ledger.ts';
 import {
+  derivedGroups,
   openPlacementCandidates,
   openRelationCandidates,
+  relationItem,
   replayHistory,
   type PlacementSide,
   type RelationSide,
@@ -55,6 +59,9 @@ function rule(extra: Partial<AutoAcceptRuleRev> = {}): AutoAcceptRuleRev {
     agentPrincipalId: null,
     llmModel: null,
     includeAdHoc: false,
+    proposedBy: 'agent',
+    derivedKind: null,
+    converter: null,
     authorId: OWNER,
     authorClientId: 'analyzr-web',
     authorIsOwner: true,
@@ -110,6 +117,7 @@ function relationSide(
     history: StoredAssertion[];
   }[],
   noLinks: NoLinkHistoryRecord[] = [],
+  trust: RelationSide['trust'] = new Map(),
 ): RelationSide {
   return {
     relations: rels.map((r) => ({
@@ -127,6 +135,7 @@ function relationSide(
       ['b', 'h-b'],
     ]),
     procedure: PROC,
+    trust,
   };
 }
 
@@ -665,6 +674,244 @@ describe('ledger', () => {
       revoked: 1,
       confirmed: 1,
       overruled: 1,
+    });
+  });
+});
+
+describe('rules for derived calls (M6 S2c-3)', () => {
+  const RULES = 'prn_0000000000000000000000RULE' as PrincipalId;
+  /** The rule tier's proposal of a unique call from a derived model (key, 0.9, the rationale). */
+  const rp = (relationId: string) =>
+    ra(relationId, RULES, 'proposal', {
+      sourceKind: 'rule',
+      confidence: 0.9,
+      rationale: 'Vertrauensregel: Der Aufruf nennt genau einen Prozess …',
+      submissionId: null,
+      declared: null,
+      fromHash: null,
+      toHash: null,
+      handle: 'analyzr-rules',
+    });
+  const caller = (
+    derivedKind: 'export' | 'converted' | 'reconstructed' | null,
+    extra: { converter?: string; agentUpload?: boolean; conflicted?: string[] } = {},
+  ) => ({
+    trust: {
+      class: 'derived',
+      reasons: extra.agentUpload ? ['no-engine', 'agent-upload'] : ['no-engine'],
+    },
+    derivedKind,
+    converter: extra.converter ?? null,
+    conflictedCalls: new Set(extra.conflicted ?? []),
+  });
+  const derivedRule = rule({
+    proposedBy: 'rule',
+    relationType: 'call',
+    minConfidence: 0.9,
+    derivedKind: 'export',
+  });
+  const calls = [
+    { id: 'c1', type: 'call' as const, from: 'a#C1', to: 'b#P1', history: [rp('c1')] },
+    {
+      id: 'c2',
+      type: 'call' as const,
+      from: 'a#C2',
+      to: 'b#P2',
+      history: [rp('c2'), ra('c2', OWNER, 'decision')],
+    },
+    {
+      id: 'c3',
+      type: 'call' as const,
+      from: 'a#C3',
+      to: 'b#P3',
+      history: [rp('c3'), ra('c3', OWNER, 'decision', { verdict: 'reject' })],
+    },
+    { id: 'm1', history: [ra('m1', AGENT, 'proposal')] },
+  ];
+
+  it('fires at the rule tier’s proposal from the named source; an agent rule never does', () => {
+    const side = relationSide(calls, [], new Map([['a', caller('export')]]));
+    const open = openRelationCandidates(side, derivedRule);
+    expect(open.accept.map((o) => o.relation.id)).toEqual(['c1']);
+    expect(relationItem(open.accept[0]!)).toMatchObject({
+      proposedBy: 'rule',
+      agent: { principalId: RULES, handle: 'analyzr-rules' },
+      tier: 'key',
+      confidence: 0.9,
+    });
+    // An agent rule of any type down to 0.5 takes the agent's proposal only.
+    expect(
+      openRelationCandidates(side, rule({ minConfidence: 0.5 })).accept.map((o) => o.relation.id),
+    ).toEqual(['m1']);
+    expect(
+      openRelationCandidates(side, rule({ minConfidence: 0.5, relationType: 'call' })).accept,
+    ).toEqual([]);
+    // The replay: the bulk accept and the rejection are the humans' verdicts on such calls.
+    expect(replayHistory({ kind: 'relation', relations: side }, derivedRule).history).toMatchObject(
+      { decided: 2, wouldAccept: 2, accepted: 1, rejected: 1, undecided: 1, precision: 0.5 },
+    );
+    expect(
+      replayHistory({ kind: 'relation', relations: side }, rule({ minConfidence: 0.5 })).history,
+    ).toMatchObject({ decided: 0, wouldAccept: 0, undecided: 1 });
+    // Another source, or a converter of another version, fires nowhere.
+    for (const other of [
+      rule({ ...derivedRule, derivedKind: 'none' }),
+      rule({ ...derivedRule, derivedKind: 'converted', converter: 'normalize-bpmn@0.1.0' }),
+    ]) {
+      expect(openRelationCandidates(side, other).accept).toEqual([]);
+      expect(replayHistory({ kind: 'relation', relations: side }, other).history.wouldAccept).toBe(
+        0,
+      );
+    }
+  });
+
+  it('never fires at a caller uploaded with an agent token or a conflicted call target', () => {
+    const uploaded = relationSide(
+      calls,
+      [],
+      new Map([['a', caller('export', { agentUpload: true })]]),
+    );
+    expect(openRelationCandidates(uploaded, derivedRule).accept).toEqual([]);
+    expect(Object.fromEntries(openRelationCandidates(uploaded, derivedRule).blocked)).toEqual({
+      'agent-upload': 1,
+    });
+    expect(
+      replayHistory({ kind: 'relation', relations: uploaded }, derivedRule).history.wouldAccept,
+    ).toBe(0);
+    const conflicted = relationSide(
+      calls,
+      [],
+      new Map([['a', caller('export', { conflicted: ['C1'] })]]),
+    );
+    expect(Object.fromEntries(openRelationCandidates(conflicted, derivedRule).blocked)).toEqual({
+      'amendment-conflict': 1,
+    });
+  });
+
+  it('no agent rule takes an agent’s call proposal from a caller an agent token uploaded', () => {
+    const agentCall = { id: 'c4', type: 'call' as const, from: 'a#C4', to: 'b#P4' };
+    const side = (agentUpload: boolean) =>
+      relationSide(
+        [{ ...agentCall, history: [ra('c4', AGENT, 'proposal')] }, calls[3]!],
+        [],
+        new Map([['a', caller('export', { agentUpload })]]),
+      );
+    const agentRule = rule({ minConfidence: 0.9 });
+    expect(openRelationCandidates(side(false), agentRule).accept.map((o) => o.relation.id)).toEqual(
+      ['c4', 'm1'],
+    );
+    // the call is blocked (decision 28 (1)); the caller's message is not a call
+    const uploaded = openRelationCandidates(side(true), agentRule);
+    expect(uploaded.accept.map((o) => o.relation.id)).toEqual(['m1']);
+    expect(Object.fromEntries(uploaded.blocked)).toEqual({ 'agent-upload': 1 });
+    const decided = (agentUpload: boolean) =>
+      relationSide(
+        [{ ...agentCall, history: [ra('c4', AGENT, 'proposal'), ra('c4', OWNER, 'decision')] }],
+        [],
+        new Map([['a', caller('export', { agentUpload })]]),
+      );
+    expect(
+      replayHistory({ kind: 'relation', relations: decided(false) }, agentRule).history,
+    ).toMatchObject({ wouldAccept: 1, accepted: 1 });
+    expect(
+      replayHistory({ kind: 'relation', relations: decided(true) }, agentRule).history,
+    ).toMatchObject({ decided: 1, wouldAccept: 0 });
+  });
+
+  it('counts the derived calls per source a rule can name (derivedGroups)', () => {
+    const side = relationSide(
+      [
+        ...calls,
+        { id: 'k1', type: 'call', from: 'k#C1', to: 'b#Q1', history: [rp('k1')] },
+        {
+          id: 'k2',
+          type: 'call',
+          from: 'k#C2',
+          to: 'b#Q2',
+          history: [
+            rp('k2'),
+            ra('k2', OWNER, 'decision', {
+              verdict: 'reject',
+              linkedRelationId: 'rel_x',
+            }),
+          ],
+        },
+        { id: 'y1', type: 'call', from: 'y#C1', to: 'b#Y1', history: [rp('y1')] },
+        {
+          id: 'n1',
+          type: 'call',
+          from: 'n#C1',
+          to: 'b#N1',
+          history: [rp('n1'), ra('n1', AGENT, 'proposal', { question: 'Wirklich?' })],
+        },
+        { id: 'r1', type: 'call', from: 'r#C1', to: 'b#R1', history: [rp('r1')] },
+        { id: 'v1', type: 'call', from: 'v#C1', to: 'b#V1', history: [rp('v1')] },
+      ],
+      [],
+      new Map([
+        ['a', caller('export')],
+        ['k', caller('converted', { converter: 'normalize-bpmn@0.1.0' })],
+        ['y', caller('converted', { converter: 'normalize-bpmn@0.2.0', agentUpload: true })],
+        ['n', caller(null)],
+        ['r', caller('reconstructed')],
+        // a conversion without converter: no rule can name it
+        ['v', caller('converted')],
+      ]),
+    );
+    expect(derivedGroups(side)).toEqual([
+      { derivedKind: 'export', converter: null, open: 1, blocked: 0, accepted: 1, rejected: 1 },
+      {
+        derivedKind: 'converted',
+        converter: 'normalize-bpmn@0.1.0',
+        open: 1,
+        blocked: 0,
+        accepted: 0,
+        rejected: 1,
+      },
+      {
+        derivedKind: 'converted',
+        converter: 'normalize-bpmn@0.2.0',
+        open: 0,
+        blocked: 1,
+        accepted: 0,
+        rejected: 0,
+      },
+      { derivedKind: 'none', converter: null, open: 0, blocked: 1, accepted: 0, rejected: 0 },
+    ]);
+    // A project whose callers are modelled now has none.
+    expect(derivedGroups(relationSide(calls))).toEqual([]);
+  });
+
+  it('marks the ledger entry of an acceptance a derived call triggered', () => {
+    const trigger = rp('c9');
+    const decision = ra('c9', OWNER, 'decision', {
+      autoAcceptRuleId: RULE_ID,
+      autoAcceptRuleRevision: 1,
+      autoAcceptTriggerId: trigger.id,
+    });
+    const [item] = ledgerItems(
+      [
+        {
+          kind: 'relation',
+          id: 'c9',
+          status: 'accepted',
+          endpointState: 'ok',
+          type: 'call',
+          from: 'a#C9',
+          to: 'b#P9',
+          valueChainKey: null,
+          step: null,
+          process: null,
+          history: [trigger, decision].map((a) => ({ ...a, linked: null, llmModel: null })),
+        },
+      ],
+      () => 'Aufrufe: Export ohne Engine',
+    );
+    expect(item?.entry).toMatchObject({
+      proposedBy: 'rule',
+      agent: { principalId: RULES, handle: 'analyzr-rules' },
+      tier: 'key',
+      confidence: 0.9,
     });
   });
 });

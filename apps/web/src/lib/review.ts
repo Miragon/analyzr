@@ -258,6 +258,63 @@ export function isBulkCall(
   );
 }
 
+/** A source a rule for derived calls can name (M6 S2c-3; `AutoAcceptDerivedKind` and converter). */
+export interface DerivedCallSource {
+  derivedKind: 'export' | 'converted' | 'none';
+  converter: string | null;
+}
+
+/**
+ * The source most of these calls' callers declare that a rule for derived
+ * calls can name (M6 S2c-3), by the caller models' `Model.trust`: `export`,
+ * `converted` with its converter, or `none` (no kind declared). A caller
+ * uploaded with an agent token counts for nothing (no rule accepts its
+ * calls), nor a reconstructed or as-told one or a conversion without
+ * converter; ties go to the first call. `null` when no call is left: then
+ * no rule could accept them, and nothing is offered.
+ */
+export function derivedCallSource(
+  calls: readonly Pick<Relation, 'from'>[],
+  models: readonly Pick<Model, 'key' | 'trust'>[],
+): DerivedCallSource | null {
+  const byKey = new Map(models.map((m) => [m.key, m.trust]));
+  const counted = new Map<string, { source: DerivedCallSource; n: number }>();
+  for (const call of calls) {
+    const trust = byKey.get(splitRef(call.from).modelKey);
+    if (!trust || trust.class !== 'derived' || trust.reasons.includes('agent-upload')) continue;
+    const kind = trust.derivedKind ?? 'none';
+    let source: DerivedCallSource;
+    if (kind === 'export' || kind === 'none') source = { derivedKind: kind, converter: null };
+    else if (kind === 'converted' && trust.converter) {
+      source = { derivedKind: kind, converter: trust.converter };
+    } else continue;
+    const key = `${source.derivedKind}\u0000${source.converter ?? ''}`;
+    const entry = counted.get(key) ?? { source, n: 0 };
+    entry.n += 1;
+    counted.set(key, entry);
+  }
+  let best: { source: DerivedCallSource; n: number } | null = null;
+  for (const entry of counted.values()) if (!best || entry.n > best.n) best = entry;
+  return best?.source ?? null;
+}
+
+/**
+ * Whether one of the project's rules (on or off) already names `source`
+ * (M6 S2c-3): then the toast after a bulk accept offers no new one (the
+ * calls it did not take were proposed before it, or it is off).
+ */
+export function ruleNamesSource(
+  rules: readonly { proposedBy: string; derivedKind: string | null; converter: string | null }[],
+  source: DerivedCallSource,
+): boolean {
+  return rules.some(
+    (r) =>
+      r.proposedBy === 'rule' &&
+      r.derivedKind === source.derivedKind &&
+      (source.derivedKind !== 'converted' || r.converter === source.converter),
+  );
+}
+
 /**
  * The rule tier's proposal of a unique call from a derived model (M6 S2c,
  * the trust rule), told by the assertion itself: tier `key` at

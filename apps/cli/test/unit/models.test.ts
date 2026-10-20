@@ -214,7 +214,17 @@ describe('analyzr models delete', () => {
     return fakeApi({
       [MODELS]: pagedModels(all),
       'GET /api/v1/projects/p/models/mdl_b/deletion-impact': () => Response.json(impact(0)),
-      'GET /api/v1/projects/p/models/mdl_a_eins/deletion-impact': () => Response.json(impact(1)),
+      // an owner's dry run: their rules for derived calls take a call the deletion makes unique
+      'GET /api/v1/projects/p/models/mdl_a_eins/deletion-impact': () =>
+        Response.json({
+          ...impact(1),
+          autoAcceptedCalls: {
+            count: 1,
+            items: [],
+            ofProposed: 0,
+            byRule: [{ ruleId: 'aar_01J9Z3N4X5Q6R7S8T9V0W1X2Y3', ruleName: 'Aufrufe', count: 1 }],
+          },
+        }),
       'DELETE /api/v1/projects/p/models/mdl_a_eins': () => new Response(null, { status: 204 }),
       'DELETE /api/v1/projects/p/models/mdl_b': () => new Response(null, { status: 204 }),
     });
@@ -242,7 +252,7 @@ describe('analyzr models delete', () => {
         '  a/eins  waiting_for_review  r1    c7  2 open items',
         // M6 S2b: each deletion's impact, against the project's head
         '  b: 0 accepted relations lose an end (missing), 3 rule stances withdrawn, findings 0 added, 0 resolved',
-        '  a/eins: 1 accepted relation loses an end (missing), 3 rule stances withdrawn, 1 call only proposed (trust rule), findings 1 added, 0 resolved',
+        '  a/eins: 1 accepted relation loses an end (missing), 3 rule stances withdrawn, 1 call only proposed (trust rule), 1 call accepted by your rules for derived calls, findings 1 added, 0 resolved',
         'Uploading a key again revives its model with a new revision.',
         '',
       ].join('\n'),

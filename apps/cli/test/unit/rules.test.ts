@@ -4,11 +4,15 @@ import type { AgentToken } from '@analyzr/client';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import {
+  criteriaText,
   draftOf,
   formatPercent,
+  formatPreview,
   mergeFlags,
   parseConfidence,
+  parseDerived,
   resolveAgent,
+  systemLine,
 } from '../../src/commands/rules.ts';
 import { runCli } from '../../src/program.ts';
 import {
@@ -83,6 +87,9 @@ function rule(overrides: Record<string, unknown> = {}) {
     agent: null,
     llmModel: null,
     includeAdHoc: false,
+    proposedBy: 'agent',
+    derivedKind: null,
+    converter: null,
     author: OWNER,
     authorIsOwner: true,
     createdBy: OWNER,
@@ -103,6 +110,9 @@ function rule(overrides: Record<string, unknown> = {}) {
     agentPrincipalId: head.agentPrincipalId,
     llmModel: head.llmModel,
     includeAdHoc: head.includeAdHoc,
+    proposedBy: head.proposedBy,
+    derivedKind: head.derivedKind,
+    converter: head.converter,
     author: OWNER,
     clientId: 'analyzr-cli',
     at: AT,
@@ -156,6 +166,7 @@ function preview(open = 2) {
     curve: [0.5, 0.6, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95, 1].map(point),
     agents: [],
     llmModels: [],
+    derivedGroups: [],
   };
 }
 
@@ -171,6 +182,7 @@ const ITEM = {
   step: null,
   process: null,
   triggerId: 'ast_01J9Z3N4X5Q6R7S8T9V0W1X2Y3',
+  proposedBy: 'agent',
   agent: { principalId: AGENT_PRN, handle: 'agent:claude' },
   llmModel: 'claude-opus-5-5',
   tier: 'key',
@@ -312,7 +324,7 @@ describe('analyzr rules list and show', () => {
     expect(await runCli(['rules', 'list', '-p', 'p'], t.io)).toBe(0);
     expect(api.seen[0]?.authorization).toBe(`Bearer ${OWNER_KEY}`);
     expect(t.out()).toContain(
-      'system rule analyzr-rules/1.0.0 "Eindeutige Aufrufe": call relations of modelled callers, always on, read-only; 31 accepted, 4 only proposed (derived callers, trust rule)',
+      'system rule analyzr-rules/1.0.0 "Eindeutige Aufrufe": call relations of modelled callers, always on, read-only; 31 accepted, 4 only proposed (derived callers, trust rule; analyzr rules add --derived accepts the next ones)',
     );
     expect(t.out()).toContain(
       `${RULE_ID}  "Schlüssel ab 95 %"  on  relation key ≥ 95%, type call  r2 by owner  in force 3, revoked 1, confirmed 0, overruled 0 (author is no longer an owner: matches nothing until an owner saves it again, e.g. analyzr rules edit ${RULE_ID})`,
@@ -410,6 +422,9 @@ describe('analyzr rules add', () => {
       agentPrincipalId: AGENT_PRN,
       llmModel: 'claude-opus-5-5',
       includeAdHoc: false,
+      proposedBy: 'agent',
+      derivedKind: null,
+      converter: null,
     });
     expect(t.out()).toContain(`off: enable it with analyzr rules enable ${RULE_ID} -p p`);
     expect(t.out()).toContain(
@@ -619,6 +634,9 @@ describe('analyzr rules preview', () => {
       agentPrincipalId: null,
       llmModel: null,
       includeAdHoc: false,
+      proposedBy: 'agent',
+      derivedKind: null,
+      converter: null,
     });
     expect(t.out()).toContain('preview: placement semantic ≥ 80%');
   });
@@ -868,5 +886,215 @@ describe('credentials', () => {
     const t = testIo(env(), api.fetch);
     expect(await runCli(['rules', 'list', '-p', 'p'], t.io)).toBe(1);
     expect(t.err()).toContain('list auto-accept rules of p failed (403 forbidden): owners only');
+  });
+});
+
+describe('rules for derived calls (M6 S2c-3)', () => {
+  const derivedRule = (extra: Record<string, unknown> = {}) =>
+    rule({
+      name: 'Aufrufe: Export ohne Engine',
+      relationType: 'call',
+      minConfidence: 0.9,
+      proposedBy: 'rule',
+      derivedKind: 'export',
+      ...extra,
+    });
+
+  it('add --derived fixes kind, tier, type and minimum and prints the sources, no curve', async () => {
+    let created: unknown;
+    let previewed: unknown;
+    const api = fakeApi({
+      [`POST ${BASE}/auto-accept-rules`]: async (req) => {
+        created = await req.json();
+        return json({ outcome: 'created', rule: derivedRule({ revision: 1, enabled: true }) }, 201);
+      },
+      [`POST ${BASE}/auto-accept-rules/preview`]: async (req) => {
+        previewed = await req.json();
+        return json({
+          ...preview(1),
+          open: {
+            count: 1,
+            items: [
+              {
+                ...ITEM,
+                type: 'call',
+                proposedBy: 'rule',
+                agent: { principalId: 'prn_r', handle: 'analyzr-rules' },
+                llmModel: null,
+                confidence: 0.9,
+              },
+            ],
+            blocked: [{ reason: 'agent-upload', count: 2 }],
+          },
+          derivedGroups: [
+            {
+              derivedKind: 'export',
+              converter: null,
+              open: 1,
+              blocked: 2,
+              accepted: 5,
+              rejected: 0,
+            },
+            {
+              derivedKind: 'converted',
+              converter: 'normalize-bpmn@0.1.0',
+              open: 3,
+              blocked: 0,
+              accepted: 0,
+              rejected: 1,
+            },
+            { derivedKind: 'none', converter: null, open: 0, blocked: 0, accepted: 2, rejected: 0 },
+          ],
+        });
+      },
+    });
+    const t = testIo(env(), api.fetch);
+    const code = await runCli(
+      [
+        'rules',
+        'add',
+        '-p',
+        'p',
+        '--name',
+        'Aufrufe: Export ohne Engine',
+        '--derived',
+        'export',
+        '--enable',
+      ],
+      t.io,
+    );
+    expect(t.err()).toBe('');
+    expect(code).toBe(0);
+    const fixed = {
+      kind: 'relation',
+      tier: 'key',
+      minConfidence: 0.9,
+      relationType: 'call',
+      agentPrincipalId: null,
+      llmModel: null,
+      includeAdHoc: false,
+      proposedBy: 'rule',
+      derivedKind: 'export',
+      converter: null,
+    };
+    expect(created).toEqual({
+      name: 'Aufrufe: Export ohne Engine',
+      enabled: true,
+      note: null,
+      ...fixed,
+    });
+    expect(previewed).toEqual(fixed);
+    const out = t.out();
+    expect(out).toContain('rule tier (derived call): export');
+    expect(out).toContain('open now: 1 call would be accepted');
+    expect(out).toContain('(rule tier (derived call), key, 0.90)');
+    expect(out).toContain('blocked by a safeguard: agent-upload 2');
+    expect(out).toContain('  export: 1 open, 2 blocked; humans accepted 5, rejected 0');
+    expect(out).toContain(
+      '  converted normalize-bpmn@0.1.0: 3 open, 0 blocked; humans accepted 0, rejected 1',
+    );
+    expect(out).toContain(
+      '  none (no kind declared): 0 open, 0 blocked; humans accepted 2, rejected 0',
+    );
+    expect(out).not.toContain('curve');
+    expect(out).toContain('rules are never retroactive: accept the 1 open proposal');
+  });
+
+  it('add --derived converted needs exactly one --converter; refuses the flags it fixes', async () => {
+    let created: unknown;
+    const api = fakeApi({
+      [`POST ${BASE}/auto-accept-rules`]: async (req) => {
+        created = await req.json();
+        return json({ outcome: 'created', rule: derivedRule({ revision: 1 }) }, 201);
+      },
+      [`POST ${BASE}/auto-accept-rules/preview`]: () => json(preview()),
+    });
+    const run = async (...args: string[]) => {
+      const t = testIo(env(), api.fetch);
+      const code = await runCli(['rules', 'add', '-p', 'p', '--name', 'n', ...args], t.io);
+      return { code, err: t.err() };
+    };
+    expect(
+      await run('--derived', 'converted', '--converter', ' normalize-bpmn@0.1.0 '),
+    ).toMatchObject({
+      code: 0,
+    });
+    expect(created).toMatchObject({ derivedKind: 'converted', converter: 'normalize-bpmn@0.1.0' });
+    created = undefined;
+    for (const [args, message] of [
+      [['--derived', 'converted'], '--derived converted needs --converter'],
+      [['--derived', 'export', '--converter', 'x@1'], '--converter only with --derived converted'],
+      [['--converter', 'x@1'], 'a rule for derived calls needs --derived'],
+      [
+        ['--derived', 'reconstructed'],
+        'use export, converted or none (no rule accepts calls of reconstructed or as-told models)',
+      ],
+      [['--derived', 'export', '--min', '95%', '--kind', 'relation'], 'drop --kind, --min'],
+      [
+        ['--derived', 'export', '--type', 'call', '--agent', 'claude', '--model', 'm', '--ad-hoc'],
+        'drop --type, --agent, --model, --ad-hoc',
+      ],
+      [['--derived', 'export', '--tier', 'key'], 'drop --tier'],
+    ] as const) {
+      const r = await run(...args);
+      expect(r.code, args.join(' ')).toBe(1);
+      expect(r.err, args.join(' ')).toContain(message);
+    }
+    expect(created).toBeUndefined();
+  });
+
+  it('edits only --derived, --converter, the name and the note; an agent rule never becomes one', async () => {
+    const tokens = () => Promise.resolve([] as AgentToken[]);
+    const base = draftOf(derivedRule() as never);
+    expect(
+      await mergeFlags(base, { derived: 'converted', converter: 'x@2', name: 'neu' }, tokens),
+    ).toMatchObject({
+      derivedKind: 'converted',
+      converter: 'x@2',
+      name: 'neu',
+      minConfidence: 0.9,
+    });
+    const converted = { ...base, derivedKind: 'converted' as const, converter: 'x@1' };
+    // a new converter only; switching to export drops it
+    expect(await mergeFlags(converted, { converter: 'x@3' }, tokens)).toMatchObject({
+      converter: 'x@3',
+    });
+    expect(await mergeFlags(converted, { derived: 'export' }, tokens)).toMatchObject({
+      derivedKind: 'export',
+      converter: null,
+    });
+    await expect(mergeFlags(base, { min: '0.95' }, tokens)).rejects.toThrow('drop --min');
+    await expect(
+      mergeFlags(draftOf(rule() as never), { derived: 'export' }, tokens),
+    ).rejects.toThrow('an agent rule never becomes a rule for derived calls');
+    expect(parseDerived('none')).toBe('none');
+  });
+
+  it('names a rule for derived calls in criteria, list lines and the system line', () => {
+    expect(
+      criteriaText({
+        kind: 'relation',
+        tier: 'key',
+        minConfidence: 0.9,
+        proposedBy: 'rule',
+        derivedKind: 'none',
+      }),
+    ).toBe('rule tier (derived call): none (no kind declared)');
+    expect(
+      criteriaText({
+        kind: 'relation',
+        tier: 'key',
+        minConfidence: 0.9,
+        proposedBy: 'rule',
+        derivedKind: 'converted',
+        converter: 'x@1',
+      }),
+    ).toBe('rule tier (derived call): converted x@1');
+    expect(systemLine({ ...SYSTEM, proposed: 0 } as never)).toBe(
+      'system rule analyzr-rules/1.0.0 "Eindeutige Aufrufe": call relations of modelled callers, always on, read-only; 31 accepted',
+    );
+    expect(formatPreview({ ...preview(0), derivedGroups: [] } as never, true)).toContain(
+      'sources: no unique calls from derived models a rule can name',
+    );
   });
 });

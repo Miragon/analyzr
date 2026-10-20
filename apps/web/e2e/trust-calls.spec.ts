@@ -17,9 +17,11 @@ import { DEMO_SKIP, probeServer } from './server-mode';
  * „Übersicht“ counts exactly the calls the bulk dialog behind „Gesammelt
  * annehmen“ selects (`?bulk=calls`), as does the system rule card on
  * „Annahmeregeln“; closing it drops `?bulk` and leaves the focus on the page;
- * one click accepts them, the toast shows, the URL loses `?bulk`, the
- * relation is accepted by the human, and every line is gone. Skips itself
- * when no server answers.
+ * one click accepts them, the toast shows (since M6 S2c-3 offering the owner
+ * of the web upload the rule for the caller's `export` source, and nothing
+ * after the agent token's import, whose calls no rule accepts), the URL
+ * loses `?bulk`, the relation is accepted by the human, and every line is
+ * gone. Skips itself when no server answers.
  */
 
 const ROOT = join(import.meta.dirname, '../../..');
@@ -92,9 +94,15 @@ async function selected(page: Page): Promise<string[]> {
 
 /**
  * The dialog `?bulk=calls` opened: its group counts `expected`, exactly those
- * are selected; „n annehmen“ accepts them, the dialog closes and `?bulk` goes.
+ * are selected; „n annehmen“ accepts them, the toast names them with
+ * `toastText`, the dialog closes and `?bulk` goes.
  */
-async function acceptCalls(page: Page, key: string, expected: readonly string[]): Promise<void> {
+async function acceptCalls(
+  page: Page,
+  key: string,
+  expected: readonly string[],
+  toastText: string,
+): Promise<void> {
   await expect(page).toHaveURL(new RegExp(`/projects/${key}/review\\?bulk=calls$`));
   const dialog = page.getByTestId('bulk-dialog');
   await expect(dialog.getByTestId('bulk-calls').getByRole('heading')).toHaveText(
@@ -105,9 +113,11 @@ async function acceptCalls(page: Page, key: string, expected: readonly string[])
   );
   expect(new Set(await selected(page))).toEqual(new Set(expected));
   await dialog.getByTestId('bulk-confirm').click();
-  await expect(
-    page.getByTestId('toast').filter({ hasText: 'Eindeutige Aufrufe aus abgeleiteten Modellen.' }),
-  ).toBeVisible();
+  const toast = page.getByTestId('toast').filter({
+    hasText: `${expected.length === 1 ? '1 Relation' : `${expected.length} Relationen`} angenommen`,
+  });
+  await expect(toast).toBeVisible();
+  await expect(toast).toContainText(toastText);
   await expect(dialog).toHaveCount(0);
   await expect(page).toHaveURL(new RegExp(`/projects/${key}/review$`));
   const after = await relations(key);
@@ -172,7 +182,13 @@ test('„Hochladen“ of an engine-less bundle: „Gesammelt annehmen“ after �
     ).slice(0, 2),
   ).toEqual(['upload-next-calls', 'upload-next-agent']);
   await calls.getByRole('link', { name: 'Gesammelt annehmen' }).click();
-  await acceptCalls(page, key, derived);
+  // the caller declares `export` and the owner has no rule for it: the toast offers one (S2c-3)
+  await acceptCalls(
+    page,
+    key,
+    derived,
+    'Eindeutige Aufrufe aus abgeleiteten Modellen künftig automatisch annehmen?',
+  );
   // „Übersicht“: the line is gone
   await page.goto(`/projects/${key}`);
   await expect(page.getByTestId('next-step-primary')).toBeVisible({ timeout: 30_000 });
@@ -239,7 +255,8 @@ test('`analyzr import` with an agent token: the CLI says so, „Übersicht“ an
   });
   await expect(page.locator('[data-testid=next-step-line][data-kind=review-too]')).toHaveCount(0);
   await line.getByRole('link', { name: 'Gesammelt annehmen' }).click();
-  await acceptCalls(page, key, derived);
+  // an agent token's upload: no rule could accept its calls, so nothing is offered (S2c-3)
+  await acceptCalls(page, key, derived, 'Eindeutige Aufrufe aus abgeleiteten Modellen.');
   await page.goto(`/projects/${key}`);
   await expect(page.getByTestId('next-step-primary')).toBeVisible({ timeout: 30_000 });
   await expect(line).toHaveCount(0);

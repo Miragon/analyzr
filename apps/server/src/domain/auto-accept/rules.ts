@@ -7,6 +7,8 @@
  */
 import {
   AUTO_ACCEPT_TIERS,
+  DERIVED_CALL_CONFIDENCE,
+  MAX_AUTO_ACCEPT_CONVERTER_CHARS,
   MIN_AUTO_ACCEPT_CONFIDENCE,
   RULES_PROCEDURE,
   hasControlCharacters,
@@ -26,6 +28,7 @@ import type { AutoAcceptRuleRevisionRecord } from '../ports.ts';
 export type RuleDraftProblem =
   | 'kind-tier-mismatch'
   | 'type-not-for-placements'
+  | 'derived-criteria'
   | 'unknown-agent'
   | 'name-taken'
   | 'confidence-out-of-range'
@@ -35,10 +38,54 @@ export type RuleDraftProblem =
 export const nameKey = (name: string): string => name.trim().toLocaleLowerCase('de');
 
 /**
+ * Whether a draft's criteria fit whose proposals it accepts (M6 S2c-3, owner
+ * decision 28 (1)): an agent rule names no derivation; a rule for derived
+ * calls is a relation rule of tier `key`, type `call` at
+ * {@link DERIVED_CALL_CONFIDENCE} without agent, model or ad hoc, naming
+ * `export`, `converted` or `none`, and a converter (1 to 120 characters)
+ * exactly for `converted`. The contract refuses the same first; the
+ * database checks it once more.
+ */
+export function proposerFits(
+  draft: Pick<
+    AutoAcceptRuleDraft,
+    | 'kind'
+    | 'tier'
+    | 'minConfidence'
+    | 'relationType'
+    | 'agentPrincipalId'
+    | 'llmModel'
+    | 'includeAdHoc'
+    | 'proposedBy'
+    | 'derivedKind'
+    | 'converter'
+  >,
+): boolean {
+  if (draft.proposedBy === 'agent') return draft.derivedKind === null && draft.converter === null;
+  const converter = draft.converter?.trim() ?? null;
+  return (
+    draft.kind === 'relation' &&
+    draft.tier === 'key' &&
+    draft.relationType === 'call' &&
+    draft.minConfidence === DERIVED_CALL_CONFIDENCE &&
+    draft.agentPrincipalId === null &&
+    draft.llmModel === null &&
+    !draft.includeAdHoc &&
+    (draft.derivedKind === 'export' ||
+      draft.derivedKind === 'converted' ||
+      draft.derivedKind === 'none') &&
+    (draft.derivedKind === 'converted') === (converter !== null) &&
+    (converter === null ||
+      (converter.length >= 1 && converter.length <= MAX_AUTO_ACCEPT_CONVERTER_CHARS))
+  );
+}
+
+/**
  * The checks of a draft beyond its schema, in this order: tier of the kind,
- * no type on a placement rule, the confidence floor, control characters in
- * name, note and model, an unknown agent, a name another rule of the project
- * already has (ignoring case).
+ * no type on a placement rule, the criteria of whose proposals it accepts
+ * ({@link proposerFits}), the confidence floor, control characters in name,
+ * note, model and converter, an unknown agent, a name another rule of the
+ * project already has (ignoring case).
  *
  * @param names the head names of the project's other rules
  * @param agents the principals a rule may be narrowed to (the project's
@@ -53,6 +100,7 @@ export function ruleDraftProblem(
     return 'kind-tier-mismatch';
   }
   if (draft.kind === 'placement' && draft.relationType !== null) return 'type-not-for-placements';
+  if (!proposerFits(draft)) return 'derived-criteria';
   if (
     !Number.isFinite(draft.minConfidence) ||
     draft.minConfidence < MIN_AUTO_ACCEPT_CONFIDENCE ||
@@ -63,7 +111,8 @@ export function ruleDraftProblem(
   if (
     /\p{Cc}/u.test(draft.name) ||
     (draft.note !== null && hasControlCharacters(draft.note)) ||
-    (draft.llmModel !== null && /\p{Cc}/u.test(draft.llmModel))
+    (draft.llmModel !== null && /\p{Cc}/u.test(draft.llmModel)) ||
+    (draft.converter !== null && /\p{Cc}/u.test(draft.converter))
   ) {
     return 'control-characters';
   }
@@ -87,9 +136,16 @@ export type DraftFields = Pick<
   | 'agentPrincipalId'
   | 'llmModel'
   | 'includeAdHoc'
+  | 'proposedBy'
+  | 'derivedKind'
+  | 'converter'
 >;
 
-/** The revision fields of a draft (name and note trimmed, an empty note as `null`). */
+/**
+ * The revision fields of a draft (name, note and converter trimmed, an empty
+ * note as `null`). A draft without the M6 S2c-3 fields (an older client) is
+ * an agent rule, so saving an older rule unchanged writes nothing.
+ */
 export function draftFields(draft: AutoAcceptRuleDraft): DraftFields {
   const note = draft.note?.trim() ?? null;
   return {
@@ -102,6 +158,9 @@ export function draftFields(draft: AutoAcceptRuleDraft): DraftFields {
     agentPrincipalId: draft.agentPrincipalId,
     llmModel: draft.llmModel,
     includeAdHoc: draft.includeAdHoc,
+    proposedBy: draft.proposedBy,
+    derivedKind: draft.derivedKind,
+    converter: draft.converter?.trim() ?? null,
   };
 }
 
@@ -116,7 +175,10 @@ export function sameFields(head: DraftFields, next: DraftFields): boolean {
     head.relationType === next.relationType &&
     head.agentPrincipalId === next.agentPrincipalId &&
     head.llmModel === next.llmModel &&
-    head.includeAdHoc === next.includeAdHoc
+    head.includeAdHoc === next.includeAdHoc &&
+    head.proposedBy === next.proposedBy &&
+    head.derivedKind === next.derivedKind &&
+    head.converter === next.converter
   );
 }
 

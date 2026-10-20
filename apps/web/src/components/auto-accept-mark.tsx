@@ -2,6 +2,7 @@ import type { AutoAcceptLedgerEntry } from '@analyzr/client';
 import { WandSparklesIcon } from 'lucide-react';
 
 import { ToneBadge } from '@/components/badges';
+import { DERIVED_CALL_PROPOSAL } from '@/lib/auto-accept';
 import { formatConfidence } from '@/lib/labels';
 
 /**
@@ -16,7 +17,7 @@ export function AutoAcceptMark({ entry }: { entry: AutoAcceptLedgerEntry }) {
       tone="success"
       icon={WandSparklesIcon}
       className="max-w-full"
-      title={`Regel „${entry.ruleName}“ (Revision ${entry.revision}), entschieden unter ${entry.decidedBy.handle}; ausgelöst von ${entry.agent.handle}${entry.confidence === null ? '' : ` mit ${formatConfidence(entry.confidence)}`}`}
+      title={`Regel „${entry.ruleName}“ (Revision ${entry.revision}), entschieden unter ${entry.decidedBy.handle}; ausgelöst ${entry.proposedBy === 'rule' ? `vom ${DERIVED_CALL_PROPOSAL}` : `von ${entry.agent.handle}`}${entry.confidence === null ? '' : ` mit ${formatConfidence(entry.confidence)}`}`}
     >
       <span className="truncate" data-testid="auto-accept-mark">
         Automatisch angenommen

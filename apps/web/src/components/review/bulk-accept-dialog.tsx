@@ -1,4 +1,5 @@
 import type { Relation } from '@analyzr/client';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { CheckCheckIcon, ChevronRightIcon, TriangleAlertIcon } from 'lucide-react';
 import { useMemo, useState } from 'react';
@@ -19,12 +20,15 @@ import { errorMessage } from '@/lib/api';
 import { flagLine } from '@/lib/generic-names';
 import { RELATION_TYPES, formatConfidence } from '@/lib/labels';
 import { MAX_BULK_DECISIONS } from '@/lib/limits';
+import { autoAcceptRulesQuery, modelsQuery } from '@/lib/queries';
 import type { RefResolver } from '@/lib/refs';
 import {
   bulkPreselection,
   conflictOf,
+  derivedCallSource,
   elementsText,
   isDerivedCall,
+  ruleNamesSource,
   sideName,
   type BulkPreselect,
   type BulkRow,
@@ -52,8 +56,12 @@ import { PlainText } from './plain-text';
  * request carries ids, versions, the tier and the count, so a list that
  * changed meanwhile fails as a whole (409). After the accept, an owner is
  * offered the rule that would have accepted them („Gleicher Name ab 100 %
- * künftig automatisch annehmen?“), unless only such calls were accepted (no
- * agent rule accepts those).
+ * künftig automatisch annehmen?“); after accepting only such calls, a rule
+ * for derived calls of the source most of their callers declare
+ * („Eindeutige Aufrufe aus abgeleiteten Modellen künftig automatisch
+ * annehmen?“, M6 S2c-3, `derivedCallSource`), and nothing when no rule could
+ * accept them (callers uploaded with an agent token, say) or a rule already
+ * names that source (`ruleNamesSource`).
  */
 
 type Row = BulkRow;
@@ -172,6 +180,11 @@ function BulkList({
   onClose: () => void;
 }) {
   const navigate = useNavigate();
+  // The callers' declared sources and the rules, for the rule the toast offers after derived
+  // calls (M6 S2c-3; none when one already names the source).
+  const queryClient = useQueryClient();
+  useQuery({ ...modelsQuery(project), enabled: canOwn });
+  useQuery({ ...autoAcceptRulesQuery(project), enabled: canOwn });
   const plain = rows.filter((r) => r.flags.length === 0);
   const calls = rows.filter((r) => isDerivedCall(r.relation));
   const others = plain.filter((r) => !isDerivedCall(r.relation));
@@ -200,7 +213,8 @@ function BulkList({
   function confirm() {
     if (chosen.length === 0 || tooMany) return;
     setConflict(null);
-    // Only unique calls from derived models: no agent rule would have accepted them (M6 S2c).
+    // Only unique calls from derived models: no agent rule would have accepted them (M6 S2c);
+    // a rule for derived calls of their source would (M6 S2c-3), unless none can be named.
     const onlyCalls = chosen.every(isDerivedCall);
     const offer = canOwn && !onlyCalls;
     bulk.mutate(
@@ -212,31 +226,61 @@ function BulkList({
       },
       {
         onSuccess: (result) => {
+          // The callers' `Model.trust` as loaded now (the review page has the models).
+          const found =
+            canOwn && onlyCalls
+              ? derivedCallSource(
+                  chosen,
+                  queryClient.getQueryData(modelsQuery(project).queryKey) ?? [],
+                )
+              : null;
+          const rules = queryClient.getQueryData(autoAcceptRulesQuery(project).queryKey)?.items;
+          const source = found && !ruleNamesSource(rules ?? [], found) ? found : null;
           toast({
             tone: 'success',
             title:
               result.items.length === 1
                 ? '1 Relation angenommen'
                 : `${result.items.length} Relationen angenommen`,
-            description: onlyCalls
-              ? 'Eindeutige Aufrufe aus abgeleiteten Modellen.'
-              : offer
-                ? 'Gleicher Name ab 100 % künftig automatisch annehmen?'
-                : 'Grundlage „Gleicher Name“.',
-            ...(offer
+            description: source
+              ? 'Eindeutige Aufrufe aus abgeleiteten Modellen künftig automatisch annehmen?'
+              : onlyCalls
+                ? 'Eindeutige Aufrufe aus abgeleiteten Modellen.'
+                : offer
+                  ? 'Gleicher Name ab 100 % künftig automatisch annehmen?'
+                  : 'Grundlage „Gleicher Name“.',
+            ...(source
               ? {
                   action: {
                     label: 'Annahmeregel anlegen',
-                    altText: 'Eine Annahmeregel für „Gleicher Name“ ab 100 % anlegen',
+                    altText:
+                      'Eine Annahmeregel für eindeutige Aufrufe aus abgeleiteten Modellen dieser Herkunft anlegen',
                     onAction: () =>
                       void navigate({
                         to: '/projects/$project/rules',
                         params: { project },
-                        search: { new: 'key' },
+                        search: {
+                          new: 'calls',
+                          derivedKind: source.derivedKind,
+                          ...(source.converter ? { converter: source.converter } : {}),
+                        },
                       }),
                   },
                 }
-              : {}),
+              : offer
+                ? {
+                    action: {
+                      label: 'Annahmeregel anlegen',
+                      altText: 'Eine Annahmeregel für „Gleicher Name“ ab 100 % anlegen',
+                      onAction: () =>
+                        void navigate({
+                          to: '/projects/$project/rules',
+                          params: { project },
+                          search: { new: 'key' },
+                        }),
+                    },
+                  }
+                : {}),
           });
           onClose();
         },

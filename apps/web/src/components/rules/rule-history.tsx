@@ -22,7 +22,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 
-import { formatThreshold, narrowingOf, tierLabel } from '@/lib/auto-accept-rules';
+import { criteriaLabel, formatThreshold, narrowingOf, tierLabel } from '@/lib/auto-accept-rules';
 import { formatDateTime, handleName } from '@/lib/labels';
 import { autoAcceptRuleQuery } from '@/lib/auto-accept-queries';
 
@@ -67,16 +67,20 @@ function History({ project, rule }: { project: string; rule: AutoAcceptRule }) {
               </TableCell>
               <TableCell className="whitespace-normal">
                 {[
-                  `${tierLabel(r.tier)} ab ${formatThreshold(r.minConfidence)}`,
-                  ...narrowingOf({
-                    ...r,
-                    agentHandle:
-                      r.agentPrincipalId === null
-                        ? null
-                        : r.agentPrincipalId === rule.agentPrincipalId && rule.agent
-                          ? rule.agent.handle
-                          : r.agentPrincipalId,
-                  }),
+                  r.proposedBy === 'rule'
+                    ? criteriaLabel(r)
+                    : `${tierLabel(r.tier)} ab ${formatThreshold(r.minConfidence)}`,
+                  ...(r.proposedBy === 'rule'
+                    ? []
+                    : narrowingOf({
+                        ...r,
+                        agentHandle:
+                          r.agentPrincipalId === null
+                            ? null
+                            : r.agentPrincipalId === rule.agentPrincipalId && rule.agent
+                              ? rule.agent.handle
+                              : r.agentPrincipalId,
+                      })),
                 ].join(' · ')}
               </TableCell>
             </TableRow>

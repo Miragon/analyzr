@@ -3,7 +3,7 @@ import { Undo2Icon, WandSparklesIcon } from 'lucide-react';
 import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
-import { LATER_VERDICTS } from '@/lib/auto-accept';
+import { DERIVED_CALL_PROPOSAL, LATER_VERDICTS } from '@/lib/auto-accept';
 import { TIERS, formatConfidence, formatDateTime } from '@/lib/labels';
 
 import { RevokeDialog } from './revoke-dialog';
@@ -45,11 +45,19 @@ export function AutoAcceptProvenance({
       )}
       <p className="text-xs">
         Entschieden durch Regel „{latest.ruleName}“ (Revision {latest.revision}), aktiviert von{' '}
-        <span className="font-mono">{latest.decidedBy.handle}</span>; ausgelöst von{' '}
-        <span className="font-mono">{latest.agent.handle}</span>
-        {latest.confidence === null ? '' : ` mit ${formatConfidence(latest.confidence)}`}
-        {latest.tier ? ` (${TIERS[latest.tier].label})` : ''}
-        {latest.llmModel ? `, Modell ${latest.llmModel}` : ''} · {formatDateTime(latest.at)}
+        <span className="font-mono">{latest.decidedBy.handle}</span>;{' '}
+        {latest.proposedBy === 'rule' ? (
+          // M6 S2c-3: the rule tier's proposal of a unique call from a derived model.
+          `ausgelöst vom ${DERIVED_CALL_PROPOSAL}${latest.confidence === null ? '' : ` (${formatConfidence(latest.confidence)})`}`
+        ) : (
+          <>
+            ausgelöst von <span className="font-mono">{latest.agent.handle}</span>
+            {latest.confidence === null ? '' : ` mit ${formatConfidence(latest.confidence)}`}
+            {latest.tier ? ` (${TIERS[latest.tier].label})` : ''}
+            {latest.llmModel ? `, Modell ${latest.llmModel}` : ''}
+          </>
+        )}{' '}
+        · {formatDateTime(latest.at)}
       </p>
       {latest.state === 'revoked' && latest.revokedAt ? (
         <p className="text-xs text-muted-foreground">
@@ -57,7 +65,7 @@ export function AutoAcceptProvenance({
           {latest.status === 'proposed'
             ? `die ${subject} steht wieder zur Prüfung.`
             : latest.status === 'obsolete'
-              ? `kein Agentenvorschlag war mehr offen: die ${subject} ist veraltet, die Agenten beurteilen sie neu.`
+              ? `kein Vorschlag war mehr offen: die ${subject} ist veraltet, die Agenten beurteilen sie neu.`
               : `die ${subject} wurde seither entschieden.`}
         </p>
       ) : null}

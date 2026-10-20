@@ -27,8 +27,9 @@ published (every workspace package is `private: true`). What is decided and what
   survive re-uploads.
 - **Value chains:** a value chain per project (`@miragon/value-chain-*`), viewed and edited in the
   web UI, with agents placing processes on its steps and humans reviewing the placements.
-- **Auto-accept rules** an owner sets per tier and confidence, with a preview of their precision
-  and a revoke.
+- **Auto-accept rules** an owner sets per tier and confidence (for the unique calls of derived
+  models per declared source, never for an agent token's upload), with a preview of their
+  precision and a revoke.
 - **Interfaces:** REST under `/api/v1` (OpenAPI 3.1), MCP under `/mcp` (Streamable HTTP, agent
   tokens), the `analyzr` CLI with a stdio bridge for Claude Desktop.
 - **An eval corpus as the spec:** two synthetic landscapes with ground truth, LLM-free gates in CI

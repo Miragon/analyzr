@@ -117,6 +117,10 @@ const BUDGET = 40 * 1024;
  * the shared „Offene Punkte“ cell. 224.1 KB after M6 S2c-1, 225.1 KB after
  * S2c-2 (2026-10-20): the calls line on „Übersicht“ and after „Importieren“,
  * `?bulk=calls` with the bulk dialog's calls group, selection and focus.
+ * 226.0 KB after S2c-3 and its review: the bulk accept's offer of a rule
+ * for derived calls (`derivedCallSource`, none when a rule names the source),
+ * the „Vorschau“ line's rules part, `?new=calls` and the marks of such
+ * acceptances; the rule dialog's third „Art“ loads with the rules page.
  */
 const ENTRY_CEILING = 240 * 1024;
 

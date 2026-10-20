@@ -13,6 +13,12 @@
  * Named "auto-accept rule" everywhere, never just "rule": the rule tier
  * (`analyzr-rules`, decision 9) keeps that word. Decision 9 stays a built-in,
  * read-only system rule ({@link AutoAcceptSystemRule}).
+ *
+ * Since M6 S2c-3 (decision 24.2's extension of decision 19, owner decision
+ * 28 (1)) a relation rule may instead accept the rule tier's proposals of
+ * unique calls from derived models (`proposedBy: 'rule'`), narrowed by the
+ * declared derived kind and, for `converted`, the converter; no rule ever
+ * accepts a call of a revision uploaded with an agent token.
  */
 import { z } from 'zod';
 
@@ -29,6 +35,7 @@ import { Ref } from '../refs.ts';
 import { EndpointState, RULES_PROCEDURE, RelationStatus, Tier } from '../relations.ts';
 import { orNull, plainName, plainText } from '../zod-utils.ts';
 import { Timestamp } from './common.ts';
+import { DERIVED_CALL_CONFIDENCE } from './models.ts';
 
 /** What an auto-accept rule accepts: agent proposals of relations or of placements. */
 export const AutoAcceptKind = z.enum(['relation', 'placement']).meta({
@@ -61,11 +68,39 @@ export const AutoAcceptRelationType = z.enum(['call', 'message', 'signal', 'trig
 });
 export type AutoAcceptRelationType = z.infer<typeof AutoAcceptRelationType>;
 
+/**
+ * Whose proposals a rule accepts (M6 S2c-3): `agent` (the default, every
+ * rule before S2c-3) agent proposals; `rule` the rule tier's proposals of
+ * unique calls from derived models (tier `key`, {@link DERIVED_CALL_CONFIDENCE},
+ * decision 24.2), narrowed by {@link AutoAcceptDerivedKind} and converter.
+ */
+export const AutoAcceptProposer = z.enum(['agent', 'rule']).meta({
+  id: 'AutoAcceptProposer',
+  description:
+    'Whose proposals a rule accepts: agent proposals, or the rule tier’s proposals of unique calls from derived models.',
+});
+export type AutoAcceptProposer = z.infer<typeof AutoAcceptProposer>;
+
+/**
+ * The declared derivation a rule for derived calls names (owner decision 28
+ * (1) „Streng“): `export`, `converted` (with its converter) or `none` (the
+ * uploaded revision declares no kind). Never `reconstructed` or `as-told`.
+ * The import declares it; analyzr does not check it.
+ */
+export const AutoAcceptDerivedKind = z.enum(['export', 'converted', 'none']).meta({
+  id: 'AutoAcceptDerivedKind',
+  description:
+    'The declared derivation a rule for derived calls names: export, converted or none (no kind declared).',
+});
+export type AutoAcceptDerivedKind = z.infer<typeof AutoAcceptDerivedKind>;
+
 /** The lowest minimum confidence a rule may name (also a database check). */
 export const MIN_AUTO_ACCEPT_CONFIDENCE = 0.5;
 export const MAX_AUTO_ACCEPT_NAME_CHARS = 100;
 export const MAX_AUTO_ACCEPT_NOTE_CHARS = 500;
 export const MAX_AUTO_ACCEPT_MODEL_CHARS = 100;
+/** A converter as the manifest declares it (`name@version`, matched exactly). */
+export const MAX_AUTO_ACCEPT_CONVERTER_CHARS = 120;
 /** Ids per revocation request. */
 export const MAX_AUTO_ACCEPT_IDS = 1000;
 export const MAX_AUTO_ACCEPT_REASON_CHARS = 500;
@@ -79,9 +114,15 @@ export const AUTO_ACCEPT_CURVE = [0.5, 0.6, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95, 1] 
 /**
  * Why a rule did not accept a proposal, in the order the server checks
  * (the first failing check is the reason):
- * - `not-agent`: humans and the rule tier never trigger a rule;
+ * - `not-agent`: humans never trigger a rule, the rule tier only with a
+ *   unique call from a derived model (M6 S2c-3);
  * - `no-matching-rule`: no enabled rule (whose author is still an owner)
- *   matches kind, tier, minimum confidence, type, agent, model and ad hoc;
+ *   matches kind, tier, minimum confidence, type, agent, model and ad hoc
+ *   (a rule for derived calls: derived kind and converter);
+ * - `agent-upload`: the calling model was uploaded with an agent token; no
+ *   rule accepts its calls (owner decision 28 (1));
+ * - `amendment-conflict`: the call element's call target set in analyzr no
+ *   longer applies („Ergänzung nicht mehr anwendbar“ is open);
  * - `stale-proposal`: a pipeline proposal whose basis is no longer current;
  * - `not-open`: the item is not `proposed` (held, accepted, rejected, obsolete);
  * - `endpoint-not-ok`: an end changed or is missing;
@@ -101,6 +142,8 @@ export const AUTO_ACCEPT_CURVE = [0.5, 0.6, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95, 1] 
 export const AUTO_ACCEPT_BLOCK_REASONS = [
   'not-agent',
   'no-matching-rule',
+  'agent-upload',
+  'amendment-conflict',
   'stale-proposal',
   'not-open',
   'endpoint-not-ok',
@@ -134,6 +177,15 @@ const ruleName = () =>
     .max(MAX_AUTO_ACCEPT_NAME_CHARS)
     .refine((value) => !/\p{Cc}/u.test(value), 'must not contain control characters');
 
+/** A converter a rule names: trimmed, 1 to 120 characters, no control characters. */
+const converterName = () =>
+  z
+    .string()
+    .trim()
+    .min(1)
+    .max(MAX_AUTO_ACCEPT_CONVERTER_CHARS)
+    .refine((value) => !/\p{Cc}/u.test(value), 'must not contain control characters');
+
 const criteriaShape = {
   kind: AutoAcceptKind,
   /** One of `AUTO_ACCEPT_TIERS[kind]`. */
@@ -148,12 +200,61 @@ const criteriaShape = {
   llmModel: plainName(MAX_AUTO_ACCEPT_MODEL_CHARS).nullable().default(null),
   /** Also ad-hoc proposals (default: pipeline proposals with a claim basis only). */
   includeAdHoc: z.boolean().default(false),
+  /** Whose proposals (M6 S2c-3); `agent` for every rule before. */
+  proposedBy: AutoAcceptProposer.default('agent'),
+  /** `proposedBy: 'rule'` only (required there): the declared derivation of the calling model. */
+  derivedKind: orNull(AutoAcceptDerivedKind).default(null),
+  /** `derivedKind: 'converted'` only (required there): the converter, `name@version`, exactly. */
+  converter: orNull(converterName()).default(null),
 };
 
-function checkCriteria(
-  c: { kind: AutoAcceptKind; tier: AutoAcceptTier; relationType: AutoAcceptRelationType | null },
-  ctx: z.RefinementCtx,
-): void {
+/** What {@link checkCriteria} reads of criteria. */
+interface CheckedCriteria {
+  kind: AutoAcceptKind;
+  tier: AutoAcceptTier;
+  minConfidence: number;
+  relationType: AutoAcceptRelationType | null;
+  agentPrincipalId: string | null;
+  llmModel: string | null;
+  includeAdHoc: boolean;
+  proposedBy: AutoAcceptProposer;
+  derivedKind: AutoAcceptDerivedKind | null;
+  converter: string | null;
+}
+
+/**
+ * The fixed criteria of a rule for derived calls (M6 S2c-3): a relation
+ * rule of tier `key`, type `call`, at {@link DERIVED_CALL_CONFIDENCE}, without
+ * agent, model or ad hoc, with a derived kind and a converter exactly for
+ * `converted`; an agent rule names neither.
+ */
+function checkProposer(c: CheckedCriteria, ctx: z.RefinementCtx): void {
+  const issue = (path: string, message: string) =>
+    ctx.addIssue({ code: 'custom', path: [path], message });
+  if (c.proposedBy === 'agent') {
+    if (c.derivedKind !== null)
+      issue('derivedKind', 'only a rule for derived calls names a derived kind');
+    if (c.converter !== null) issue('converter', 'only a rule for derived calls names a converter');
+    return;
+  }
+  const fixed = 'a rule for derived calls';
+  if (c.kind !== 'relation') issue('kind', `${fixed} is a relation rule`);
+  if (c.tier !== 'key') issue('tier', `${fixed} names the tier key`);
+  if (c.relationType !== 'call') issue('relationType', `${fixed} names the type call`);
+  if (c.minConfidence !== DERIVED_CALL_CONFIDENCE) {
+    issue('minConfidence', `${fixed} names the minimum confidence ${DERIVED_CALL_CONFIDENCE}`);
+  }
+  if (c.agentPrincipalId !== null) issue('agentPrincipalId', `${fixed} names no agent`);
+  if (c.llmModel !== null) issue('llmModel', `${fixed} names no LLM model`);
+  if (c.includeAdHoc) issue('includeAdHoc', `${fixed} has no ad-hoc switch`);
+  if (c.derivedKind === null) {
+    issue('derivedKind', `${fixed} names the derived kind: export, converted or none`);
+  } else if ((c.derivedKind === 'converted') !== (c.converter !== null)) {
+    issue('converter', 'a converter exactly for the derived kind converted');
+  }
+}
+
+function checkCriteria(c: CheckedCriteria, ctx: z.RefinementCtx): void {
   if (!(AUTO_ACCEPT_TIERS[c.kind] as readonly string[]).includes(c.tier)) {
     ctx.addIssue({
       code: 'custom',
@@ -168,6 +269,7 @@ function checkCriteria(
       message: 'only a relation rule has a relation type',
     });
   }
+  checkProposer(c, ctx);
 }
 
 /** What a rule matches; also the body of a preview of an unsaved rule. */
@@ -228,6 +330,9 @@ export const AutoAcceptRuleRevision = z
     agentPrincipalId: orNull(PrincipalId),
     llmModel: z.string().nullable(),
     includeAdHoc: z.boolean(),
+    proposedBy: AutoAcceptProposer,
+    derivedKind: orNull(AutoAcceptDerivedKind),
+    converter: z.string().nullable(),
     /** The author: the owner the decisions of this revision are recorded under. */
     author: AutoAcceptPrincipal,
     /** Client the author wrote it on (`analyzr-web`, `analyzr-cli`). */
@@ -271,6 +376,12 @@ export const AutoAcceptRule = z
     agent: orNull(AutoAcceptAgent),
     llmModel: z.string().nullable(),
     includeAdHoc: z.boolean(),
+    /** Whose proposals the rule accepts (M6 S2c-3). */
+    proposedBy: AutoAcceptProposer,
+    /** A rule for derived calls: the declared derivation it names; `null` for an agent rule. */
+    derivedKind: orNull(AutoAcceptDerivedKind),
+    /** A rule for converted calls: the converter, `name@version`, matched exactly. */
+    converter: z.string().nullable(),
     /** Author of the head revision: decisions are recorded under this owner. */
     author: AutoAcceptPrincipal,
     /** The author still has the owner role; otherwise the rule matches nothing. */
@@ -357,8 +468,11 @@ const subjectShape = {
 export const AutoAcceptItem = z
   .object({
     ...subjectShape,
-    /** The agent proposal that meets the rule (highest confidence, then the earliest). */
+    /** The proposal that meets the rule (highest confidence, then the earliest). */
     triggerId: AssertionRef,
+    /** Whose proposal it is: an agent's, or the rule tier's of a unique call from a derived model. */
+    proposedBy: AutoAcceptProposer,
+    /** The proposal's principal: the agent, or the rule tier (`analyzr-rules`). */
     agent: AutoAcceptPrincipal,
     llmModel: z.string().nullable(),
     tier: Tier,
@@ -405,6 +519,32 @@ export const AutoAcceptCurvePoint = z
   .meta({ id: 'AutoAcceptCurvePoint', description: 'The preview at one minimum confidence.' });
 export type AutoAcceptCurvePoint = z.infer<typeof AutoAcceptCurvePoint>;
 
+/**
+ * The unique calls from derived models of one source (M6 S2c-3), for the
+ * rule dialog's „Herkunft“ and „Konverter“: the caller's declared kind (and
+ * converter for `converted`) as its current head declares it. `open`: open
+ * proposals a rule naming this source would accept now; `blocked`: open
+ * ones a safeguard blocks (an agent upload among them); `accepted`,
+ * `rejected`: such calls a human accepted or rejected so far (the first
+ * human decision after the rule tier's first proposal; a rejection that
+ * links another target included).
+ */
+export const AutoAcceptDerivedGroup = z
+  .object({
+    derivedKind: AutoAcceptDerivedKind,
+    /** For `converted`: the converter as stored; `null` otherwise. */
+    converter: z.string().nullable(),
+    open: z.number().int().min(0),
+    blocked: z.number().int().min(0),
+    accepted: z.number().int().min(0),
+    rejected: z.number().int().min(0),
+  })
+  .meta({
+    id: 'AutoAcceptDerivedGroup',
+    description: 'The unique calls from derived models of one declared source.',
+  });
+export type AutoAcceptDerivedGroup = z.infer<typeof AutoAcceptDerivedGroup>;
+
 export const AutoAcceptPreview = z
   .object({
     kind: AutoAcceptKind,
@@ -422,6 +562,13 @@ export const AutoAcceptPreview = z
     agents: z.array(AutoAcceptAgent),
     /** LLM models declared by those proposals. */
     llmModels: z.array(z.string()),
+    /**
+     * The unique calls from derived models by declared source (M6 S2c-3;
+     * relation previews only, whatever the criteria): export, converted per
+     * converter, none. Sources a rule cannot name (reconstructed, as told, a
+     * conversion without converter) are left out.
+     */
+    derivedGroups: z.array(AutoAcceptDerivedGroup),
   })
   .meta({ id: 'AutoAcceptPreview', description: 'What a rule would accept, so far and now.' });
 export type AutoAcceptPreview = z.infer<typeof AutoAcceptPreview>;
@@ -488,15 +635,17 @@ export const AutoAcceptLedgerEntry = z
     ...subjectShape,
     /** The decision recorded by the rule. */
     decisionId: AssertionRef,
-    /** The agent proposal that triggered it. */
+    /** The proposal that triggered it. */
     triggerId: AssertionRef,
+    /** Whose proposal triggered it: an agent's, or the rule tier's of a unique call from a derived model. */
+    proposedBy: AutoAcceptProposer,
     ruleId: AutoAcceptRuleId,
     revision: z.number().int().min(1),
     /** The rule's name in the deciding revision. */
     ruleName: z.string(),
     /** The owner the decision is recorded under (the revision's author). */
     decidedBy: AutoAcceptPrincipal,
-    /** The agent of the triggering proposal. */
+    /** The principal of the triggering proposal: the agent, or the rule tier (`analyzr-rules`). */
     agent: AutoAcceptPrincipal,
     llmModel: z.string().nullable(),
     tier: orNull(Tier),

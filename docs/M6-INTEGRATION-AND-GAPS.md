@@ -4,9 +4,10 @@ Status: in progress (2026-10-15); owner decisions 24, 25 and 28 (§2, HANDOFF §
 concept, revised after review), S1, S3a, S3b, S4, S5a, S5c-1, S5c-2 (answering by action and model
 amendments, decision 25, §4.8), S2a (provenance, manifest, stable identity; its web parts came
 with the UI simplification's UX8, §8 "S2a as delivered"), S2b (the dry runs; its follow-up open),
-S2c-1 (the trust class and the rule tier, §8 "S2c-1 as delivered") and S2c-2 (the fast path for
-derived calls, §8 "S2c-2 as delivered") done, the „erste Anfänge“ await the owner's review; next
-S2c-3 and S2c-4 (§8 "S2c"), S2b's follow-up and S3c, then S6 · Branch:
+S2c-1 (the trust class and the rule tier, §8 "S2c-1 as delivered"), S2c-2 (the fast path for
+derived calls, §8 "S2c-2 as delivered") and S2c-3 (owners' rules for derived calls, §8 "S2c-3 as
+delivered") done, the „erste Anfänge“ await the owner's review; next S2c-4 (§8 "S2c"), S2b's
+follow-up and S3c, then S6; after the owner's live runs S5b, S7 and facts v2 · Branch:
 `feat/integration-and-gaps` ·
 Spec: [CONCEPT.md](CONCEPT.md) §1–§7 · Previous: [M4-VALUE-CHAIN.md](M4-VALUE-CHAIN.md) · Paused:
 the process network map (decision 22, issue [#2](https://github.com/Miragon/analyzr/issues/2)),
@@ -124,8 +125,8 @@ on 2026-10-17 in short form, and CONCEPT §11 notes it. The full records:
        accept such call proposals narrowed by derived kind and converter); revisions stored
        before S2c keep their acceptances, listed once for a bulk revocation (option (a) of
        §10.1). It ships as S2c (the class and the rule tier delivered in S2c-1 on 2026-10-19, the
-       fast path for the derived calls in S2c-2 on 2026-10-20, the decision-19 extension and
-       the list follow in S2c-3 and S2c-4, §8 "S2c"; decision 28
+       fast path for the derived calls in S2c-2 and the decision-19 extension in S2c-3, both on
+       2026-10-20; the list follows in S2c-4, §8 "S2c"; decision 28
        below); until then the toolkit limits the risk on its side (§3.9: specs
        from ad-hoc converters, reconstructions and interviews get no `calledElement`; the
        consultant runs every import, §3.1). The related question whether REST ingest and model
@@ -625,8 +626,9 @@ is not reused in place.
   accepts a call that LLM-written code produced; it is revisited with S2c and its decision-19
   extension per converter. The renderer (S3c) writes no engine (above), so since S2c-1 a
   `calledElement` it writes that names exactly one process becomes a proposal (tier `key`, 0.9)
-  in any case (§3.10); the rule still keeps a guessed target from becoming even that, and S2c-3's
-  rules may accept only „Export“, „Konvertiert“ and „Ohne Angabe“ (decision 28 (1)).
+  in any case (§3.10); the rule still keeps a guessed target from becoming even that, and the
+  rules for derived calls (S2c-3) accept only „Export“, „Konvertiert“ and „Ohne Angabe“ (decision
+  28 (1)).
 - **Where:** an entry of `tools/integrate` (§3.7), bundled into
   `plugins/analyzr-integrate/scripts/analyzr-spec.mjs`. It may start from a copy of the eval
   layouter; one package shared with the eval generator needs a principle-7 exception and waits
@@ -670,10 +672,11 @@ rationale naming the reason) instead of an acceptance; findings are unchanged. C
   the key tier's bulk dialog lists them first as their own group, „Eindeutige Aufrufe aus
   abgeleiteten Modellen“, which „Gesammelt annehmen“ opens with exactly those selected) or one by
   one. The read-only system rule „Eindeutige Aufrufe“ says so.
-- An owner's auto-accept rule (decision 19) never accepts a rule-tier proposal today (`not-agent`,
-  `apps/server/src/domain/auto-accept/evaluate.ts`). The recommendation includes extending
-  decision-19 rules to rule-tier call proposals of derived revisions, narrowed by derived kind
-  and converter, so a trusted converter's calls can be accepted without a click. Decision 19's
+- An owner's auto-accept rule (decision 19) never accepted a rule-tier proposal before S2c-3
+  (`not-agent`, `apps/server/src/domain/auto-accept/evaluate.ts`). The recommendation includes
+  extending decision-19 rules to rule-tier call proposals of derived revisions, narrowed by
+  derived kind and converter, so a trusted converter's calls can be accepted without a click
+  (delivered in S2c-3, below). Decision 19's
   agreed design names kind, tier, minimum confidence and optionally an agent or a model, and
   CONCEPT §11 defers further narrowing, so that extension is part of the owner's answer.
 
@@ -692,7 +695,14 @@ proposing behind them. **S2c-2 delivered the fast path** (2026-10-20, §8 "S2c-2
 „Gesammelt annehmen“ on „Übersicht“ and after „Importieren“, the system rule card's count „N aus
 abgeleiteten Modellen vorgeschlagen“ and the link `analyzr import` prints open the bulk dialog
 with such calls selected, and one click accepts them before the agent runs (at most 500 at a
-time; one an agent asks about or objects to is decided one by one). The decision-19 extension follows in S2c-3, the list in S2c-4.
+time; one an agent asks about or objects to is decided one by one). **S2c-3 delivered the
+decision-19 extension** (2026-10-20, §8 "S2c-3 as delivered"): a rule of the third „Art“,
+„Eindeutige Aufrufe aus abgeleiteten Modellen“, accepts the rule tier's proposals of unique calls
+whose caller declares the source it names („Export“, „Konvertiert“ with one converter, „Ohne
+Angabe“), in the write that recorded them (imports, amendment writes and withdrawals, deletions),
+never a call of a revision uploaded with an agent token (no agent rule either), and no write made
+with an agent token sets it off; the toast after the first bulk accept offers it. The list follows
+in S2c-4.
 
 **Added with decision 25 (2026-10-17; extends decision 24.2; confirmed by the owner 2026-10-17, decision 25.2).**
 A call target set by a model amendment (S5c-2, §4.8 c) was picked by a human from the
@@ -709,7 +719,8 @@ open) will leave out the calls of both.
 **Decision 28 (2026-10-19, HANDOFF §4).** (1) „Streng“: S2c-3's rules for derived call proposals
 may name only the derived kinds „Export“, „Konvertiert“ and „Ohne Angabe“ (never
 „KI-rekonstruiert“ or „Aus Interview“, whose specs carry no `calledElement`, §3.9), and no rule
-ever accepts calls of a revision uploaded with an agent token (safeguard `agent-upload`).
+ever accepts calls of a revision uploaded with an agent token (safeguard `agent-upload`; delivered
+in S2c-3, which reads "no rule" literally, agent rules included, §8 "S2c-3 as delivered").
 (2) „Ja, wie gesetzt“: `in-source` counts as modelled (above), so a call stays accepted after the
 consultant carried the change list over. (3) „Nur die heute abgeleiteten“: S2c-4's list holds
 only rule acceptances from before S2c whose revision would classify as derived from what it
@@ -1723,7 +1734,7 @@ draft (after the owner's rated draft run, M4b) are later work.
 - **Deferrals (CONCEPT §11).** M6 lifts the deferral of "agent findings" in part (gap reports
   bound to submissions, without a lifecycle, S7) and adds answers to open questions (S5a), close
   to the deferred "comments"; the S2c recommendation narrows decision-19 rules by derived kind and
-  converter, which §11 also defers (S2c-3, not delivered yet; decision 28 (1) narrows it further). CONCEPT §11 notes both since decision 24. Decision 25 lifts
+  converter, which §11 also defers (delivered in S2c-3; decision 28 (1) narrows it further). CONCEPT §11 notes both since decision 24. Decision 25 lifts
   the deferral of "the Web Modeler" in part: targeted amendments of the fields open questions
   name, through forms, as amended revisions; no modeler (§9). CONCEPT §11 notes it. S5c-1
   tightens decision 19's safeguard `competing-call` to count manual relations from a call element
@@ -2264,7 +2275,7 @@ in four steps, each passing every gate on its own:
 |---|---|---|
 | S2c-1 | the trust class and the rule tier: the contracts (`RevisionSource.trust`, `Model.trust`, `ImpactFile.trust`, `ImportImpact.callsProposed`, `ImportFileOutcome.trust`, `trust-kept`, `AutoAcceptSystemRule.proposed`), `trust.ts`, ingest and the three planners, the recompute with the rationale, the system rule's text and count, the client texts | done 2026-10-19 (below) |
 | S2c-2 | the fast path: the bulk dialog's group „Eindeutige Aufrufe aus abgeleiteten Modellen (n)“ opened by `?bulk=calls` (the system card's count of these proposals a link to it), a line in the upload's „Als Nächstes“ and in „Übersicht“'s („12 eindeutige Aufrufe zuerst bestätigen · Gesammelt annehmen“), `analyzr import`'s `next:` line and a warning before sending with an agent token, the integrate plugin 0.1.2 (its skill and Signavio notes say that calls of engine-less or converted bundles arrive as 90 % proposals) | done 2026-10-20 (below) |
-| S2c-3 | decision 19's extension: the criteria `proposedBy`, `derivedKind` and `converter` (migration 0018), the block reasons `agent-upload` and `amendment-conflict`, an agent rule pinned to agent proposals, the fifth write path right after the recompute of an ingest or a deletion, apply, preview, ledger and revocation, `autoAcceptedCalls` in an owner's dry run, `analyzr rules add --derived`, the dialog's third „Art“ and the bulk toast's offer | open |
+| S2c-3 | decision 19's extension: the criteria `proposedBy`, `derivedKind` and `converter` (migration 0018), the block reasons `agent-upload` and `amendment-conflict`, an agent rule pinned to agent proposals, the fifth write path right after the recompute of an ingest, a PUT, an amendment write or withdrawal, or a deletion, apply, preview, ledger and revocation, `autoAcceptedCalls` in an owner's dry run, `analyzr rules add --derived`, the dialog's third „Art“ and the bulk toast's offer | done 2026-10-20 (below) |
 | S2c-4 | „Vor der Vertrauensregel angenommen“: the append-only `revision_trust_review` (migrations 0019/0020), the list of decision 28 (3), „Zurück in die Prüfung“ and „Behalten“ from the system rule card, two owner-only routes, `analyzr rules pre-trust` | open |
 
 **S2c-1 as delivered** (2026-10-19, on the branch, every gate green, with a review round's fixes;
@@ -2437,15 +2448,15 @@ Deviations from the plan, most from the review round:
   such a call remains.
 - **„Davon N eindeutige Aufrufe“** under „Vorschläge prüfen“, where „zuerst“ read oddly.
 - **No rule offer after only derived calls** (no agent rule accepts them); the toast's offer of a
-  rule for them comes with S2c-3. A mixed selection keeps the „Gleicher Name ab 100 %“ offer.
+  rule for them came with S2c-3 (below). A mixed selection keeps the „Gleicher Name ab 100 %“ offer.
 - **At most 500 selected** from `?bulk=calls`, so the link never ends at a disabled button.
 - **The dialog stays open until closed** (`bulkMode`): the accept's refetches dropped its rows and
   unmounted it before its toast, leaving `?bulk` in the URL.
 - **The CLI's `next:` line counts the waiting calls**, not the derived models, and prints the deep
   link instead of the label „Gesammelt annehmen“ (which the review page does not show); it no
-  longer mentions `analyzr rules add --derived` (S2c-3). It asks only after an import with derived
-  models (unchanged ones included), so an import of modelled files only does not mention calls
-  still waiting from an earlier import.
+  longer mentions `analyzr rules add --derived` (S2c-3 adds an owner-key suggestion, below). It
+  asks only after an import with derived models (unchanged ones included), so an import of
+  modelled files only does not mention calls still waiting from an earlier import.
 - **The notice names the token's source and the way out**, since a token left in the shell is the
   plan's main risk and a re-import of the same bytes keeps the class (`trust-kept`); no
   `analyzr:` prefix.
@@ -2469,9 +2480,169 @@ eindeutigen Aufruf zuerst bestätigen · Gesammelt annehmen“ instead of „Ode
 Vorschläge prüfen (1) …“ (122 → 113 words at 1440, the controls unchanged), and the dialog behind
 it measures 22 controls and 112 words. Calls nobody accepts stay unsettled, and the claims assign
 them to judge as before. Left: S2c-3 (owners' rules for these proposals by derived kind and
-converter, the toast's rule offer), S2c-4 („Vor der Vertrauensregel angenommen“), the skill's
-key-map rebuild, a pre-approved `--dry-run` and `normalize-bpmn` writing `null` for an empty
+converter, the toast's rule offer; delivered 2026-10-20, below), S2c-4 („Vor der Vertrauensregel
+angenommen“), the skill's key-map rebuild, a pre-approved `--dry-run` and `normalize-bpmn` writing `null` for an empty
 `exporterVersion`.
+
+**S2c-3 as delivered** (2026-10-20, on the branch, every gate green, with a review round's fixes;
+[DEVELOPMENT.md](DEVELOPMENT.md) "M6 S2c-3 (2026-10-20)" and "Auto-accept rules (owner decision
+19)"). Decision 19's extension by decision 24.2, narrowed by decision 28 (1): an owner's
+auto-accept rule may accept the rule tier's proposals of unique calls from derived models, by the
+source the caller declares. For the first analysis: after the first „Gesammelt annehmen“ of a
+source's calls the toast offers an owner the rule for that source; once it is on, the unique calls
+each later import of that source proposes are accepted in the import's own write, without a
+click, before the agent runs (so its claims skip those pairs), marked „Automatisch angenommen“ and
+revocable, and the „Vorschau“ (or `analyzr import --dry-run` with the owner key) says so
+beforehand. Contracts first (client regenerated), migration 0018, no new route, MCP unchanged.
+
+- **Criteria and storage.** `AutoAcceptCriteria`, the draft, the revision and the rule gain
+  `proposedBy` (`agent` | `rule`, default `agent`), `derivedKind` (`export` | `converted` | `none`,
+  `none` meaning no kind declared) and `converter` (trimmed, 1–120 characters, no control
+  characters, matched exactly, `name@version`). The contract's `checkProposer`, the domain's
+  `proposerFits` (reason `derived-criteria`) and the NULL-safe database check
+  `auto_accept_rule_revision_proposer_check` (migration `0018_auto_accept_rule_tier.sql`, three
+  columns, `proposed_by` defaulting to `agent`) agree: an agent rule names neither; a rule for
+  derived calls is a relation rule of tier `key`, type `call`, minimum 0.9, without agent, model or
+  ad hoc, names a derived kind and a converter exactly for `converted`; reconstructed and as-told
+  cannot be named. Rules from before read as agent rules, saving one unchanged writes nothing, and
+  `proposedBy` never changes on a revise (422 `kind-changed`).
+- **Matching and safeguards.** An agent rule now requires an agent's proposal, so no existing rule
+  starts accepting the rule tier's proposals (pinned for „Gleicher Name ab 90 %“ with type any or
+  `call`). A rule for derived calls requires the rule tier's proposal of a unique call from a
+  derived model (told by the assertion: rule, proposal, `key`, 0.9, a rationale) whose caller's
+  uploaded revision declares the rule's kind and, for `converted`, exactly its converter. The
+  block reasons `agent-upload` and `amendment-conflict` follow `no-matching-rule`: no rule, an
+  agent rule neither, accepts any proposal on a call whose caller's revision was uploaded with an
+  agent token (a revision stored since S2c-1; one stored before carries no class and counts as
+  modelled, option (a)), and a rule for derived calls never accepts a call whose call-target
+  amendment is in `conflict`.
+- **The fifth write path.** `autoAcceptDerivedCalls` runs in `afterHeadChange` right after
+  `recomputeProject` (imports, PUT, amendment writes and withdrawals) and in `deleteModel` (a
+  deletion that makes a duplicate process id unique), in the same transaction under the lock,
+  over only the derived-call proposals that write recorded, in natural-key order, recorded under
+  the rule's author and caused by the request's actor. No query without such proposals, one
+  without an enabled rule for derived calls; nothing for a write made with an agent token. A
+  proposal the rule tier makes again on a relation it already proposed (the callee renamed, the
+  reasons changed) is new and accepted; an unchanged or unrelated import records none, so older
+  proposals need `apply`.
+- **Dry run.** `ImportImpact.autoAcceptedCalls` (items with `ruleId` and `ruleName`, `byRule`,
+  `ofProposed`: how many of them `callsProposed` counts) in `previewIngest` and `deletionImpact`,
+  only for an actor who passes `admin` (an owner on the web or with the owner key), `count` 0
+  without a rule; editors, viewers, read-only and agent tokens never get rule data. The pure
+  mirror in `import-impact.ts` reads the plan's new `histories`, so after the import the accepted
+  calls equal `acceptedCalls` ∪ `autoAcceptedCalls`.
+- **Apply, preview, ledger, revocation.** Triggers per rule; the replay reads the caller's
+  declaration from its current head (documented approximation); `AutoAcceptPreview.derivedGroups`
+  (open, blocked, accepted, rejected per source a rule can name); `proposedBy` on items and ledger
+  entries. Revoking requeues the pair's models unless the same kind of proposal is still open: an
+  agent's for an agent rule, the rule tier's derived-call proposal for a rule for derived calls
+  (so revoking such an acceptance queues nothing).
+- **CLI.** `analyzr rules add --name … --derived export|converted|none [--converter …]` (refuses
+  `--kind`, `--tier`, `--min`, `--type`, `--agent`, `--model`, `--ad-hoc`; off unless `--enable`);
+  `rules edit` on such a rule takes `--derived`, `--converter`, name and note only, and an agent
+  rule never becomes one; criteria and items read `rule tier (derived call)`; `rules preview`
+  shows the sources instead of the curve; the system line adds `analyzr rules add --derived accepts
+  the next ones` while calls are only proposed. `analyzr import --dry-run` with the owner key
+  prints `accept by your rules for derived calls: 12 ("Aufrufe: Export ohne Engine" 12)`; after an
+  import with the owner key the `next:` block adds the step for the source most of the waiting
+  calls' callers declare: `rules apply <id>` while a rule for it is on, `rules enable <id>` while
+  it is off, else `rules add --name … --derived …` (without `--enable`), its arguments
+  shell-quoted (`shellArg`, also on the value-chain `push` line). `analyzr models delete` names
+  the calls the owner's rules would accept.
+- **Web.** The rule dialog's third „Art“ „Eindeutige Aufrufe aus abgeleiteten Modellen“ with
+  „Herkunft“ (each source with its open calls) and, for „Konvertiert“, „Konverter“ (sorted by open
+  calls, „Lädt …“, „Wähle einen Konverter.“, „Noch kein Aufruf im Projekt stammt aus einem
+  Konverter; wähle eine andere Herkunft.“), the hint „Die Herkunft gibt der Import an; analyzr
+  prüft sie nicht. Über ein Agenten-Token hochgeladene Modelle nimmt keine Regel an.“, names such as
+  „Aufrufe: Export ohne Engine“ within 100 characters; the preview without curve; the row's
+  criteria „Eindeutige Aufrufe aus abgeleiteten Modellen · Export ohne Camunda-Engine“ and the
+  enable toast „Sie wirkt auf neue Aufrufvorschläge aus abgeleiteten Modellen.“; the page lead
+  „analyzr nimmt neue Vorschläge, die eine aktive Regel trifft, selbst an – nie bei einer offenen
+  Frage, einem Einwand oder wenn du schon entschieden hast.“; the marks „ausgelöst vom
+  Aufrufvorschlag aus einem abgeleiteten Modell (90 %)“; the block labels „Über ein Agenten-Token
+  hochgeladen“ and „Ergänzung nicht mehr anwendbar“; the bulk toast's offer „Eindeutige Aufrufe aus
+  abgeleiteten Modellen künftig automatisch annehmen?“ (owners, the most common nameable source,
+  `?new=calls`); the „Vorschau“ line „… · deine Regel „Aufrufe: Export ohne Engine“ nimmt 12 davon
+  gleich an“.
+
+Deviations from the plan, most from the review round:
+
+- **`agent-upload` blocks every rule**, agent rules included, for any proposal on a call whose
+  caller's revision an agent token uploaded: decision 28 (1) read literally, "no rule ever"
+  (for classified revisions, those stored since S2c-1; an older one counts as modelled, so an
+  agent rule may still accept an agent's proposal on its calls). The plan put the check on the
+  rule tier's proposals only, and the review reproduced the gap: an agent's own proposal of an
+  agent-uploaded caller's call (tier `key`, since the rule tier names the pair) was accepted by an
+  owner's „Gleicher Name ab 90 %“. `autoAcceptRelations` makes one more query for it, only when a
+  call is among the triggers and a rule is enabled.
+- **A write made with an agent token sets off no rule for derived calls**: an agent's upload of a
+  callee or its deletion of a duplicate never decides which call is accepted (the plan ran the
+  hook for every write).
+- **A proposal the rule tier makes again in a person's import counts as new** and is accepted (say,
+  the callee renamed), as an agent's re-proposal after a model change is for agent rules (plan
+  §4.1: "only the proposals this write recorded"); the review asked to leave such proposals to
+  apply, and this was kept on purpose (HANDOFF §4, "Taken during M6 S2c-3").
+- **Revocation follows the trigger.** The plan's "any live non-human proposal" kept an agent
+  rule's revoked acceptance `proposed` with nothing queued after the agent's proposal was gone
+  (the rule tier's proposal usually stays on such pairs); now the trigger's kind decides.
+- **Recognized by the assertion**, not by `attrs.match` (equivalent for live stances; the
+  preview's in-memory data has no attributes). **No `derived` field** on items or the ledger, only
+  `proposedBy`; `derivedGroups` leaves out sources a rule cannot name (reconstructed, as told, a
+  conversion without converter).
+- **`autoAcceptedCalls` for every owner** (`count` 0 without a rule, in the deletion impact too) and
+  **`ofProposed`**: the rule tier may re-assert a proposal on a relation already proposed, so the
+  „Vorschau“ line does not treat the calls as a subset of `callsProposed`: „… nimmt 1 davon und 2
+  bereits vorgeschlagene gleich an“, a line of its own without calls proposed anew („1 bereits
+  vorgeschlagener Aufruf – deine Regel „…“ nimmt ihn gleich an“), and „– nach dem Import gesammelt
+  annehmen“ dropped only when the rules take every call proposed anew.
+- **Neutral texts** where a derived call made „Agentenvorschlag“ wrong: the page lead, the revoke
+  dialog („Ist noch ein Vorschlag offen …“), its summary („(ein Vorschlag ist noch offen)“) and
+  the provenance („kein Vorschlag war mehr offen …“); `auto-accept.spec.ts` follows.
+- **The offer only where it helps.** None when a rule, on or off, already names the source (the
+  CLI suggests `rules apply <id>` or `rules enable <id>` instead) and none when no source can be
+  named (agent uploads); the CLI picks the source from the waiting calls' callers, not by counting
+  files, and quotes it for the shell (a manifest's converter could plant `$(…)`); suggested names
+  are cut to 100 characters; the suggested `rules add` has no `--enable`, so new rules start off
+  as in the web.
+- **„Konverter“** lists the most open calls first, says „Lädt …“ while the preview loads and
+  „Konverter wählen …“ until one is chosen, and saving without one says why.
+- **The e2e flow uses „Hochladen“** (the owner's web session, a human upload like the owner key)
+  instead of the owner-key CLI, since the e2e harness has no owner key file, and a "re-import" is
+  a fresh project, since unchanged bytes record no new proposal.
+
+Tests: server unit `auto-accept-evaluate.test.ts`, `auto-accept-preview.test.ts`,
+`auto-accept-rules.test.ts`, `recompute-trust.test.ts` (the dry run's mirror); real PostgreSQL
+`derived-call-rules.test.ts` (new, 14 tests: the owner-only dry run and the property, the
+acceptance in the import's write, the narrowing, `agent-upload` for agent rules too,
+`amendment-conflict`, an existing agent rule accepting nothing, `proposedBy` fixed, non-retroactive
+with apply, revocation without requeue and never again, an agent token's write accepting nothing
+while a person's callee rename does, the deletion, identical events without rules),
+`migration-rule-tier.test.ts` (new: 0018 on existing rules, 14 rows refused by the check's name),
+`auto-accept.test.ts` (the requeue when the agent's proposal is gone); web `rules-tab`,
+`auto-accept-lib`, `bulk-accept-dialog`, `lib`, `review-lib`, `auto-accept-marks`, the bundle
+guard; CLI `rules`, `import`, `models`, `manifest`; Playwright `derived-call-rules.spec.ts` (new: the
+toast's offer and its prefilled dialog; „Hochladen“ with the rule on, the call accepted and marked,
+revoked back to a proposal; an agent token's import blocked by `agent-upload`), `trust-calls.spec.ts`
+(the toast per case), `auto-accept.spec.ts`.
+
+What it costs and leaves open. Live-run neutral: no project, seed or live-run project has a rule,
+so the eval reports, MCP snapshots, procedures and recordings are unchanged, and agents never see
+rule data. The bundle entry is 226.0 KB gzip (+0.9); „Annahmeregeln“ measures 82 words (80) from
+the new page lead; every other screen is unchanged. The readings the implementing agent took
+that the owner may overrule are in HANDOFF §4 ("Taken during M6 S2c-3"). Open:
+
+- **The amendment effect's dry run does not predict a rule's acceptance.** Withdrawing a
+  call-target amendment can bring the rule tier's proposal back, and an owner's enabled rule for
+  that source accepts it in the same write; the effect's dry run does not say so.
+- **The callee side.** Only the caller's class counts (decision 24.2, a reading of the S2c plan):
+  a call whose callee an agent token uploaded is not blocked, so a person's later write that
+  proposes it again, or apply, may accept a call to a process version only an agent uploaded (the
+  agent's own write sets no rule off); the exposure decision 9 already has.
+- **The replay's approximation**: the preview and apply read the caller's declared source from its
+  current head, not from the revision the proposal was made under.
+
+Left: S2c-4 („Vor der Vertrauensregel angenommen“), the skill's key-map rebuild, a pre-approved
+`--dry-run` and `normalize-bpmn` writing `null` for an empty `exporterVersion`.
 
 **S3 "Toolkit".** S3a (part of the „erste Anfänge“): §3.11, report committed, CI drift check,
 and the `get_landscape` size per model of the seeded `nordwind-handel` with the v1 limit in §6.
@@ -3325,8 +3496,9 @@ write-back or sync to the source tools (decision 7).
 ## 10. Open questions for the owner
 
 1. **Trust policy (amends decisions 9 and 19). Decided 2026-10-15 as recommended, with (a)
-   (decision 24.2; the class and the rule tier delivered in S2c-1, decision 28 answered the S2c
-   plan's open points, §3.10); only its last sentence stays open.** Calls in models that are not modelled (engine
+   (decision 24.2; the class and the rule tier delivered in S2c-1, the decision-19 extension in
+   S2c-3, decision 28 answered the S2c plan's open points, §3.10); only its last sentence stays
+   open.** Calls in models that are not modelled (engine
    null, uploaded with an agent token, or declared converted, reconstructed or as-told) are
    proposed (tier `key`, 0.9) instead of accepted, and decision-19 rules may accept such
    rule-tier call proposals narrowed by derived kind and converter (§3.10). Recommendation: yes to

@@ -2,31 +2,43 @@ import { describe, expect, it } from 'vitest';
 
 import {
   autoAcceptLabel,
+  inForceAgents,
   inForceByAgent,
   indexLedger,
   matchesAuto,
   parseAutoFilter,
+  proposerName,
   revocationSummary,
 } from '../src/lib/auto-accept';
 import { countNameFlags } from '../src/lib/auto-accept-flags';
 import { subjectLabel } from '../src/lib/auto-accept-names';
 import {
+  AUTO_ACCEPT_BLOCK_LABELS,
+  RULE_ARTS,
+  actsOnText,
+  artOf,
   changingCurve,
+  criteriaLabel,
   draftOf,
+  fitRuleName,
   formatPercent,
   formatThreshold,
   historyText,
   nameFlagsText,
   narrowingOf,
   openMatchesText,
+  openOfSource,
   parsePercent,
   percentInput,
+  revisionChanges,
+  sourceLabel,
   suggestedRuleName,
   tiersOf,
 } from '../src/lib/auto-accept-rules';
 import { nameUsage } from '../src/lib/generic-names';
 import { buildRefIndex, resolverOf } from '../src/lib/refs';
 import { filterRelations, parseRelationFilters, sameFilters } from '../src/lib/relation-filters';
+import { parseRulesSearch } from '../src/routes/project-rules';
 import {
   autoAcceptPreview,
   autoAcceptRule,
@@ -163,6 +175,9 @@ describe('texts and numbers in German', () => {
       agentPrincipalId: null,
       llmModel: null,
       includeAdHoc: false,
+      proposedBy: 'agent',
+      derivedKind: null,
+      converter: null,
     });
   });
 
@@ -185,7 +200,7 @@ describe('texts and numbers in German', () => {
         truncated: false,
       }),
     ).toBe(
-      '3 automatische Annahmen: 2 gehen zurück in die Prüfung (ein Agentenvorschlag ist noch offen); 1 wird veraltet und von den Agenten neu beurteilt (kein offener Vorschlag mehr). 2 wurden inzwischen von einem Menschen entschieden und bleiben unverändert. 1 war schon widerrufen.',
+      '3 automatische Annahmen: 2 gehen zurück in die Prüfung (ein Vorschlag ist noch offen); 1 wird veraltet und von den Agenten neu beurteilt (kein offener Vorschlag mehr). 2 wurden inzwischen von einem Menschen entschieden und bleiben unverändert. 1 war schon widerrufen.',
     );
   });
 });
@@ -290,5 +305,150 @@ describe('the rules page’s helpers (UX9)', () => {
     expect(countNameFlags(items, new Map([[antwort.id, antwort]]), resolve, nameUsage(facts))).toBe(
       1,
     );
+  });
+});
+
+describe('rules for derived calls (M6 S2c-3)', () => {
+  const calls = autoAcceptRule({
+    id: RULE_A,
+    name: 'Aufrufe: konvertiert mit x@1',
+    relationType: 'call',
+    minConfidence: 0.9,
+    proposedBy: 'rule',
+    derivedKind: 'converted',
+    converter: 'x@1',
+  });
+
+  it('names them by their source: „Art“, criteria, „Herkunft“, the suggested name', () => {
+    expect(artOf(calls)).toBe('calls');
+    expect(artOf(autoAcceptRule({ id: RULE_B, kind: 'placement', tier: 'lexical' }))).toBe(
+      'placement',
+    );
+    expect(RULE_ARTS.calls).toBe('Eindeutige Aufrufe aus abgeleiteten Modellen');
+    expect(criteriaLabel(calls)).toBe(
+      'Eindeutige Aufrufe aus abgeleiteten Modellen · Konvertiert mit x@1',
+    );
+    expect(criteriaLabel(autoAcceptRule({ id: RULE_B }))).toBe(
+      'Relationen · Gleicher Name · ab 95 %',
+    );
+    expect(sourceLabel('export', null)).toBe('Export ohne Camunda-Engine');
+    expect(sourceLabel('none', null)).toBe('Ohne Angabe');
+    const name = (
+      derivedKind: 'export' | 'converted' | 'none',
+      converter: string | null,
+      taken: string[] = [],
+    ) =>
+      suggestedRuleName(
+        {
+          kind: 'relation',
+          tier: 'key',
+          relationType: 'call',
+          threshold: '90 %',
+          derived: { derivedKind, converter },
+        },
+        taken,
+      );
+    expect(name('converted', 'normalize-bpmn@0.1.0')).toBe(
+      'Aufrufe: konvertiert mit normalize-bpmn@0.1.0',
+    );
+    expect(name('export', null)).toBe('Aufrufe: Export ohne Engine');
+    expect(name('none', null, ['aufrufe: ohne angabe'])).toBe('Aufrufe: ohne Angabe (2)');
+    // A converter of up to 120 characters: the name still fits the 100 a rule may have.
+    const long = `${'k'.repeat(110)}@1.0.0`;
+    const fitted = name('converted', long);
+    expect(fitted).toHaveLength(100);
+    expect(fitted).toMatch(/^Aufrufe: konvertiert mit k+…$/);
+    const second = name('converted', long, [fitted]);
+    expect(second).toHaveLength(100);
+    expect(second.endsWith('… (2)')).toBe(true);
+    // never cut inside a surrogate pair
+    expect(fitRuleName(`${'x'.repeat(98)}😀😀`)).toBe(`${'x'.repeat(98)}…`);
+    expect(actsOnText(calls)).toBe(
+      'Sie wirkt auf neue Aufrufvorschläge aus abgeleiteten Modellen.',
+    );
+    expect(actsOnText(autoAcceptRule({ id: RULE_B }))).toBe(
+      'Sie wirkt auf neue Agentenvorschläge.',
+    );
+    expect(draftOf(calls)).toMatchObject({
+      proposedBy: 'rule',
+      derivedKind: 'converted',
+      converter: 'x@1',
+    });
+  });
+
+  it('counts the open calls of a source and tells the new safeguards', () => {
+    const groups = [
+      {
+        derivedKind: 'export' as const,
+        converter: null,
+        open: 4,
+        blocked: 0,
+        accepted: 0,
+        rejected: 0,
+      },
+      {
+        derivedKind: 'converted' as const,
+        converter: 'a@1',
+        open: 2,
+        blocked: 1,
+        accepted: 0,
+        rejected: 0,
+      },
+      {
+        derivedKind: 'converted' as const,
+        converter: 'b@1',
+        open: 3,
+        blocked: 0,
+        accepted: 0,
+        rejected: 0,
+      },
+    ];
+    expect(openOfSource(groups, 'export')).toBe(4);
+    expect(openOfSource(groups, 'converted')).toBe(5);
+    expect(openOfSource(groups, 'converted', 'b@1')).toBe(3);
+    expect(openOfSource(groups, 'none')).toBe(0);
+    expect(AUTO_ACCEPT_BLOCK_LABELS['agent-upload']).toBe('Über ein Agenten-Token hochgeladen');
+    expect(AUTO_ACCEPT_BLOCK_LABELS['amendment-conflict']).toBe('Ergänzung nicht mehr anwendbar');
+    expect(historyText(autoAcceptPreview().history, true)).toBe(
+      'Bisher: 15 von 40 entschiedenen Aufrufen aus abgeleiteten Modellen hätte die Regel angenommen – davon 14 angenommen, 1 abgelehnt, 0 korrigiert (Trefferquote 93,3 %)',
+    );
+    expect(revisionChanges(calls, { ...calls, converter: 'x@2', note: 'neu' })).toEqual([
+      'Herkunft: Konvertiert mit x@1 → Konvertiert mit x@2',
+      'Notiz: keine → „neu“',
+    ]);
+  });
+
+  it('marks: no agent of their own; „Aufrufvorschlag aus einem abgeleiteten Modell“', () => {
+    const index = indexLedger([
+      ledgerEntry({ id: 'rel_01A' }),
+      ledgerEntry({
+        id: 'rel_01B',
+        proposedBy: 'rule',
+        agent: { principalId: 'prn_01RULES', handle: 'analyzr-rules' },
+        decisionId: 'ast_01B',
+      }),
+    ]);
+    expect(inForceAgents(index).map((a) => [a.handle, a.count])).toEqual([
+      ['agent:claude code', 1],
+    ]);
+    expect(proposerName({ proposedBy: 'rule', agent: { handle: 'analyzr-rules' } })).toBe(
+      'Aufrufvorschlag aus einem abgeleiteten Modell',
+    );
+    expect(proposerName({ proposedBy: 'agent', agent: { handle: 'agent:sim' } })).toBe('sim');
+  });
+
+  it('reads `?new=calls` with its source, and drops what it does not know', () => {
+    expect(
+      parseRulesSearch({ new: 'calls', derivedKind: 'converted', converter: ' x@1 ' }),
+    ).toEqual({ new: 'calls', derivedKind: 'converted', converter: 'x@1' });
+    expect(parseRulesSearch({ new: 'calls', derivedKind: 'export', converter: 'x@1' })).toEqual({
+      new: 'calls',
+      derivedKind: 'export',
+    });
+    expect(parseRulesSearch({ new: 'calls', derivedKind: 'reconstructed' })).toEqual({
+      new: 'calls',
+    });
+    expect(parseRulesSearch({ new: 'key', derivedKind: 'export' })).toEqual({ new: 'key' });
+    expect(parseRulesSearch({ new: 'other' })).toEqual({});
   });
 });

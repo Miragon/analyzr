@@ -65,8 +65,15 @@ interface DesiredAssertion {
   rationale: string | null;
 }
 
-/** An assertion of a recompute's history: what status reads, and its rationale. */
-export type HistoryAssertion = AssertionView & { relationId: RelationId; rationale: string | null };
+/**
+ * An assertion of a recompute's history: what status reads, its rationale,
+ * and its question (the dry run's auto-accept safeguards read it, M6 S2c-3).
+ */
+export type HistoryAssertion = AssertionView & {
+  relationId: RelationId;
+  rationale: string | null;
+  question?: string | null;
+};
 
 function matches(stance: HistoryAssertion, desired: DesiredAssertion): boolean {
   return (
@@ -136,6 +143,12 @@ export interface RecomputePlan {
   summary: RecomputeSummary;
   /** Natural keys of the unique calls from derived models the rules propose (M6 S2c). */
   derivedCalls: ReadonlySet<string>;
+  /**
+   * Every relation's history after the plan, by relation id (a new relation
+   * by its placeholder id), the planned assertions with provisional ids and
+   * seqs: what the dry run's auto-accept evaluation reads (M6 S2c-3).
+   */
+  histories: ReadonlyMap<string, readonly HistoryAssertion[]>;
 }
 
 /**
@@ -317,7 +330,7 @@ export function planRecompute(input: RecomputeInput): RecomputePlan {
   }
 
   summary.findings = rules.findings.length;
-  return { steps, findings: rules.findings, summary, derivedCalls };
+  return { steps, findings: rules.findings, summary, derivedCalls, histories: history };
 }
 
 /**

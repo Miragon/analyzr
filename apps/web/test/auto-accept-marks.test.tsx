@@ -255,6 +255,24 @@ describe('provenance and single-item revoke', () => {
     ]);
   });
 
+  it('an acceptance a derived call’s proposal triggered names that proposal, no agent (M6 S2c-3)', () => {
+    const entry = ledgerEntry({
+      id: MESSAGE.id,
+      type: 'call',
+      proposedBy: 'rule',
+      agent: { principalId: 'prn_01RULES', handle: 'analyzr-rules' },
+      llmModel: null,
+      confidence: 0.9,
+      ruleName: 'Aufrufe: Export ohne Engine',
+    });
+    renderWithQuery(<AutoAcceptProvenance project="demo" entries={[entry]} canRevoke={false} />);
+    const box = screen.getByTestId('auto-accept-provenance');
+    expect(box.textContent).toContain(
+      'Entschieden durch Regel „Aufrufe: Export ohne Engine“ (Revision 2), aktiviert von owner; ausgelöst vom Aufrufvorschlag aus einem abgeleiteten Modell (90 %)',
+    );
+    expect(box.textContent).not.toContain('analyzr-rules');
+  });
+
   it('a revoked acceptance shows what became of it, without a revoke', () => {
     renderWithQuery(
       <AutoAcceptProvenance
@@ -310,7 +328,7 @@ describe('provenance and single-item revoke', () => {
     );
     const box = screen.getByTestId('auto-accept-provenance');
     expect(box.textContent).toContain(
-      'kein Agentenvorschlag war mehr offen: die Relation ist veraltet, die Agenten beurteilen sie neu.',
+      'kein Vorschlag war mehr offen: die Relation ist veraltet, die Agenten beurteilen sie neu.',
     );
     expect(box.textContent).not.toContain('wieder zur Prüfung');
   });

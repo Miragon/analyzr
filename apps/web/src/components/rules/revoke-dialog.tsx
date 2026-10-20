@@ -18,10 +18,10 @@ import { Field, FieldDescription, FieldLabel } from '@/components/ui/field';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
 import { ApiError } from '@/lib/api';
-import { revocationSummary } from '@/lib/auto-accept';
+import { proposerName, revocationSummary } from '@/lib/auto-accept';
 import { useRevokeAutoAccepted } from '@/lib/auto-accept-actions';
 import { useSubjectNames } from '@/lib/auto-accept-names';
-import { formatConfidence, handleName } from '@/lib/labels';
+import { formatConfidence } from '@/lib/labels';
 import { MAX_AUTO_ACCEPT_REASON_CHARS } from '@/lib/limits';
 import { autoAcceptRevokeDryRunQuery } from '@/lib/queries';
 import { toast } from '@/lib/toast';
@@ -104,8 +104,8 @@ function RevokeBody({
       <DialogHeader>
         <DialogTitle>{title}</DialogTitle>
         <DialogDescription>
-          Ist noch ein Agentenvorschlag offen, steht das Element wieder in der Prüfung; sonst wird
-          es veraltet und die Agenten beurteilen es neu. Was ein Mensch seither entschieden hat,
+          Ist noch ein Vorschlag offen, steht das Element wieder in der Prüfung; sonst wird es
+          veraltet und die Agenten beurteilen es neu. Was ein Mensch seither entschieden hat,
           bleibt, wie es ist.
         </DialogDescription>
       </DialogHeader>
@@ -144,7 +144,7 @@ function RevokeBody({
                     names={names}
                     details={[
                       ...(byRule ? [] : [`Regel „${i.ruleName}“`]),
-                      handleName(i.agent.handle),
+                      proposerName(i),
                       ...(i.confidence === null ? [] : [formatConfidence(i.confidence)]),
                       i.outcome === 'obsolete' ? 'wird veraltet' : 'zurück in die Prüfung',
                     ]}

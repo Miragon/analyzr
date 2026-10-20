@@ -17,6 +17,7 @@ import {
   answersSinceHold,
   conflictOf,
   currentProposal,
+  derivedCallSource,
   evidenceItems,
   finishesModels,
   heldList,
@@ -511,6 +512,42 @@ describe('unique calls from derived models (M6 S2c)', () => {
     expect([...bulkPreselection(rows, 'calls')]).toEqual(
       many.slice(0, MAX_BULK_DECISIONS).map((r) => r.relation.id),
     );
+  });
+
+  it('names the source most callers declare that a rule can name (M6 S2c-3)', () => {
+    const trust = (
+      derivedKind: 'export' | 'converted' | 'reconstructed' | null,
+      converter: string | null = null,
+      reasons: ('no-engine' | 'agent-upload' | 'converted' | 'reconstructed')[] = ['no-engine'],
+    ) => ({ class: 'derived' as const, reasons, derivedKind, converter });
+    const models = [
+      model({ key: 'a', trust: trust('export') }),
+      model({ key: 'b', trust: trust('converted', 'x@1', ['converted']) }),
+      model({ key: 'c', trust: trust('export', null, ['no-engine', 'agent-upload']) }),
+      model({ key: 'd', trust: trust('reconstructed', null, ['reconstructed']) }),
+      model({ key: 'e', trust: trust('converted', null, ['converted']) }),
+      model({ key: 'f', trust: trust(null) }),
+      model({
+        key: 'g',
+        trust: { class: 'modelled', reasons: [], derivedKind: null, converter: null },
+      }),
+    ];
+    const from = (...keys: string[]) => keys.map((k) => ({ from: `${k}#Call` }));
+    expect(derivedCallSource(from('a', 'b', 'b'), models)).toEqual({
+      derivedKind: 'converted',
+      converter: 'x@1',
+    });
+    expect(derivedCallSource(from('a', 'b'), models)).toEqual({
+      derivedKind: 'export',
+      converter: null,
+    });
+    expect(derivedCallSource(from('f'), models)).toEqual({ derivedKind: 'none', converter: null });
+    // agent uploads, reconstructed, a conversion without converter, modelled, unknown: nothing
+    expect(derivedCallSource(from('c', 'c', 'd', 'e', 'g', 'z'), models)).toBeNull();
+    expect(derivedCallSource(from('a', 'c', 'c'), models)).toEqual({
+      derivedKind: 'export',
+      converter: null,
+    });
   });
 });
 

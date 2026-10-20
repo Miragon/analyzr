@@ -477,6 +477,123 @@ describe('upload result (UX7)', () => {
     expect(sharedTopFolder(['gemeinsam/a'])).toBeNull();
   });
 
+  it('adds what an owner’s rules for derived calls accept at once to the „Vorschau“ line (M6 S2c-3)', () => {
+    const list = (count: number) => ({ count, items: [] });
+    const call = { type: 'call' as const, from: 'a#C' as const, to: 'b#P' as const };
+    const auto = (...byRule: [string, number][]) =>
+      withOf(
+        byRule.reduce((n, [, c]) => n + c, 0),
+        byRule,
+      );
+    /** `ofProposed` of them among the calls proposed anew. */
+    const withOf = (ofProposed: number, byRule: [string, number][]) => ({
+      count: byRule.reduce((n, [, c]) => n + c, 0),
+      ofProposed,
+      items: byRule.flatMap(([ruleName, c]) =>
+        Array.from({ length: c }, () => ({
+          ...call,
+          ruleId: `aar_${ruleName}` as const,
+          ruleName,
+        })),
+      ),
+      byRule: byRule.map(([ruleName, c]) => ({
+        ruleId: `aar_${ruleName}` as const,
+        ruleName,
+        count: c,
+      })),
+    });
+    const impact = {
+      files: [],
+      acceptedCalls: list(0),
+      callsProposed: {
+        count: 12,
+        items: [],
+        wasAccepted: 0,
+        byReason: [{ reason: 'no-engine' as const, count: 12 }],
+      },
+      proposalsAdded: list(0),
+      proposalsWithdrawn: list(0),
+      endpointsChanged: list(0),
+      findingsAdded: list(0),
+      findingsResolved: list(0),
+      absentKeys: list(0),
+    };
+    // All of them: nothing left to accept after the import.
+    expect(impactLines({ ...impact, autoAcceptedCalls: auto(['Signavio-Export', 12]) })).toEqual([
+      '12 Aufrufe nur vorgeschlagen (ohne Camunda-Engine) · deine Regel „Signavio-Export“ nimmt 12 davon gleich an',
+    ]);
+    expect(impactLines({ ...impact, autoAcceptedCalls: auto(['A', 3], ['B', 2]) })).toEqual([
+      '12 Aufrufe nur vorgeschlagen (ohne Camunda-Engine) – nach dem Import gesammelt annehmen · deine Regeln nehmen 5 davon gleich an',
+    ]);
+    // An owner without such rules, and everyone else: the line of S2c.
+    for (const autoAcceptedCalls of [auto(), undefined]) {
+      expect(
+        impactLines({ ...impact, ...(autoAcceptedCalls ? { autoAcceptedCalls } : {}) }),
+      ).toEqual([
+        '12 Aufrufe nur vorgeschlagen (ohne Camunda-Engine) – nach dem Import gesammelt annehmen',
+      ]);
+    }
+    // Re-recorded proposals of calls proposed already: a line of their own.
+    const none = { ...impact.callsProposed, count: 0, byReason: [] };
+    expect(
+      impactLines({
+        ...impact,
+        callsProposed: none,
+        autoAcceptedCalls: withOf(0, [['Signavio-Export', 1]]),
+      }),
+    ).toEqual([
+      '1 bereits vorgeschlagener Aufruf – deine Regel „Signavio-Export“ nimmt ihn gleich an',
+    ]);
+    expect(
+      impactLines({ ...impact, callsProposed: none, autoAcceptedCalls: withOf(0, [['A', 3]]) }),
+    ).toEqual(['3 bereits vorgeschlagene Aufrufe – deine Regel „A“ nimmt sie gleich an']);
+    // Some of them among the calls proposed anew, some proposed before: never more „davon“
+    // than were proposed, and the hint stays while a call proposed anew is left.
+    const one = {
+      ...impact.callsProposed,
+      count: 1,
+      byReason: [{ reason: 'no-engine' as const, count: 1 }],
+    };
+    expect(
+      impactLines({ ...impact, callsProposed: one, autoAcceptedCalls: withOf(1, [['Export', 3]]) }),
+    ).toEqual([
+      '1 Aufruf nur vorgeschlagen (ohne Camunda-Engine) · deine Regel „Export“ nimmt 1 davon und 2 bereits vorgeschlagene gleich an',
+    ]);
+    expect(
+      impactLines({
+        ...impact,
+        callsProposed: { ...one, count: 2 },
+        autoAcceptedCalls: withOf(0, [['Export', 2]]),
+      }),
+    ).toEqual([
+      '2 Aufrufe nur vorgeschlagen (ohne Camunda-Engine) – nach dem Import gesammelt annehmen · deine Regel „Export“ nimmt 2 bereits vorgeschlagene gleich an',
+    ]);
+    expect(
+      impactLines({
+        ...impact,
+        callsProposed: { ...one, count: 2 },
+        autoAcceptedCalls: withOf(1, [['Export', 2]]),
+      }),
+    ).toEqual([
+      '2 Aufrufe nur vorgeschlagen (ohne Camunda-Engine) – nach dem Import gesammelt annehmen · deine Regel „Export“ nimmt 1 davon und 1 bereits vorgeschlagenen gleich an',
+    ]);
+    // Batches merge by rule; a preview without them has none.
+    expect(
+      mergeImpacts([
+        { ...impact, autoAcceptedCalls: auto(['A', 2]) },
+        { ...impact, autoAcceptedCalls: auto(['A', 1], ['B', 1]) },
+      ]).autoAcceptedCalls,
+    ).toMatchObject({
+      count: 4,
+      ofProposed: 4,
+      byRule: [
+        { ruleName: 'A', count: 3 },
+        { ruleName: 'B', count: 1 },
+      ],
+    });
+    expect('autoAcceptedCalls' in mergeImpacts([impact, impact])).toBe(false);
+  });
+
   it('says what waits for the agent as `analyzr import` does', () => {
     expect(waitingText(0, false)).toBeNull();
     expect(waitingText(1, false)).toBe('1 Modell wartet auf den Agenten');

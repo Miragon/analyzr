@@ -1,6 +1,8 @@
 import type {
   AutoAcceptBlockReason,
   AutoAcceptCurvePoint,
+  AutoAcceptDerivedGroup,
+  AutoAcceptDerivedKind,
   AutoAcceptKind,
   AutoAcceptLedgerState,
   AutoAcceptPreview,
@@ -11,7 +13,11 @@ import type {
 } from '@analyzr/client';
 
 import { RELATION_TYPES, TIERS, handleName } from './labels';
-import { AUTO_ACCEPT_TIERS, MIN_AUTO_ACCEPT_CONFIDENCE } from './limits';
+import {
+  AUTO_ACCEPT_TIERS,
+  MAX_AUTO_ACCEPT_NAME_CHARS,
+  MIN_AUTO_ACCEPT_CONFIDENCE,
+} from './limits';
 
 /**
  * The tab „Regeln“ (owner decision 19): German labels for kinds, tiers,
@@ -25,6 +31,84 @@ export const AUTO_ACCEPT_KINDS: Record<AutoAcceptKind, { label: string; one: str
   relation: { label: 'Relationen', one: 'Relation' },
   placement: { label: 'Platzierungen', one: 'Platzierung' },
 };
+
+/**
+ * The „Art“ of a rule (M6 S2c-3): agent proposals of relations or of
+ * placements, or the rule tier's proposals of unique calls from derived
+ * models (`proposedBy: 'rule'`). It never changes.
+ */
+export type RuleArt = AutoAcceptKind | 'calls';
+
+export const RULE_ARTS: Record<RuleArt, string> = {
+  relation: AUTO_ACCEPT_KINDS.relation.label,
+  placement: AUTO_ACCEPT_KINDS.placement.label,
+  calls: 'Eindeutige Aufrufe aus abgeleiteten Modellen',
+};
+
+/** The „Art“ of a rule or revision. */
+export function artOf(rule: Pick<AutoAcceptRule, 'kind' | 'proposedBy'>): RuleArt {
+  return rule.proposedBy === 'rule' ? 'calls' : rule.kind;
+}
+
+/** „Herkunft“ of a rule for derived calls: the source the import declares (M6 S2c-3). */
+export const DERIVED_SOURCES: Record<AutoAcceptDerivedKind, string> = {
+  export: 'Export ohne Camunda-Engine',
+  converted: 'Konvertiert',
+  none: 'Ohne Angabe',
+};
+
+/** A source in one phrase: „Export ohne Camunda-Engine“, „Konvertiert mit normalize-bpmn@0.1.0“. */
+export function sourceLabel(
+  derivedKind: AutoAcceptDerivedKind | null,
+  converter: string | null,
+): string {
+  if (derivedKind === null) return '–';
+  return derivedKind === 'converted' && converter
+    ? `${DERIVED_SOURCES.converted} mit ${converter}`
+    : DERIVED_SOURCES[derivedKind];
+}
+
+/**
+ * The open unique calls from derived models of a source a rule naming it
+ * would accept now (`derivedGroups`; `converted` over every converter
+ * unless one is given).
+ */
+export function openOfSource(
+  groups: readonly AutoAcceptDerivedGroup[],
+  derivedKind: AutoAcceptDerivedKind,
+  converter?: string,
+): number {
+  return groups
+    .filter(
+      (g) =>
+        g.derivedKind === derivedKind && (converter === undefined || g.converter === converter),
+    )
+    .reduce((n, g) => n + g.open, 0);
+}
+
+/**
+ * A rule's criteria in one line (the table, „Verlauf“): „Relationen ·
+ * Gleicher Name · ab 95 %“; a rule for derived calls „Eindeutige Aufrufe aus
+ * abgeleiteten Modellen · Export ohne Camunda-Engine“.
+ */
+export function criteriaLabel(
+  rule: Pick<
+    AutoAcceptRule,
+    'kind' | 'tier' | 'minConfidence' | 'proposedBy' | 'derivedKind' | 'converter'
+  >,
+): string {
+  if (rule.proposedBy === 'rule') {
+    return `${RULE_ARTS.calls} · ${sourceLabel(rule.derivedKind, rule.converter)}`;
+  }
+  return `${AUTO_ACCEPT_KINDS[rule.kind].label} · ${tierLabel(rule.tier)} · ab ${formatThreshold(rule.minConfidence)}`;
+}
+
+/** What a rule's „Aktiv“ switch says it acts on once enabled. */
+export function actsOnText(rule: Pick<AutoAcceptRule, 'proposedBy'>): string {
+  return rule.proposedBy === 'rule'
+    ? 'Sie wirkt auf neue Aufrufvorschläge aus abgeleiteten Modellen.'
+    : 'Sie wirkt auf neue Agentenvorschläge.';
+}
 
 /** The proposal tiers as the review shows them („Gleicher Name“, „Ähnlicher Name“, „Gleiche Bedeutung“). */
 export function tierLabel(tier: AutoAcceptTier): string {
@@ -50,6 +134,8 @@ export function relationTypeLabel(type: AutoAcceptRelationType): string {
 export const AUTO_ACCEPT_BLOCK_LABELS: Record<AutoAcceptBlockReason, string> = {
   'not-agent': 'Kein Agentenvorschlag',
   'no-matching-rule': 'Erfüllt die Regel nicht',
+  'agent-upload': 'Über ein Agenten-Token hochgeladen',
+  'amendment-conflict': 'Ergänzung nicht mehr anwendbar',
   'stale-proposal': 'Vorschlag beruht auf einem veralteten Stand',
   'not-open': 'Nicht mehr offen',
   'endpoint-not-ok': 'Endpunkt geändert oder fehlt',
@@ -134,11 +220,17 @@ export function draftOf(rule: AutoAcceptRule): AutoAcceptRuleDraft {
     agentPrincipalId: rule.agentPrincipalId,
     llmModel: rule.llmModel,
     includeAdHoc: rule.includeAdHoc,
+    proposedBy: rule.proposedBy,
+    derivedKind: rule.derivedKind,
+    converter: rule.converter,
   };
 }
 
-/** The history line: what the rule would have accepted so far and how humans decided it. */
-export function historyText(h: AutoAcceptPreview['history']): string {
+/**
+ * The history line: what the rule would have accepted so far and how humans
+ * decided it; for a rule for derived calls (`calls`, M6 S2c-3) such calls.
+ */
+export function historyText(h: AutoAcceptPreview['history'], calls = false): string {
   const decided = [
     `${h.accepted} angenommen`,
     `${h.rejected} abgelehnt`,
@@ -147,8 +239,9 @@ export function historyText(h: AutoAcceptPreview['history']): string {
   ].join(', ');
   const precision =
     h.precision === null ? 'noch keine Trefferquote' : `Trefferquote ${formatPercent(h.precision)}`;
+  const what = calls ? 'Aufrufen aus abgeleiteten Modellen' : 'Agentenvorschlägen';
   return (
-    `Bisher: ${h.wouldAccept} von ${h.decided} entschiedenen Agentenvorschlägen hätte die Regel ` +
+    `Bisher: ${h.wouldAccept} von ${h.decided} entschiedenen ${what} hätte die Regel ` +
     `angenommen – davon ${decided} (${precision})`
   );
 }
@@ -168,6 +261,16 @@ export function revisionChanges(from: AutoAcceptRule, to: AutoAcceptRule): strin
   };
   diff('Status', from.enabled ? 'aktiv' : 'aus', to.enabled ? 'aktiv' : 'aus');
   diff('Name', `„${from.name}“`, `„${to.name}“`);
+  if (from.proposedBy === 'rule' || to.proposedBy === 'rule') {
+    // A rule for derived calls (M6 S2c-3): its source; the rest is fixed.
+    diff(
+      'Herkunft',
+      sourceLabel(from.derivedKind, from.converter),
+      sourceLabel(to.derivedKind, to.converter),
+    );
+    diff('Notiz', from.note ? `„${from.note}“` : 'keine', to.note ? `„${to.note}“` : 'keine');
+    return out;
+  }
   diff('Grundlage', tierLabel(from.tier), tierLabel(to.tier));
   diff('ab Konfidenz', formatThreshold(from.minConfidence), formatThreshold(to.minConfidence));
   diff(
@@ -185,11 +288,45 @@ export function revisionChanges(from: AutoAcceptRule, to: AutoAcceptRule): strin
 // ------------------------------------------------------------------- UX9
 
 /**
+ * `name` with `suffix` within {@link MAX_AUTO_ACCEPT_NAME_CHARS} (UTF-16
+ * units, as the server counts): cut at a code point and ended with „…“ when
+ * too long (a converter may have 120 characters, a name 100).
+ */
+export function fitRuleName(name: string, suffix = ''): string {
+  if (name.length + suffix.length <= MAX_AUTO_ACCEPT_NAME_CHARS) return name + suffix;
+  const budget = MAX_AUTO_ACCEPT_NAME_CHARS - suffix.length - 1;
+  let cut = '';
+  for (const ch of name) {
+    if (cut.length + ch.length > budget) break;
+    cut += ch;
+  }
+  return `${cut.trimEnd()}…${suffix}`;
+}
+
+/**
+ * The name of a rule for derived calls from its source: „Aufrufe: Export
+ * ohne Engine“ (M6 S2c-3), shortened to fit ({@link fitRuleName}).
+ */
+export function derivedRuleName(
+  derivedKind: AutoAcceptDerivedKind,
+  converter: string | null,
+): string {
+  if (derivedKind === 'converted') {
+    return converter
+      ? fitRuleName(`Aufrufe: konvertiert mit ${converter}`)
+      : 'Aufrufe: konvertiert';
+  }
+  return derivedKind === 'export' ? 'Aufrufe: Export ohne Engine' : 'Aufrufe: ohne Angabe';
+}
+
+/**
  * A new rule's name from its criteria (UX-SIMPLIFICATION.md §3.11 item 4,
  * P4): „Gleicher Name ab 95 %“, with the type or the kind in front where the
  * criteria name one („Nachricht: …“, „Platzierung: …“), and „(2)“, „(3)“ …
  * while another rule of the project has the name (names are unique ignoring
  * case). `threshold` is the minimum confidence as the field shows it („95 %“).
+ * A rule for derived calls (`derived`, M6 S2c-3) is named by its source:
+ * „Aufrufe: konvertiert mit normalize-bpmn@0.1.0“.
  */
 export function suggestedRuleName(
   criteria: {
@@ -197,6 +334,7 @@ export function suggestedRuleName(
     tier: AutoAcceptTier;
     relationType: AutoAcceptRelationType | null;
     threshold: string;
+    derived?: { derivedKind: AutoAcceptDerivedKind; converter: string | null } | null;
   },
   taken: readonly string[],
 ): string {
@@ -206,11 +344,13 @@ export function suggestedRuleName(
       : criteria.relationType
         ? relationTypeLabel(criteria.relationType)
         : null;
-  const base = `${prefix ? `${prefix}: ` : ''}${tierLabel(criteria.tier)} ab ${criteria.threshold}`;
+  const base = criteria.derived
+    ? derivedRuleName(criteria.derived.derivedKind, criteria.derived.converter)
+    : `${prefix ? `${prefix}: ` : ''}${tierLabel(criteria.tier)} ab ${criteria.threshold}`;
   const used = new Set(taken.map((name) => name.trim().toLowerCase()));
   if (!used.has(base.toLowerCase())) return base;
   for (let n = 2; ; n += 1) {
-    const candidate = `${base} (${n})`;
+    const candidate = fitRuleName(base, ` (${n})`);
     if (!used.has(candidate.toLowerCase())) return candidate;
   }
 }

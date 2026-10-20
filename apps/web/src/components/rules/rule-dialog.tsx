@@ -1,6 +1,8 @@
 import type {
   AgentToken,
   AutoAcceptCriteria,
+  AutoAcceptDerivedGroup,
+  AutoAcceptDerivedKind,
   AutoAcceptKind,
   AutoAcceptRelationType,
   AutoAcceptRule,
@@ -33,9 +35,12 @@ import { Textarea } from '@/components/ui/textarea';
 import { ApiError, errorMessage } from '@/lib/api';
 import { useNameFlags } from '@/lib/auto-accept-flags';
 import {
-  AUTO_ACCEPT_KINDS,
   AUTO_ACCEPT_RELATION_TYPES,
+  DERIVED_SOURCES,
+  RULE_ARTS,
+  artOf,
   formatThreshold,
+  openOfSource,
   parsePercent,
   percentInput,
   relationTypeLabel,
@@ -43,10 +48,12 @@ import {
   suggestedRuleName,
   tierLabel,
   tiersOf,
+  type RuleArt,
 } from '@/lib/auto-accept-rules';
 import { useCreateRule, useReviseRule } from '@/lib/auto-accept-rule-actions';
 import { handleName } from '@/lib/labels';
 import {
+  DERIVED_CALL_CONFIDENCE,
   MAX_AUTO_ACCEPT_MODEL_CHARS,
   MAX_AUTO_ACCEPT_NAME_CHARS,
   MAX_AUTO_ACCEPT_NOTE_CHARS,
@@ -66,6 +73,7 @@ const SAVE_PROBLEMS: Record<string, string> = {
   'name-taken': 'Eine andere Annahmeregel dieses Projekts heißt schon so.',
   'unknown-agent': 'Dieser Agent gehört nicht zu diesem Projekt.',
   'kind-changed': 'Die Art einer Regel ändert sich nie; lege eine neue Regel an.',
+  'derived-criteria': 'Diese Herkunft kann eine Regel nicht nennen.',
 };
 
 function saveProblem(error: unknown): string {
@@ -87,14 +95,39 @@ const NO_CRITERIA: AutoAcceptCriteria = {
   agentPrincipalId: null,
   llmModel: null,
   includeAdHoc: false,
+  proposedBy: 'agent',
+  derivedKind: null,
+  converter: null,
 };
+
+/** What the preview reads while a rule for converted calls has no converter: the sources only. */
+const SOURCES_ONLY: AutoAcceptCriteria = {
+  kind: 'relation',
+  tier: 'key',
+  minConfidence: DERIVED_CALL_CONFIDENCE,
+  relationType: 'call',
+  agentPrincipalId: null,
+  llmModel: null,
+  includeAdHoc: false,
+  proposedBy: 'rule',
+  derivedKind: 'export',
+  converter: null,
+};
+
+/** The sources a rule for derived calls may name, in the order „Herkunft“ lists them. */
+const DERIVED_KINDS: readonly AutoAcceptDerivedKind[] = ['export', 'converted', 'none'];
+
+/** The one line a rule for derived calls says about its source (M6 S2c-3, decision 28 (1)). */
+export const DERIVED_SOURCE_HINT =
+  'Die Herkunft gibt der Import an; analyzr prüft sie nicht. Über ein Agenten-Token hochgeladene Modelle nimmt keine Regel an.';
 
 interface FormState {
   name: string;
   /** The owner typed the name: it stays theirs; until then it follows the criteria. */
   nameEdited: boolean;
   enabled: boolean;
-  kind: AutoAcceptKind;
+  /** Relations, placements or the unique calls from derived models (M6 S2c-3). */
+  art: RuleArt;
   tier: AutoAcceptTier;
   percent: string;
   relationType: AutoAcceptRelationType | typeof ANY;
@@ -102,16 +135,28 @@ interface FormState {
   llmModel: string;
   includeAdHoc: boolean;
   note: string;
+  /** A rule for derived calls: „Herkunft“. */
+  derivedKind: AutoAcceptDerivedKind;
+  /** A rule for converted calls: „Konverter“ (`''` while none is chosen). */
+  converter: string;
 }
 
-/** A new rule's prefill (UX5: after a bulk accept, „Gleicher Name ab 100 %“). */
+/**
+ * A new rule's prefill: after a bulk accept, „Gleicher Name ab 100 %“ (UX5),
+ * or a rule for derived calls of the accepted calls' source (M6 S2c-3).
+ */
 export interface RuleDraft {
-  tier: AutoAcceptTier;
+  tier?: AutoAcceptTier;
   /** The minimum confidence as the field shows it, e.g. „100“. */
-  percent: string;
+  percent?: string;
   /** A name of its own; without one the name follows the criteria. */
   name?: string;
+  /** A rule for derived calls of this source. */
+  derived?: { derivedKind: AutoAcceptDerivedKind; converter: string | null };
 }
+
+const kindOf = (f: Pick<FormState, 'art'>): AutoAcceptKind =>
+  f.art === 'placement' ? 'placement' : 'relation';
 
 function initialState(rule: AutoAcceptRule | null, draft?: RuleDraft): FormState {
   if (!rule) {
@@ -119,7 +164,9 @@ function initialState(rule: AutoAcceptRule | null, draft?: RuleDraft): FormState
       name: draft?.name ?? '',
       nameEdited: draft?.name !== undefined,
       enabled: false,
-      kind: 'relation',
+      art: draft?.derived ? 'calls' : 'relation',
+      derivedKind: draft?.derived?.derivedKind ?? 'export',
+      converter: draft?.derived?.converter ?? '',
       tier: draft?.tier ?? 'key',
       percent: draft?.percent ?? '95',
       relationType: ANY,
@@ -133,7 +180,9 @@ function initialState(rule: AutoAcceptRule | null, draft?: RuleDraft): FormState
     name: rule.name,
     nameEdited: true,
     enabled: rule.enabled,
-    kind: rule.kind,
+    art: artOf(rule),
+    derivedKind: rule.derivedKind ?? 'export',
+    converter: rule.converter ?? '',
     tier: rule.tier,
     percent: percentInput(rule.minConfidence),
     relationType: rule.relationType ?? ANY,
@@ -144,8 +193,12 @@ function initialState(rule: AutoAcceptRule | null, draft?: RuleDraft): FormState
   };
 }
 
-/** „Weiter einschränken“ opens by itself when the rule narrows by agent, model, ad hoc or a note. */
+/**
+ * „Weiter einschränken“ opens by itself when the rule narrows by agent,
+ * model, ad hoc or a note (a rule for derived calls: a note only).
+ */
 function narrows(f: FormState): boolean {
+  if (f.art === 'calls') return f.note.trim() !== '';
   return (
     f.agentPrincipalId !== ANY || f.llmModel.trim() !== '' || f.includeAdHoc || f.note.trim() !== ''
   );
@@ -153,43 +206,103 @@ function narrows(f: FormState): boolean {
 
 /**
  * The minimum confidence of the form: the rule's own value while the field
- * still shows it (never re-read from the rounded text), else what was typed.
+ * still shows it (never re-read from the rounded text), else what was typed;
+ * a rule for derived calls is fixed at their 90 %.
  */
 function minConfidenceOf(f: FormState, base: AutoAcceptRule | null): number | null {
+  if (f.art === 'calls') return DERIVED_CALL_CONFIDENCE;
   if (base && f.percent === percentInput(base.minConfidence)) return base.minConfidence;
   return parsePercent(f.percent);
 }
 
+/** The converter a rule for converted calls names, trimmed; `null` for another source. */
+const converterOf = (f: FormState): string | null =>
+  f.derivedKind === 'converted' ? f.converter.trim() || null : null;
+
 /** The criteria of a valid form (the preview's body), else `null`. */
 function criteriaOfForm(f: FormState, base: AutoAcceptRule | null): AutoAcceptCriteria | null {
+  if (f.art === 'calls') {
+    // Kind, tier, type and minimum are fixed; the source decides (M6 S2c-3).
+    const converter = converterOf(f);
+    if (f.derivedKind === 'converted' && converter === null) return null;
+    return {
+      kind: 'relation',
+      tier: 'key',
+      minConfidence: DERIVED_CALL_CONFIDENCE,
+      relationType: 'call',
+      agentPrincipalId: null,
+      llmModel: null,
+      includeAdHoc: false,
+      proposedBy: 'rule',
+      derivedKind: f.derivedKind,
+      converter,
+    };
+  }
+  const kind = kindOf(f);
   const minConfidence = minConfidenceOf(f, base);
-  if (minConfidence === null || !tiersOf(f.kind).includes(f.tier)) return null;
+  if (minConfidence === null || !tiersOf(kind).includes(f.tier)) return null;
   const model = f.llmModel.trim();
   if (model.length > MAX_AUTO_ACCEPT_MODEL_CHARS) return null;
   return {
-    kind: f.kind,
+    kind,
     tier: f.tier,
     minConfidence,
-    relationType: f.kind === 'relation' && f.relationType !== ANY ? f.relationType : null,
+    relationType: kind === 'relation' && f.relationType !== ANY ? f.relationType : null,
     agentPrincipalId: f.agentPrincipalId === ANY ? null : f.agentPrincipalId,
     llmModel: model === '' ? null : model,
     includeAdHoc: f.includeAdHoc,
+    proposedBy: 'agent',
+    derivedKind: null,
+    converter: null,
   };
 }
 
 /** The name the form shows: the owner's, else the one its criteria suggest. */
 function nameOfForm(f: FormState, base: AutoAcceptRule | null, taken: readonly string[]): string {
   if (f.nameEdited) return f.name;
+  const kind = kindOf(f);
   const min = minConfidenceOf(f, base);
   return suggestedRuleName(
     {
-      kind: f.kind,
+      kind,
       tier: f.tier,
-      relationType: f.kind === 'relation' && f.relationType !== ANY ? f.relationType : null,
+      relationType: kind === 'relation' && f.relationType !== ANY ? f.relationType : null,
       threshold: min === null ? `${f.percent.replace(/%/g, '').trim()} %` : formatThreshold(min),
+      derived: f.art === 'calls' ? { derivedKind: f.derivedKind, converter: converterOf(f) } : null,
     },
     taken,
   );
+}
+
+/** „Herkunft“ with the open calls of each source a rule naming it would accept now. */
+function sourceOption(
+  kind: AutoAcceptDerivedKind,
+  groups: readonly AutoAcceptDerivedGroup[] | null,
+) {
+  const open = groups === null ? null : openOfSource(groups, kind);
+  return `${DERIVED_SOURCES[kind]}${open === null ? '' : ` (${open} offen)`}`;
+}
+
+/**
+ * The converters „Konverter“ offers: those of the project's derived calls,
+ * the most open calls first (then by name), and the form's own.
+ */
+function converterOptions(
+  groups: readonly AutoAcceptDerivedGroup[] | null,
+  own: string,
+): { value: string; label: string }[] {
+  const out = (groups ?? [])
+    .filter((g) => g.derivedKind === 'converted' && g.converter !== null)
+    .sort(
+      (a, b) =>
+        b.open - a.open ||
+        ((a.converter ?? '') < (b.converter ?? '') ? -1 : a.converter === b.converter ? 0 : 1),
+    )
+    .map((g) => ({ value: g.converter ?? '', label: `${g.converter ?? ''} (${g.open} offen)` }));
+  if (own.trim() !== '' && !out.some((o) => o.value === own.trim())) {
+    out.unshift({ value: own.trim(), label: own.trim() });
+  }
+  return out;
 }
 
 /**
@@ -258,7 +371,10 @@ function RuleForm({
 
   const set = (patch: Partial<FormState>) => setForm((f) => ({ ...f, ...patch }));
   const criteria = useMemo(() => criteriaOfForm(form, base), [form, base]);
-  const debounced = useDebounced(criteria, 300);
+  // A rule for converted calls without a converter yet still loads the project's sources
+  // (`derivedGroups`, M6 S2c-3), whose converters it offers; its preview shows once one is chosen.
+  const previewCriteria = criteria ?? (form.art === 'calls' ? SOURCES_ONLY : null);
+  const debounced = useDebounced(previewCriteria, 300);
   const preview = useQuery({
     ...autoAcceptPreviewQuery(project, debounced ?? NO_CRITERIA),
     enabled: debounced !== null,
@@ -275,10 +391,20 @@ function RuleForm({
       : name.length > MAX_AUTO_ACCEPT_NAME_CHARS
         ? `Höchstens ${MAX_AUTO_ACCEPT_NAME_CHARS} Zeichen.`
         : null;
+  const calls = form.art === 'calls';
   const percentError =
     minConfidenceOf(form, base) === null ? 'Gib einen Wert zwischen 50 und 100 % an.' : null;
   const valid = criteria !== null && nameError === null;
-
+  // The project's derived calls by source (M6 S2c-3); `null` until the preview has them.
+  const groups = preview.data?.derivedGroups ?? null;
+  const converters = converterOptions(groups, form.converter);
+  // „Konvertiert“ needs a converter; a project without converted calls offers none yet.
+  const converterError =
+    calls && form.derivedKind === 'converted' && converterOf(form) === null
+      ? groups !== null && converters.length === 0
+        ? 'Noch kein Aufruf im Projekt stammt aus einem Konverter; wähle eine andere Herkunft.'
+        : 'Wähle einen Konverter.'
+      : null;
   // Agents to narrow to: the project's tokens, plus agents seen in proposals (R1 services).
   const agentOptions = useMemo(() => {
     const out = tokens.map((t) => ({
@@ -371,7 +497,7 @@ function RuleForm({
   const takeOver = takeOverText(base, form.enabled, me.data?.principalId ?? null);
   const show412 = conflict !== null;
   const showSaveError = saveError && !(saveError instanceof ApiError && saveError.status === 412);
-  const tiers = tiersOf(form.kind);
+  const tiers = tiersOf(kindOf(form));
 
   return (
     <form onSubmit={submit} aria-label="Annahmeregel" className="flex flex-col gap-4">
@@ -395,57 +521,119 @@ function RuleForm({
             {touched && nameError ? <FieldError>{nameError}</FieldError> : null}
           </Field>
           <div className="grid grid-cols-2 gap-3">
-            <Field>
+            <Field className={calls ? 'col-span-2' : undefined}>
               <FieldLabel htmlFor={`${id}-kind`}>Art</FieldLabel>
               <NativeSelect
                 id={`${id}-kind`}
                 className="w-full"
-                value={form.kind}
+                value={form.art}
                 disabled={base !== null}
                 onChange={(e) => {
-                  const kind = e.target.value as AutoAcceptKind;
-                  const allowed = tiersOf(kind);
+                  const art = e.target.value as RuleArt;
+                  const allowed = tiersOf(kindOf({ art }));
                   set({
-                    kind,
+                    art,
                     tier: allowed.includes(form.tier) ? form.tier : (allowed[0] ?? 'lexical'),
-                    relationType: kind === 'relation' ? form.relationType : ANY,
+                    relationType: art === 'relation' ? form.relationType : ANY,
                   });
                 }}
               >
-                {(Object.keys(AUTO_ACCEPT_KINDS) as AutoAcceptKind[]).map((k) => (
+                {(Object.keys(RULE_ARTS) as RuleArt[]).map((k) => (
                   <NativeSelectOption key={k} value={k}>
-                    {AUTO_ACCEPT_KINDS[k].label}
+                    {RULE_ARTS[k]}
                   </NativeSelectOption>
                 ))}
               </NativeSelect>
             </Field>
-            <Field>
-              <FieldLabel htmlFor={`${id}-tier`}>Grundlage</FieldLabel>
-              <NativeSelect
-                id={`${id}-tier`}
-                className="w-full"
-                value={form.tier}
-                onChange={(e) => set({ tier: e.target.value as AutoAcceptTier })}
-              >
-                {tiers.map((t) => (
-                  <NativeSelectOption key={t} value={t}>
-                    {tierLabel(t)}
-                  </NativeSelectOption>
-                ))}
-              </NativeSelect>
-            </Field>
-            <Field data-invalid={percentError ? true : undefined}>
-              <FieldLabel htmlFor={`${id}-min`}>ab Konfidenz (%)</FieldLabel>
-              <Input
-                id={`${id}-min`}
-                inputMode="decimal"
-                value={form.percent}
-                onChange={(e) => set({ percent: e.target.value })}
-                aria-invalid={percentError ? true : undefined}
-              />
-              {percentError ? <FieldError>{percentError}</FieldError> : null}
-            </Field>
-            {form.kind === 'relation' ? (
+            {calls ? (
+              <>
+                <Field className={form.derivedKind === 'converted' ? undefined : 'col-span-2'}>
+                  <FieldLabel htmlFor={`${id}-source`}>Herkunft</FieldLabel>
+                  <NativeSelect
+                    id={`${id}-source`}
+                    className="w-full"
+                    value={form.derivedKind}
+                    onChange={(e) => {
+                      const derivedKind = e.target.value as AutoAcceptDerivedKind;
+                      // „Konvertiert“: the converter with the most open calls, unless one is chosen.
+                      const first = converters[0]?.value ?? '';
+                      set({
+                        derivedKind,
+                        converter:
+                          derivedKind === 'converted' && form.converter.trim() === ''
+                            ? first
+                            : form.converter,
+                      });
+                    }}
+                    data-testid="rule-source"
+                  >
+                    {DERIVED_KINDS.map((k) => (
+                      <NativeSelectOption key={k} value={k}>
+                        {sourceOption(k, groups)}
+                      </NativeSelectOption>
+                    ))}
+                  </NativeSelect>
+                </Field>
+                {form.derivedKind === 'converted' ? (
+                  <Field data-invalid={touched && converterError ? true : undefined}>
+                    <FieldLabel htmlFor={`${id}-converter`}>Konverter</FieldLabel>
+                    <NativeSelect
+                      id={`${id}-converter`}
+                      className="w-full"
+                      value={form.converter.trim()}
+                      onChange={(e) => set({ converter: e.target.value })}
+                      aria-invalid={touched && converterError ? true : undefined}
+                      data-testid="rule-converter"
+                    >
+                      {converters.length === 0 ? (
+                        <NativeSelectOption value="">
+                          {groups === null ? 'Lädt …' : 'Kein Konverter im Projekt'}
+                        </NativeSelectOption>
+                      ) : form.converter.trim() === '' ? (
+                        <NativeSelectOption value="">Konverter wählen …</NativeSelectOption>
+                      ) : null}
+                      {converters.map((c) => (
+                        <NativeSelectOption key={c.value} value={c.value}>
+                          {c.label}
+                        </NativeSelectOption>
+                      ))}
+                    </NativeSelect>
+                    {touched && converterError ? <FieldError>{converterError}</FieldError> : null}
+                  </Field>
+                ) : null}
+              </>
+            ) : null}
+            {calls ? null : (
+              <>
+                <Field>
+                  <FieldLabel htmlFor={`${id}-tier`}>Grundlage</FieldLabel>
+                  <NativeSelect
+                    id={`${id}-tier`}
+                    className="w-full"
+                    value={form.tier}
+                    onChange={(e) => set({ tier: e.target.value as AutoAcceptTier })}
+                  >
+                    {tiers.map((t) => (
+                      <NativeSelectOption key={t} value={t}>
+                        {tierLabel(t)}
+                      </NativeSelectOption>
+                    ))}
+                  </NativeSelect>
+                </Field>
+                <Field data-invalid={percentError ? true : undefined}>
+                  <FieldLabel htmlFor={`${id}-min`}>ab Konfidenz (%)</FieldLabel>
+                  <Input
+                    id={`${id}-min`}
+                    inputMode="decimal"
+                    value={form.percent}
+                    onChange={(e) => set({ percent: e.target.value })}
+                    aria-invalid={percentError ? true : undefined}
+                  />
+                  {percentError ? <FieldError>{percentError}</FieldError> : null}
+                </Field>
+              </>
+            )}
+            {form.art === 'relation' ? (
               <Field>
                 <FieldLabel htmlFor={`${id}-type`}>Typ</FieldLabel>
                 <NativeSelect
@@ -466,11 +654,20 @@ function RuleForm({
               </Field>
             ) : null}
           </div>
-          {form.kind === 'placement' ? (
+          {form.art === 'placement' ? (
             <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
               <InfoIcon className="mt-0.5 size-3.5 shrink-0" aria-hidden />
               @outside wird nie automatisch angenommen, und ein Prozess mit Heimatschritt oder
               mehreren vorgeschlagenen Schritten auch nicht.
+            </p>
+          ) : null}
+          {calls ? (
+            <p
+              className="flex items-start gap-1.5 text-xs text-muted-foreground"
+              data-testid="rule-source-hint"
+            >
+              <InfoIcon className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+              {DERIVED_SOURCE_HINT}
             </p>
           ) : null}
           <details
@@ -487,46 +684,50 @@ function RuleForm({
               Weiter einschränken
             </summary>
             <div className="mt-3 flex flex-col gap-3">
-              <Field>
-                <FieldLabel htmlFor={`${id}-agent`}>Agent</FieldLabel>
-                <NativeSelect
-                  id={`${id}-agent`}
-                  className="w-full"
-                  value={form.agentPrincipalId}
-                  onChange={(e) => set({ agentPrincipalId: e.target.value })}
-                >
-                  <NativeSelectOption value={ANY}>Alle Agenten</NativeSelectOption>
-                  {agentOptions.map((a) => (
-                    <NativeSelectOption key={a.principalId} value={a.principalId}>
-                      {a.label}
-                    </NativeSelectOption>
-                  ))}
-                </NativeSelect>
-              </Field>
-              <Field>
-                <FieldLabel htmlFor={`${id}-model`}>LLM-Modell</FieldLabel>
-                <Input
-                  id={`${id}-model`}
-                  list={`${id}-models`}
-                  value={form.llmModel}
-                  maxLength={MAX_AUTO_ACCEPT_MODEL_CHARS}
-                  onChange={(e) => set({ llmModel: e.target.value })}
-                  placeholder="Alle Modelle, genau so, wie die Agenten es angeben"
-                />
-                <datalist id={`${id}-models`}>
-                  {(preview.data?.llmModels ?? []).map((m) => (
-                    <option key={m} value={m} />
-                  ))}
-                </datalist>
-              </Field>
-              <Field orientation="horizontal">
-                <Checkbox
-                  id={`${id}-adhoc`}
-                  checked={form.includeAdHoc}
-                  onCheckedChange={(checked) => set({ includeAdHoc: checked === true })}
-                />
-                <FieldLabel htmlFor={`${id}-adhoc`}>Auch Ad-hoc-Vorschläge</FieldLabel>
-              </Field>
+              {calls ? null : (
+                <>
+                  <Field>
+                    <FieldLabel htmlFor={`${id}-agent`}>Agent</FieldLabel>
+                    <NativeSelect
+                      id={`${id}-agent`}
+                      className="w-full"
+                      value={form.agentPrincipalId}
+                      onChange={(e) => set({ agentPrincipalId: e.target.value })}
+                    >
+                      <NativeSelectOption value={ANY}>Alle Agenten</NativeSelectOption>
+                      {agentOptions.map((a) => (
+                        <NativeSelectOption key={a.principalId} value={a.principalId}>
+                          {a.label}
+                        </NativeSelectOption>
+                      ))}
+                    </NativeSelect>
+                  </Field>
+                  <Field>
+                    <FieldLabel htmlFor={`${id}-model`}>LLM-Modell</FieldLabel>
+                    <Input
+                      id={`${id}-model`}
+                      list={`${id}-models`}
+                      value={form.llmModel}
+                      maxLength={MAX_AUTO_ACCEPT_MODEL_CHARS}
+                      onChange={(e) => set({ llmModel: e.target.value })}
+                      placeholder="Alle Modelle, genau so, wie die Agenten es angeben"
+                    />
+                    <datalist id={`${id}-models`}>
+                      {(preview.data?.llmModels ?? []).map((m) => (
+                        <option key={m} value={m} />
+                      ))}
+                    </datalist>
+                  </Field>
+                  <Field orientation="horizontal">
+                    <Checkbox
+                      id={`${id}-adhoc`}
+                      checked={form.includeAdHoc}
+                      onCheckedChange={(checked) => set({ includeAdHoc: checked === true })}
+                    />
+                    <FieldLabel htmlFor={`${id}-adhoc`}>Auch Ad-hoc-Vorschläge</FieldLabel>
+                  </Field>
+                </>
+              )}
               <Field>
                 <FieldLabel htmlFor={`${id}-note`}>Notiz</FieldLabel>
                 <Textarea
@@ -559,8 +760,9 @@ function RuleForm({
             <RulePreview
               preview={preview.data}
               minConfidence={criteria.minConfidence}
-              flagged={flags ? flags(preview.data.open.items) : null}
+              flagged={!calls && flags ? flags(preview.data.open.items) : null}
               stale={preview.isPlaceholderData || debounced !== criteria}
+              calls={calls}
             />
           ) : (
             <Skeleton className="h-48 w-full" />
@@ -641,7 +843,12 @@ function RuleForm({
  * name prefilled from them („Gleicher Name ab 95 %“, „(2)“ while another
  * rule has it) until the owner types one; agent, LLM model, ad hoc and a
  * note under „Weiter einschränken“ (open when the rule uses one); beside
- * them the live preview (debounced). One „Speichern“ with the „Aktiv“ switch
+ * them the live preview (debounced). The third „Art“, „Eindeutige Aufrufe
+ * aus abgeleiteten Modellen“ (M6 S2c-3), shows „Herkunft“ (each source with
+ * its open calls) and for „Konvertiert“ the „Konverter“ of the project's
+ * derived calls instead, with one line on what the source means; tier,
+ * confidence and type are fixed, „Weiter einschränken“ holds the note only,
+ * and the preview has no curve. One „Speichern“ with the „Aktiv“ switch
  * writes a new immutable revision; an edit sends `If-Match` and, on 412,
  * loads the newer revision into the form (listing what changed) before
  * anything can be saved on top of it. A threshold the field still shows
