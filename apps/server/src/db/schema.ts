@@ -14,7 +14,8 @@
  *   0005_judge_once_triggers.sql and 0007_value_chain_triggers.sql), and so
  *   are `auto_accept_rule` and `auto_accept_rule_revision` (0010),
  *   `open_question_answer` (0012), `open_question_answer_withdrawal`
- *   (0014), `model_amendment` and `model_amendment_withdrawal` (0016);
+ *   (0014), `model_amendment` and `model_amendment_withdrawal` (0016),
+ *   `revision_trust_review` (0020, M6 S2c-4);
  *   0018 (M6 S2c-3) adds three columns to `auto_accept_rule_revision`
  *   (`ADD COLUMN … DEFAULT` fires no row trigger, so 0010's stay);
  *   `value_chain_step` only ever takes its tombstone (0007); `placement_input`
@@ -40,6 +41,7 @@ import {
   Role,
   SourceKind,
   Tier,
+  TrustClass,
   type DeclaredProcedure,
   type ExtractWarning,
   type FactAttrs,
@@ -152,6 +154,8 @@ export const NOTE_SUBJECT_TYPES = ['relation', 'placement'] as const;
 export const AMENDMENT_OPS = values(AmendmentOp.options);
 /** How a model amendment ends: withdrawn by a human, or superseded by a later one (M6 §4.8 c). */
 export const AMENDMENT_WITHDRAWAL_REASONS = ['withdrawn', 'superseded'] as const;
+/** The class an owner's review of a revision stored before the trust rule records (M6 S2c-4). */
+export const TRUST_CLASSES = values(TrustClass.options);
 
 export const project = pgTable('project', {
   id: text().primaryKey(),
@@ -1464,6 +1468,45 @@ export const modelAmendmentWithdrawal = pgTable(
     }),
     check('model_amendment_withdrawal_reason_check', oneOf(t.reason, AMENDMENT_WITHDRAWAL_REASONS)),
     check('model_amendment_withdrawal_humans_only', sql`${t.sourceKind} = 'human'`),
+  ],
+);
+
+/**
+ * The owner's review of an uploaded revision stored before the trust rule
+ * (M6 S2c-4, „Vor der Vertrauensregel angenommen“; decisions 24.2 (a) and
+ * 28 (3)): `derived` („Zurück in die Prüfung“; the revision counts as
+ * derived with the reasons it carries) or `modelled` („Behalten“). One per
+ * revision, humans only, append-only (triggers in 0020, which also refuse a
+ * review of a revision that carries `source.trust` or is amended). Its `seq`
+ * is that of the `revision.trust_reviewed` event. The trust rule reads it
+ * where the revision has no `source.trust` (`RevisionRepo.headTrustRows`).
+ */
+export const revisionTrustReview = pgTable(
+  'revision_trust_review',
+  {
+    projectId: text().notNull(),
+    /** The uploaded revision reviewed. */
+    revisionId: text().notNull(),
+    modelId: text().notNull(),
+    class: text({ enum: TRUST_CLASSES }).notNull(),
+    principalId: text()
+      .notNull()
+      .references(() => principal.id),
+    clientId: text(),
+    /** Derived from the credential; humans only (check). */
+    sourceKind: text({ enum: values(SourceKind.options) }).notNull(),
+    seq: seqColumn().notNull(),
+    createdAt: createdAt(),
+  },
+  (t): PgTableExtraConfigValue[] => [
+    primaryKey({ name: 'revision_trust_review_pk', columns: [t.projectId, t.revisionId] }),
+    foreignKey({
+      name: 'revision_trust_review_revision_fk',
+      columns: [t.projectId, t.modelId, t.revisionId],
+      foreignColumns: [modelRevision.projectId, modelRevision.modelId, modelRevision.id],
+    }),
+    check('revision_trust_review_class_check', oneOf(t.class, TRUST_CLASSES)),
+    check('revision_trust_review_humans_only', sql`${t.sourceKind} = 'human'`),
   ],
 );
 

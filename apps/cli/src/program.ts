@@ -31,6 +31,7 @@ import {
   rulesApplyCommand,
   rulesEditCommand,
   rulesListCommand,
+  rulesPreTrustCommand,
   rulesPreviewCommand,
   rulesRevokeCommand,
   rulesShowCommand,
@@ -705,6 +706,29 @@ export function buildProgram(io: CliIo = processIo): Command {
           json?: boolean;
         },
       ) => rulesRevokeCommand(io, id, { ...globals(), ...opts }),
+    );
+  rules
+    .command('pre-trust')
+    .description(
+      'the unique calls the rule tier accepted before the trust rule from callers that would be derived today (no engine, an agent token, a declared conversion): list them, send them back to review (--revoke) or keep them accepted (--keep), each model once. Prints the dry run; changes something only with --yes',
+    )
+    .requiredOption('-p, --project <project>', 'project key or id')
+    .option('--model <key...>', 'only these models (keys; also comma-separated)')
+    .option('--revoke', 'send the calls back to review: they become proposals of the rule tier')
+    .option('--keep', 'keep the calls accepted; the models are never listed again')
+    .option('--dry-run', 'only print what would change')
+    .option('--yes', "review them (the dry run's count must still hold)")
+    .option('--json', 'print JSON')
+    .action(
+      (opts: {
+        project: string;
+        model?: string[];
+        revoke?: boolean;
+        keep?: boolean;
+        dryRun?: boolean;
+        yes?: boolean;
+        json?: boolean;
+      }) => rulesPreTrustCommand(io, { ...globals(), ...opts }),
     );
 
   program

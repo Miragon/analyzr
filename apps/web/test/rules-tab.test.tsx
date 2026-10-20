@@ -1297,6 +1297,7 @@ describe('the system rule', () => {
     readOnly: true,
     accepted: 10,
     proposed: 0,
+    preTrust: 0,
   } as const;
 
   it('one line with the real count, no matching rule or procedure', async () => {
@@ -1524,6 +1525,7 @@ describe('the page „Annahmeregeln“', () => {
     readOnly: true,
     accepted: 10,
     proposed: 0,
+    preTrust: 0,
   };
 
   function page(
@@ -1636,6 +1638,112 @@ describe('the page „Annahmeregeln“', () => {
     expect(revocations.slice(0, 2).map((c) => [c.search, c.body])).toEqual([
       ['?dryRun=true', { agentPrincipalId: 'prn_01AGENT' }],
       ['', { agentPrincipalId: 'prn_01AGENT', expectedCount: 2 }],
+    ]);
+  });
+
+  it('the system rule’s line „… vor der Vertrauensregel angenommen – prüfen…“ opens their dialog (M6 S2c-4)', async () => {
+    const { user } = page([], [], undefined, {
+      [`GET ${BASE}/auto-accept-rules`]: () =>
+        json({ items: [], system: { ...SYSTEM, preTrust: 2 } }),
+      [`GET ${BASE}/pre-trust-calls`]: () =>
+        json({
+          count: 2,
+          models: [
+            {
+              modelId: 'mdl_01J9Z3N4X5Q6R7S8T9V0W1X2A1',
+              modelKey: 'vertrieb/auftrag',
+              modelName: 'Auftragsabwicklung',
+              revisionId: 'rev_01J9Z3N4X5Q6R7S8T9V0W1X2A1',
+              rev: 1,
+              reasons: ['no-engine'],
+              derivedKind: null,
+              converter: null,
+              count: 2,
+              calls: [],
+            },
+          ],
+        }),
+      [`POST ${BASE}/pre-trust-calls/review`]: () =>
+        json({
+          dryRun: true,
+          verdict: 'derived',
+          revisions: 1,
+          count: 2,
+          toProposed: 2,
+          autoAcceptedCalls: { count: 0, items: [], ofProposed: 0, byRule: [] },
+        }),
+    });
+    const rulesPage = await screen.findByTestId('rules-page');
+    const line = within(rulesPage).getByTestId('system-rule-pre-trust');
+    expect(line.textContent).toBe('2 vor der Vertrauensregel angenommen – prüfen…');
+    await user.click(line);
+    const dialog = await screen.findByTestId('pre-trust-dialog');
+    expect(within(dialog).getByRole('heading').textContent).toBe(
+      'Vor der Vertrauensregel angenommen',
+    );
+    expect((await within(dialog).findAllByTestId('pre-trust-model')).length).toBe(1);
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByTestId('pre-trust-dialog')).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(line));
+  });
+
+  it('after the review the line is gone and the focus goes to „Erste Regel anlegen“ (M6 S2c-4)', async () => {
+    let reviewed = false;
+    const { calls, user } = page([], [], undefined, {
+      [`GET ${BASE}/auto-accept-rules`]: () =>
+        json({ items: [], system: { ...SYSTEM, preTrust: reviewed ? 0 : 1 } }),
+      [`GET ${BASE}/pre-trust-calls`]: () =>
+        json({
+          count: reviewed ? 0 : 1,
+          models: reviewed
+            ? []
+            : [
+                {
+                  modelId: 'mdl_01J9Z3N4X5Q6R7S8T9V0W1X2A1',
+                  modelKey: 'vertrieb/auftrag',
+                  modelName: 'Auftragsabwicklung',
+                  revisionId: 'rev_01J9Z3N4X5Q6R7S8T9V0W1X2A1',
+                  rev: 1,
+                  reasons: ['no-engine'],
+                  derivedKind: null,
+                  converter: null,
+                  count: 1,
+                  calls: [],
+                },
+              ],
+        }),
+      [`POST ${BASE}/pre-trust-calls/review`]: (c) => {
+        const dryRun = c.search === '?dryRun=true';
+        if (!dryRun) reviewed = true;
+        return json({
+          dryRun,
+          verdict: (c.body as { verdict: string }).verdict,
+          revisions: 1,
+          count: 1,
+          toProposed: 0,
+          autoAcceptedCalls: { count: 0, items: [], ofProposed: 0, byRule: [] },
+        });
+      },
+    });
+    const rulesPage = await screen.findByTestId('rules-page');
+    await user.click(within(rulesPage).getByTestId('system-rule-pre-trust'));
+    const dialog = await screen.findByTestId('pre-trust-dialog');
+    await user.click(await within(dialog).findByRole('button', { name: 'Behalten' }));
+    await findToast('1 Aufruf behalten');
+    await waitFor(() => expect(screen.queryByTestId('pre-trust-dialog')).toBeNull());
+    await waitFor(() =>
+      expect(within(rulesPage).queryByTestId('system-rule-pre-trust')).toBeNull(),
+    );
+    await waitFor(() =>
+      expect(document.activeElement).toBe(within(rulesPage).getByTestId('new-rule')),
+    );
+    expect(document.activeElement?.textContent).toBe('Erste Regel anlegen');
+    expect(
+      calls
+        .filter((c) => c.method === 'POST' && c.path.endsWith('/review') && c.search === '')
+        .map((c) => c.body),
+    ).toEqual([
+      { verdict: 'modelled', revisionIds: ['rev_01J9Z3N4X5Q6R7S8T9V0W1X2A1'], expectedCount: 1 },
     ]);
   });
 

@@ -6,7 +6,9 @@
  * its rationale; a rule decision on it ends when the caller turns derived;
  * human decisions stay; a modelled landscape plans exactly as before. The
  * dry run names the derived calls an owner's rule for derived calls would
- * accept in the write (M6 S2c-3), only the proposals the write records.
+ * accept in the write (M6 S2c-3), only the proposals the write records; a
+ * trust review's dry run counts `ofProposed` among the calls accepted
+ * before (M6 S2c-4).
  */
 import { extractFacts } from '@analyzr/bpmn-facts';
 import {
@@ -481,6 +483,30 @@ describe('the dry run’s acceptances by an owner’s rule for derived calls (M6
     });
     expect(impact.callsProposed.count).toBe(0);
     expect(impact.autoAcceptedCalls).toMatchObject({ count: 1, ofProposed: 0 });
+  });
+
+  it('counts ofProposed among the calls accepted before for a trust review (M6 S2c-4)', async () => {
+    const facts = await landscape(true);
+    const auto = { rules: [rule()], liveNoLinks: none };
+    // A new call: proposed, never accepted before.
+    const fresh = memory();
+    const imported = relationImpact(fresh.input(facts, exported(facts)), [], auto);
+    expect(imported.autoAcceptedCalls).toMatchObject({ count: 1, ofProposed: 1 });
+    const reviewed = relationImpact(fresh.input(facts, exported(facts)), [], auto, 'was-accepted');
+    expect(reviewed.callsProposed.wasAccepted).toBe(0);
+    expect(reviewed.autoAcceptedCalls).toMatchObject({ count: 1, ofProposed: 0 });
+    // A call the rule tier accepted while its caller counted as modelled: among `toProposed`.
+    const legacy = memory();
+    await legacy.run(facts, trustOfModels(facts));
+    expect(legacy.relation()).toMatchObject({ status: 'accepted', tier: 'rule' });
+    const back = relationImpact(
+      legacy.input(facts, exported(facts)),
+      legacy.findings(),
+      auto,
+      'was-accepted',
+    );
+    expect(back.callsProposed.wasAccepted).toBe(1);
+    expect(back.autoAcceptedCalls).toMatchObject({ count: 1, ofProposed: 1 });
   });
 
   it('is not retroactive: a proposal written before is not recorded again', async () => {

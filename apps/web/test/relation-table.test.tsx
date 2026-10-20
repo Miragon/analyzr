@@ -515,6 +515,7 @@ function setupRoute(
       readOnly: true,
       accepted: 10,
       proposed: 0,
+      preTrust: 0,
     },
   });
   // the two relations an auto-accept rule accepted (recorded under the owner)

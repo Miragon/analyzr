@@ -11,6 +11,13 @@
  * call-target amendment is applied, or taken over by the source tool
  * (`in-source`, decision 28 Q2), counts as modelled whatever the class
  * (decision 25.2). Only the caller's class counts.
+ *
+ * Revisions stored before S2c (M6 S2c-4, decision 28 (3)): the owner may
+ * review them once; a review is stored apart (`revision_trust_review`) and
+ * read where the revision carries no class ({@link storedTrust}: `derived`
+ * with the reasons {@link legacyTrust} computes from what the revision
+ * carries, or `modelled`). {@link preTrustAcceptances} lists the rule tier's
+ * acceptances such a review concerns.
  */
 import {
   DERIVED_CALL_CONFIDENCE,
@@ -22,13 +29,17 @@ import {
   type DerivedRelation,
   type Engine,
   type ImportWarning,
+  type ModelId,
   type ModelTrustSummary,
+  type RevisionId,
   type RevisionSource,
   type RevisionTrust,
+  type TrustClass,
   type TrustReason,
 } from '@analyzr/contracts';
 
-import type { HeadTrustRow, RelationRecord, RuleOutput } from './ports.ts';
+import type { HeadTrustRow, PrincipalKind, RelationRecord, RuleOutput } from './ports.ts';
+import { decisionsInForce, type StanceView } from './status.ts';
 
 /**
  * The trust class of an uploaded revision (decision 24.2): `modelled` when
@@ -77,7 +88,11 @@ export function trustKeptWarning(
 
 /** What the trust rule knows of a live model. */
 export interface ModelTrust {
-  /** The uploaded revision's class; `null` stored before S2c (counts as modelled). */
+  /**
+   * The uploaded revision's class ({@link storedTrust}: `source.trust`, else
+   * the owner's review); `null` stored before S2c and not reviewed (counts as
+   * modelled).
+   */
   trust: RevisionTrust | null;
   /** Call elements whose call-target amendment is `applied` or `in-source` (decisions 25.2, 28). */
   modelledCalls: ReadonlySet<string>;
@@ -113,20 +128,81 @@ function uploadedSourceOf(head: RevisionSource, upstream: RevisionSource | null)
   return head.kind === 'amendment' ? upstream : head;
 }
 
+/** Who uploaded a revision: `source.uploader`, else (stored before S2a) by the principal's kind. */
+function uploaderOf(
+  source: RevisionSource | null,
+  principalKind: PrincipalKind,
+): ModelTrust['uploader'] {
+  return source?.uploader ?? (principalKind === 'service' ? 'agent' : 'human');
+}
+
+/**
+ * The class a revision stored before S2c would get today from what it
+ * carries (decision 28 (3)): {@link trustOf} over its engine, its uploader
+ * (for one stored before S2a, a service principal counts as an agent) and
+ * its declared derived kind.
+ */
+export function legacyTrust(
+  signals: Pick<ModelTrust, 'engine' | 'uploader' | 'derivedKind'>,
+): RevisionTrust {
+  return trustOf(signals.engine, {
+    uploader: signals.uploader,
+    ...(signals.derivedKind ? { derived: { kind: signals.derivedKind } } : {}),
+  });
+}
+
+/** What the trust rule reads of an uploaded revision (M6 S2c-4). */
+export interface UploadedTrustInput {
+  /** The uploaded revision's source; `null` when an amended head's upstream is missing. */
+  source: RevisionSource | null;
+  engine: Engine | null;
+  /** Kind of the principal that stored it. */
+  uploaderPrincipalKind: PrincipalKind;
+  /** The owner's review of it (`revision_trust_review`); `null` when none is recorded. */
+  review: TrustClass | null;
+}
+
+/**
+ * An uploaded revision's class: `source.trust`, set by the server since
+ * S2c; else the owner's review (M6 S2c-4), `derived` with the reasons the
+ * revision carries ({@link legacyTrust}) or `modelled`; else `null` (stored
+ * before S2c, counts as modelled). A review never overrules a stored class.
+ */
+export function storedTrust(input: UploadedTrustInput): RevisionTrust | null {
+  if (input.source?.trust) return input.source.trust;
+  if (input.review === 'modelled') return { class: 'modelled', reasons: [] };
+  if (input.review === 'derived') {
+    const legacy = legacyTrust({
+      engine: input.engine,
+      uploader: uploaderOf(input.source, input.uploaderPrincipalKind),
+      derivedKind: input.source?.derived?.kind ?? null,
+    });
+    // Only a revision that would be derived is ever reviewed `derived` (the use case lists them).
+    return { class: 'derived', reasons: legacy.reasons };
+  }
+  return null;
+}
+
 /**
  * The trust of a live model ({@link ModelTrust}): its uploaded revision's
- * class (an amended head's own uploader never counts), the call elements of
- * its head's plan, the declared derivation and the legacy signals.
+ * class (an amended head's own uploader never counts; a review where it
+ * carries none), the call elements of its head's plan, the declared
+ * derivation and the legacy signals.
  */
 export function modelTrust(row: HeadTrustRow): ModelTrust {
   const uploaded = uploadedSourceOf(row.head, row.upstream);
   return {
-    trust: uploaded?.trust ?? null,
+    trust: storedTrust({
+      source: uploaded,
+      engine: row.engine,
+      uploaderPrincipalKind: row.uploaderPrincipalKind,
+      review: row.review,
+    }),
     ...callTargets(row.head.amendments ?? []),
     derivedKind: uploaded?.derived?.kind ?? null,
     converter: uploaded?.derived?.converter ?? null,
     engine: row.engine,
-    uploader: uploaded?.uploader ?? (row.uploaderPrincipalKind === 'service' ? 'agent' : 'human'),
+    uploader: uploaderOf(uploaded, row.uploaderPrincipalKind),
   };
 }
 
@@ -135,18 +211,27 @@ export function trustByModel(rows: readonly HeadTrustRow[]): Map<string, ModelTr
   return new Map(rows.map((r) => [r.key, modelTrust(r)]));
 }
 
-/** `Model.trust` (M6 S2c): the uploaded revision's class with its derivation; `null` before S2c. */
+/**
+ * `Model.trust` (M6 S2c): the uploaded revision's class ({@link
+ * storedTrust}, a review included) with its derivation; `null` before S2c
+ * and not reviewed.
+ */
 export function trustSummary(
-  head: RevisionSource,
-  upstream: RevisionSource | null,
+  row: Pick<HeadTrustRow, 'head' | 'upstream' | 'engine' | 'uploaderPrincipalKind' | 'review'>,
 ): ModelTrustSummary | null {
-  const uploaded = uploadedSourceOf(head, upstream);
-  if (!uploaded?.trust) return null;
+  const uploaded = uploadedSourceOf(row.head, row.upstream);
+  const trust = storedTrust({
+    source: uploaded,
+    engine: row.engine,
+    uploaderPrincipalKind: row.uploaderPrincipalKind,
+    review: row.review,
+  });
+  if (!trust) return null;
   return {
-    class: uploaded.trust.class,
-    reasons: uploaded.trust.reasons,
-    derivedKind: uploaded.derived?.kind ?? null,
-    converter: uploaded.derived?.converter ?? null,
+    class: trust.class,
+    reasons: trust.reasons,
+    derivedKind: uploaded?.derived?.kind ?? null,
+    converter: uploaded?.derived?.converter ?? null,
   };
 }
 
@@ -239,3 +324,89 @@ export function isOpenDerivedCall(
     relation.attrs['match'] === DERIVED_CALLER_MATCH
   );
 }
+
+/** A model of „Vor der Vertrauensregel angenommen“ (M6 S2c-4) with its listed calls. */
+export interface PreTrustGroup {
+  modelId: ModelId;
+  modelKey: string;
+  modelName: string | null;
+  /** The uploaded revision a review names. */
+  revisionId: RevisionId;
+  rev: number;
+  /** Why it would be derived today ({@link legacyTrust}; at least one). */
+  reasons: TrustReason[];
+  derivedKind: DerivedKind | null;
+  converter: string | null;
+  /** By natural key. */
+  calls: Pick<RelationRecord, 'id' | 'fromRef' | 'toRef'>[];
+}
+
+/**
+ * „Vor der Vertrauensregel angenommen“ (M6 S2c-4, decisions 24.2 (a) and
+ * 28 (3)), pure: the call relations the rule tier accepted from revisions
+ * stored before the trust rule that would be derived today, by model (key
+ * order), each call when
+ * - it is accepted, its endpoints present, resting on the rule tier's
+ *   decision alone (no other decision in force, an auto-accept rule's
+ *   included);
+ * - its caller's uploaded revision carries no class and has no review
+ *   ({@link ModelTrust.trust} `null`);
+ * - its element's call target was not set in analyzr (`modelledCalls`, 25.2);
+ * - what the revision carries makes it derived ({@link legacyTrust}).
+ * A model without such a call is not listed.
+ */
+export function preTrustAcceptances(
+  rows: readonly HeadTrustRow[],
+  relations: readonly Pick<
+    RelationRecord,
+    'id' | 'type' | 'fromRef' | 'toRef' | 'status' | 'endpointState'
+  >[],
+  histories: ReadonlyMap<string, readonly StanceView[]>,
+): PreTrustGroup[] {
+  const candidates = new Map<
+    string,
+    { group: PreTrustGroup; modelledCalls: ReadonlySet<string> }
+  >();
+  for (const row of rows) {
+    const t = modelTrust(row);
+    if (t.trust !== null) continue;
+    const legacy = legacyTrust(t);
+    if (legacy.class !== 'derived') continue;
+    candidates.set(row.key, {
+      modelledCalls: t.modelledCalls,
+      group: {
+        modelId: row.modelId,
+        modelKey: row.key,
+        modelName: row.name,
+        revisionId: row.revisionId,
+        rev: row.rev,
+        reasons: legacy.reasons,
+        derivedKind: t.derivedKind,
+        converter: t.converter,
+        calls: [],
+      },
+    });
+  }
+  if (candidates.size === 0) return [];
+  for (const r of relations) {
+    if (r.type !== 'call' || r.status !== 'accepted' || r.endpointState === 'missing') continue;
+    const { modelKey, elementId } = parseRef(r.fromRef);
+    const c = candidates.get(modelKey);
+    if (!c || c.modelledCalls.has(elementId)) continue;
+    const inForce = decisionsInForce(histories.get(r.id) ?? []);
+    if (inForce.length === 0 || inForce.some((d) => d.sourceKind !== 'rule')) continue;
+    c.group.calls.push({ id: r.id, fromRef: r.fromRef, toRef: r.toRef });
+  }
+  return [...candidates.values()]
+    .map((c) => c.group)
+    .filter((g) => g.calls.length > 0)
+    .map((g) => ({
+      ...g,
+      calls: g.calls.sort(
+        (a, b) => byCodePoint(a.fromRef, b.fromRef) || byCodePoint(a.toRef, b.toRef),
+      ),
+    }))
+    .sort((a, b) => byCodePoint(a.modelKey, b.modelKey));
+}
+
+const byCodePoint = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);

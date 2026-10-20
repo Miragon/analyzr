@@ -121,6 +121,8 @@ const BUDGET = 40 * 1024;
  * for derived calls (`derivedCallSource`, none when a rule names the source),
  * the „Vorschau“ line's rules part, `?new=calls` and the marks of such
  * acceptances; the rule dialog's third „Art“ loads with the rules page.
+ * 226.1 KB after S2c-4: the system rule card's line and the dialog „Vor der
+ * Vertrauensregel angenommen“ load with the rules page.
  */
 const ENTRY_CEILING = 240 * 1024;
 

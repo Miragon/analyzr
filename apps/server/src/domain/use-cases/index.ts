@@ -16,6 +16,7 @@ import { CandidateCache, openQuestionUseCases } from './open-questions.ts';
 import { placementUseCases } from './placements.ts';
 import { projectUseCases } from './projects.ts';
 import { reviewUseCases } from './review.ts';
+import { trustReviewUseCases } from './trust-review.ts';
 import { valueChainUseCases } from './value-chains.ts';
 
 export type { UseCaseDeps } from './deps.ts';
@@ -52,6 +53,7 @@ export function createUseCases(deps: UseCaseDeps) {
     ...autoAcceptUseCases(deps),
     ...openQuestionUseCases(deps, candidates),
     ...amendmentUseCases(chainDeps),
+    ...trustReviewUseCases(chainDeps),
   };
 }
 

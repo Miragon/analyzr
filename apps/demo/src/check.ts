@@ -199,7 +199,7 @@ export async function checkDemo(options: CheckOptions): Promise<CheckResult> {
       );
       expect(tasks?.items?.length === 0, `${key}: an analysis task is ${state}`);
     }
-    for (const path of ['agent-tokens', 'auto-accept-rules', 'auto-accepted']) {
+    for (const path of ['agent-tokens', 'auto-accept-rules', 'auto-accepted', 'pre-trust-calls']) {
       const res = await request(`/api/v1/projects/${k}/${path}`, { headers: asVisitor });
       expect(res.status === 403, `GET …/${path}: ${res.status}, expected 403`);
     }

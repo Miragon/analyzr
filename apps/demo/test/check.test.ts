@@ -68,7 +68,9 @@ function demo(
         },
       };
     }
-    if (/\/(agent-tokens|auto-accept-rules|auto-accepted)$/.test(path)) return { status: 403 };
+    if (/\/(agent-tokens|auto-accept-rules|auto-accepted|pre-trust-calls)$/.test(path)) {
+      return { status: 403 };
+    }
     if (path.endsWith('/landscape')) {
       return {
         body: {

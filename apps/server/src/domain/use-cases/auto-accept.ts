@@ -101,7 +101,7 @@ import type {
 import type { ProposalContext } from '../proposals.ts';
 import { byRelation, naturalKey, relationViews } from '../relation-state.ts';
 import { currentStances, recomputeStatus, type StanceView } from '../status.ts';
-import { isOpenDerivedCall, trustByModel } from '../trust.ts';
+import { isOpenDerivedCall, preTrustAcceptances, trustByModel } from '../trust.ts';
 import { loadChainState, type ChainState } from '../value-chain/chain-state.ts';
 import {
   byPlacement,
@@ -590,9 +590,15 @@ export function autoAcceptUseCases(deps: UseCaseDeps) {
             deps.expectedProcedure(),
           )
         ).filter(isBulkDerivedCall).length;
+        // „Vor der Vertrauensregel angenommen“ (M6 S2c-4): the card's „prüfen…“ count.
+        const preTrust = preTrustAcceptances(
+          await tx.revisions.headTrustRows(project.id),
+          relations,
+          relationHistories,
+        ).reduce((n, g) => n + g.calls.length, 0);
         return {
           items: heads.map((h) => ruleView(h, { owners, stats, agents })),
-          system: systemRule(systemAccepted, systemProposed),
+          system: systemRule(systemAccepted, systemProposed, preTrust),
         };
       });
     },

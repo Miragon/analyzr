@@ -177,6 +177,9 @@ import type {
   ListPlacementsData,
   ListPlacementsErrors,
   ListPlacementsResponses,
+  ListPreTrustCallsData,
+  ListPreTrustCallsErrors,
+  ListPreTrustCallsResponses,
   ListProjectsData,
   ListProjectsErrors,
   ListProjectsResponses,
@@ -216,6 +219,9 @@ import type {
   RequeueAnalysesData,
   RequeueAnalysesErrors,
   RequeueAnalysesResponses,
+  ReviewPreTrustCallsData,
+  ReviewPreTrustCallsErrors,
+  ReviewPreTrustCallsResponses,
   ReviseAutoAcceptRuleData,
   ReviseAutoAcceptRuleErrors,
   ReviseAutoAcceptRuleResponses,
@@ -1511,4 +1517,42 @@ export const listAutoAccepted = <ThrowOnError extends boolean = false>(
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/v1/projects/{project}/auto-accepted',
     ...options,
+  });
+
+/**
+ * Unique calls accepted before the trust rule whose caller would be derived today (owner)
+ *
+ * „Vor der Vertrauensregel angenommen“ (M6 S2c-4, owner decisions 24.2 (a) and 28 (3)): per model, the call relations accepted resting on the rule tier’s decision alone whose caller’s uploaded revision was stored before the trust rule (no `source.trust`), is not reviewed yet, and would be derived from what it carries: no engine; uploaded with an agent token, or before S2a by a service principal; a declared kind other than `export`. A call whose target was set in analyzr counts as modelled and is not listed. Camunda models a human imported list nothing. Owners on an interactive client only (`forbidden` for agent tokens and editors); no MCP counterpart.
+ */
+export const listPreTrustCalls = <ThrowOnError extends boolean = false>(
+  options: Options<ListPreTrustCallsData, ThrowOnError>,
+): RequestResult<ListPreTrustCallsResponses, ListPreTrustCallsErrors, ThrowOnError> =>
+  (options.client ?? client).get<ListPreTrustCallsResponses, ListPreTrustCallsErrors, ThrowOnError>(
+    {
+      security: [{ scheme: 'bearer', type: 'http' }],
+      url: '/api/v1/projects/{project}/pre-trust-calls',
+      ...options,
+    },
+  );
+
+/**
+ * Send calls accepted before the trust rule back to review, or keep them (`?dryRun=true` first)
+ *
+ * Records the owner’s review of listed revisions, once per revision (append-only): `derived` („Zurück in die Prüfung“) makes the revision count as derived with the reasons it carries, so the recompute turns its listed calls into the rule tier’s proposals (tier `key`, 0.9), and an enabled auto-accept rule for derived calls may accept them again in the same write (`autoAcceptedCalls`); `modelled` („Behalten“) keeps them accepted, and the revision is never listed again. `dryRun=true` says what it would do and writes nothing. The real call needs `expectedCount` equal to the listed calls of the revisions (422 `validation-failed` with `reason` `expected-count-required` without it; 409 `conflict` with `count` and `reason` `count-changed`, or `not-listed` when a revision is not listed now, which the dry run answers too: list again). A revision the trust rule classified, or an amended one, is never reviewed (422 `validation-failed` with `reason` `revision-classified`); an id that names no revision of the project is 422 with `reason` `unknown-revision`. Event `revision.trust_reviewed` (revision ids, class and count). Owners on an interactive client only.
+ */
+export const reviewPreTrustCalls = <ThrowOnError extends boolean = false>(
+  options: Options<ReviewPreTrustCallsData, ThrowOnError>,
+): RequestResult<ReviewPreTrustCallsResponses, ReviewPreTrustCallsErrors, ThrowOnError> =>
+  (options.client ?? client).post<
+    ReviewPreTrustCallsResponses,
+    ReviewPreTrustCallsErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/projects/{project}/pre-trust-calls/review',
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
   });

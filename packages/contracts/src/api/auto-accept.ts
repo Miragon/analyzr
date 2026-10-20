@@ -420,6 +420,12 @@ export const AutoAcceptSystemRule = z
     accepted: z.number().int().min(0),
     /** Open rule proposals of unique calls from derived models (M6 S2c, `attrs.match` `derived-caller`). */
     proposed: z.number().int().min(0),
+    /**
+     * Unique calls the rule tier accepted from revisions stored before the
+     * trust rule whose caller would be derived today, not yet reviewed (M6
+     * S2c-4, „Vor der Vertrauensregel angenommen“, `GET …/pre-trust-calls`).
+     */
+    preTrust: z.number().int().min(0),
   })
   .meta({ id: 'AutoAcceptSystemRule', description: 'The built-in rule of decision 9.' });
 export type AutoAcceptSystemRule = z.infer<typeof AutoAcceptSystemRule>;

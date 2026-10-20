@@ -28,6 +28,7 @@ import {
   type RevisionId,
   type RevisionSource,
   type SubmissionId,
+  type TrustClass,
   type ValueChainId,
   type ValueChainRevisionId,
 } from '@analyzr/contracts';
@@ -60,11 +61,13 @@ import type {
   EventRecord,
   HeadFact,
   HeadFactFilter,
+  HeadTrustRow,
   ModelRecord,
   ModelTaskRecord,
   ModelView,
   PlacementInputRecord,
   PlacementRecord,
+  PrincipalKind,
   PrincipalRecord,
   ProjectRecord,
   RelationRecord,
@@ -487,30 +490,54 @@ function repos(db: Conn): Tx {
 
   // An amended head declares no provenance of its own: its uploaded revision `upstream` does.
   const upstreamRevision = alias(s.modelRevision, 'upstream_revision');
+  const viewUploader = alias(s.principal, 'view_uploader');
 
   function modelViews(projectId: ProjectId, ...where: (SQL | undefined)[]) {
-    return db
-      .select({
-        model: s.model,
-        rev: s.modelRevision.rev,
-        engine: s.modelRevision.engine,
-        processes: s.modelRevision.processes,
-        source: s.modelRevision.source,
-        upstreamSource: upstreamRevision.source,
-        stage: s.modelPipeline.stage,
-        openItems: s.modelPipeline.openItems,
-      })
-      .from(s.model)
-      .innerJoin(s.modelRevision, liveHead)
-      .leftJoin(
-        upstreamRevision,
-        and(
-          eq(upstreamRevision.projectId, s.modelRevision.projectId),
-          eq(upstreamRevision.id, sql`${s.modelRevision.source}->'upstream'->>'revisionId'`),
-        ),
-      )
-      .innerJoin(s.modelPipeline, eq(s.modelPipeline.modelId, s.model.id))
-      .where(and(eq(s.model.projectId, projectId), isNull(s.model.deletedSeq), ...where));
+    return (
+      db
+        .select({
+          model: s.model,
+          rev: s.modelRevision.rev,
+          engine: s.modelRevision.engine,
+          processes: s.modelRevision.processes,
+          source: s.modelRevision.source,
+          upstreamSource: upstreamRevision.source,
+          upstreamEngine: upstreamRevision.engine,
+          uploaderKind: viewUploader.kind,
+          review: s.revisionTrustReview.class,
+          stage: s.modelPipeline.stage,
+          openItems: s.modelPipeline.openItems,
+        })
+        .from(s.model)
+        .innerJoin(s.modelRevision, liveHead)
+        .leftJoin(
+          upstreamRevision,
+          and(
+            eq(upstreamRevision.projectId, s.modelRevision.projectId),
+            eq(upstreamRevision.id, sql`${s.modelRevision.source}->'upstream'->>'revisionId'`),
+          ),
+        )
+        // `Model.trust` of a revision stored before S2c reads the owner's review (M6 S2c-4).
+        .innerJoin(
+          viewUploader,
+          eq(
+            viewUploader.id,
+            sql`coalesce(${upstreamRevision.principalId}, ${s.modelRevision.principalId})`,
+          ),
+        )
+        .leftJoin(
+          s.revisionTrustReview,
+          and(
+            eq(s.revisionTrustReview.projectId, s.modelRevision.projectId),
+            eq(
+              s.revisionTrustReview.revisionId,
+              sql`coalesce(${upstreamRevision.id}, ${s.modelRevision.id})`,
+            ),
+          ),
+        )
+        .innerJoin(s.modelPipeline, eq(s.modelPipeline.modelId, s.model.id))
+        .where(and(eq(s.model.projectId, projectId), isNull(s.model.deletedSeq), ...where))
+    );
   }
 
   const toView = (r: {
@@ -520,6 +547,9 @@ function repos(db: Conn): Tx {
     processes: ModelView['processes'];
     source: RevisionSource;
     upstreamSource: RevisionSource | null;
+    upstreamEngine: ModelView['engine'];
+    uploaderKind: PrincipalKind;
+    review: TrustClass | null;
     stage: string;
     openItems: number;
   }): ModelView => ({
@@ -531,7 +561,13 @@ function repos(db: Conn): Tx {
     openItems: r.openItems,
     processes: r.processes,
     source: sourceSummary(r.source, r.upstreamSource),
-    trust: trustSummary(r.source, r.upstreamSource),
+    trust: trustSummary({
+      head: r.source,
+      upstream: r.upstreamSource,
+      engine: r.upstreamSource ? r.upstreamEngine : r.engine,
+      uploaderPrincipalKind: r.uploaderKind,
+      review: r.review,
+    }),
   });
 
   const processFact = alias(s.fact, 'process_fact');
@@ -1096,15 +1132,23 @@ function repos(db: Conn): Tx {
         return sources;
       },
       async headTrustRows(projectId) {
-        // An amended head's uploaded revision (`source.upstream`) carries the class and signals.
+        // An amended head's uploaded revision (`source.upstream`) carries the class and signals,
+        // and a review of it where it carries no class (M6 S2c-4).
         const rows = await db
           .select({
             key: s.model.key,
+            modelId: s.model.id,
+            name: s.model.name,
+            headId: s.modelRevision.id,
+            headRev: s.modelRevision.rev,
             head: s.modelRevision.source,
             headEngine: s.modelRevision.engine,
+            upstreamId: uploadedRevision.id,
+            upstreamRev: uploadedRevision.rev,
             upstream: uploadedRevision.source,
             upstreamEngine: uploadedRevision.engine,
             principalKind: uploaderPrincipal.kind,
+            review: s.revisionTrustReview.class,
           })
           .from(s.model)
           .innerJoin(s.modelRevision, liveHead)
@@ -1123,14 +1167,61 @@ function repos(db: Conn): Tx {
               sql`coalesce(${uploadedRevision.principalId}, ${s.modelRevision.principalId})`,
             ),
           )
+          .leftJoin(
+            s.revisionTrustReview,
+            and(
+              eq(s.revisionTrustReview.projectId, s.modelRevision.projectId),
+              eq(
+                s.revisionTrustReview.revisionId,
+                sql`coalesce(${uploadedRevision.id}, ${s.modelRevision.id})`,
+              ),
+            ),
+          )
           .where(and(eq(s.model.projectId, projectId), isNull(s.model.deletedSeq)))
           .orderBy(s.model.key);
-        return rows.map((r) => ({
+        return rows.map((r): HeadTrustRow => ({
           key: r.key,
+          modelId: r.modelId as ModelId,
+          name: r.name,
           head: r.head,
           upstream: r.upstream,
+          revisionId: (r.upstream ? r.upstreamId : r.headId) as RevisionId,
+          rev: (r.upstream ? r.upstreamRev : r.headRev) ?? r.headRev,
           engine: r.upstream ? r.upstreamEngine : r.headEngine,
           uploaderPrincipalKind: r.principalKind,
+          review: r.review,
+        }));
+      },
+      async trustStates(projectId, ids) {
+        if (ids.length === 0) return [];
+        const rows = await db
+          .select({
+            id: s.modelRevision.id,
+            modelId: s.modelRevision.modelId,
+            source: s.modelRevision.source,
+            engine: s.modelRevision.engine,
+            principalKind: s.principal.kind,
+            review: s.revisionTrustReview.class,
+          })
+          .from(s.modelRevision)
+          .innerJoin(s.principal, eq(s.principal.id, s.modelRevision.principalId))
+          .leftJoin(
+            s.revisionTrustReview,
+            and(
+              eq(s.revisionTrustReview.projectId, s.modelRevision.projectId),
+              eq(s.revisionTrustReview.revisionId, s.modelRevision.id),
+            ),
+          )
+          .where(
+            and(eq(s.modelRevision.projectId, projectId), inArray(s.modelRevision.id, [...ids])),
+          );
+        return rows.map((r) => ({
+          id: r.id as RevisionId,
+          modelId: r.modelId as ModelId,
+          source: r.source,
+          engine: r.engine,
+          uploaderPrincipalKind: r.principalKind,
+          review: r.review,
         }));
       },
       async headWarnings(projectId) {
@@ -2483,6 +2574,12 @@ function repos(db: Conn): Tx {
           };
           return stored;
         });
+      },
+    },
+
+    trustReviews: {
+      async insert(rows) {
+        if (rows.length > 0) await db.insert(s.revisionTrustReview).values([...rows]);
       },
     },
 

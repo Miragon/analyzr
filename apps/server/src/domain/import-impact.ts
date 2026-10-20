@@ -160,12 +160,16 @@ const byCodePoint = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 
 /**
  * The relations' part of an impact: the transitions a recompute over the
  * would-be head makes; with `auto` (an owner's dry run, M6 S2c-3) also the
- * derived calls their rules would accept.
+ * derived calls their rules would accept. `ofProposed` says what
+ * `autoAcceptedCalls.ofProposed` counts them among: every call
+ * `callsProposed` counts (the import), or only those accepted before
+ * (`was-accepted`: a trust review's `toProposed`, M6 S2c-4).
  */
 export function relationImpact(
   input: RecomputeInput,
   findingsBefore: readonly Finding[],
   auto?: DerivedCallRules,
+  ofProposed: 'proposed' | 'was-accepted' = 'proposed',
 ): Omit<ImportImpact, 'files' | 'absentKeys'> {
   const plan = planRecompute(input);
   const accepted: ImpactRelation[] = [];
@@ -233,7 +237,11 @@ export function relationImpact(
             input,
             plan,
             auto,
-            new Set(callsProposed.map((c) => naturalKey(c.type, c.from, c.to))),
+            new Set(
+              callsProposed
+                .filter((c) => ofProposed === 'proposed' || c.wasAccepted)
+                .map((c) => naturalKey(c.type, c.from, c.to)),
+            ),
           ),
         }
       : {}),

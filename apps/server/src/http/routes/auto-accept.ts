@@ -18,7 +18,8 @@ function rulePrecondition(ifMatch: string | undefined): RulePrecondition {
 /**
  * Auto-accept rules (owner decision 19): owners on an interactive client
  * only; no MCP counterpart. Rules carry `ETag: "r<revision>"`; edits need
- * `If-Match`. Apply and revocation take `?dryRun=true`.
+ * `If-Match`. Apply, revocation and the review of the acceptances from
+ * before the trust rule (M6 S2c-4) take `?dryRun=true`.
  */
 export function registerAutoAcceptRoutes(app: App, useCases: UseCases): void {
   app.openapi(createRoute(apiRoutes.listAutoAcceptRules), async (c) => {
@@ -81,6 +82,23 @@ export function registerAutoAcceptRoutes(app: App, useCases: UseCases): void {
     const { dryRun } = c.req.valid('query');
     return c.json(
       await useCases.revokeAutoAccepted(requireActor(c), project, c.req.valid('json'), {
+        dryRun: dryRun === 'true',
+      }),
+      200,
+    );
+  });
+
+  // „Vor der Vertrauensregel angenommen“ (M6 S2c-4): owners only, like the rules.
+  app.openapi(createRoute(apiRoutes.listPreTrustCalls), async (c) => {
+    const { project } = c.req.valid('param');
+    return c.json(await useCases.listPreTrustCalls(requireActor(c), project), 200);
+  });
+
+  app.openapi(createRoute(apiRoutes.reviewPreTrustCalls), async (c) => {
+    const { project } = c.req.valid('param');
+    const { dryRun } = c.req.valid('query');
+    return c.json(
+      await useCases.reviewPreTrustCalls(requireActor(c), project, c.req.valid('json'), {
         dryRun: dryRun === 'true',
       }),
       200,

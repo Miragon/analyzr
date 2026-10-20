@@ -7,6 +7,8 @@ import {
   criteriaText,
   draftOf,
   formatPercent,
+  formatPreTrustList,
+  formatPreTrustReview,
   formatPreview,
   mergeFlags,
   parseConfidence,
@@ -132,6 +134,7 @@ const SYSTEM = {
   readOnly: true,
   accepted: 31,
   proposed: 4,
+  preTrust: 0,
 };
 
 function preview(open = 2) {
@@ -1096,5 +1099,272 @@ describe('rules for derived calls (M6 S2c-3)', () => {
     expect(formatPreview({ ...preview(0), derivedGroups: [] } as never, true)).toContain(
       'sources: no unique calls from derived models a rule can name',
     );
+  });
+});
+
+describe('analyzr rules pre-trust (M6 S2c-4)', () => {
+  const REV_A = 'rev_01J9Z3N4X5Q6R7S8T9V0W1X2A1';
+  const REV_B = 'rev_01J9Z3N4X5Q6R7S8T9V0W1X2B1';
+  const LIST = {
+    count: 3,
+    models: [
+      {
+        modelId: 'mdl_01J9Z3N4X5Q6R7S8T9V0W1X2A1',
+        modelKey: 'vertrieb/auftrag',
+        modelName: 'Auftragsabwicklung',
+        revisionId: REV_A,
+        rev: 1,
+        reasons: ['no-engine'],
+        derivedKind: null,
+        converter: null,
+        count: 2,
+        calls: [
+          { relationId: 'rel_1', from: 'vertrieb/auftrag#Call_A', to: 'finanzen/rechnung#P' },
+          { relationId: 'rel_2', from: 'vertrieb/auftrag#Call_B', to: 'versand/alt#P' },
+        ],
+      },
+      {
+        modelId: 'mdl_01J9Z3N4X5Q6R7S8T9V0W1X2B1',
+        modelKey: 'lager/einlagerung',
+        modelName: null,
+        revisionId: REV_B,
+        rev: 3,
+        reasons: ['agent-upload', 'converted'],
+        derivedKind: 'converted',
+        converter: 'normalize-bpmn@0.1.0',
+        count: 1,
+        calls: [
+          { relationId: 'rel_3', from: 'lager/einlagerung#Call_C', to: 'finanzen/rechnung#P' },
+        ],
+      },
+    ],
+  } as const;
+  const NONE = { count: 0, items: [], ofProposed: 0, byRule: [] };
+
+  /** The list, and the review answering as the server would for the named revisions. */
+  function preTrustApi(auto = NONE, real?: (body: { expectedCount?: number }) => Response) {
+    const bodies: unknown[] = [];
+    const api = fakeApi({
+      [`GET ${BASE}/pre-trust-calls`]: () => json(LIST),
+      [`POST ${BASE}/pre-trust-calls/review`]: async (req, url) => {
+        const body = (await req.json()) as {
+          verdict: 'derived' | 'modelled';
+          revisionIds: string[];
+          expectedCount?: number;
+        };
+        bodies.push(body);
+        const count = LIST.models
+          .filter((m) => body.revisionIds.includes(m.revisionId))
+          .reduce((n, m) => n + m.count, 0);
+        const dryRun = url.searchParams.get('dryRun') === 'true';
+        if (!dryRun && real) return real(body);
+        return json({
+          dryRun,
+          verdict: body.verdict,
+          revisions: body.revisionIds.length,
+          count,
+          toProposed: body.verdict === 'derived' ? count : 0,
+          autoAcceptedCalls: body.verdict === 'derived' ? auto : NONE,
+        });
+      },
+    });
+    return { api, bodies };
+  }
+
+  it('lists the models with their reasons and calls, and says what to do', async () => {
+    const { api } = preTrustApi();
+    const t = testIo(env(), api.fetch);
+    expect(await runCli(['rules', 'pre-trust', '-p', 'p'], t.io)).toBe(0);
+    expect(api.seen[0]?.authorization).toBe(`Bearer ${OWNER_KEY}`);
+    expect(t.out()).toBe(
+      [
+        '3 calls in p accepted before the trust rule; their callers would be derived today:',
+        '  vertrieb/auftrag "Auftragsabwicklung" (r1): 2 calls (no engine)',
+        '    vertrieb/auftrag#Call_A → finanzen/rechnung#P',
+        '    vertrieb/auftrag#Call_B → versand/alt#P',
+        '  lager/einlagerung (r3): 1 call (agent token, converted)',
+        '    lager/einlagerung#Call_C → finanzen/rechnung#P',
+        'next: send them back to review with analyzr rules pre-trust --revoke -p p, or keep them accepted with --keep (each model is decided once; --model narrows)',
+        '',
+      ].join('\n'),
+    );
+    const j = testIo(env(), api.fetch);
+    expect(
+      await runCli(
+        ['rules', 'pre-trust', '-p', 'p', '--json', '--model', 'lager/einlagerung'],
+        j.io,
+      ),
+    ).toBe(0);
+    expect(JSON.parse(j.out())).toEqual({ count: 1, models: [LIST.models[1]] });
+  });
+
+  it('--revoke prints the dry run and changes nothing without --yes', async () => {
+    const { api, bodies } = preTrustApi();
+    const t = testIo(env(), api.fetch);
+    expect(await runCli(['rules', 'pre-trust', '-p', 'p', '--revoke'], t.io)).toBe(1);
+    expect(t.out()).toContain(
+      'dry run: 3 calls of 2 models in p would go back to review: 3 would become proposals of the rule tier',
+    );
+    expect(t.err()).toContain(
+      'nothing changed yet: run the command again with --yes to send the 3 calls back to review',
+    );
+    expect(bodies).toEqual([{ verdict: 'derived', revisionIds: [REV_A, REV_B] }]);
+  });
+
+  it('--revoke --yes sends the dry run’s count; names the rules that accept again and the review link', async () => {
+    const { api, bodies } = preTrustApi({
+      count: 1,
+      items: [],
+      ofProposed: 1,
+      byRule: [{ ruleId: RULE_ID, ruleName: 'Aufrufe: ohne Angabe', count: 1 }],
+    } as never);
+    const t = testIo(env(), api.fetch);
+    expect(
+      await runCli(
+        ['rules', 'pre-trust', '-p', 'p', '--revoke', '--yes', '--model', 'vertrieb/auftrag'],
+        t.io,
+      ),
+    ).toBe(0);
+    expect(bodies).toEqual([
+      { verdict: 'derived', revisionIds: [REV_A] },
+      { verdict: 'derived', revisionIds: [REV_A], expectedCount: 2 },
+    ]);
+    expect(t.out()).toContain(
+      '2 calls of 1 model in p went back to review: 2 became proposals of the rule tier',
+    );
+    expect(t.out()).toContain(
+      'your rules for derived calls accepted 1 of them again: "Aufrufe: ohne Angabe" 1',
+    );
+    expect(t.out()).toContain(
+      'next: accept them in the web review („Gesammelt annehmen“):\n  http://127.0.0.1:7400/projects/p/review?bulk=calls',
+    );
+  });
+
+  it('--keep --yes keeps them; a changed list (409) changes nothing', async () => {
+    const { api, bodies } = preTrustApi();
+    const t = testIo(env(), api.fetch);
+    expect(await runCli(['rules', 'pre-trust', '-p', 'p', '--keep', '--yes'], t.io)).toBe(0);
+    expect(bodies.at(-1)).toEqual({
+      verdict: 'modelled',
+      revisionIds: [REV_A, REV_B],
+      expectedCount: 3,
+    });
+    expect(t.out()).toContain(
+      '3 calls of 2 models in p stay accepted; the models are never listed again',
+    );
+    const conflict = preTrustApi(NONE, () =>
+      problem(409, 'conflict', '2 calls are listed for these revisions now; run the dry run again'),
+    );
+    const c = testIo(env(), conflict.api.fetch);
+    expect(await runCli(['rules', 'pre-trust', '-p', 'p', '--keep', '--yes'], c.io)).toBe(1);
+    expect(c.err()).toContain('nothing changed. Run analyzr rules pre-trust again');
+    // The dry run refuses a model no longer listed the same way.
+    const gone = fakeApi({
+      [`GET ${BASE}/pre-trust-calls`]: () => json(LIST),
+      [`POST ${BASE}/pre-trust-calls/review`]: () =>
+        problem(
+          409,
+          'conflict',
+          '1 of the revisions are not listed now (already reviewed, uploaded again, or nothing of theirs to review); list them again',
+        ),
+    });
+    const g = testIo(env(), gone.fetch);
+    expect(await runCli(['rules', 'pre-trust', '-p', 'p', '--revoke'], g.io)).toBe(1);
+    expect(g.err()).toContain(
+      'list them again; nothing changed. Run analyzr rules pre-trust again',
+    );
+    expect(gone.seen.filter((s) => s.method === 'POST')).toHaveLength(1);
+  });
+
+  it('refuses conflicting flags, an unknown model and an agent token before reviewing', async () => {
+    const { api } = preTrustApi();
+    const both = testIo(env(), api.fetch);
+    expect(await runCli(['rules', 'pre-trust', '-p', 'p', '--revoke', '--keep'], both.io)).toBe(1);
+    expect(both.err()).toContain('--revoke and --keep exclude each other');
+    const yes = testIo(env(), api.fetch);
+    expect(await runCli(['rules', 'pre-trust', '-p', 'p', '--yes'], yes.io)).toBe(1);
+    expect(yes.err()).toContain('--yes needs --revoke');
+    expect(api.seen).toHaveLength(0);
+    const unknown = testIo(env(), api.fetch);
+    expect(
+      await runCli(['rules', 'pre-trust', '-p', 'p', '--revoke', '--model', 'x/y'], unknown.io),
+    ).toBe(1);
+    expect(unknown.err()).toContain(
+      'not listed: x/y; listed models: vertrieb/auftrag, lager/einlagerung',
+    );
+    const agent = testIo({ ...env(), ANALYZR_TOKEN: AGENT_TOKEN }, api.fetch);
+    expect(await runCli(['rules', 'pre-trust', '-p', 'p'], agent.io)).toBe(1);
+    expect(agent.err()).toContain('auto-accept rules are owner-only');
+    expect(api.seen.filter((s) => s.method === 'POST')).toHaveLength(0);
+  });
+
+  it('formats the system line, an empty list and a dry run of „Behalten“', () => {
+    expect(systemLine({ ...SYSTEM, proposed: 0, preTrust: 3 } as never)).toBe(
+      'system rule analyzr-rules/1.0.0 "Eindeutige Aufrufe": call relations of modelled callers, always on, read-only; 31 accepted, 3 accepted before the trust rule from callers that would be derived today (review them: analyzr rules pre-trust)',
+    );
+    expect(formatPreTrustList({ models: [] }, 'p')).toEqual([
+      'nothing in p was accepted before the trust rule from a caller that would be derived today',
+    ]);
+    expect(
+      formatPreTrustReview(
+        {
+          dryRun: true,
+          verdict: 'modelled',
+          revisions: 1,
+          count: 1,
+          toProposed: 0,
+          autoAcceptedCalls: NONE,
+        },
+        'p',
+        'http://127.0.0.1:7400',
+      ),
+    ).toEqual([
+      'dry run: 1 call of 1 model in p would stay accepted; the model would never be listed again',
+    ]);
+    // The rules' acceptances among these calls (`ofProposed`), the others apart.
+    expect(
+      formatPreTrustReview(
+        {
+          dryRun: true,
+          verdict: 'derived',
+          revisions: 1,
+          count: 2,
+          toProposed: 2,
+          autoAcceptedCalls: {
+            count: 3,
+            items: [],
+            ofProposed: 1,
+            byRule: [{ ruleId: RULE_ID, ruleName: 'Export', count: 3 }],
+          },
+        },
+        'p',
+        'http://127.0.0.1:7400',
+      ),
+    ).toEqual([
+      'dry run: 2 calls of 1 model in p would go back to review: 2 would become proposals of the rule tier',
+      '  your rules for derived calls would accept 1 of them again (and 2 other proposals): "Export" 3',
+    ]);
+  });
+
+  it('--json with nothing listed answers in the review’s shape', async () => {
+    const api = fakeApi({
+      [`GET ${BASE}/pre-trust-calls`]: () => json({ count: 0, models: [] }),
+    });
+    const t = testIo(env(), api.fetch);
+    expect(
+      await runCli(['rules', 'pre-trust', '-p', 'p', '--revoke', '--yes', '--json'], t.io),
+    ).toBe(0);
+    expect(JSON.parse(t.out())).toEqual({
+      dryRun: false,
+      verdict: 'derived',
+      revisions: 0,
+      count: 0,
+      toProposed: 0,
+      autoAcceptedCalls: { count: 0, items: [], ofProposed: 0, byRule: [] },
+    });
+    const keep = testIo(env(), api.fetch);
+    expect(await runCli(['rules', 'pre-trust', '-p', 'p', '--keep', '--json'], keep.io)).toBe(0);
+    expect(JSON.parse(keep.out())).toMatchObject({ dryRun: true, verdict: 'modelled', count: 0 });
+    expect(api.seen.filter((c) => c.method === 'POST')).toHaveLength(0);
   });
 });

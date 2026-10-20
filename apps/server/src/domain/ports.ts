@@ -65,6 +65,7 @@ import type {
   PlacementInputOutcome,
   SubmissionId,
   Tier,
+  TrustClass,
   TypedPair,
   ValueChainId,
   ValueChainRevisionId,
@@ -135,14 +136,55 @@ export interface ModelView extends ModelRecord {
 /** A live model as the trust rule reads it ({@link RevisionRepo.headTrustRows}). */
 export interface HeadTrustRow {
   key: string;
+  modelId: ModelId;
+  /** The model's name (`bpmn:definitions` name or first process name). */
+  name: string | null;
   /** The head revision's source. */
   head: RevisionSource;
   /** For an amended head, its uploaded revision's source (`source.upstream`); `null` otherwise. */
   upstream: RevisionSource | null;
+  /** The uploaded revision: the head, or for an amended head `source.upstream`. */
+  revisionId: RevisionId;
+  /** Its revision number. */
+  rev: number;
   /** Engine of the uploaded revision (the head's own, or `upstream`'s). */
   engine: Engine | null;
   /** Kind of the principal that stored the uploaded revision. */
-  uploaderPrincipalKind: 'user' | 'service' | 'system';
+  uploaderPrincipalKind: PrincipalKind;
+  /**
+   * The owner's review of the uploaded revision (M6 S2c-4,
+   * `revision_trust_review`), read where it carries no `source.trust`;
+   * `null` when none is recorded.
+   */
+  review: TrustClass | null;
+}
+
+/** A revision of the project as a review of one stored before the trust rule checks it (M6 S2c-4). */
+export interface RevisionTrustState {
+  id: RevisionId;
+  modelId: ModelId;
+  source: RevisionSource;
+  engine: Engine | null;
+  /** Kind of the principal that stored it. */
+  uploaderPrincipalKind: PrincipalKind;
+  /** Its review (`revision_trust_review`), if any. */
+  review: TrustClass | null;
+}
+
+/**
+ * The owner's review of an uploaded revision stored before the trust rule
+ * (`revision_trust_review`, M6 S2c-4): humans only, once per revision;
+ * `seq` of the `revision.trust_reviewed` event.
+ */
+export interface RevisionTrustReviewRecord {
+  projectId: ProjectId;
+  revisionId: RevisionId;
+  modelId: ModelId;
+  class: TrustClass;
+  principalId: PrincipalId;
+  clientId: string | null;
+  sourceKind: 'human';
+  seq: number;
 }
 
 export interface RevisionRecord {
@@ -756,6 +798,12 @@ export interface RevisionRepo {
    */
   headTrustRows(projectId: ProjectId): Promise<HeadTrustRow[]>;
   /**
+   * The revisions of the project with these ids, with what the trust rule
+   * reads of each (M6 S2c-4): source, engine, the kind of the principal that
+   * stored it and its review; ids of other projects or none are missing.
+   */
+  trustStates(projectId: ProjectId, ids: readonly RevisionId[]): Promise<RevisionTrustState[]>;
+  /**
    * The stored extractor warnings of every live model's head revision that
    * has at least one (M6 S2a); heads stored before S2a (null) and without
    * warnings are missing. By model key.
@@ -1338,6 +1386,11 @@ export interface ModelAmendmentRepo {
   list(projectId: ProjectId, filter?: { modelId?: ModelId }): Promise<StoredModelAmendment[]>;
 }
 
+export interface RevisionTrustReviewRepo {
+  /** Records reviews (one per revision; the database refuses a second and a classified revision). */
+  insert(rows: readonly RevisionTrustReviewRecord[]): Promise<void>;
+}
+
 export interface FindingRepo {
   replace(projectId: ProjectId, findings: readonly Finding[]): Promise<void>;
   list(projectId: ProjectId): Promise<Finding[]>;
@@ -1372,6 +1425,7 @@ export interface Tx {
   autoAcceptRules: AutoAcceptRuleRepo;
   openQuestionAnswers: OpenQuestionAnswerRepo;
   amendments: ModelAmendmentRepo;
+  trustReviews: RevisionTrustReviewRepo;
   findings: FindingRepo;
   events: EventRepo;
 }

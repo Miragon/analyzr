@@ -188,9 +188,15 @@ export function sameFields(head: DraftFields, next: DraftFields): boolean {
  * modelled, and proposes it from a derived one (decision 24.2; a call target
  * set in analyzr counts as modelled, 25.2). Recorded under `analyzr-rules`
  * (`source_kind = 'rule'`), never stored as an auto-accept rule, never
- * editable. `proposed`: the open proposals of such calls.
+ * editable. `proposed`: the open proposals of such calls; `preTrust`: the
+ * acceptances from before the trust rule the owner has not reviewed yet (M6
+ * S2c-4, „Vor der Vertrauensregel angenommen“).
  */
-export function systemRule(accepted: number, proposed: number): AutoAcceptSystemRule {
+export function systemRule(
+  accepted: number,
+  proposed: number,
+  preTrust: number,
+): AutoAcceptSystemRule {
   return {
     id: RULES_PROCEDURE,
     name: 'Eindeutige Aufrufe',
@@ -205,5 +211,6 @@ export function systemRule(accepted: number, proposed: number): AutoAcceptSystem
     readOnly: true,
     accepted,
     proposed,
+    preTrust,
   };
 }

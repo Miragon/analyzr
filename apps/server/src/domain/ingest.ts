@@ -74,7 +74,7 @@ import type {
   Tx,
 } from './ports.ts';
 import { recomputeProject } from './recompute.ts';
-import { callTargets, trustByModel, trustOf, type ModelTrust } from './trust.ts';
+import { callTargets, storedTrust, trustByModel, trustOf, type ModelTrust } from './trust.ts';
 import { queuePlacementTasks } from './value-chain/queue.ts';
 import { syncValueChainAfterModels } from './value-chain/sync.ts';
 import { storedWarnings } from './warnings.ts';
@@ -336,6 +336,21 @@ async function seenOf(tx: Tx, projectId: ProjectId, key: string): Promise<Seen> 
   };
 }
 
+/**
+ * The class an unchanged upload keeps (M6 S2c): the uploaded revision's
+ * `source.trust`; for one stored before S2c the owner's review of it (M6
+ * S2c-4), else `null` (one more query, only then).
+ */
+async function keptTrust(
+  tx: Tx,
+  projectId: ProjectId,
+  uploaded: RevisionRecord,
+): Promise<RevisionTrust | null> {
+  if (uploaded.source.trust) return uploaded.source.trust;
+  const [state] = await tx.revisions.trustStates(projectId, [uploaded.id]);
+  return state ? storedTrust(state) : null;
+}
+
 /** One revision to store as a model's head. */
 export interface NewHead {
   modelId: ModelId;
@@ -469,7 +484,7 @@ async function storeFile(
         warnings: [],
         ...(amendments.length > 0 ? { amendments: planCounts(planOf(previous)) } : {}),
         trust: {
-          stored: uploaded.source.trust ?? null,
+          stored: await keptTrust(tx, projectId, uploaded),
           incoming: trustOf(uploaded.engine, f.source),
         },
       },
@@ -732,7 +747,7 @@ export type PreviewResult =
  * (`IngestDeps.rulesPrincipal` may). Without a rule assertion yet no stance
  * of it exists, and any id plans the same.
  */
-function rulesPrincipalOf(
+export function rulesPrincipalOf(
   history: readonly { sourceKind: string; principalId: PrincipalId }[],
 ): PrincipalId {
   return history.find((a) => a.sourceKind === 'rule')?.principalId ?? 'prn_rules';
@@ -744,7 +759,7 @@ function rulesPrincipalOf(
  * client), so an agent or read-only token, an editor or a viewer never gets
  * rule data (`null`); an owner without such an enabled rule gets no rules.
  */
-async function derivedCallRulesFor(
+export async function derivedCallRulesFor(
   tx: Tx,
   actor: Actor,
   project: ProjectRecord,

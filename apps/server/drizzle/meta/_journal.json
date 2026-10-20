@@ -134,6 +134,20 @@
       "when": 1792451853007,
       "tag": "0018_auto_accept_rule_tier",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1792458124622,
+      "tag": "0019_revision_trust_review",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1792458132384,
+      "tag": "0020_revision_trust_review_triggers",
+      "breakpoints": true
     }
   ]
 }

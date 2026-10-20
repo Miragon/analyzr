@@ -206,7 +206,7 @@ describe('an edit', () => {
 
 describe('the system rule', () => {
   it('describes decision 9 as amended by the trust rule (24.2, 25.2), read-only', () => {
-    const rule = systemRule(3, 2);
+    const rule = systemRule(3, 2, 4);
     expect(rule).toMatchObject({
       id: 'analyzr-rules/1.0.0',
       name: 'Eindeutige Aufrufe',
@@ -215,6 +215,7 @@ describe('the system rule', () => {
       readOnly: true,
       accepted: 3,
       proposed: 2,
+      preTrust: 4,
     });
     expect(rule.description).toBe(
       'Ein statischer Aufruf (calledElement), der genau einen anderen Prozess nennt, wird beim ' +

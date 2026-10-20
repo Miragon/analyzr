@@ -10507,6 +10507,10 @@
           "proposed": {
             "type": "integer",
             "minimum": 0
+          },
+          "preTrust": {
+            "type": "integer",
+            "minimum": 0
           }
         },
         "required": [
@@ -10517,7 +10521,8 @@
           "relationType",
           "readOnly",
           "accepted",
-          "proposed"
+          "proposed",
+          "preTrust"
         ],
         "description": "The built-in rule of decision 9."
       },
@@ -11997,6 +12002,177 @@
           "revokedAt"
         ],
         "description": "One auto-acceptance and its state."
+      },
+      "PreTrustList": {
+        "type": "object",
+        "properties": {
+          "count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "models": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PreTrustModel"
+            }
+          }
+        },
+        "required": [
+          "count",
+          "models"
+        ],
+        "description": "Unique calls accepted before the trust rule whose caller would be derived today."
+      },
+      "PreTrustModel": {
+        "type": "object",
+        "properties": {
+          "modelId": {
+            "$ref": "#/components/schemas/ModelId"
+          },
+          "modelKey": {
+            "$ref": "#/components/schemas/ModelKey"
+          },
+          "modelName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "revisionId": {
+            "$ref": "#/components/schemas/RevisionId"
+          },
+          "rev": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "reasons": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TrustReason"
+            },
+            "minItems": 1
+          },
+          "derivedKind": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DerivedKind"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "converter": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "calls": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PreTrustCall"
+            },
+            "maxItems": 100
+          }
+        },
+        "required": [
+          "modelId",
+          "modelKey",
+          "modelName",
+          "revisionId",
+          "rev",
+          "reasons",
+          "derivedKind",
+          "converter",
+          "count",
+          "calls"
+        ],
+        "description": "A model with unique calls accepted before the trust rule."
+      },
+      "PreTrustCall": {
+        "type": "object",
+        "properties": {
+          "relationId": {
+            "$ref": "#/components/schemas/RelationId"
+          },
+          "from": {
+            "$ref": "#/components/schemas/Ref"
+          },
+          "to": {
+            "$ref": "#/components/schemas/Ref"
+          }
+        },
+        "required": [
+          "relationId",
+          "from",
+          "to"
+        ],
+        "description": "A unique call accepted by the rule tier before the trust rule."
+      },
+      "PreTrustReviewResult": {
+        "type": "object",
+        "properties": {
+          "dryRun": {
+            "type": "boolean"
+          },
+          "verdict": {
+            "$ref": "#/components/schemas/TrustClass"
+          },
+          "revisions": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "toProposed": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "autoAcceptedCalls": {
+            "$ref": "#/components/schemas/ImpactAutoAcceptedCalls"
+          }
+        },
+        "required": [
+          "dryRun",
+          "verdict",
+          "revisions",
+          "count",
+          "toProposed",
+          "autoAcceptedCalls"
+        ],
+        "description": "What a review of revisions stored before the trust rule did or would do."
+      },
+      "PreTrustReviewBody": {
+        "type": "object",
+        "properties": {
+          "verdict": {
+            "$ref": "#/components/schemas/TrustClass"
+          },
+          "revisionIds": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RevisionId"
+            },
+            "minItems": 1,
+            "maxItems": 1000
+          },
+          "expectedCount": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "verdict",
+          "revisionIds"
+        ],
+        "description": "A review of revisions stored before the trust rule."
       }
     },
     "parameters": {}
@@ -19873,6 +20049,194 @@
           },
           "404": {
             "description": "Problem: `not-found`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Problem: `validation-failed`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project}/pre-trust-calls": {
+      "get": {
+        "operationId": "listPreTrustCalls",
+        "tags": [
+          "auto-accept"
+        ],
+        "summary": "Unique calls accepted before the trust rule whose caller would be derived today (owner)",
+        "description": "„Vor der Vertrauensregel angenommen“ (M6 S2c-4, owner decisions 24.2 (a) and 28 (3)): per model, the call relations accepted resting on the rule tier’s decision alone whose caller’s uploaded revision was stored before the trust rule (no `source.trust`), is not reviewed yet, and would be derived from what it carries: no engine; uploaded with an agent token, or before S2a by a service principal; a declared kind other than `export`. A call whose target was set in analyzr counts as modelled and is not listed. Camunda models a human imported list nothing. Owners on an interactive client only (`forbidden` for agent tokens and editors); no MCP counterpart.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": "^(?:prj_[0-7][0-9A-HJKMNP-TV-Z]{25}|[a-z0-9]+(?:-[a-z0-9]+)*)$",
+              "description": "Project id (`prj_…`) or project key.",
+              "example": "nordwind-handel"
+            },
+            "required": true,
+            "description": "Project id (`prj_…`) or project key.",
+            "name": "project",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The listed calls by model",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreTrustList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem: `unauthorized`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem: `insufficient-scope`, `forbidden`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem: `not-found`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Problem: `validation-failed`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project}/pre-trust-calls/review": {
+      "post": {
+        "operationId": "reviewPreTrustCalls",
+        "tags": [
+          "auto-accept"
+        ],
+        "summary": "Send calls accepted before the trust rule back to review, or keep them (`?dryRun=true` first)",
+        "description": "Records the owner’s review of listed revisions, once per revision (append-only): `derived` („Zurück in die Prüfung“) makes the revision count as derived with the reasons it carries, so the recompute turns its listed calls into the rule tier’s proposals (tier `key`, 0.9), and an enabled auto-accept rule for derived calls may accept them again in the same write (`autoAcceptedCalls`); `modelled` („Behalten“) keeps them accepted, and the revision is never listed again. `dryRun=true` says what it would do and writes nothing. The real call needs `expectedCount` equal to the listed calls of the revisions (422 `validation-failed` with `reason` `expected-count-required` without it; 409 `conflict` with `count` and `reason` `count-changed`, or `not-listed` when a revision is not listed now, which the dry run answers too: list again). A revision the trust rule classified, or an amended one, is never reviewed (422 `validation-failed` with `reason` `revision-classified`); an id that names no revision of the project is 422 with `reason` `unknown-revision`. Event `revision.trust_reviewed` (revision ids, class and count). Owners on an interactive client only.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": "^(?:prj_[0-7][0-9A-HJKMNP-TV-Z]{25}|[a-z0-9]+(?:-[a-z0-9]+)*)$",
+              "description": "Project id (`prj_…`) or project key.",
+              "example": "nordwind-handel"
+            },
+            "required": true,
+            "description": "Project id (`prj_…`) or project key.",
+            "name": "project",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ]
+            },
+            "required": false,
+            "name": "dryRun",
+            "in": "query"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreTrustReviewBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "What it did or would do",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreTrustReviewResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem: `unauthorized`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem: `insufficient-scope`, `forbidden`, `demo-readonly`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem: `not-found`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Problem: `conflict`",
             "content": {
               "application/problem+json": {
                 "schema": {

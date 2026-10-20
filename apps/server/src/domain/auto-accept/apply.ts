@@ -137,6 +137,12 @@ export async function enabledDerivedCallRules(
   return ruleRevs(tx, projectId, heads);
 }
 
+/** A derived call an owner's rule accepted in the fifth write path, with that rule. */
+export interface AutoAcceptedCall {
+  relation: RelationRecord;
+  rule: AutoAcceptRuleRev;
+}
+
 /** A relation proposal this write recorded. */
 export interface RelationTrigger {
   relation: RelationRecord;
@@ -168,7 +174,7 @@ const byNaturalKey = (a: RelationRecord, b: RelationRecord): number =>
  * an agent's re-proposal after a model change is for agent rules.
  *
  * @param procedure the procedure relations claims name (live no-links)
- * @returns the relations accepted
+ * @returns the relations accepted, each with the rule that accepted it
  */
 export async function autoAcceptDerivedCalls(
   tx: Tx,
@@ -176,7 +182,7 @@ export async function autoAcceptDerivedCalls(
   projectId: ProjectId,
   derivedProposals: readonly DerivedProposal[],
   procedure: DeclaredProcedure,
-): Promise<RelationRecord[]> {
+): Promise<AutoAcceptedCall[]> {
   if (derivedProposals.length === 0 || sourceKindOf(actor) !== 'human') return [];
   const rules = await enabledDerivedCallRules(tx, projectId);
   if (rules.length === 0) return [];
@@ -209,7 +215,7 @@ export async function autoAcceptDerivedCalls(
     noLinks.set(key, (noLinks.get(key) ?? 0) + 1);
   }
 
-  const accepted: RelationRecord[] = [];
+  const accepted: AutoAcceptedCall[] = [];
   for (const t of [...triggers].sort((a, b) => byNaturalKey(a.relation, b.relation))) {
     const key = naturalKey(t.relation.type, t.relation.fromRef, t.relation.toRef);
     const relation = ctx.relations.get(key) ?? t.relation;
@@ -226,7 +232,10 @@ export async function autoAcceptDerivedCalls(
       rules,
     });
     if (!verdict.accept) continue;
-    accepted.push(await recordRelationAutoAccept(ctx, relation, a.id, verdict.rule));
+    accepted.push({
+      relation: await recordRelationAutoAccept(ctx, relation, a.id, verdict.rule),
+      rule: verdict.rule,
+    });
   }
   return accepted;
 }

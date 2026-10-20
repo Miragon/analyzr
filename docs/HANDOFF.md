@@ -261,9 +261,26 @@ and code are in English.
   source (`analyzr import` with the owner key suggests the same), and once it is on, the unique
   calls each later import of that source proposes are accepted without a click, before the agent
   runs (calls already waiting need `rules apply`); live-run neutral (no project has a rule, agents
-  never see rule data). **Next:** S2c-4
-  („Vor der Vertrauensregel angenommen“), S2b's follow-up and S3c; S6 after them; after the
-  owner's live runs S5b, S7 and facts v2 as recommended (§7 "M6"; M6 §8 "After S2a").
+  never see rule data). **M6 S2c-4 „Vor der Vertrauensregel angenommen“** (done 2026-10-20 on the
+  branch, every gate green with a review round's fixes; M6 §8 "S2c-4 as delivered"; decisions
+  24.2 (a) and 28 (3)): with it **S2c is complete**. The owner reviews, once per uploaded
+  revision, the rule tier's acceptances from before S2c whose revision would be derived today
+  (no engine; an agent token, or before S2a a service principal; a declared kind other than
+  `export`): the system rule card's line „N vor der Vertrauensregel angenommen – prüfen…“ (owners,
+  never in the demo) opens a dialog with one row per model, the dry run in one line, „Behalten“
+  and „Zurück in die Prüfung“; `analyzr rules pre-trust` does the same with the owner key. The
+  review is stored append-only (`revision_trust_review`, migrations 0019/0020, a database guard
+  against reviewing a classified or amended revision) and read where a revision carries no
+  class. For the first analysis: a landscape imported before the trust rule catches up without a
+  re-import, one list and one decision per model; „Zurück in die Prüfung“ sends the calls straight
+  to „Gesammelt annehmen“ (or an enabled rule for that source accepts them again in the same
+  write), and „Behalten“ ends the question for good; Camunda landscapes a human imported list
+  nothing, so it is live-run neutral. **Next:** S2b's follow-up (`importImpact` with the
+  judgements made non-current, the tasks queued or cancelled, the placement task due, the
+  placements changed or missing; the integrate plugin's key-map rebuild and a pre-approved
+  `--dry-run` in its next release), then S3c (renderer and spec YAML, the ad-hoc converter path,
+  the bundled CLI), then S6 (interviews); after the owner's live runs S5b, S7 and facts v2 as
+  recommended (§7 "M6"; M6 §8 "After S2a").
 
 ## 2. Read in this order
 
@@ -409,8 +426,10 @@ and code are in English.
     reconstructed or as-told) is proposed (tier `key`, 0.9) instead of accepted, which amends
     decision 9; decision-19 rules may accept such call proposals narrowed by derived kind and
     converter, which extends decision 19; revisions stored before S2c keep their acceptances,
-    listed once for a bulk revocation (option a). (3) The **consultant answers gaps**, also in the
-    web UI („Ich als berater, aber sollte auch in der UI gehen.“). (4) Gap output form left to the
+    listed once for a bulk revocation (option a; the list delivered in M6 S2c-4 as „Vor der
+    Vertrauensregel angenommen“, narrowed by decision 28 (3)). (3) The **consultant answers
+    gaps**, also in the web UI („Ich als berater, aber sollte auch in der UI gehen.“). (4) Gap
+    output form left to the
     agent („entscheide du was besser passt“): a **`gaps` field** in `analyzr-relations@0.3.0` and
     `analyzr-placements@0.2.0` after the live runs, no pipeline kind of its own. (5) Customer
     exports and transcripts may go to the operator's LLM vendor for now („ja das passt erstmal“).
@@ -499,7 +518,7 @@ and code are in English.
     acceptances from before S2c whose revision would classify as derived from what it carries
     (no engine, an agent upload or a service principal before S2a, a declared kind other than
     export); Camunda projects, the demo and the live-run projects list nothing. (1) is delivered
-    in M6 S2c-3, (2) in S2c-1; (3) comes with S2c-4.
+    in M6 S2c-3, (2) in S2c-1, (3) in S2c-4 (2026-10-20; M6 §8 "S2c-4 as delivered").
 
 **Taken during decision 20 by the implementing agent (the owner may overrule; details in
 DEVELOPMENT.md "Demo deployment (Fly.io)"):** the seed is made **while the image is built** and
@@ -629,6 +648,27 @@ accepted; (d) new rules start off, as before, and the rule `analyzr import` sugg
 without `--enable`. Also: whose proposals a rule accepts (`proposedBy`) never changes, like its
 kind; the converter matches exactly, version included; only the caller's class counts.
 
+**Taken during M6 S2c-4 by the implementing agent (the owner may overrule; details in M6 §8
+"S2c-4 as delivered" and DEVELOPMENT.md "The trust rule (M6 S2c-1)"):** (a) the owner's review is
+read beyond the rule tier: `Model.trust` shows it (also on `GET …/models`, which agent tokens can
+read: after „Behalten“ `{class: 'modelled', reasons: []}`, the same exposure S2c-1 already has for
+every classified model; not on MCP), and so do the „Herkunft“ line, the bulk toast's source and
+the class unchanged bytes keep (`trust-kept`), so none of them contradicts the rule tier (and a
+revision reviewed `derived` with the reason `agent-upload` gets S2c-3's safeguard `agent-upload`,
+so no rule accepts its calls again); (b) an accepted call whose callee is gone (endpoint
+`missing`) is not listed, since the review cannot turn it into a proposal now, so the list's count
+equals the dry run's `toProposed`; (c) „Behalten“ skips the recompute and writes only the review
+and its event, since `modelled` reads like no class for the rule tier and the auto-accept
+evaluator (everything the recompute reads; only `Model.trust` shows `modelled`, reading (a)); (d)
+`expectedCount` counts the listed calls, not the revisions, and the dry run refuses a revision
+that is not listed (409 `not-listed`) as the write does; (e) „Zurück in die Prüfung“ queues no
+analysis: the calls go to the human bulk accept („Gesammelt annehmen“), and the models show
+`waiting_for_review` through their open items (once their analysis is done); (f) the database
+itself refuses a review of a classified or amended revision (the trigger
+`analyzr_trust_review_guard`), whoever writes, so no writer can overrule a class the server
+assigned; (g) the dialog lists models, not individual calls, to stay simple (the CLI's list and
+the API show the calls, up to 100 per model); if you want the calls in the dialog too, say so.
+
 ## 5. What exists
 
 | Path | Content |
@@ -642,9 +682,9 @@ kind; the converter matches exactly, version included; only the caller's class c
 | `plugins/analyzr-integrate` | the second Claude Code plugin (M6 S3b, 0.1.2 since S2c-2) for interactive, non-pipeline skills: `/analyzr-integrate:integrate-landscape <export> [--workspace <dir>]` turns a customer's BPMN 2.0 export into an import bundle `analyzr-import/1` and a German report in the consultant's workspace (keys pinned in `keymap.json`), never imports (the consultant does); reference notes per tool (unverified), the bundled scripts `inspect.mjs` and `normalize-bpmn.mjs` (generated) and their notices; a sha256 per plugin release in `tools/integrate/test/plugin.test.ts`; never loaded in live runs |
 | `tools/integrate` | `@analyzr/integrate` (M6 S3b, decision 24.8): the sources and tests of the integrate plugin's scripts (`inspect`, `normalize-bpmn` with `file`, `plan`, `bundle`, `inventory`), bundled by `pnpm --filter @analyzr/integrate generate` with a drift test; a synthetic Signavio-style export and its golden bundle, which the CLI and web tests import; imported by nothing in `apps/` or `packages/` |
 | `examples/agents` | reference setups: Claude Code (interactive and `run-headless.sh [--skill placements]`), Claude Desktop (configs + German start prompts for relations, placements and drafting a chain), Codex; documentation, not in the image |
-| `apps/server` | Hono server: domain (pure, dependency-cruiser enforced), Drizzle/PostgreSQL, REST `/api/v1`, MCP `/mcp` (stateless Streamable HTTP), local mode, agent tokens, pipeline, review; since M4 S1/S2 the value chain and placements (`src/domain/value-chain/`: storage, lifecycle, `prepareRevision`, rule proposals, findings; REST under `/value-chains`, six MCP tools; the web page since S3); since decision 19 the owner's auto-accept rules (`src/domain/auto-accept/`, seven owner-only routes and the ledger for every reviewer, no MCP); since M6 S4 the open questions (`src/domain/open-questions/`: one read model over findings, chain findings, holds, agents' questions, unsure verdicts, coded no-links, summaries and unjudged pairs plus the gap signals, computed on read; `GET …/open-questions` and `…/open-questions/export?format=markdown\|csv`, permission `read`; no MCP until S7); since M6 S5a the answers (the append-only `open_question_answer`, migrations 0011/0012; `POST …/open-questions/{q}/answers` and `…/open-questions/answers?dryRun=`, permission `review`, humans only; on a relation or placement a human note through the note use cases); since M6 S5c-1 the actions (`open-questions/actions.ts`, pure: each item's actions, R1 and R1b, what a link writes or accepts; `POST …/open-questions/{q}/actions` for link, place, choose copy and the outside mark, `…/answers/{a}/withdrawal`, permission `review`, humans only; the append-only `open_question_answer_withdrawal`, migrations 0013/0014; items versioned by what they ask about; the safeguard `competing-call` also counts a human's manual link from the call element to another target); since M6 S5c-2 the model amendments (`src/domain/amendments/`, pure: planning against the uploaded revision, the fields a human may set, derivation, effect and cost, the change list; the append-only `model_amendment` and `model_amendment_withdrawal`, migrations 0015/0016; uploaded plus amended revisions with the plan on the head; the routes of tag `amendments`, `review` and `write`, humans only; the open question `amendment-conflict`); since M6 S2a provenance and stable identity (`src/domain/provenance.ts`, pure: the manifest checked, the uploaded revision's declared `source`, the import warnings, the `external-ids` list; readers follow an amended head's `source.upstream`, or the newest revision a manifest declared; `model_revision.extract_warnings`, migration 0017; the open question `extractor-loss`); since UX2a (decision 26) the open questions' groups (`group` on every item from a `Record` over the kinds: `ask` „Zu klären“, `agent`, `proposal`, `info`; the repeatable `group` filter; `totals` and `askByModel` on every page), the question first with its reason apart (`text`, `detail`), the customer export in plain German (dated, „Betrifft“, no folder, the id only in HTML comments, the CSV column `Ansprechpartner`, `ask` by default under the old file name); since the first wave's review an agent's coded no-link joins the rule tier's item about the same gap (read model only) and a primary link reads „Verknüpfen mit …“; since M6 S2c-1 the trust rule (`src/domain/trust.ts`, pure: the class stored on every uploaded revision as `source.trust`, a unique call of a derived caller proposed at 0.9 instead of accepted, a call target set in analyzr modelled; `callsProposed` in the dry runs, the import warning `trust-kept`; no migration, no MCP; since S2c-2 the system rule counts only the calls a bulk accept takes, the contracts' `isBulkDerivedCall`; since S2c-3 the owners' rules for derived calls: `proposedBy`, `derivedKind` and `converter` on the rule revisions with migration 0018, the safeguards `agent-upload` (every rule) and `amendment-conflict`, the fifth write path `autoAcceptDerivedCalls` after the recompute of an import, an amendment write or a deletion, `ImportImpact.autoAcceptedCalls` for owners, `derivedGroups` in the preview) |
-| `apps/cli` | `analyzr health / status / import (reads analyzr-import.json since M6 S2a) / seed [--project --issue-tokens --token-name --value-chains] / models list\|requeue\|delete\|external-ids [--system] / questions [list] [--model --kind --source --ask-who --state --group (since UX2a) --format text\|md\|csv\|json -o] / questions answer <id> --text \| --from <csv> [--dry-run] (notes; `--kind` refused since M6 S5c-1) / questions outside <id> [--note] [--undo <answer>] / questions link <id> --to <target>… \| --pair <from> <to> [--note] / questions place <id> --step <id>\|@outside \| --process <target> [--note] / questions amend <id> / models amend <key> --element <id> … \| pull <key> [--original] / amendments list\|export\|withdraw [--rev] / token create\|list\|revoke / value-chain push\|pull / rules list\|show\|add\|edit\|enable\|disable\|preview\|apply\|revoke [--derived …] / mcp` (stdio bridge; `rules add --derived` since M6 S2c-3) |
-| `apps/web` | projects, models, relations, findings, bpmn-js model view, upload, connect-an-agent, inbox, review screen; since M4 S3 the value chain page (`/projects/{key}/value-chain`: renderer viewer/modeler in a lazy chunk, placement review, save with dry run and conflict, drafts, link editing) and the step view; since decision 19 the tab „Regeln“ (auto-accept rules with live preview, apply, revoke) and the marks and filters of auto-accepted items in the review views, since M6 S2c-3 with the third „Art“ „Eindeutige Aufrufe aus abgeleiteten Modellen“ (offered by the bulk toast after accepting such calls) and the „Vorschau“ line naming what an owner's rules take at once; since M6 S4 the tab „Offene Fragen“ (every gap as a question, filters, Markdown and CSV export) and the model view's section of the same name, since M6 S5a with „Antworten aus CSV übernehmen“ (a preview first) for reviewers, since M6 S5c-1 with an action on every question (pickers, inline decisions, the outside mark, „Rückgängig“) and „Notiz hinzufügen“ instead of S5a's „Beantworten“, and „Verknüpfen mit …“ on a collapsed subprocess in the model view; since M6 S5c-2 the amend form at a question with „Sammeln“ and its bar, the conflicts with both values side by side, „Ergänzen“ in the model view with history, overlay, badge and both BPMN downloads, every withdrawal after its cost, and the change list in the models tab; since M6 S2a the open-question kind „Elemente beim Import verloren“ (S2a's „Herkunft“, badges and the manifest of a dropped folder come with the UI simplification); since UX1 (decision 26) the shell of four object tabs („Übersicht“, „Relationen“, „Wertschöpfungskette“, „Offene Fragen“, badges from one hook), „Hochladen“ as a button, the owners' menu „Einstellungen“ („Agent verbinden“, „Annahmeregeln“, the former tab „Regeln“), the list „Befunde“ behind a link in „Offene Fragen“, „Übersicht“ with „Als Nächstes“, the popover „Agent starten“, the export hub, search, phase chips and „Offene Punkte“, failed writes in German, the server banner only on trouble; since UX2b „Offene Fragen“ as lean cards „Zu klären“ (the badge's number) with one intro line, three filters, „Zur Information“ and „Erledigte zeigen“ closed, the agents' questions on their proposals, the dialog „Für den Kunden exportieren …“ and a hold answered in one dialog from its card, its „Vorgemerkt“ row and the review screen and decided with „Jetzt entscheiden“ (the inline decision panels gone), the model view's „Fragen“ with „Zu klären“ only; since the first wave's review „Offene Punkte“ as text with its split in a tooltip, the customer export of the open items only, the agent's summary closed in the model view; the UI load guard `e2e/ui-load.spec.ts` |
+| `apps/server` | Hono server: domain (pure, dependency-cruiser enforced), Drizzle/PostgreSQL, REST `/api/v1`, MCP `/mcp` (stateless Streamable HTTP), local mode, agent tokens, pipeline, review; since M4 S1/S2 the value chain and placements (`src/domain/value-chain/`: storage, lifecycle, `prepareRevision`, rule proposals, findings; REST under `/value-chains`, six MCP tools; the web page since S3); since decision 19 the owner's auto-accept rules (`src/domain/auto-accept/`, seven owner-only routes and the ledger for every reviewer, no MCP); since M6 S4 the open questions (`src/domain/open-questions/`: one read model over findings, chain findings, holds, agents' questions, unsure verdicts, coded no-links, summaries and unjudged pairs plus the gap signals, computed on read; `GET …/open-questions` and `…/open-questions/export?format=markdown\|csv`, permission `read`; no MCP until S7); since M6 S5a the answers (the append-only `open_question_answer`, migrations 0011/0012; `POST …/open-questions/{q}/answers` and `…/open-questions/answers?dryRun=`, permission `review`, humans only; on a relation or placement a human note through the note use cases); since M6 S5c-1 the actions (`open-questions/actions.ts`, pure: each item's actions, R1 and R1b, what a link writes or accepts; `POST …/open-questions/{q}/actions` for link, place, choose copy and the outside mark, `…/answers/{a}/withdrawal`, permission `review`, humans only; the append-only `open_question_answer_withdrawal`, migrations 0013/0014; items versioned by what they ask about; the safeguard `competing-call` also counts a human's manual link from the call element to another target); since M6 S5c-2 the model amendments (`src/domain/amendments/`, pure: planning against the uploaded revision, the fields a human may set, derivation, effect and cost, the change list; the append-only `model_amendment` and `model_amendment_withdrawal`, migrations 0015/0016; uploaded plus amended revisions with the plan on the head; the routes of tag `amendments`, `review` and `write`, humans only; the open question `amendment-conflict`); since M6 S2a provenance and stable identity (`src/domain/provenance.ts`, pure: the manifest checked, the uploaded revision's declared `source`, the import warnings, the `external-ids` list; readers follow an amended head's `source.upstream`, or the newest revision a manifest declared; `model_revision.extract_warnings`, migration 0017; the open question `extractor-loss`); since UX2a (decision 26) the open questions' groups (`group` on every item from a `Record` over the kinds: `ask` „Zu klären“, `agent`, `proposal`, `info`; the repeatable `group` filter; `totals` and `askByModel` on every page), the question first with its reason apart (`text`, `detail`), the customer export in plain German (dated, „Betrifft“, no folder, the id only in HTML comments, the CSV column `Ansprechpartner`, `ask` by default under the old file name); since the first wave's review an agent's coded no-link joins the rule tier's item about the same gap (read model only) and a primary link reads „Verknüpfen mit …“; since M6 S2c-1 the trust rule (`src/domain/trust.ts`, pure: the class stored on every uploaded revision as `source.trust`, a unique call of a derived caller proposed at 0.9 instead of accepted, a call target set in analyzr modelled; `callsProposed` in the dry runs, the import warning `trust-kept`; no migration, no MCP; since S2c-2 the system rule counts only the calls a bulk accept takes, the contracts' `isBulkDerivedCall`; since S2c-3 the owners' rules for derived calls: `proposedBy`, `derivedKind` and `converter` on the rule revisions with migration 0018, the safeguards `agent-upload` (every rule) and `amendment-conflict`, the fifth write path `autoAcceptDerivedCalls` after the recompute of an import, an amendment write or a deletion, `ImportImpact.autoAcceptedCalls` for owners, `derivedGroups` in the preview; since S2c-4 the owner's review of the acceptances from before S2c, „Vor der Vertrauensregel angenommen“: `src/domain/use-cases/trust-review.ts`, `preTrustAcceptances` and `storedTrust` in `trust.ts`, the append-only `revision_trust_review` with migrations 0019/0020, `GET …/pre-trust-calls` and `POST …/pre-trust-calls/review?dryRun=`, owners only, the event `revision.trust_reviewed`) |
+| `apps/cli` | `analyzr health / status / import (reads analyzr-import.json since M6 S2a) / seed [--project --issue-tokens --token-name --value-chains] / models list\|requeue\|delete\|external-ids [--system] / questions [list] [--model --kind --source --ask-who --state --group (since UX2a) --format text\|md\|csv\|json -o] / questions answer <id> --text \| --from <csv> [--dry-run] (notes; `--kind` refused since M6 S5c-1) / questions outside <id> [--note] [--undo <answer>] / questions link <id> --to <target>… \| --pair <from> <to> [--note] / questions place <id> --step <id>\|@outside \| --process <target> [--note] / questions amend <id> / models amend <key> --element <id> … \| pull <key> [--original] / amendments list\|export\|withdraw [--rev] / token create\|list\|revoke / value-chain push\|pull / rules list\|show\|add\|edit\|enable\|disable\|preview\|apply\|revoke [--derived …] / rules pre-trust [--model] [--revoke\|--keep] / mcp` (stdio bridge; `rules add --derived` since M6 S2c-3, `rules pre-trust` since S2c-4) |
+| `apps/web` | projects, models, relations, findings, bpmn-js model view, upload, connect-an-agent, inbox, review screen; since M4 S3 the value chain page (`/projects/{key}/value-chain`: renderer viewer/modeler in a lazy chunk, placement review, save with dry run and conflict, drafts, link editing) and the step view; since decision 19 the tab „Regeln“ (auto-accept rules with live preview, apply, revoke) and the marks and filters of auto-accepted items in the review views, since M6 S2c-3 with the third „Art“ „Eindeutige Aufrufe aus abgeleiteten Modellen“ (offered by the bulk toast after accepting such calls) and the „Vorschau“ line naming what an owner's rules take at once, since M6 S2c-4 with the system rule's line „… vor der Vertrauensregel angenommen – prüfen…“ and its dialog („Behalten“, „Zurück in die Prüfung“); since M6 S4 the tab „Offene Fragen“ (every gap as a question, filters, Markdown and CSV export) and the model view's section of the same name, since M6 S5a with „Antworten aus CSV übernehmen“ (a preview first) for reviewers, since M6 S5c-1 with an action on every question (pickers, inline decisions, the outside mark, „Rückgängig“) and „Notiz hinzufügen“ instead of S5a's „Beantworten“, and „Verknüpfen mit …“ on a collapsed subprocess in the model view; since M6 S5c-2 the amend form at a question with „Sammeln“ and its bar, the conflicts with both values side by side, „Ergänzen“ in the model view with history, overlay, badge and both BPMN downloads, every withdrawal after its cost, and the change list in the models tab; since M6 S2a the open-question kind „Elemente beim Import verloren“ (S2a's „Herkunft“, badges and the manifest of a dropped folder come with the UI simplification); since UX1 (decision 26) the shell of four object tabs („Übersicht“, „Relationen“, „Wertschöpfungskette“, „Offene Fragen“, badges from one hook), „Hochladen“ as a button, the owners' menu „Einstellungen“ („Agent verbinden“, „Annahmeregeln“, the former tab „Regeln“), the list „Befunde“ behind a link in „Offene Fragen“, „Übersicht“ with „Als Nächstes“, the popover „Agent starten“, the export hub, search, phase chips and „Offene Punkte“, failed writes in German, the server banner only on trouble; since UX2b „Offene Fragen“ as lean cards „Zu klären“ (the badge's number) with one intro line, three filters, „Zur Information“ and „Erledigte zeigen“ closed, the agents' questions on their proposals, the dialog „Für den Kunden exportieren …“ and a hold answered in one dialog from its card, its „Vorgemerkt“ row and the review screen and decided with „Jetzt entscheiden“ (the inline decision panels gone), the model view's „Fragen“ with „Zu klären“ only; since the first wave's review „Offene Punkte“ as text with its split in a tooltip, the customer export of the open items only, the agent's summary closed in the model view; the UI load guard `e2e/ui-load.spec.ts` |
 | `apps/agent-sim` | LLM-free reference agent that works the pipeline over MCP, both task kinds since M4 S5 |
 | `apps/demo` | `analyzr-demo seed\|serve\|check` (owner decision 20): seeds the read-only demo while its image is built, supervises PostgreSQL and the server in the container, checks a running demo from outside |
 | `eval/corpus` | test landscapes `nordwind-handel` (dev, 31 models, 17 C7/14 C8) and `stadtwerke-auental` (holdout, 26 models, 10 C7/16 C8) + `_sample`; every model deploys on Camunda 7.24.0 and 8.9.22 |
@@ -939,7 +979,9 @@ is off; outcome-aware revocation texts and a per-agent revoke in the tab; the ru
 numbers; „Durch Systemregel angenommen“; „Inhaber“; the documented 422 reasons; the eval README on
 comparability. Every gate passes (DEVELOPMENT.md "Verified end to end"). No project has a rule
 until the owner creates one. Extended in M6 S2c-3 (2026-10-20) to the rule tier's call proposals
-of derived models by declared source (decisions 24.2 and 28 (1); §7 "M6").
+of derived models by declared source (decisions 24.2 and 28 (1); §7 "M6"); since M6 S2c-4 the
+page's system rule also lists the rule tier's acceptances from before the trust rule for the
+owner's review (decision 28 (3)).
 
 **Owner actions:**
 - After the live runs (M3 and placements): read the „Auto-accept what-if“ sections of
@@ -1127,7 +1169,7 @@ runs, the deletion impact, absent keys within `source.scope`; done 2026-10-18 ex
 actions; done 2026-10-18, "UX4 as delivered") → UX5 („Relationen“ and the review screen; done
 2026-10-18, "UX5 step 1/2 as delivered") → UX6 (value chain; done 2026-10-19, "UX6 step 1/2 as
 delivered") → UX9 (result views, „Annahmeregeln“, the projects summary; done 2026-10-19, "UX9 as
-delivered"), alongside S2c (the trust rule of decision 24.2, in four steps, M6 §8 "S2c") and S3c
+delivered"), alongside S2c (the trust rule of decision 24.2, in four steps, M6 §8 "S2c"; all four done by 2026-10-20) and S3c
 (renderer and spec YAML, the ad-hoc converter path, the bundled CLI); then S6 (interviews); after
 the owner's live runs S5b, S7 and facts v2 as recommended (M6 §3.11 and §6: the reindex with
 judgement carry-over first). **S2c-1 „The trust class and the rule tier“** (**done 2026-10-19** on
@@ -1198,8 +1240,37 @@ the shell). For the first analysis of a derived landscape, the unique calls each
 trusted source proposes are accepted without a click, marked and revocable (calls already waiting
 need `rules apply`), and the toast offers the rule right after the first bulk accept. Live-run
 neutral; the readings taken without asking are in §4 ("Taken during M6 S2c-3"); the open points (the amendment effect's dry run does not predict a
-rule's acceptance; only the caller's class counts) are in M6 §8. **Next:** S2c-4 („Vor der
-Vertrauensregel angenommen“, migrations 0019/0020), then S2b's follow-up and S3c; S6 after them. The owner's review of S1–S2a, ideally on a sandbox or anonymized export
+rule's acceptance; only the caller's class counts) are in M6 §8. **S2c-4 „Vor der
+Vertrauensregel angenommen“** (**done 2026-10-20** on the branch, every gate green with a review
+round's fixes; M6 §8 "S2c-4 as delivered"; DEVELOPMENT.md "M6 S2c-4 (2026-10-20)"; decisions
+24.2 (a) and 28 (3)) completes S2c: the owner reviews, once per uploaded revision, the rule tier's
+acceptances from before S2c whose revision would be derived today. Server: the append-only
+`revision_trust_review` (migration 0019; 0020 adds the append-only triggers and a guard that
+refuses a classified or amended revision for any writer), read by `storedTrust` (`source.trust`,
+else the review, else none; a review never overrides a stored class), the pure list
+`preTrustAcceptances` (rule-tier acceptances with no other decision in force, from uploaded
+revisions without a class that would be derived from what they carry; call targets set in
+analyzr and calls whose callee is gone left out; an amended head names its uploaded revision),
+`GET …/pre-trust-calls` and `POST …/pre-trust-calls/review?dryRun=` (owners only: editors,
+viewers, agent and read-only tokens get 403; not on MCP; the demo answers the list with 403),
+`expectedCount` the listed calls (409 `count-changed`, or `not-listed`, which the dry run answers
+too), the event `revision.trust_reviewed`, `AutoAcceptSystemRule.preTrust`. „Zurück in die
+Prüfung“ records `derived`, recomputes and runs the owner's rules for derived calls in the same
+write; „Behalten“ records `modelled` and changes nothing else; no analysis is queued. Web: the
+system rule card's line „N vor der Vertrauensregel angenommen – prüfen…“ (owners, not in the
+demo) and its dialog (a checkbox per model with name, count and reasons, the dry run following
+the selection, the note that „Behalten“ is final, „Behalten“ and „Zurück in die Prüfung“, the
+toast offering „Gesammelt annehmen“ while calls stay open). CLI: `analyzr rules pre-trust -p <key>
+[--model …] [--revoke|--keep] [--dry-run] [--yes] [--json]`. For the first analysis: a landscape
+imported before the trust rule catches up without a re-import, one list and one decision per
+model; „Zurück in die Prüfung“ sends the calls straight to „Gesammelt annehmen“ (or an enabled
+rule for that source accepts them again in the same write), and „Behalten“ ends the question for
+good. Live-run neutral (Camunda landscapes a human imported list nothing); the readings taken
+without asking are in §4 ("Taken during M6 S2c-4"). **Next:** S2b's follow-up (`importImpact`
+with the judgements made non-current, the tasks queued or cancelled, the placement task due, the
+placements changed or missing; the integrate plugin's key-map rebuild and a pre-approved
+`--dry-run` in its next release), then S3c (renderer and spec YAML, the ad-hoc converter path,
+the bundled CLI), then S6 (interviews); after the owner's live runs S5b, S7 and facts v2. The owner's review of S1–S2a, ideally on a sandbox or anonymized export
 (M6 §10.4), can run alongside. Nothing of M6 changes released procedures, claim inputs or the
 MCP surface before the owner's live runs for the Camunda landscapes a human imports (since S2c-1
 a derived landscape's unique calls reach agents' claims as unsettled rule proposals, M6 §8 "S7").

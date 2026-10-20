@@ -3447,6 +3447,7 @@ export type AutoAcceptSystemRule = {
   readOnly: true;
   accepted: number;
   proposed: number;
+  preTrust: number;
 };
 
 /**
@@ -3780,6 +3781,60 @@ export type AutoAcceptLedgerEntry = {
   laterAt: Timestamp | null;
   revocationId: AssertionId | PlacementAssertionId | null;
   revokedAt: Timestamp | null;
+};
+
+/**
+ * Unique calls accepted before the trust rule whose caller would be derived today.
+ */
+export type PreTrustList = {
+  count: number;
+  models: Array<PreTrustModel>;
+};
+
+/**
+ * A model with unique calls accepted before the trust rule.
+ */
+export type PreTrustModel = {
+  modelId: ModelId;
+  modelKey: ModelKey;
+  modelName: string | null;
+  revisionId: RevisionId;
+  rev: number;
+  reasons: Array<TrustReason>;
+  derivedKind: DerivedKind | null;
+  converter: string | null;
+  count: number;
+  calls: Array<PreTrustCall>;
+};
+
+/**
+ * A unique call accepted by the rule tier before the trust rule.
+ */
+export type PreTrustCall = {
+  relationId: RelationId;
+  from: Ref;
+  to: Ref;
+};
+
+/**
+ * What a review of revisions stored before the trust rule did or would do.
+ */
+export type PreTrustReviewResult = {
+  dryRun: boolean;
+  verdict: TrustClass;
+  revisions: number;
+  count: number;
+  toProposed: number;
+  autoAcceptedCalls: ImpactAutoAcceptedCalls;
+};
+
+/**
+ * A review of revisions stored before the trust rule.
+ */
+export type PreTrustReviewBody = {
+  verdict: TrustClass;
+  revisionIds: Array<RevisionId>;
+  expectedCount?: number;
 };
 
 export type GetHealthData = {
@@ -7635,3 +7690,95 @@ export type ListAutoAcceptedResponses = {
 };
 
 export type ListAutoAcceptedResponse = ListAutoAcceptedResponses[keyof ListAutoAcceptedResponses];
+
+export type ListPreTrustCallsData = {
+  body?: never;
+  path: {
+    /**
+     * Project id (`prj_…`) or project key.
+     */
+    project: string;
+  };
+  query?: never;
+  url: '/api/v1/projects/{project}/pre-trust-calls';
+};
+
+export type ListPreTrustCallsErrors = {
+  /**
+   * Problem: `unauthorized`
+   */
+  401: ApiProblem;
+  /**
+   * Problem: `insufficient-scope`, `forbidden`
+   */
+  403: ApiProblem;
+  /**
+   * Problem: `not-found`
+   */
+  404: ApiProblem;
+  /**
+   * Problem: `validation-failed`
+   */
+  422: ApiProblem;
+};
+
+export type ListPreTrustCallsError = ListPreTrustCallsErrors[keyof ListPreTrustCallsErrors];
+
+export type ListPreTrustCallsResponses = {
+  /**
+   * The listed calls by model
+   */
+  200: PreTrustList;
+};
+
+export type ListPreTrustCallsResponse =
+  ListPreTrustCallsResponses[keyof ListPreTrustCallsResponses];
+
+export type ReviewPreTrustCallsData = {
+  body: PreTrustReviewBody;
+  path: {
+    /**
+     * Project id (`prj_…`) or project key.
+     */
+    project: string;
+  };
+  query?: {
+    dryRun?: 'true' | 'false';
+  };
+  url: '/api/v1/projects/{project}/pre-trust-calls/review';
+};
+
+export type ReviewPreTrustCallsErrors = {
+  /**
+   * Problem: `unauthorized`
+   */
+  401: ApiProblem;
+  /**
+   * Problem: `insufficient-scope`, `forbidden`, `demo-readonly`
+   */
+  403: ApiProblem;
+  /**
+   * Problem: `not-found`
+   */
+  404: ApiProblem;
+  /**
+   * Problem: `conflict`
+   */
+  409: ApiProblem;
+  /**
+   * Problem: `validation-failed`
+   */
+  422: ApiProblem;
+};
+
+export type ReviewPreTrustCallsError = ReviewPreTrustCallsErrors[keyof ReviewPreTrustCallsErrors];
+
+export type ReviewPreTrustCallsResponses = {
+  /**
+   * What it did or would do
+   */
+  200: PreTrustReviewResult;
+};
+
+export type ReviewPreTrustCallsResponse =
+  ReviewPreTrustCallsResponses[keyof ReviewPreTrustCallsResponses];

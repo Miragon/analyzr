@@ -6,7 +6,8 @@ feasibility critique · Branch: `feat/integration-and-gaps` (the first wave UX2a
 delivered on it on 2026-10-18, §7; the owner's walkthrough the same day, §7 "Owner
 walkthrough"; UX7, UX8, S2b's „Vorschau“, UX3, UX4 and UX5 delivered the same day, UX6 and
 UX9 on 2026-10-19: every slice delivered; M6 S2c-1's texts on these screens the same day, S2c-2's
-fast path for derived calls and S2c-3's rules for derived calls on 2026-10-20, §7) ·
+fast path for derived calls, S2c-3's rules for derived calls and S2c-4's „Vor der Vertrauensregel
+angenommen“ on 2026-10-20, §7) ·
 Source: four user-need audits of the web UI on the agent-created scratch stack
 `analyzr-uxaudit` (seeded `nordwind-handel` with its chain and a simulation agent run,
 `signavio-beispiel` from the CLI bundle import, two projects made from the raw synthetic Signavio
@@ -832,7 +833,9 @@ Appendix A.
    anlegen“. (R21) Since M6 S2c-1 the card reads „Eindeutige Aufrufe aus Camunda-Modellen nimmt
    analyzr beim Hochladen an · immer aktiv · 10 angenommen · 12 aus abgeleiteten Modellen
    vorgeschlagen“ (the last part only while such proposals are open; since S2c-2 a link to the
-   bulk accept with exactly those calls selected, `?bulk=calls`).
+   bulk accept with exactly those calls selected, `?bulk=calls`); since S2c-4 „ · 3 vor der
+   Vertrauensregel angenommen – prüfen…“ while acceptances from before the trust rule wait for the
+   owner's review (§7 "M6 S2c-4's texts as delivered").
 7. **Apply and revoke lists** (`rules/subject.tsx`, `apply-dialog.tsx`): element labels and
    „100 %“ instead of raw refs and „mit 1,00 · sim-policy-1“; the whole list scrolls instead of
    stopping at 20. (R22)
@@ -2221,6 +2224,45 @@ The UI load guard on `analyzr-s2c3`: „Annahmeregeln“ 13 controls and 82 word
 before), the longer page lead; every other screen as in S2c-2's run. No measured project has a
 rule for derived calls, so the dialog's default („Relationen“) still shows four criteria and the
 name.
+
+**M6 S2c-4's texts as delivered** (2026-10-20, on the branch, every gate green; M6 §8 "S2c-4 as
+delivered", DEVELOPMENT.md "M6 S2c-4"). „Vor der Vertrauensregel angenommen“ (decisions 24.2 (a)
+and 28 (3)) reaches the screens as one line on the system rule card and one dialog behind it; no
+new control elsewhere, and only while there is something to decide. So a landscape imported
+before the trust rule catches up without a re-import: one list, one decision per model, „Zurück in
+die Prüfung“ sends the calls straight to „Gesammelt annehmen“ (or an enabled rule for that source
+accepts them again at once), and „Behalten“ ends the question for good. Texts in
+`src/lib/pre-trust.ts` and `components/rules/pre-trust-dialog.tsx`.
+
+- **„Annahmeregeln“, the system rule card** (§3.11 item 6): „ · 12 vor der Vertrauensregel
+  angenommen – prüfen…“, a button, only for owners, never in the demo and only while the count is
+  above 0.
+- **The dialog** (in the revoke dialog's pattern): the title „Vor der Vertrauensregel angenommen“;
+  the description „In diesen Modellen hat analyzr eindeutige Aufrufe angenommen, bevor es die
+  Vertrauensregel gab. Heute würde es sie nur vorschlagen, weil das aufrufende Modell als
+  abgeleitet gilt.“; one row per model with a checkbox (all ticked), the name and „2 Aufrufe · ohne
+  Camunda-Engine“ (the reasons with the „Herkunft“ labels); the dry run in one line that follows
+  the selection: „3 Aufrufe gehen zurück in die Prüfung.“, with an owner's rule „ Deine Regel „…“
+  nimmt 2 davon gleich wieder an.“ („ihn“ or „sie alle“ when it takes every one; „Deine Regeln
+  nehmen“ for several), „Wähle mindestens ein Modell.“ with none ticked; under it „„Behalten“ lässt
+  sie angenommen; danach fragt analyzr bei diesen Modellen nicht mehr.“; then „Behalten“ (outline)
+  and „Zurück in die Prüfung“ (primary, with the undo icon); no „Abbrechen“ (the X closes it).
+  When the list changed meanwhile: „Die Liste hat sich geändert“ – „Es wurde nichts geändert. Die
+  Liste ist neu geladen; prüfe sie und entscheide noch einmal.“; another failure of the decision:
+  „Das hat nicht geklappt“ (the dialog and the selection stay); a failed dry run: the error in the
+  dry run's line, „Zurück in die Prüfung“ stays disabled; a list that fails to load: „Liste konnte
+  nicht geladen werden“; an empty list: „Nichts mehr zu prüfen.“
+- **The toast**: „3 Aufrufe zurück in der Prüfung“ – „Sie stehen in der Prüfung; nimm sie dort
+  gesammelt an.“ with the action „Gesammelt annehmen“ (`/review?bulk=calls`), or „Deine Regel hat
+  sie gleich wieder angenommen.“ / „Deine Regel hat 2 davon gleich wieder angenommen; die übrigen
+  nimmst du gesammelt an.“ when a rule took them („Deine Regeln haben …“ for several); after
+  „Behalten“ „3 Aufrufe behalten“ – „Sie bleiben angenommen; analyzr fragt nicht mehr danach.“;
+  „3 Aufrufe geprüft“ – „An ihrem Status ändert sich nichts.“ when „Zurück in die Prüfung“ turned
+  none into a proposal (practically unreachable: the list holds only calls it turns into
+  proposals).
+
+The UI load guard's measured projects were imported since the trust rule, so none shows the line;
+the dialog's body mounts only when it opens, so the rules page makes no new request.
 
 ## 8. Keep as is
 

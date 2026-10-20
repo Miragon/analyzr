@@ -149,8 +149,10 @@ export const Model = z
      */
     source: orNull(ModelSourceSummary),
     /**
-     * The trust class of the head's uploaded revision (M6 S2c); `null` for a
-     * revision stored before S2c, which counts as modelled (decision 24.2 (a)).
+     * The trust class of the head's uploaded revision (M6 S2c); for a
+     * revision stored before S2c the owner's review (M6 S2c-4, „Vor der
+     * Vertrauensregel angenommen“; `derived` with the reasons the revision
+     * carries), else `null`, which counts as modelled (decision 24.2 (a)).
      */
     trust: orNull(ModelTrustSummary),
     updatedAt: Timestamp,
@@ -216,7 +218,9 @@ export const RevisionSource = z
      * The trust class (M6 S2c), set by the server, last, on every uploaded
      * revision stored since S2c; never declared. Absent on an amended
      * revision (readers follow `upstream`) and on revisions stored before
-     * S2c, which count as modelled (decision 24.2 (a)).
+     * S2c, which count as modelled (decision 24.2 (a)) until the owner
+     * reviews them (M6 S2c-4, `GET …/pre-trust-calls`; the review is stored
+     * apart, never here).
      */
     trust: RevisionTrust.optional(),
   })

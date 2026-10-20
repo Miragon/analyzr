@@ -2,6 +2,8 @@ import type { AutoAcceptSystemRule } from '@analyzr/client';
 import { Link } from '@tanstack/react-router';
 import { LockIcon } from 'lucide-react';
 
+import { preTrustCardText } from '@/lib/pre-trust';
+
 /**
  * Decision 9 as a fixed system rule, in one line (UX-SIMPLIFICATION.md
  * §3.11 item 6): „Eindeutige Aufrufe aus Camunda-Modellen nimmt analyzr beim
@@ -13,14 +15,19 @@ import { LockIcon } from 'lucide-react';
  * does; one an agent asks about or objects to is decided one by one and not
  * counted here). Always on, never stored as
  * an auto-accept rule, not editable; what it matches and its procedure stay
- * out of the text (P2).
+ * out of the text (P2). With `onPreTrust` (owners, never the demo) and
+ * acceptances from before the trust rule to review (M6 S2c-4) it adds „ · 3
+ * vor der Vertrauensregel angenommen – prüfen…“, which opens their dialog.
  */
 export function SystemRuleCard({
   project,
   system,
+  onPreTrust,
 }: {
   project: string;
   system: AutoAcceptSystemRule;
+  /** Opens „Vor der Vertrauensregel angenommen“; without it the line is not shown. */
+  onPreTrust?: () => void;
 }) {
   const accepted = `${system.accepted} angenommen`;
   return (
@@ -59,6 +66,19 @@ export function SystemRuleCard({
             >
               {system.proposed} aus abgeleiteten Modellen vorgeschlagen
             </Link>
+          </>
+        ) : null}
+        {onPreTrust && system.preTrust > 0 ? (
+          <>
+            <span className="text-muted-foreground"> · </span>
+            <button
+              type="button"
+              onClick={onPreTrust}
+              className="text-link tabular-nums hover:underline"
+              data-testid="system-rule-pre-trust"
+            >
+              {preTrustCardText(system.preTrust)}
+            </button>
           </>
         ) : null}
       </span>

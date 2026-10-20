@@ -307,6 +307,7 @@ describe('read-only demo over a read-only database role', () => {
       'listAutoAcceptRules', // admin
       'getAutoAcceptRule', // admin
       'listAutoAccepted', // review
+      'listPreTrustCalls', // admin (M6 S2c-4)
     ]);
     const answers: Record<string, number> = {};
     for (const [name, route] of Object.entries(apiRoutes)) {

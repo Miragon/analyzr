@@ -7,6 +7,7 @@ import { ErrorText } from '@/components/error-text';
 import { LightPopover, MENU_ITEM_CLASS } from '@/components/light-popover';
 import { AgentRevokeDialog } from '@/components/rules/agent-revoke';
 import { ApplyDialog } from '@/components/rules/apply-dialog';
+import { PreTrustDialog } from '@/components/rules/pre-trust-dialog';
 import { RevokeDialog } from '@/components/rules/revoke-dialog';
 import { RuleDialog, type RuleDraft } from '@/components/rules/rule-dialog';
 import { RuleHistoryDialog } from '@/components/rules/rule-history';
@@ -49,6 +50,7 @@ type Open =
   | { kind: 'edit' | 'apply' | 'revoke' | 'history'; rule: AutoAcceptRule }
   | { kind: 'offer-apply'; rule: AutoAcceptRule; count: number }
   | { kind: 'agent-revoke' }
+  | { kind: 'pre-trust' }
   | null;
 
 /** „Gleicher Name ab 100 %“ (its name follows the criteria): the rule a bulk accept of the key tier offers (UX5). */
@@ -90,6 +92,9 @@ const rowFocus = (ruleId: string) => () =>
   control('rule-toggle', ruleId) ??
   control('new-rule') ??
   control('rules-more');
+
+/** Where the focus goes when „Vor der Vertrauensregel angenommen“ closes: its line, else „Neue Regel“. */
+const preTrustFocus = () => control('system-rule-pre-trust') ?? control('new-rule');
 
 /** Where the focus goes when „Nach Agent widerrufen…“ closes: the page's „Mehr“ (gone once nothing is in force). */
 const pageFocus = () => control('rules-more') ?? control('new-rule');
@@ -134,7 +139,9 @@ function PageMenu({ onAgentRevoke }: { onAgentRevoke: () => void }) {
  * „Bearbeiten“ with the live preview, „Mehr“ with „Verlauf“ and
  * „Widerrufen…“; an active rule's open matches as a hint that opens the
  * apply dialog), and in the header's „Mehr“, while acceptances are in
- * force, revoking one agent's acceptances across rules. „Neue Regel“ only
+ * force, revoking one agent's acceptances across rules. The system rule's
+ * line opens „Vor der Vertrauensregel angenommen“ while acceptances from
+ * before the trust rule wait for review (M6 S2c-4; never in the demo). „Neue Regel“ only
  * beside rules: the empty page has „Erste Regel anlegen“. Owners only;
  * agents never see rules.
  */
@@ -234,7 +241,11 @@ export function RulesPage() {
           </div>
         ) : null}
       </div>
-      <SystemRuleCard project={project} system={rules.data.system} />
+      <SystemRuleCard
+        project={project}
+        system={rules.data.system}
+        {...(can.demo ? {} : { onPreTrust: () => setOpen({ kind: 'pre-trust' }) })}
+      />
       {list.length === 0 ? (
         <Empty className="border bg-card" data-testid="rules-empty">
           <EmptyHeader>
@@ -300,6 +311,12 @@ export function RulesPage() {
           />
         </>
       ) : null}
+      <PreTrustDialog
+        project={project}
+        open={open?.kind === 'pre-trust'}
+        onOpenChange={closer('pre-trust')}
+        returnFocus={preTrustFocus}
+      />
       {agents.length > 0 ? (
         <AgentRevokeDialog
           project={project}

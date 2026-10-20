@@ -5,9 +5,10 @@ concept, revised after review), S1, S3a, S3b, S4, S5a, S5c-1, S5c-2 (answering b
 amendments, decision 25, §4.8), S2a (provenance, manifest, stable identity; its web parts came
 with the UI simplification's UX8, §8 "S2a as delivered"), S2b (the dry runs; its follow-up open),
 S2c-1 (the trust class and the rule tier, §8 "S2c-1 as delivered"), S2c-2 (the fast path for
-derived calls, §8 "S2c-2 as delivered") and S2c-3 (owners' rules for derived calls, §8 "S2c-3 as
-delivered") done, the „erste Anfänge“ await the owner's review; next S2c-4 (§8 "S2c"), S2b's
-follow-up and S3c, then S6; after the owner's live runs S5b, S7 and facts v2 · Branch:
+derived calls, §8 "S2c-2 as delivered"), S2c-3 (owners' rules for derived calls, §8 "S2c-3 as
+delivered") and S2c-4 („Vor der Vertrauensregel angenommen“, §8 "S2c-4 as delivered"; with it
+all of S2c) done, the „erste Anfänge“ await the owner's review; next S2b's follow-up, then S3c,
+then S6; after the owner's live runs S5b, S7 and facts v2 · Branch:
 `feat/integration-and-gaps` ·
 Spec: [CONCEPT.md](CONCEPT.md) §1–§7 · Previous: [M4-VALUE-CHAIN.md](M4-VALUE-CHAIN.md) · Paused:
 the process network map (decision 22, issue [#2](https://github.com/Miragon/analyzr/issues/2)),
@@ -125,9 +126,9 @@ on 2026-10-17 in short form, and CONCEPT §11 notes it. The full records:
        accept such call proposals narrowed by derived kind and converter); revisions stored
        before S2c keep their acceptances, listed once for a bulk revocation (option (a) of
        §10.1). It ships as S2c (the class and the rule tier delivered in S2c-1 on 2026-10-19, the
-       fast path for the derived calls in S2c-2 and the decision-19 extension in S2c-3, both on
-       2026-10-20; the list follows in S2c-4, §8 "S2c"; decision 28
-       below); until then the toolkit limits the risk on its side (§3.9: specs
+       fast path for the derived calls in S2c-2, the decision-19 extension in S2c-3 and the list
+       „Vor der Vertrauensregel angenommen“ in S2c-4, all three on 2026-10-20, §8 "S2c"; decision
+       28 below); besides, the toolkit limits the risk on its side (§3.9: specs
        from ad-hoc converters, reconstructions and interviews get no `calledElement`; the
        consultant runs every import, §3.1). The related question whether REST ingest and model
        deletion need a human or a scope of their own stays open (§10.1).
@@ -354,7 +355,7 @@ so provenance never triggers re-judging.
 | `derived {kind, converter, llmModel, from}` | manifest (declared) | badges „Konvertiert“, „KI-rekonstruiert“, „Aus Interview“ |
 | `losses` | manifest (declared) | „Verluste bei der Konvertierung“ |
 | `upstream`, `amendments` (S5c-2, decision 25) | server: `upstream` on an amended revision (`kind: 'amendment'`), the uploaded revision it is computed from; `amendments` on a head with live amendments, each with its outcome (§4.8 c) | „In analyzr ergänzt (aus r3)“ |
-| `trust` (`{class, reasons}`, S2c-1, decision 24.2) | server, last, on every uploaded revision stored since S2c-1 (`trustOf` in `apps/server/src/domain/trust.ts`): `modelled` when `engine` is `c7` or `c8`, `uploader` is `human` and `derived.kind` is absent or `export`, else `derived` with its reasons in the order `no-engine`, `agent-upload`, `converted`, `reconstructed`, `as-told`; never declared (a manifest's `trust` is dropped); absent on an amended revision (readers follow `upstream`) and on revisions stored before S2c (they count as modelled, option (a)) | for a derived one „Aufrufe: nur als Vorschlag (ohne Camunda-Engine)“ in „Herkunft“, and the rationale of its call proposals (§3.10) |
+| `trust` (`{class, reasons}`, S2c-1, decision 24.2) | server, last, on every uploaded revision stored since S2c-1 (`trustOf` in `apps/server/src/domain/trust.ts`): `modelled` when `engine` is `c7` or `c8`, `uploader` is `human` and `derived.kind` is absent or `export`, else `derived` with its reasons in the order `no-engine`, `agent-upload`, `converted`, `reconstructed`, `as-told`; never declared (a manifest's `trust` is dropped); absent on an amended revision (readers follow `upstream`) and on revisions stored before S2c (they count as modelled, option (a), until the owner reviews them; since S2c-4 the review is stored apart in `revision_trust_review`, never in `source`, and read where `trust` is absent) | for a derived one „Aufrufe: nur als Vorschlag (ohne Camunda-Engine)“ in „Herkunft“, and the rationale of its call proposals (§3.10) |
 
 Since decision 24.2 amends decision 9 (§3.10, delivered in S2c-1), declared values can only lower
 trust, never raise it. Identical bytes stay `unchanged` and keep the first revision's provenance
@@ -666,8 +667,9 @@ rationale naming the reason) instead of an acceptance; findings are unchanged. C
   angenommen“ for a bulk revocation; or (b) they are classified from what they carry (a missing
   `uploader` counts as human, `engine` null still makes them derived), and their calls turn into
   proposals at the next ingest, previewed with `importImpact` before S2c is switched on.
-  Recommendation: (a). Decided (a) with 24.2 and delivered in S2c-1; the list comes with S2c-4
-  and, by decision 28 (3), holds only acceptances whose revision would classify as derived.
+  Recommendation: (a). Decided (a) with 24.2 and delivered in S2c-1; the list came with S2c-4
+  (2026-10-20) and, by decision 28 (3), holds only acceptances whose revision would classify as
+  derived.
 - Signavio, ARIS or interview models get their calls as proposals, accepted in bulk (since S2c-2
   the key tier's bulk dialog lists them first as their own group, „Eindeutige Aufrufe aus
   abgeleiteten Modellen“, which „Gesammelt annehmen“ opens with exactly those selected) or one by
@@ -701,8 +703,14 @@ decision-19 extension** (2026-10-20, §8 "S2c-3 as delivered"): a rule of the th
 whose caller declares the source it names („Export“, „Konvertiert“ with one converter, „Ohne
 Angabe“), in the write that recorded them (imports, amendment writes and withdrawals, deletions),
 never a call of a revision uploaded with an agent token (no agent rule either), and no write made
-with an agent token sets it off; the toast after the first bulk accept offers it. The list follows
-in S2c-4.
+with an agent token sets it off; the toast after the first bulk accept offers it. **S2c-4 delivered
+the list** (2026-10-20, §8 "S2c-4 as delivered"): the owner reviews, once per uploaded revision,
+the rule tier's acceptances from revisions stored before S2c that would be derived today, from the
+system rule card's line „N vor der Vertrauensregel angenommen – prüfen…“ or with `analyzr rules
+pre-trust`; „Zurück in die Prüfung“ records `derived` (the calls become the rule tier's proposals,
+which „Gesammelt annehmen“ or an enabled rule for derived calls accepts), „Behalten“ records
+`modelled` (they stay accepted). The review lives in the append-only `revision_trust_review` and is
+read only where a revision carries no class, so it never overrides the class the server assigned.
 
 **Added with decision 25 (2026-10-17; extends decision 24.2; confirmed by the owner 2026-10-17, decision 25.2).**
 A call target set by a model amendment (S5c-2, §4.8 c) was picked by a human from the
@@ -714,7 +722,8 @@ amended revision's own `uploader` (the importer at a re-import, §3.3) never rai
 lands before S2c, so amended revisions stored before S2c carry no `source.trust` either. The modelled
 treatment (applied and, by decision 28 (2), `in-source` call-target amendments; not `conflict`)
 is delivered in S2c-1; under option (a) the list „Vor der Vertrauensregel angenommen“ (S2c-4,
-open) will leave out the calls of both.
+delivered 2026-10-20) leaves out the calls of both: it names an amended head's uploaded revision,
+and a review of it keeps the call whose target was set in analyzr accepted.
 
 **Decision 28 (2026-10-19, HANDOFF §4).** (1) „Streng“: S2c-3's rules for derived call proposals
 may name only the derived kinds „Export“, „Konvertiert“ and „Ohne Angabe“ (never
@@ -722,7 +731,8 @@ may name only the derived kinds „Export“, „Konvertiert“ and „Ohne Anga
 ever accepts calls of a revision uploaded with an agent token (safeguard `agent-upload`; delivered
 in S2c-3, which reads "no rule" literally, agent rules included, §8 "S2c-3 as delivered").
 (2) „Ja, wie gesetzt“: `in-source` counts as modelled (above), so a call stays accepted after the
-consultant carried the change list over. (3) „Nur die heute abgeleiteten“: S2c-4's list holds
+consultant carried the change list over. (3) „Nur die heute abgeleiteten“: S2c-4's list (delivered
+2026-10-20) holds
 only rule acceptances from before S2c whose revision would classify as derived from what it
 carries (engine null; an agent upload, or a service principal before S2a; a declared kind other
 than `export`); Camunda projects, the demo and the live-run projects list nothing. The readings
@@ -2276,7 +2286,7 @@ in four steps, each passing every gate on its own:
 | S2c-1 | the trust class and the rule tier: the contracts (`RevisionSource.trust`, `Model.trust`, `ImpactFile.trust`, `ImportImpact.callsProposed`, `ImportFileOutcome.trust`, `trust-kept`, `AutoAcceptSystemRule.proposed`), `trust.ts`, ingest and the three planners, the recompute with the rationale, the system rule's text and count, the client texts | done 2026-10-19 (below) |
 | S2c-2 | the fast path: the bulk dialog's group „Eindeutige Aufrufe aus abgeleiteten Modellen (n)“ opened by `?bulk=calls` (the system card's count of these proposals a link to it), a line in the upload's „Als Nächstes“ and in „Übersicht“'s („12 eindeutige Aufrufe zuerst bestätigen · Gesammelt annehmen“), `analyzr import`'s `next:` line and a warning before sending with an agent token, the integrate plugin 0.1.2 (its skill and Signavio notes say that calls of engine-less or converted bundles arrive as 90 % proposals) | done 2026-10-20 (below) |
 | S2c-3 | decision 19's extension: the criteria `proposedBy`, `derivedKind` and `converter` (migration 0018), the block reasons `agent-upload` and `amendment-conflict`, an agent rule pinned to agent proposals, the fifth write path right after the recompute of an ingest, a PUT, an amendment write or withdrawal, or a deletion, apply, preview, ledger and revocation, `autoAcceptedCalls` in an owner's dry run, `analyzr rules add --derived`, the dialog's third „Art“ and the bulk toast's offer | done 2026-10-20 (below) |
-| S2c-4 | „Vor der Vertrauensregel angenommen“: the append-only `revision_trust_review` (migrations 0019/0020), the list of decision 28 (3), „Zurück in die Prüfung“ and „Behalten“ from the system rule card, two owner-only routes, `analyzr rules pre-trust` | open |
+| S2c-4 | „Vor der Vertrauensregel angenommen“: the append-only `revision_trust_review` (migrations 0019/0020), the list of decision 28 (3), „Zurück in die Prüfung“ and „Behalten“ from the system rule card, two owner-only routes, `analyzr rules pre-trust` | done 2026-10-20 (below) |
 
 **S2c-1 as delivered** (2026-10-19, on the branch, every gate green, with a review round's fixes;
 [DEVELOPMENT.md](DEVELOPMENT.md) "M6 S2c-1 (2026-10-19)"). Contracts first (client regenerated):
@@ -2383,7 +2393,7 @@ with `match` `one` as „Aufrufe, die analyzr beim Import als Beziehung annehmen
 Signavio note says such a call „is accepted at import“, while an engine-less export's calls now
 arrive as 90 % proposals; 0.1.2 (S2c-2) corrects both.
 Revisions stored between S2a and S2c without an engine or by an agent token keep their
-acceptances until S2c-4 lists them.
+acceptances until the owner reviews them (listed since S2c-4, below).
 
 **S2c-2 as delivered** (2026-10-20, on the branch, every gate green, with a review round's fixes;
 [DEVELOPMENT.md](DEVELOPMENT.md) "M6 S2c-2 (2026-10-20)" and "The trust rule"). The fast path for
@@ -2481,7 +2491,7 @@ Vorschläge prüfen (1) …“ (122 → 113 words at 1440, the controls unchange
 it measures 22 controls and 112 words. Calls nobody accepts stay unsettled, and the claims assign
 them to judge as before. Left: S2c-3 (owners' rules for these proposals by derived kind and
 converter, the toast's rule offer; delivered 2026-10-20, below), S2c-4 („Vor der Vertrauensregel
-angenommen“), the skill's key-map rebuild, a pre-approved `--dry-run` and `normalize-bpmn` writing `null` for an empty
+angenommen“; delivered 2026-10-20, below), the skill's key-map rebuild, a pre-approved `--dry-run` and `normalize-bpmn` writing `null` for an empty
 `exporterVersion`.
 
 **S2c-3 as delivered** (2026-10-20, on the branch, every gate green, with a review round's fixes;
@@ -2641,8 +2651,148 @@ that the owner may overrule are in HANDOFF §4 ("Taken during M6 S2c-3"). Open:
 - **The replay's approximation**: the preview and apply read the caller's declared source from its
   current head, not from the revision the proposal was made under.
 
-Left: S2c-4 („Vor der Vertrauensregel angenommen“), the skill's key-map rebuild, a pre-approved
-`--dry-run` and `normalize-bpmn` writing `null` for an empty `exporterVersion`.
+Left: S2c-4 („Vor der Vertrauensregel angenommen“; delivered the same day, below), the skill's
+key-map rebuild, a pre-approved `--dry-run` and `normalize-bpmn` writing `null` for an empty
+`exporterVersion`.
+
+**S2c-4 as delivered** (2026-10-20, on the branch, every gate green, with a review round's fixes;
+[DEVELOPMENT.md](DEVELOPMENT.md) "M6 S2c-4 (2026-10-20)" and "The trust rule (M6 S2c-1)").
+„Vor der Vertrauensregel angenommen“, decisions 24.2 (a) and 28 (3): the owner reviews, once per
+uploaded revision, the unique calls the rule tier accepted from revisions stored before S2c whose
+revision would be derived today. With it S2c is complete. For the first analysis: a landscape
+imported before the trust rule catches up without a re-import, one list and one decision per
+model; „Zurück in die Prüfung“ sends the calls straight to „Gesammelt annehmen“ (or an enabled
+rule for that source accepts them again in the same write), and „Behalten“ ends the question for
+good. Contracts first (client regenerated), migrations 0019/0020, two owner-only routes, MCP
+unchanged.
+
+- **Storage.** `revision_trust_review` (0019, generated): `project_id`, `revision_id` (the uploaded
+  revision), `model_id`, `class` (`modelled` | `derived`, checked), `principal_id`, `client_id`,
+  `source_kind` (`human` only, checked), `seq` (the event's), `created_at`; primary key
+  `(project_id, revision_id)`, one review per revision; foreign key `(project_id, model_id,
+  revision_id)` → `model_revision`. 0020 (hand-written): the append-only and no-truncate triggers
+  and the `BEFORE INSERT` guard `analyzr_trust_review_guard`, which refuses a revision carrying
+  `source.trust` or an amended one, whoever writes.
+- **Reading.** `storedTrust` in `trust.ts`: `source.trust`, else the review (`derived` with the
+  reasons `legacyTrust` computes from what the revision carries, or `modelled`), else `null`; a
+  review never overrides a stored class. `headTrustRows` LEFT JOINs the review of the uploaded
+  revision (an amended head's upstream), and `modelTrust`, `Model.trust` and the class unchanged
+  bytes keep (`ImportFileOutcome.trust`, `trust-kept`) all read it. So a revision reviewed
+  `derived` with the reason `agent-upload` gets S2c-3's safeguard `agent-upload` like a classified
+  one: no rule accepts its calls again, and they wait for „Gesammelt annehmen“.
+- **The list** (pure `preTrustAcceptances`, by model, decision 28 (3)): an accepted call with both
+  endpoints present that rests on the rule tier's decision alone (no human decision, no owner
+  rule's marked acceptance in force), whose caller's uploaded revision has no class and no review,
+  whose element's call target was not set in analyzr (applied or `in-source`, 25.2), and whose
+  revision would be derived from what it carries (engine null; an agent upload, or before S2a a
+  service principal; a declared kind other than `export`). An amended head names its uploaded
+  revision. Camunda projects a human imported, the demo and the live-run projects list nothing.
+- **Routes** (owners only, `policy.require` with `admin`; editors, viewers, agent and read-only
+  tokens get 403; no MCP). `GET /api/v1/projects/{project}/pre-trust-calls` (`PreTrustList`: per
+  model the uploaded revision and `rev`, reasons, derived kind, converter, count and up to 100
+  calls) and `POST …/pre-trust-calls/review?dryRun=` (`{verdict, revisionIds, expectedCount}` →
+  `PreTrustReviewResult {dryRun, verdict, revisions, count, toProposed, autoAcceptedCalls}`). 422
+  `unknown-revision`, `revision-classified` (classified or amended) and `expected-count-required`;
+  409 with `count`: `not-listed` (dry run and write: reviewed, uploaded again, or nothing of it to
+  review; the message says to list again) and `count-changed`. `expectedCount` counts the listed
+  calls. The demo answers the GET with 403 (`apps/demo/src/check.ts`).
+- **The write** (under the project lock): one event `revision.trust_reviewed {revisionIds, class,
+  count}` and the review rows with its `seq`; for `derived` then `recomputeProject` (the calls
+  turn into the rule tier's proposals, `key`, 0.9, with the rationale) and the fifth write path
+  over the proposals it recorded, caused by the owner, so an enabled S2c-3 rule may accept them
+  again in the same write; for `modelled` nothing else. No analysis is queued.
+- **The dry run** writes nothing: `relationImpact` with the reviews in memory and the owner's rules
+  as an import's dry run evaluates them; its new fourth parameter `ofProposed` (`'proposed'` |
+  `'was-accepted'`) counts `autoAcceptedCalls.ofProposed` among `toProposed` for a review (among
+  `callsProposed` for an import), so the dry run equals the write; the calls left for „Gesammelt
+  annehmen“ are `toProposed − ofProposed`.
+- **Web.** `AutoAcceptSystemRule.preTrust`; on the system rule card „ · N vor der
+  Vertrauensregel angenommen – prüfen…“ (owners, not in the demo, N > 0). Its dialog (lazy, in the
+  revoke dialog's pattern): a checkbox per model (all ticked) with name, count and reasons, the dry
+  run in one line that follows the selection („3 Aufrufe gehen zurück in die Prüfung. Deine Regel
+  „…“ nimmt 2 davon gleich wieder an.“), the note „„Behalten“ lässt sie angenommen; danach fragt
+  analyzr bei diesen Modellen nicht mehr.“, „Behalten“ (outline) and „Zurück in die Prüfung“
+  (primary); a 409 reloads the list („Die Liste hat sich geändert“); the toast offers „Gesammelt
+  annehmen“ (`/review?bulk=calls`) while calls stay open; the focus returns to the line, else to
+  „Neue Regel“ or „Erste Regel anlegen“.
+- **CLI.** `analyzr rules pre-trust -p <key> [--model <key…>] [--revoke|--keep] [--dry-run] [--yes]
+  [--json]` with the owner key only: without a verdict the list; with one the dry run, and `--yes`
+  sends its count as `expectedCount`; a 409 is explained; after `--revoke` a `next:` line with the
+  bulk link while calls are left; `--json` gives an empty `PreTrustReviewResult` when nothing is
+  listed. `rules list`'s system line names `preTrust`.
+
+Deviations from the plan (§4.2 of the S2c plan), with reasons:
+
+- **A stricter foreign key**, `(project_id, model_id, revision_id)` as in 0015, which implies the
+  planned `(project_id, revision_id)`; the primary key gives the uniqueness.
+- **A guard trigger in 0020** besides the append-only triggers: the database itself refuses a
+  review of a classified or amended revision, so no writer can overrule a class assigned since S2c.
+- **The review is read beyond `headTrustRows`**: `Model.trust` and the class unchanged bytes keep
+  read it too, otherwise „Herkunft“, the bulk toast's source, `ImportFileOutcome.trust` and
+  `trust-kept` would contradict the rule tier.
+- **Calls whose callee is gone are not listed**: the review cannot turn them into proposals now,
+  and the list's count then equals the dry run's `toProposed`.
+- **„Behalten“ skips the recompute**: `modelled` reads like no class for the rule tier and the
+  auto-accept evaluator (everything the recompute reads); only `Model.trust` shows `modelled`.
+- **`expectedCount` counts listed calls**, not revisions, and the dry run refuses a revision that
+  is not listed (409 `not-listed`) as the write does (review fix).
+- **No analysis is queued** after „Zurück in die Prüfung“: the calls go to the human bulk accept,
+  and the models show `waiting_for_review` through their open items (once their analysis is
+  done).
+- **Small choices.** The result reuses `ImpactAutoAcceptedCalls`; the CLI also takes `--dry-run`,
+  like apply and revoke; the dialog has no „Abbrechen“ (its X closes it), so it keeps one primary
+  and one secondary; only „Zurück in die Prüfung“ runs a dry run, „Behalten“ sends the list's
+  count; the dialog lists models, not calls (the CLI and the API show the calls); the rules
+  principal is resolved before the policy check, as in ingest.
+
+The review round (a server, safety and data lens and a web, CLI and UX lens) found eight minor
+points, all fixed: the dry run answered zeros for a revision that is not listed while the write
+refused it (a client following the message looped); `ofProposed` was counted over every new
+proposal in the dry run but over the calls accepted before in the write; the dialog never said
+that „Behalten“ is final; the toast and the CLI advised accepting „before the agent starts“,
+though no analysis follows (now „Sie stehen in der Prüfung; nimm sie dort gesammelt an.“ and
+`next: accept them in the web review („Gesammelt annehmen“):`); `--json` with a verdict printed
+the list's shape when nothing was listed; the dry run of `--keep` spoke as if done; the dry-run
+line and the CLI counted the calls a rule accepts again by `count` instead of `ofProposed`; four
+web cases were untested (a failed dry run, another failure of the review, the focus after the
+review, the toast's navigation).
+
+Tests: server unit `trust.test.ts` (`legacyTrust`, `storedTrust`, every case of
+`preTrustAcceptances`), `recompute-trust.test.ts` (`ofProposed` for a review and an import),
+`auto-accept-rules.test.ts`; real PostgreSQL `trust-review.test.ts` (new, 11 tests, revisions from
+before S2c made by stripping `source.trust` by SQL: the list and the count, an amended head, both
+verdicts with the dry run equal to the write, an enabled rule accepting again, unchanged bytes,
+every refusal, the database guard, the 403s, the append-only triggers),
+`migration-trust-review.test.ts` (new, 3 tests: 0019/0020 on a database migrated to 0018 with
+revisions), `demo-mode.test.ts`; web `pre-trust.test.tsx` (new, 9 tests), `rules-tab.test.tsx`
+(the line, the dialog and the focus), the bundle guard; demo `check.test.ts`; CLI `rules.test.ts`
+(7 new tests); Playwright `pre-trust.spec.ts` (new: against the server, a project imported now
+lists nothing, its card has no line, its classified caller is refused and an agent token gets
+403; in the browser, with the list and the review stubbed, the line, the dialog, the selection,
+the note and the toast's way to the real bulk dialog). A revision from before the trust rule
+cannot be made through the API (the server writes `source.trust` on every upload and no route
+writes a revision's source), so the whole flow is covered by the Testcontainers tests.
+
+What it costs and leaves open. Live-run neutral: the corpus, the seeds, the demo and the live-run
+projects hold no acceptance from before the trust rule that would be derived, so the eval reports,
+MCP snapshots, procedures and recordings are unchanged, and no measured project of the UI load
+guard shows the card's line. The bundle entry is 226.1 KB gzip (+0.1); the dialog and its texts
+load with the lazy rules page; dependency-cruiser counts 147 modules. The readings the implementing
+agent took that the owner may overrule are in HANDOFF §4 ("Taken during M6 S2c-4"); no owner
+question. Open:
+
+- **A review is per uploaded revision.** Unchanged bytes keep the reviewed class; once a model is
+  uploaded again with other bytes, its new revision carries the trust rule's class and the review
+  no longer applies, so „Behalten“ is final only for the revision it names.
+- **Owners' existing stacks.** A landscape imported there before S2c-1 without an engine or with
+  an agent token (say, a Signavio bundle) shows the card's line after the update; nothing changes
+  until the owner decides.
+- **The callee side** stays as S2c-3 left it: only the caller's class counts.
+
+Left: S2b's follow-up (judgements made non-current, tasks queued or cancelled, the placement task
+due, placements changed or missing; the integrate plugin's next release with the key-map rebuild,
+a pre-approved `--dry-run` and `normalize-bpmn` writing `null` for an empty `exporterVersion`);
+then S3c and S6.
 
 **S3 "Toolkit".** S3a (part of the „erste Anfänge“): §3.11, report committed, CI drift check,
 and the `get_landscape` size per model of the seeded `nordwind-handel` with the v1 limit in §6.
@@ -3497,7 +3647,8 @@ write-back or sync to the source tools (decision 7).
 
 1. **Trust policy (amends decisions 9 and 19). Decided 2026-10-15 as recommended, with (a)
    (decision 24.2; the class and the rule tier delivered in S2c-1, the decision-19 extension in
-   S2c-3, decision 28 answered the S2c plan's open points, §3.10); only its last sentence stays
+   S2c-3, the list „Vor der Vertrauensregel angenommen“ in S2c-4 (2026-10-20), decision 28
+   answered the S2c plan's open points, §3.10); only its last sentence stays
    open.** Calls in models that are not modelled (engine
    null, uploaded with an agent token, or declared converted, reconstructed or as-told) are
    proposed (tier `key`, 0.9) instead of accepted, and decision-19 rules may accept such

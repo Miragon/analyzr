@@ -26,6 +26,14 @@
  * that source; it fixes kind, tier, type and minimum, so `--kind`, `--tier`,
  * `--min`, `--type`, `--agent`, `--model` and `--ad-hoc` are refused with
  * it. No rule accepts a call of a revision uploaded with an agent token.
+ *
+ * **pre-trust** (M6 S2c-4, owner decision 28 (3)) lists the unique calls the
+ * rule tier accepted from revisions stored before the trust rule whose caller
+ * would be derived today, by model; `--revoke` sends them back to review (the
+ * calls become the rule tier's proposals), `--keep` keeps them accepted, each
+ * model once, `--model` narrows by model key. It prints the dry run and
+ * changes something only with `--yes`, passing the dry run's count as
+ * `expectedCount`.
  */
 import {
   applyAutoAcceptRule,
@@ -33,7 +41,9 @@ import {
   getAutoAcceptRule,
   listAgentTokens,
   listAutoAcceptRules,
+  listPreTrustCalls,
   previewAutoAcceptRule,
+  reviewPreTrustCalls,
   reviseAutoAcceptRule,
   revokeAutoAccepted,
   type AgentToken,
@@ -48,6 +58,9 @@ import {
   type AutoAcceptRuleDraft,
   type AutoAcceptRuleList,
   type AutoAcceptSystemRule,
+  type PreTrustList,
+  type PreTrustReviewBody,
+  type PreTrustReviewResult,
 } from '@analyzr/client';
 import {
   AUTO_ACCEPT_TIERS,
@@ -59,6 +72,7 @@ import {
   MAX_AUTO_ACCEPT_CONVERTER_CHARS,
   MAX_AUTO_ACCEPT_IDS,
   MIN_AUTO_ACCEPT_CONFIDENCE,
+  reviewPath,
   type AutoAcceptRuleId,
   type PrincipalId,
 } from '@analyzr/contracts';
@@ -67,6 +81,7 @@ import { call, createApi, type Api } from '../api.ts';
 import { agentToken, ownerCredential, type CredentialOptions } from '../credentials.ts';
 import { ApiError, CliError } from '../errors.ts';
 import type { CliIo } from '../io.ts';
+import { TRUST_REASONS } from './import.ts';
 
 export interface RulesOptions extends CredentialOptions {
   url: string;
@@ -102,6 +117,18 @@ export interface AddOptions extends RulesOptions, CriteriaFlags {
 }
 
 export interface ApplyOptions extends RulesOptions {
+  dryRun?: boolean;
+  yes?: boolean;
+}
+
+/** `analyzr rules pre-trust` (M6 S2c-4). */
+export interface PreTrustOptions extends RulesOptions {
+  /** Model keys (repeated or comma-separated): only these models. */
+  model?: string[];
+  /** Send the calls back to review (`derived`). */
+  revoke?: boolean;
+  /** Keep them accepted (`modelled`). */
+  keep?: boolean;
   dryRun?: boolean;
   yes?: boolean;
 }
@@ -494,7 +521,68 @@ export function systemLine(s: AutoAcceptSystemRule): string {
     s.proposed > 0
       ? `, ${s.proposed} only proposed (derived callers, trust rule; analyzr rules add --derived accepts the next ones)`
       : '';
-  return `system rule ${s.id} ${JSON.stringify(s.name)}: ${s.relationType} relations of modelled callers, always on, read-only; ${s.accepted} accepted${proposed}`;
+  const preTrust =
+    s.preTrust > 0
+      ? `, ${s.preTrust} accepted before the trust rule from callers that would be derived today (review them: analyzr rules pre-trust)`
+      : '';
+  return `system rule ${s.id} ${JSON.stringify(s.name)}: ${s.relationType} relations of modelled callers, always on, read-only; ${s.accepted} accepted${proposed}${preTrust}`;
+}
+
+const callsText = (n: number) => `${n} ${n === 1 ? 'call' : 'calls'}`;
+
+/**
+ * „Vor der Vertrauensregel angenommen“ (M6 S2c-4) as lines: per model its
+ * key, name, revision, count and reasons, then its calls.
+ */
+export function formatPreTrustList(list: Pick<PreTrustList, 'models'>, project: string): string[] {
+  const count = list.models.reduce((n, m) => n + m.count, 0);
+  if (count === 0) {
+    return [
+      `nothing in ${project} was accepted before the trust rule from a caller that would be derived today`,
+    ];
+  }
+  return [
+    `${callsText(count)} in ${project} accepted before the trust rule; their callers would be derived today:`,
+    ...list.models.flatMap((m) => [
+      `  ${m.modelKey}${m.modelName ? ` ${JSON.stringify(m.modelName)}` : ''} (r${m.rev}): ${callsText(m.count)} (${m.reasons.map((r) => TRUST_REASONS[r]).join(', ')})`,
+      ...m.calls.map((c) => `    ${c.from} → ${c.to}`),
+      ...(m.count > m.calls.length ? [`    … ${m.count - m.calls.length} more`] : []),
+    ]),
+  ];
+}
+
+/** A review's dry run or result as lines (M6 S2c-4); `url` the server's, for the review link. */
+export function formatPreTrustReview(
+  r: PreTrustReviewResult,
+  project: string,
+  url: string,
+): string[] {
+  const models = `${r.revisions} ${r.revisions === 1 ? 'model' : 'models'}`;
+  if (r.verdict === 'modelled') {
+    const them = r.revisions === 1 ? 'the model' : 'the models';
+    return [
+      r.dryRun
+        ? `dry run: ${callsText(r.count)} of ${models} in ${project} would stay accepted; ${them} would never be listed again`
+        : `${callsText(r.count)} of ${models} in ${project} stay accepted; ${them} ${r.revisions === 1 ? 'is' : 'are'} never listed again`,
+    ];
+  }
+  const auto = r.autoAcceptedCalls;
+  // `ofProposed`: of these calls; the rules may accept other proposals of the same recompute besides.
+  const besides = auto.count - auto.ofProposed;
+  return [
+    `${r.dryRun ? 'dry run: ' : ''}${callsText(r.count)} of ${models} in ${project} ${r.dryRun ? 'would go' : 'went'} back to review: ${r.toProposed} ${r.dryRun ? 'would become' : 'became'} proposals of the rule tier`,
+    ...(auto.count > 0
+      ? [
+          `  your rules for derived calls ${r.dryRun ? 'would accept' : 'accepted'} ${auto.ofProposed} of them again${besides > 0 ? ` (and ${besides} other ${besides === 1 ? 'proposal' : 'proposals'})` : ''}: ${auto.byRule.map((b) => `${JSON.stringify(b.ruleName)} ${b.count}`).join(', ')}`,
+        ]
+      : []),
+    ...(!r.dryRun && r.toProposed - auto.ofProposed > 0
+      ? [
+          'next: accept them in the web review („Gesammelt annehmen“):',
+          `  ${url.replace(/\/+$/, '')}${reviewPath(project)}?bulk=calls`,
+        ]
+      : []),
+  ];
 }
 
 /** `relation call a#x → b#y` / `placement main a#P → step`. */
@@ -981,4 +1069,115 @@ export async function rulesRevokeCommand(
   }
   if (opts.json) return json(io, done);
   out(io, formatRevocation(done));
+}
+
+/**
+ * `analyzr rules pre-trust [--model <key…>] [--revoke|--keep] [--dry-run] [--yes] -p <project>`
+ * (M6 S2c-4, owner decision 28 (3)): without `--revoke` or `--keep` the list;
+ * with one of them the review's dry run, and with `--yes` the review itself,
+ * passing the dry run's count as `expectedCount` (409 when the list changed
+ * in between).
+ */
+export async function rulesPreTrustCommand(io: CliIo, opts: PreTrustOptions): Promise<void> {
+  if (opts.revoke && opts.keep) throw new CliError('--revoke and --keep exclude each other');
+  const verdict: PreTrustReviewBody['verdict'] | null = opts.revoke
+    ? 'derived'
+    : opts.keep
+      ? 'modelled'
+      : null;
+  if (verdict === null && opts.yes) {
+    throw new CliError('--yes needs --revoke (back to review) or --keep (keep them accepted)');
+  }
+  const api = await ownerApi(io, opts);
+  const list: PreTrustList = await call(
+    api,
+    `list calls accepted before the trust rule in ${opts.project}`,
+    listPreTrustCalls({ client: api.client, path: { project: opts.project } }),
+  );
+  const keys = (opts.model ?? [])
+    .flatMap((v) => v.split(','))
+    .map((v) => v.trim())
+    .filter(Boolean);
+  const unknown = keys.filter((k) => !list.models.some((m) => m.modelKey === k));
+  if (unknown.length > 0) {
+    throw new CliError(
+      `not listed: ${unknown.join(', ')}; listed models: ${list.models.map((m) => m.modelKey).join(', ') || 'none'}`,
+    );
+  }
+  const models =
+    keys.length > 0 ? list.models.filter((m) => keys.includes(m.modelKey)) : list.models;
+  if (verdict === null) {
+    if (opts.json) return json(io, { count: models.reduce((n, m) => n + m.count, 0), models });
+    out(io, [
+      ...formatPreTrustList({ models }, opts.project),
+      ...(models.length > 0
+        ? [
+            `next: send them back to review with analyzr rules pre-trust --revoke -p ${opts.project}, or keep them accepted with --keep (each model is decided once; --model narrows)`,
+          ]
+        : []),
+    ]);
+    return;
+  }
+  if (models.length === 0) {
+    // Nothing to review: the review's shape all the same, so a script reads `toProposed`.
+    if (opts.json) {
+      const nothing: PreTrustReviewResult = {
+        dryRun: opts.yes !== true || opts.dryRun === true,
+        verdict,
+        revisions: 0,
+        count: 0,
+        toProposed: 0,
+        autoAcceptedCalls: { count: 0, items: [], ofProposed: 0, byRule: [] },
+      };
+      return json(io, nothing);
+    }
+    out(io, formatPreTrustList({ models }, opts.project));
+    return;
+  }
+  const body: PreTrustReviewBody = {
+    verdict,
+    revisionIds: models.map((m) => m.revisionId),
+  };
+  let dry: PreTrustReviewResult;
+  try {
+    dry = await call(
+      api,
+      'review calls accepted before the trust rule (dry run)',
+      reviewPreTrustCalls({
+        client: api.client,
+        path: { project: opts.project },
+        query: { dryRun: 'true' },
+        body,
+      }),
+    );
+  } catch (err) {
+    // A model reviewed or uploaded again since the list (409 `not-listed`).
+    explainConflict(err, 'analyzr rules pre-trust');
+  }
+  if (opts.yes !== true || opts.dryRun === true) {
+    if (opts.json) json(io, dry);
+    else out(io, formatPreTrustReview(dry, opts.project, opts.url));
+    if (opts.dryRun !== true) {
+      throw new CliError(
+        `nothing changed yet: run the command again with --yes to ${verdict === 'derived' ? 'send' : 'keep'} the ${callsText(dry.count)}${verdict === 'derived' ? ' back to review' : ' accepted'}`,
+      );
+    }
+    return;
+  }
+  let done: PreTrustReviewResult;
+  try {
+    done = await call(
+      api,
+      'review calls accepted before the trust rule',
+      reviewPreTrustCalls({
+        client: api.client,
+        path: { project: opts.project },
+        body: { ...body, expectedCount: dry.count },
+      }),
+    );
+  } catch (err) {
+    explainConflict(err, 'analyzr rules pre-trust');
+  }
+  if (opts.json) return json(io, done);
+  out(io, formatPreTrustReview(done, opts.project, opts.url));
 }

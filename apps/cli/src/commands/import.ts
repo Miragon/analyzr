@@ -314,7 +314,7 @@ function plural(n: number, one: string, many = `${one}s`): string {
 const arrow = (r: { from: string; to: string }) => `${r.from} → ${r.to}`;
 
 /** The trust rule's reasons (M6 S2c) in a line's words. */
-const TRUST_REASONS: Readonly<Record<TrustReason, string>> = {
+export const TRUST_REASONS: Readonly<Record<TrustReason, string>> = {
   'no-engine': 'no engine',
   'agent-upload': 'agent token',
   converted: 'converted',
