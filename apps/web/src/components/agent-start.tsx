@@ -158,7 +158,8 @@ export function AgentStart({
  * runs nothing, opens the popover for owners (clicked again while it is
  * open, it closes it and requeues nothing; when the owner's agent tokens
  * are not known yet as the requeue answers, a toast, and the popover once
- * they are); editors get a toast and a plain button without a popup. With
+ * they are; the button stays one element as they arrive, so a click then is
+ * not lost); editors get a toast and a button without a popup. With
  * `chain` and the label „Agent starten“ it is the chain's „3 Prozesse
  * fällig · Agent starten“ (§2.6); with `requeue` off it only opens the
  * popover (a task is queued already), so the chain's line keeps one button,
@@ -208,8 +209,8 @@ export function RetryAgent({
       description: errorMessage(error),
       error,
     });
-  // An owner gets the popover also when their agent tokens arrive after the click (the plain
-  // button turns into its open trigger); a toast while they are not known, and for editors.
+  // An owner gets the popover also when their agent tokens arrive after the click (the button
+  // becomes its open trigger); a toast while they are not known, and for editors.
   const queued = (title: string, description: string) => {
     if (isOwner) setOpen(true);
     if (known.current === null) toast({ tone: 'success', title, description });
@@ -254,31 +255,28 @@ export function RetryAgent({
       {label}
     </>
   );
-  if (state === null)
-    return (
-      <Button {...look} disabled={pending} onClick={run} data-testid={testId}>
-        {content}
-      </Button>
-    );
+  // One button element before and after the agent tokens arrive, so a click as they land is not
+  // lost; it opens the popover only once they are known.
+  const ready = state !== null;
   return (
     <LightPopover
-      open={open}
+      open={open && ready}
       onOpenChange={setOpen}
       label="Agent starten"
       align={align}
       trigger={(props) => (
         <Button
           {...look}
-          {...props}
+          {...(ready ? props : { ref: props.ref })}
           disabled={pending}
-          onClick={() => (open ? setOpen(false) : run())}
+          onClick={() => (open && ready ? setOpen(false) : run())}
           data-testid={testId}
         >
           {content}
         </Button>
       )}
     >
-      <AgentStartPanel project={project} state={state} hasChain={hasChain} />
+      {state ? <AgentStartPanel project={project} state={state} hasChain={hasChain} /> : null}
     </LightPopover>
   );
 }

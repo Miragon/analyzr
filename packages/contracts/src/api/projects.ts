@@ -41,7 +41,9 @@ const count = () => z.number().int().min(0);
  * endpoint that changed or is missing), `openPlacements` the same rule for
  * the placements on the project's value chain (0 without one), `ask` the
  * open questions' `totals.ask` of `state=open`. Held items count only in
- * `ask`. Not part of {@link Project}, which is MCP `list_projects`'s output.
+ * `ask`. `pairsToJudge` is the size of the agents' next run (M6 S2b
+ * follow-up step 3b). Not part of {@link Project}, which is MCP
+ * `list_projects`'s output.
  */
 export const ProjectSummary = z
   .object({
@@ -53,6 +55,22 @@ export const ProjectSummary = z
     openPlacements: count(),
     /** Open questions to clarify (`totals.ask` of the open questions with `state=open`). */
     ask: count(),
+    /**
+     * About how many possible relations (typed pairs) the agents' next run
+     * will judge, over the stored head: the union of what the next claims of
+     * the relations tasks an agent may claim now are assigned (the queued
+     * ones, the models „warten auf den Agenten“, and the claimed ones whose
+     * lease ran out with attempts left), each pair once (a pair between two
+     * such models counts once), without the pairs with a current agent
+     * judgement and those a decision settles, as the dry runs count them. A
+     * task an agent holds right now (its lease runs) counts not: its pairs
+     * are its claim's, and so is a pair of its assignment with a model above
+     * whose claim it saw as it is now, which that model's claim skips. Exact
+     * for the stored state when read; "about", as decisions and imports
+     * before the claims change it and agents may examine more pairs than they
+     * are assigned. 0 when no such task waits.
+     */
+    pairsToJudge: count(),
   })
   .meta({
     id: 'ProjectSummary',

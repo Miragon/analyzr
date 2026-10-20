@@ -8,7 +8,13 @@ import { FACTS_VERSION, extractFacts } from '@analyzr/bpmn-facts';
 import type { ProjectFacts } from '@analyzr/contracts';
 import { beforeAll, describe, expect, it } from 'vitest';
 
-import { labelBaseline, generateCandidates, indexCandidates, runRules } from '../src/index.ts';
+import {
+  labelBaseline,
+  generateCandidates,
+  indexCandidates,
+  projectCandidates,
+  runRules,
+} from '../src/index.ts';
 
 const corpus = (name: string) =>
   fileURLToPath(new URL(`../../../eval/corpus/${name}/models`, import.meta.url));
@@ -101,6 +107,27 @@ describe('a prepared candidate index over a corpus landscape', () => {
       }
       expect(generateCandidates(facts, undefined, undefined, prepared)).toEqual(
         generateCandidates(facts),
+      );
+    },
+  );
+});
+
+// The server's summary of the agents' next run reads every focus model's own candidates of a
+// basis other than `compatible` from the whole-project pass (M6 S2b follow-up step 3b).
+describe('the whole-project candidates with each focus model’s own', () => {
+  it.each(['_sample', 'nordwind-handel'])(
+    '%s: the candidates without a focus, and per model those of its own call',
+    async (name) => {
+      const facts = await sampleFacts(corpus(name));
+      const { candidates, byFocus } = projectCandidates(facts);
+      expect(candidates).toEqual(generateCandidates(facts));
+      for (const { modelKey } of facts.models) {
+        expect(byFocus.get(modelKey) ?? [], modelKey).toEqual(
+          generateCandidates(facts, modelKey).filter((c) => c.basis !== 'compatible'),
+        );
+      }
+      expect([...byFocus.keys()].every((k) => facts.models.some((m) => m.modelKey === k))).toBe(
+        true,
       );
     },
   );

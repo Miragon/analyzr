@@ -1096,7 +1096,7 @@ describe('the review fixes', () => {
     let computed = 0;
     const compute = () => {
       computed++;
-      return [...input.candidates];
+      return { candidates: [...input.candidates], byFocus: new Map() };
     };
     const cache = new CandidateCache(1);
     const first = cache.get(PROJECT, input.projectFacts, hashes, compute);

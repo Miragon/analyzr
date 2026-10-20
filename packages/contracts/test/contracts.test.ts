@@ -409,11 +409,27 @@ describe('project summary (UX9)', () => {
       reviewItems: 48,
       openPlacements: 29,
       ask: 21,
+      pairsToJudge: 7300,
     };
     expect(ProjectSummary.parse(summary)).toEqual(summary);
     expect(ProjectSummary.safeParse({ ...summary, ask: -1 }).success).toBe(false);
     expect(ProjectSummary.safeParse({ ...summary, reviewItems: 1.5 }).success).toBe(false);
     expect(ProjectSummary.safeParse({ ...summary, lastEventAt: 'gestern' }).success).toBe(false);
+  });
+
+  it('carries the pairs the waiting relations tasks will judge, required and never negative (S2b follow-up step 3b)', () => {
+    const summary = {
+      lastEventAt: '2026-10-19T08:00:00.000Z',
+      reviewItems: 0,
+      openPlacements: 0,
+      ask: 0,
+      pairsToJudge: 0,
+    };
+    expect(ProjectSummary.parse(summary)).toEqual(summary);
+    const { pairsToJudge: _pairs, ...without } = summary;
+    expect(ProjectSummary.safeParse(without).success).toBe(false);
+    expect(ProjectSummary.safeParse({ ...summary, pairsToJudge: -1 }).success).toBe(false);
+    expect(ProjectSummary.safeParse({ ...summary, pairsToJudge: 2.5 }).success).toBe(false);
   });
 
   it('leaves Project (MCP list_projects) as it was', () => {

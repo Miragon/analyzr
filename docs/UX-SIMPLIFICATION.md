@@ -7,7 +7,8 @@ delivered on it on 2026-10-18, §7; the owner's walkthrough the same day, §7 "O
 walkthrough"; UX7, UX8, S2b's „Vorschau“, UX3, UX4 and UX5 delivered the same day, UX6 and
 UX9 on 2026-10-19: every slice delivered; M6 S2c-1's texts on these screens the same day, S2c-2's
 fast path for derived calls, S2c-3's rules for derived calls, S2c-4's „Vor der Vertrauensregel
-angenommen“ and S2b follow-up step 3's agent work in the „Vorschau“ on 2026-10-20, §7) ·
+angenommen“, S2b follow-up step 3's agent work in the „Vorschau“ and step 3b's size of the
+agents' next run in „Als Nächstes“ on 2026-10-20, §7) ·
 Source: four user-need audits of the web UI on the agent-created scratch stack
 `analyzr-uxaudit` (seeded `nordwind-handel` with its chain and a simulation agent run,
 `signavio-beispiel` from the CLI bundle import, two projects made from the raw synthetic Signavio
@@ -248,7 +249,12 @@ From top to bottom, all on `/projects/{p}` (today's models tab, `routes/project-
    wait for a bulk accept (the trust rule): „12 eindeutige Aufrufe zuerst bestätigen · Gesammelt
    annehmen“ after the failed and expired lines while an agent row leads, or „Davon 12 eindeutige
    Aufrufe · Gesammelt annehmen“ as the first line under „Vorschläge prüfen“; it replaces the
-   review line when every open item is such a call (§7 "M6 S2c-2's texts as delivered").
+   review line when every open item is such a call (§7 "M6 S2c-2's texts as delivered"). Since M6
+   S2b's follow-up step 3b the agent rows name the size of the agents' next run, the pairs the
+   waiting tasks will judge: beside „Agent starten“ or „Agent verbinden“ as muted plain text, no
+   control, „etwa 7.300 mögliche Relationen“; for editors and viewers in the line „5 Modelle warten
+   auf den Agenten · etwa 7.300 mögliche Relationen“ („1 mögliche Relation“ without „etwa“, nothing
+   for 0; §7 "M6 S2b follow-up step 3b's texts as delivered").
 2. **The models table** with its toolbar: „Modell suchen …“ (name and key, umlauts and case folded
    with `lib/generic-names.ts` `nameWords`, in the URL as `?q=`) and the phase chips „Modelle nach
    Phase: Alle 31 · Wartet auf Prüfung 25 · Klärung offen 2 · Eingearbeitet 4“ (only stages with
@@ -736,7 +742,10 @@ Appendix A.
    without a token), „9 offene Fragen gibt es schon jetzt · Offene Fragen ansehen“. (O5, O16)
    Since M6 S2c-2 it starts with „12 eindeutige Aufrufe warten auf deine Bestätigung · Gesammelt
    annehmen“ while such calls wait (reviewers only; §7 "M6 S2c-2's texts as delivered"); since
-   S2c-3 the calls an owner's rule accepted in the import are no longer counted there.
+   S2c-3 the calls an owner's rule accepted in the import are no longer counted there; since S2b's
+   follow-up step 3b the waiting text names the size of the agents' next run, „5 Modelle warten
+   auf den Agenten · etwa 7.300 mögliche Relationen“ (§7 "M6 S2b follow-up step 3b's texts as
+   delivered").
 3. **Warnings grouped by element and cause** (O6): today „9 Hinweise“, each „Unbekannter oder
    fehlerhafter Inhalt“ plus bpmn-moddle English („unparsable content <task> detected … illegal ID
    <Aufgabe_Bonität_prüfen>“, „unresolved reference <4711>“). A warning carries only the code, that
@@ -851,8 +860,9 @@ Appendix A.
    from `GET /projects/{p}/summary`: a public, documented use case with `policy.require` (permission
    `read`), listed in CONCEPT §5's route table, optionally read by the CLI; it returns
    `lastEventAt` and cheap counts (review items, open placements, the `ask` total from the memoized
-   read model). Nothing goes into `Project`, which is MCP `list_projects`'s output (the
-   `mcp-tools.json` snapshot stays). (O18)
+   read model; since M6 S2b's follow-up step 3b also `pairsToJudge`, the size of the agents' next
+   run, shown in „Als Nächstes“ and on „Hochladen“, not on this list). Nothing goes into `Project`,
+   which is MCP `list_projects`'s output (the `mcp-tools.json` snapshot stays). (O18)
 2. **„Rolle“** (UX1) hides only when every role is „Inhaber“ (local mode, decision 6); with any
    other role, and always in the demo, it stays, since „Leser“ tells the visitor why nothing can be
    changed. (O18)
@@ -1162,14 +1172,14 @@ delivered"). They fit without a new column, tab or panel:
   Unterordner ab, wenn das nicht Teil der Namen sein soll.“ (keys are fixed for good, M6 §3.4, so
   the preview shows on a first import too). Above 50 files or 25 MB: „Vorschau je 50 Dateien;
   Aufrufe zwischen den Teilen erscheinen hier als unaufgelöst.“ (since S2b's follow-up step 3
-  extended on a first import, §7). One click more, no new screen. Since M6
-  S2c-1 the impact lines add „12 Aufrufe nur vorgeschlagen (ohne Camunda-Engine) – nach dem
-  Import gesammelt annehmen“ for the unique calls of derived models, and „Was ändert sich?“ the
-  list „Aufrufe als Vorschlag“ („(bisher angenommen)“ for a call whose acceptance ends); since
-  S2c-2 the result's „Als Nächstes“ names them first: „12 eindeutige Aufrufe warten auf deine
-  Bestätigung · Gesammelt annehmen“; since S2c-3 an owner's preview adds what their rules for
-  derived calls accept at once, „· deine Regel „Aufrufe: Export ohne Engine“ nimmt 12 davon
-  gleich an“. Since S2b's follow-up step 3 the last line names the agent work the import sets
+  extended on a first import, since step 3b with where the whole number shows, §7). One click more,
+  no new screen. Since M6 S2c-1 the impact lines add „12 Aufrufe nur vorgeschlagen (ohne
+  Camunda-Engine) – nach dem Import gesammelt annehmen“ for the unique calls of derived models, and
+  „Was ändert sich?“ the list „Aufrufe als Vorschlag“ („(bisher angenommen)“ for a call whose
+  acceptance ends); since S2c-2 the result's „Als Nächstes“ names them first: „12 eindeutige Aufrufe
+  warten auf deine Bestätigung · Gesammelt annehmen“; since S2c-3 an owner's preview adds what their
+  rules for derived calls accept at once, „· deine Regel „Aufrufe: Export ohne Engine“ nimmt 12
+  davon gleich an“. Since S2b's follow-up step 3 the last line names the agent work the import sets
   off, on a first import too: „214 mögliche Relationen zu beurteilen (56 davon erneut), 7 Prozesse
   zu platzieren“ (each part only when it counts something, „etwa“ in front for more than one
   batch); a placements line „1 angenommene Platzierung mit geändertem oder fehlendem Prozess“
@@ -1180,7 +1190,10 @@ delivered"). They fit without a new column, tab or panel:
   verloren.“ above the buttons, and the second click (§3.4 item 4): the first click on
   „Importieren“ sends nothing and turns it into „Trotzdem importieren“; on a first import in
   parts the batch note adds „…, mögliche Relationen zwischen neuen Modellen verschiedener Teile
-  fehlen in der Zahl.“ (§7 "M6 S2b follow-up step 3's texts as delivered").
+  fehlen in der Zahl.“ (§7 "M6 S2b follow-up step 3's texts as delivered"), since step 3b „…; die
+  ganze Zahl steht nach dem Import unter „Als Nächstes“.“, where the waiting text then names it
+  („5 Modelle warten auf den Agenten · etwa 7.300 mögliche Relationen“; §7 "M6 S2b follow-up step
+  3b's texts as delivered").
 - **Deletion impact** (S2b): stays in `analyzr models delete`; the web has no model deletion. If
   the owner wants it, it goes into the model view's „Mehr“ as „Modell löschen …“ with the impact as
   the confirmation dialog, in the chain save's pattern (only non-zero lines, „Weiter bearbeiten“ /
@@ -2328,6 +2341,43 @@ worked `nordwind-handel` (`finanzen/rechnungsstellung` re-exported, a dry run on
 „Abbrechen“) 16 controls, 95 words and 1 badge at 1440 px, 16 controls, 93 words and 1 badge at 390
 px, no horizontal scroll; no budget constant changed. Not verified: a real phone, a screen reader
 (arming announces nothing new, as in the amend form; HANDOFF §8).
+
+**M6 S2b follow-up step 3b's texts as delivered** (2026-10-20, on the branch, every gate green; M6
+§8 "S2b follow-up step 3b as delivered", DEVELOPMENT.md "M6 S2b follow-up step 3b"). The size of
+the agents' next run, the pairs the waiting relations tasks will judge
+(`ProjectSummary.pairsToJudge`), reaches „Als Nächstes“ (§2.3) and „Hochladen“'s waiting text
+(§3.9 item 2) as one short suffix; no new control, nothing else on the screens changes. So right
+after a first import in parts, and on every „Übersicht“, the consultant sees how big the agents' run
+will be, the one number a preview in batches cannot give, and can plan the run and its cost. Texts
+in `src/lib/agent-cost.ts` (`pairsToJudgeText`), `src/lib/next-step.ts`,
+`components/next-step-block.tsx` and `src/lib/upload.ts`.
+
+- **Owners**, beside the agent button as muted plain text, without „ · “, once their tokens are
+  known: [Agent starten] „etwa 7.300 mögliche Relationen“; without a token [Agent verbinden] with
+  the same text (right after a first import, when the run gets planned).
+- **Editors and viewers**, in the waiting line: „5 Modelle warten auf den Agenten · etwa 7.300
+  mögliche Relationen“, „1 Modell wartet auf den Agenten · 1 mögliche Relation“.
+- **„Hochladen“ after an import**: „5 Modelle warten auf den Agenten · etwa 7.300 mögliche
+  Relationen“, „5 Modelle und die Platzierungen warten auf den Agenten · etwa 7.300 mögliche
+  Relationen“, only from a summary read after the import, so no number from before it.
+- **The rule for every text**: exact German numbers; „etwa“ from 2 on (a planning number:
+  decisions and imports before the claims change it, agents may examine more pairs), none for 1
+  („etwa 1“ reads wrong); nothing for 0, and nothing while only failed analyses or expired
+  reservations wait.
+- **The batch note** of a first import in parts now says where the whole number shows: „Vorschau je
+  50 Dateien; Aufrufe zwischen den Teilen erscheinen hier als unaufgelöst, mögliche Relationen
+  zwischen neuen Modellen verschiedener Teile fehlen in der Zahl; die ganze Zahl steht nach dem
+  Import unter „Als Nächstes“.“
+
+`analyzr import`'s waiting line and `analyzr status` say the same in English (`about 7300 pairs to
+judge`, `1 pair to judge`; M6 §8). The UI load guard (the implementer's and the fixer's runs on
+`analyzr-s2bf3bi`): UX1's budget for „Als Nächstes“ is now checked on `signavio-beispiel` too, with
+the suffix beside „Agent verbinden“: 22 words and 4 controls (≤ 40, ≤ 5); its „Übersicht“ 117 /
+102 words (113 / 98 before), the controls and badges unchanged; `nordwind-handel` unchanged
+(nothing waits there); no budget constant changed. Open for the owner (HANDOFF §4 "Taken during the
+M6 S2b follow-up step 3b"): „etwa“ from 2 on, the suffix without „zu beurteilen“, and the suffix
+beside „Agent verbinden“. Not verified: a real phone, a screen reader, the suffix beside „Agent
+starten“ in a browser (a web unit test covers it).
 
 ## 8. Keep as is
 

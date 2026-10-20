@@ -5,6 +5,8 @@ import type { ReactNode } from 'react';
 import { AgentStart, RetryAgent } from '@/components/agent-start';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { pairsToJudgeText } from '@/lib/agent-cost';
+import { useAgentState } from '@/lib/agent-state';
 import { modelCount, type NextLine, type NextPrimary, type NextStep } from '@/lib/next-step';
 
 /**
@@ -136,9 +138,7 @@ function Primary({
   switch (primary.kind) {
     case 'connect-agent':
     case 'start-agent':
-      return (
-        <AgentStart project={project} hasChain={hasChain} size="lg" testId="next-step-primary" />
-      );
+      return <AgentPrimary project={project} hasChain={hasChain} pairs={primary.pairs} />;
     case 'retry':
       return (
         <RetryAgent
@@ -179,6 +179,37 @@ function Primary({
   }
 }
 
+/**
+ * „Agent starten“ (or „Agent verbinden“) with the size of the agents' next
+ * run beside it as plain text, „etwa 7.300 mögliche Relationen“ (M6 S2b
+ * follow-up step 3b; no control). Only with the button, which shows once the
+ * owner's tokens are known.
+ */
+function AgentPrimary({
+  project,
+  hasChain,
+  pairs,
+}: {
+  project: string;
+  hasChain: boolean;
+  pairs: number;
+}) {
+  const state = useAgentState(project);
+  const text = pairsToJudgeText(pairs);
+  const button = (
+    <AgentStart project={project} hasChain={hasChain} size="lg" testId="next-step-primary" />
+  );
+  if (text === null || state === null) return button;
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+      {button}
+      <span className="text-sm text-muted-foreground" data-testid="next-step-pairs">
+        {text}
+      </span>
+    </div>
+  );
+}
+
 const inline = 'text-link underline-offset-4 hover:underline';
 
 function Line({
@@ -198,10 +229,15 @@ function Line({
   switch (line.kind) {
     case 'working':
       return <>Agent arbeitet – {modelCount(line.count)} offen</>;
-    case 'waiting':
+    case 'waiting': {
+      const pairs = pairsToJudgeText(line.pairs);
       return (
-        <>{line.count === 1 ? '1 Modell wartet' : `${line.count} Modelle warten`} auf den Agenten</>
+        <>
+          {line.count === 1 ? '1 Modell wartet' : `${line.count} Modelle warten`} auf den Agenten
+          {pairs ? ` · ${pairs}` : ''}
+        </>
       );
+    }
     case 'failed':
     case 'expired':
       return (

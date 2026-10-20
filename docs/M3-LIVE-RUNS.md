@@ -340,8 +340,12 @@ the gate counts as partial runs of each model's gate; `eval:live` warns
 
 ```sh
 docker compose -p analyzr -f docker/compose.yaml exec server analyzr status --project "$RUN_PROJECT"
-#   models     31 (2 agent working, 14 waiting for agent, 15 waiting for review)
+#   models     31 (2 agent working, 14 waiting for agent, 15 waiting for review), about N pairs to judge
 ```
+
+While models wait for an agent, the models line ends with the size of the agents' next run (since
+M6 S2b's follow-up step 3b): about how many pairs the waiting models' next claims will be assigned,
+without the 2 tasks an agent holds. It is for information only, not a run instruction.
 
 The claimable count, as the headless script reads it (the token goes to curl on stdin):
 

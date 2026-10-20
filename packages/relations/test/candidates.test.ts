@@ -1,7 +1,7 @@
 import { Candidate } from '@analyzr/contracts';
 import { describe, expect, it } from 'vitest';
 
-import { generateCandidates, indexCandidates } from '../src/index.ts';
+import { generateCandidates, indexCandidates, projectCandidates } from '../src/index.ts';
 import { call, end, model, msgCatch, msgThrow, project, shuffled, start } from './support/facts.ts';
 
 const pairs = (cs: Candidate[]) => cs.map((c) => `${c.basis} ${c.type} ${c.from} -> ${c.to}`);
@@ -169,5 +169,22 @@ describe('generateCandidates', () => {
     expect(() => generateCandidates(shuffled(landscape), undefined, undefined, prepared)).toThrow(
       /other facts/,
     );
+  });
+
+  it('gives with the whole-project candidates each focus model’s own of a basis other than compatible', () => {
+    for (const options of [undefined, { lexicalPerEndpoint: 1, compatiblePerEndpoint: 2 }]) {
+      const { candidates, byFocus } = projectCandidates(
+        landscape,
+        options,
+        indexCandidates(landscape),
+      );
+      expect(candidates).toEqual(generateCandidates(landscape, undefined, options));
+      for (const { modelKey } of landscape.models) {
+        expect(byFocus.get(modelKey) ?? [], modelKey).toEqual(
+          generateCandidates(landscape, modelKey, options).filter((c) => c.basis !== 'compatible'),
+        );
+      }
+    }
+    expect(projectCandidates(project())).toEqual({ candidates: [], byFocus: new Map() });
   });
 });

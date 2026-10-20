@@ -604,6 +604,14 @@ describe('analyzr status', () => {
         }),
       'GET /api/v1/projects': () => json({ items: [PROJECT], nextCursor: null }),
       'GET /api/v1/projects/nordwind-handel/landscape': () => json(LANDSCAPE),
+      'GET /api/v1/projects/nordwind-handel/summary': () =>
+        json({
+          lastEventAt: '2026-10-07T00:00:00.000Z',
+          reviewItems: 2,
+          openPlacements: 0,
+          ask: 0,
+          pairsToJudge: 7300,
+        }),
     });
     const t = testIo({ ANALYZR_OWNER_KEY_FILE: keyFile }, api.fetch);
     expect(await runCli(['status'], t.io)).toBe(0);
@@ -611,7 +619,10 @@ describe('analyzr status', () => {
     expect(out).toContain('analyzr 0.1.0-alpha.0 at http://127.0.0.1:7400: ok, database ok');
     expect(out).toContain(`as owner (user, client analyzr-cli) via owner key ${keyFile}`);
     expect(out).toContain('nordwind-handel  Nordwind Handel GmbH  (role owner, seq 120)');
-    expect(out).toContain('models     2 (1 incorporated, 1 waiting for agent)');
+    // S2b follow-up step 3b: the agents' next run after the waiting models
+    expect(out).toContain(
+      'models     2 (1 incorporated, 1 waiting for agent), about 7300 pairs to judge\n',
+    );
     expect(out).toContain('relations  2 accepted, 1 proposed');
     expect(out).toContain('endpoints  1 accepted relations with a changed or missing endpoint');
     expect(out).toContain('findings   1 dangling-throw, 1 unresolved-call');
@@ -620,8 +631,65 @@ describe('analyzr status', () => {
     const j = testIo({ ANALYZR_OWNER_KEY_FILE: keyFile }, api.fetch);
     expect(await runCli(['status', '--json', '-p', 'nordwind-handel'], j.io)).toBe(0);
     expect(JSON.parse(j.out())).toMatchObject({
-      projects: [{ key: 'nordwind-handel', models: 2, endpointIssues: 1 }],
+      projects: [{ key: 'nordwind-handel', models: 2, endpointIssues: 1, pairsToJudge: 7300 }],
     });
+  });
+
+  it('names the pairs to judge only while models wait, and leaves them out when the summary fails', async () => {
+    const me = () =>
+      json({
+        principalId: 'prn_1',
+        kind: 'user',
+        handle: 'owner',
+        authMode: 'local',
+        clientId: 'analyzr-cli',
+      });
+    const done = {
+      ...LANDSCAPE,
+      models: LANDSCAPE.models.map((m) => ({ ...m, stage: 'incorporated' })),
+    };
+    const quiet = fakeApi({
+      'GET /health': () => json({ status: 'ok', version: '2', db: 'ok' }),
+      'GET /api/v1/me': me,
+      'GET /api/v1/projects': () => json({ items: [PROJECT], nextCursor: null }),
+      'GET /api/v1/projects/nordwind-handel/landscape': () => json(done),
+    });
+    const t = testIo({ ANALYZR_OWNER_KEY_FILE: keyFile }, quiet.fetch);
+    expect(await runCli(['status', '--json'], t.io)).toBe(0);
+    expect(JSON.parse(t.out())).toMatchObject({ projects: [{ pairsToJudge: 0 }] });
+    expect(quiet.seen.map((x) => x.path)).not.toContain('/api/v1/projects/nordwind-handel/summary');
+
+    const one = fakeApi({
+      'GET /health': () => json({ status: 'ok', version: '2', db: 'ok' }),
+      'GET /api/v1/me': me,
+      'GET /api/v1/projects': () => json({ items: [PROJECT], nextCursor: null }),
+      'GET /api/v1/projects/nordwind-handel/landscape': () => json(LANDSCAPE),
+      'GET /api/v1/projects/nordwind-handel/summary': () =>
+        json({
+          lastEventAt: '2026-10-07T00:00:00.000Z',
+          reviewItems: 0,
+          openPlacements: 0,
+          ask: 0,
+          pairsToJudge: 1,
+        }),
+    });
+    const singular = testIo({ ANALYZR_OWNER_KEY_FILE: keyFile }, one.fetch);
+    expect(await runCli(['status'], singular.io)).toBe(0);
+    expect(singular.out()).toContain('(1 incorporated, 1 waiting for agent), 1 pair to judge\n');
+
+    const failing = fakeApi({
+      'GET /health': () => json({ status: 'ok', version: '2', db: 'ok' }),
+      'GET /api/v1/me': me,
+      'GET /api/v1/projects': () => json({ items: [PROJECT], nextCursor: null }),
+      'GET /api/v1/projects/nordwind-handel/landscape': () => json(LANDSCAPE),
+      'GET /api/v1/projects/nordwind-handel/summary': () => problem(500, 'internal', 'boom'),
+    });
+    const text = testIo({ ANALYZR_OWNER_KEY_FILE: keyFile }, failing.fetch);
+    expect(await runCli(['status'], text.io)).toBe(0);
+    expect(text.out()).toContain('models     2 (1 incorporated, 1 waiting for agent)\n');
+    const asJson = testIo({ ANALYZR_OWNER_KEY_FILE: keyFile }, failing.fetch);
+    expect(await runCli(['status', '--json'], asJson.io)).toBe(0);
+    expect(JSON.parse(asJson.out())).toMatchObject({ projects: [{ pairsToJudge: null }] });
   });
 
   it('reports the server without credentials, and fails for a degraded server', async () => {

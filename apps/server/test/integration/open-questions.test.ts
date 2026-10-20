@@ -322,8 +322,14 @@ describe('open questions on nordwind-handel', () => {
       openPlacements: chainDetail.placements.filter(waits).length,
       ask: simSummary.totals.ask,
     });
-    // The walkthrough's state: „Offen für dich“ 98 (UX1's badges 48, 29 and 21).
-    expect(projectSummary).toMatchObject({ reviewItems: 48, openPlacements: 29, ask: 21 });
+    // The walkthrough's state: „Offen für dich“ 98 (UX1's badges 48, 29 and 21); the agent's
+    // run is done, nothing waits for it (S2b follow-up step 3b).
+    expect(projectSummary).toMatchObject({
+      reviewItems: 48,
+      openPlacements: 29,
+      ask: 21,
+      pairsToJudge: 0,
+    });
     expect(counts(afterSim, (q) => `${q.group} ${q.kind}`)).toEqual({
       'agent agent-question': 22,
       'ask black-box-partner': 6,

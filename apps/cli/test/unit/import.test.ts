@@ -18,6 +18,7 @@ import {
   formatNextSteps,
   formatWarningCounts,
   mergeImpacts,
+  pairsToJudgeText,
   ruleName,
   ruleSource,
   ruleStep,
@@ -693,14 +694,23 @@ describe('analyzr import', () => {
           ? json({ items: Array.from({ length: 50 }, (_, i) => task(200 + i)), nextCursor: null })
           : json({ items: Array.from({ length: 200 }, (_, i) => task(i)), nextCursor: 'page2' });
       },
+      // S2b follow-up step 3b: the pairs the waiting tasks will judge
+      'GET /api/v1/projects/demo/summary': () =>
+        json({
+          lastEventAt: '2026-10-07T00:00:00.000Z',
+          reviewItems: 0,
+          openPlacements: 0,
+          ask: 0,
+          pairsToJudge: 7300,
+        }),
     });
     await put('a.bpmn', '<bpmn/>', path.join(dir, 'next'));
     const t = testIo({ ANALYZR_TOKEN: AGENT_TOKEN }, api.fetch, { cwd: dir });
     expect(await runCli(['import', 'next', '-p', 'demo'], t.io)).toBe(0);
-    expect(api.seen.filter((s) => s.method === 'GET')).toHaveLength(3);
+    expect(api.seen.filter((s) => s.method === 'GET')).toHaveLength(4);
     expect(t.out()).toContain(
       [
-        'demo: 250 relations tasks waiting, placement task waiting: yes',
+        'demo: 250 relations tasks waiting, about 7300 pairs to judge, placement task waiting: yes',
         'next: let an agent work them, e.g. in Claude Code with the plugin analyzr:',
         '  /analyzr:relations demo',
         '  /analyzr:placements demo',
@@ -729,6 +739,43 @@ describe('analyzr import', () => {
     expect(formatNextSteps('demo', { relations: 0, placement: false })).toBe(
       'demo: 0 relations tasks waiting, placement task waiting: no\n',
     );
+  });
+
+  it('names the pairs the waiting tasks will judge only when above 0 (S2b follow-up step 3b)', () => {
+    const first = (w: Parameters<typeof formatNextSteps>[1]) =>
+      formatNextSteps('demo', w).split('\n')[0];
+    expect(first({ relations: 5, placement: false, pairs: 7300 })).toBe(
+      'demo: 5 relations tasks waiting, about 7300 pairs to judge, placement task waiting: no',
+    );
+    expect(first({ relations: 1, placement: true, pairs: 1 })).toBe(
+      'demo: 1 relations tasks waiting, 1 pair to judge, placement task waiting: yes',
+    );
+    expect(first({ relations: 2, placement: false, pairs: 0 })).toBe(
+      'demo: 2 relations tasks waiting, placement task waiting: no',
+    );
+    expect(first({ relations: 2, placement: false })).toBe(
+      'demo: 2 relations tasks waiting, placement task waiting: no',
+    );
+    expect(pairsToJudgeText(7300)).toBe('about 7300 pairs to judge');
+    expect(pairsToJudgeText(null)).toBeNull();
+  });
+
+  it('leaves the pairs out when the summary cannot be read', async () => {
+    const api = fakeApi({
+      'POST /api/v1/projects/demo/imports': importRoute(),
+      'GET /api/v1/projects/demo/analyses': (_req, url) =>
+        url.searchParams.get('kind') === 'placement'
+          ? json({ items: [], nextCursor: null })
+          : json({
+              items: [{ id: 'ana_1', kind: 'relations', state: 'queued' }],
+              nextCursor: null,
+            }),
+      'GET /api/v1/projects/demo/summary': () => problem(500, 'internal', 'boom'),
+    });
+    const t = testIo({ ANALYZR_TOKEN: AGENT_TOKEN }, api.fetch, { cwd: dir });
+    expect(await runCli(['import', 'next', '-p', 'demo'], t.io)).toBe(0);
+    expect(t.out()).toContain('demo: 1 relations tasks waiting, placement task waiting: no\n');
+    expect(t.err()).not.toContain('cannot list the waiting tasks');
   });
 
   it('still succeeds when the waiting tasks cannot be listed', async () => {

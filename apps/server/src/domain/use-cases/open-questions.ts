@@ -46,6 +46,7 @@ import {
   type ValueChainRevisionId,
   type WithdrawOpenQuestionAnswerResult,
 } from '@analyzr/contracts';
+import type { ProjectCandidates } from '@analyzr/relations';
 
 import { sourceKindOf, type Actor } from '../actor.ts';
 import { readModelAmendments } from '../amendments/state.ts';
@@ -240,6 +241,11 @@ async function loadSubmissions(
 /** Projects whose candidates a use-case instance keeps (least recently used first out). */
 const CANDIDATE_CACHE_PROJECTS = 8;
 
+interface CandidateEntry {
+  key: string;
+  candidates: ProjectCandidates;
+}
+
 /**
  * Every model's candidates, memoized per project on the head facts: the key
  * is the sorted `modelKey=facts_hash` of the live models, and
@@ -247,10 +253,14 @@ const CANDIDATE_CACHE_PROJECTS = 8;
  * exact. Whole-project candidates grow quadratically with the landscape
  * (about 2.2 s at 310 models), while the read model itself takes
  * milliseconds; the list's pages, the tab's count, the model view's section
- * and the export then pay it once per ingest, not per request.
+ * and the export then pay it once per ingest, not per request. Each entry
+ * also holds what every focus model's own candidates give of a basis other
+ * than `compatible` (`AnalysisPort.projectCandidates`, from the same pass),
+ * which the summary's pairs to judge read (M6 S2b follow-up step 3b) through
+ * {@link loadOpenQuestionInput}, with no lookup of their own.
  */
 export class CandidateCache {
-  private readonly entries = new Map<ProjectId, { key: string; candidates: Candidate[] }>();
+  private readonly entries = new Map<ProjectId, CandidateEntry>();
   private readonly size: number;
 
   constructor(size = CANDIDATE_CACHE_PROJECTS) {
@@ -261,8 +271,8 @@ export class CandidateCache {
     projectId: ProjectId,
     projectFacts: ProjectFacts,
     hashes: ReadonlyMap<string, string>,
-    compute: (facts: ProjectFacts) => Candidate[],
-  ): Candidate[] {
+    compute: (facts: ProjectFacts) => ProjectCandidates,
+  ): ProjectCandidates {
     const parts = projectFacts.models.map((m) => [m.modelKey, hashes.get(m.modelKey)] as const);
     // A model without a known head hash: no exact key, so no cache.
     if (parts.some(([, hash]) => hash === undefined)) return compute(projectFacts);
@@ -288,13 +298,24 @@ export class CandidateCache {
   }
 }
 
+/**
+ * What {@link loadOpenQuestionInput} reads: the read model's input and, from
+ * the same candidate pass (one {@link CandidateCache} lookup), per model key
+ * the candidates of a basis other than `compatible` that
+ * `generateCandidates` around that model gives (`ProjectCandidates.byFocus`;
+ * the summary's pairs to judge, M6 S2b follow-up step 3b).
+ */
+export interface LoadedOpenQuestionInput extends OpenQuestionInput {
+  ownCandidates: ReadonlyMap<string, readonly Candidate[]>;
+}
+
 /** Everything the read model reads, in the caller's read snapshot. */
 export async function loadOpenQuestionInput(
   tx: Tx,
   deps: UseCaseDeps,
   projectId: ProjectId,
   cache: CandidateCache = new CandidateCache(0),
-): Promise<OpenQuestionInput> {
+): Promise<LoadedOpenQuestionInput> {
   const procedure = deps.expectedProcedure();
   const projectFacts = await tx.facts.headProjectFacts(projectId);
   const revisionHeads = await tx.revisions.heads(projectId);
@@ -325,6 +346,9 @@ export async function loadOpenQuestionInput(
   ]);
   const chain = await loadChain(tx, deps, projectId);
   const amendments = await readModelAmendments(tx, projectId);
+  const pass = cache.get(projectId, projectFacts, hashes, (facts) =>
+    deps.analysis.projectCandidates(facts),
+  );
   return {
     projectFacts,
     models,
@@ -333,9 +357,8 @@ export async function loadOpenQuestionInput(
     histories,
     judged,
     noLinks,
-    candidates: cache.get(projectId, projectFacts, hashes, (facts) =>
-      deps.analysis.candidates(facts),
-    ),
+    candidates: pass.candidates,
+    ownCandidates: pass.byFocus,
     chain: chain?.chain ?? null,
     submissions: await loadSubmissions(tx, deps, projectId, models, chain),
     answers: await tx.openQuestionAnswers.list(projectId),

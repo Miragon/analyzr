@@ -65,7 +65,9 @@ import { userPath } from './user-path';
  * selection behind „Gesammelt annehmen“, closed without a decision; the
  * accept itself runs in `trust-calls.spec.ts` on projects of its own); S2b
  * follow-up step 3's „Vorschau“ of a re-import on `nordwind-handel` (the
- * cost line with the pairs judged again, a dry run only, the heads kept).
+ * cost line with the pairs judged again, a dry run only, the heads kept);
+ * step 3b's size of the agents' run beside the agent row of
+ * `signavio-beispiel`'s „Als Nächstes“, within UX1's budget.
  */
 
 const ROOT = join(import.meta.dirname, '../../..');
@@ -634,6 +636,27 @@ test('UX1: the other two projects and the projects list, desktop and mobile', as
   // signavio-beispiel: descriptive models, no agent yet; „Offene Punkte“ is no longer 0 everywhere.
   await settle(page, `/projects/${SIGNAVIO}`, '[data-testid=model-row]');
   await expect(page.getByTestId('next-step')).toBeVisible();
+  // S2b follow-up step 3b: its models wait, so the agent row names the size of the agents' run
+  // (the summary's count), and „Als Nächstes“ stays within UX1's budget with it.
+  const { pairsToJudge } = await json<{ pairsToJudge: number }>(
+    `/api/v1/projects/${SIGNAVIO}/summary`,
+  );
+  // Measured with the suffix only: its count stays above 1 („etwa …“).
+  expect(pairsToJudge).toBeGreaterThan(1);
+  await expect(page.getByTestId('next-step-pairs')).toHaveText(
+    `etwa ${pairsToJudge.toLocaleString('de-DE')} mögliche Relationen`,
+  );
+  const signavioBlock = await page.getByTestId('next-step').evaluate((el) => ({
+    words: (el as HTMLElement).innerText.split(/\s+/).filter((w) => /[\p{L}\p{N}]/u.test(w)).length,
+    controls: el.querySelectorAll('button, a[href], input, select').length,
+  }));
+  console.log(
+    `${SIGNAVIO} „Als Nächstes“: ${signavioBlock.words} words, ${signavioBlock.controls} controls`,
+  );
+  expect(signavioBlock.words, 'words above the table').toBeLessThanOrEqual(BUDGET.nextStepWords);
+  expect(signavioBlock.controls, 'controls above the table').toBeLessThanOrEqual(
+    BUDGET.nextStepControls,
+  );
   expect(await page.getByTestId('open-points').count()).toBeGreaterThan(0);
   expect(await visibleText(page)).not.toMatch(ID_PATTERN);
   await measure(

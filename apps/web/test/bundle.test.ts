@@ -136,7 +136,10 @@ const BUDGET = 40 * 1024;
  * „Vorschau“'s cost line, its placements line and the two lists in „Was
  * ändert sich?“, the warning for a claimed relations task with the second
  * click („Trotzdem importieren“), in `lib/agent-cost.ts` with the second
- * click the amend form now shares.
+ * click the amend form now shares. 227.9 KB after its step 3b: the size of
+ * the agents' next run beside the agent row of „Als Nächstes“ and in the
+ * waiting text after an import (`pairsToJudgeText`, the summary's query on
+ * „Übersicht“ and „Hochladen“).
  */
 const ENTRY_CEILING = 240 * 1024;
 

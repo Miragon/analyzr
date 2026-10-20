@@ -31,7 +31,7 @@ import { nextStep } from '@/lib/next-step';
 import { useProjectPermissions } from '@/lib/permissions';
 import { useProjectCounts } from '@/lib/project-counts';
 import { usePipelineState } from '@/lib/pipeline-state';
-import { amendmentsQuery, landscapeQuery, modelsQuery } from '@/lib/queries';
+import { amendmentsQuery, landscapeQuery, modelsQuery, projectSummaryQuery } from '@/lib/queries';
 import { isBulkCall, reviewQueue, stageCounts } from '@/lib/review';
 import { placementQueue } from '@/lib/value-chain';
 
@@ -82,6 +82,12 @@ function OverviewTab() {
   const chain = counts.chain;
   const pipeline = usePipelineState(project, list);
   const { taskOf } = pipeline;
+  // The agents' next run beside the agent row (S2b follow-up step 3b): only while models wait.
+  const summary = useQuery({
+    ...projectSummaryQuery(project),
+    enabled: pipeline.waiting.length > 0,
+  });
+  const pairsToJudge = summary.data?.pairsToJudge ?? 0;
 
   // Models whose head carries amendments from analyzr (applied ones; a deleted model has none in view).
   const amended = useMemo(() => {
@@ -113,8 +119,9 @@ function OverviewTab() {
       isOwner: can.isOwner,
       canReview: can.canReview,
       activeToken: agentState === 'start',
+      pairsToJudge,
     });
-  }, [list, relations, chain, pipeline, counts, can, agentState]);
+  }, [list, relations, chain, pipeline, counts, can, agentState, pairsToJudge]);
 
   if (models.isPending) return <Skeleton className="h-40 w-full" />;
   if (models.isError)

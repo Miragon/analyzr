@@ -19,6 +19,7 @@ import {
 } from '../credentials.ts';
 import { ApiError, CliError } from '../errors.ts';
 import type { CliIo } from '../io.ts';
+import { pairsToJudge, pairsToJudgeText } from './import.ts';
 
 export interface ProjectStatus {
   key: string;
@@ -31,6 +32,12 @@ export interface ProjectStatus {
   /** Accepted relations whose endpoint changed or went missing (open items). */
   endpointIssues: number;
   findings: Record<string, number>;
+  /**
+   * About how many pairs the relations tasks waiting for an agent will judge
+   * (`ProjectSummary.pairsToJudge`, M6 S2b follow-up step 3b): 0 while no
+   * model waits, `null` when the summary could not be read.
+   */
+  pairsToJudge: number | null;
 }
 
 export interface Status {
@@ -49,7 +56,11 @@ function tally(values: readonly string[]): Record<string, number> {
   return out;
 }
 
-export function projectStatus(project: Project, l: Landscape): ProjectStatus {
+export function projectStatus(
+  project: Project,
+  l: Landscape,
+  pairs: number | null = 0,
+): ProjectStatus {
   return {
     key: project.key,
     name: project.name,
@@ -61,6 +72,7 @@ export function projectStatus(project: Project, l: Landscape): ProjectStatus {
     endpointIssues: l.relations.filter((r) => r.status === 'accepted' && r.endpointState !== 'ok')
       .length,
     findings: tally(l.findings.map((f) => f.kind)),
+    pairsToJudge: pairs,
   };
 }
 
@@ -80,10 +92,11 @@ export function formatStatus(s: Status): string {
   }
   if (s.note) lines.push(s.note);
   for (const p of s.projects) {
+    const pairs = pairsToJudgeText(p.pairsToJudge);
     lines.push(
       '',
       `${p.key}  ${p.name}  (role ${p.role}, seq ${p.seq})`,
-      `  models     ${p.models}${p.models > 0 ? ` (${list(p.stages)})` : ''}`,
+      `  models     ${p.models}${p.models > 0 ? ` (${list(p.stages)})` : ''}${pairs ? `, ${pairs}` : ''}`,
       `  relations  ${list(p.relations)}`,
       `  endpoints  ${p.endpointIssues === 0 ? 'ok' : `${p.endpointIssues} accepted relations with a changed or missing endpoint`}`,
       `  findings   ${list(p.findings)}`,
@@ -102,7 +115,8 @@ export interface StatusOptions extends CredentialOptions {
 
 /**
  * `analyzr status [--project <p>] [--json]`: server health, the caller, and per
- * project the models by stage, relations by status, endpoint problems and
+ * project the models by stage (while some wait for an agent, with the pairs
+ * their tasks will judge), relations by status, endpoint problems and
  * findings. Without credentials, or when the server rejects the owner key
  * found at the default location (another analyzr instance's key, e.g. from
  * `pnpm dev` while the Docker stack runs), it reports the server only.
@@ -186,7 +200,9 @@ export async function statusCommand(io: CliIo, opts: StatusOptions): Promise<voi
         `read the landscape of ${p.key}`,
         getLandscape({ client: api.client, path: { project: p.key } }),
       );
-      status.projects.push(projectStatus(p, view));
+      // The agents' next run, only while models wait for it (one more request).
+      const waiting = view.models.some((m) => m.stage === 'waiting_for_agent');
+      status.projects.push(projectStatus(p, view, waiting ? await pairsToJudge(api, p.key) : 0));
     }
     if (page.nextCursor) status.note = 'showing the first 200 projects';
   }

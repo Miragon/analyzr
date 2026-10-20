@@ -363,7 +363,7 @@ export const getProject = <ThrowOnError extends boolean = false>(
 /**
  * A project's open work and the time of its latest change (the projects list)
  *
- * The counts of the project tabs’ badges in one call: `reviewItems` (relations proposed, or accepted with an endpoint that changed or is missing), `openPlacements` (the same rule on the value chain, 0 without one) and `ask` (the open questions’ `totals.ask` of `state=open`), plus `lastEventAt`. Readable by every member (permission `read`); the web UI shows the counts only to roles that may decide (editor, owner).
+ * The counts of the project tabs’ badges in one call: `reviewItems` (relations proposed, or accepted with an endpoint that changed or is missing), `openPlacements` (the same rule on the value chain, 0 without one) and `ask` (the open questions’ `totals.ask` of `state=open`), plus `lastEventAt` and `pairsToJudge` (about how many possible relations the agents’ next run will judge: those of the relations tasks an agent may claim now, each pair once, without judged and settled pairs; tasks an agent holds count not). Readable by every member (permission `read`); the web UI shows the badge counts only to roles that may decide (editor, owner), and `pairsToJudge` to every member beside the models waiting for an agent.
  */
 export const getProjectSummary = <ThrowOnError extends boolean = false>(
   options: Options<GetProjectSummaryData, ThrowOnError>,

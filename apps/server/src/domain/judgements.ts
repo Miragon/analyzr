@@ -394,7 +394,10 @@ export type RelationState = Pick<
  * holds it, a queued one whose key sorts first), so this is an upper bound
  * of what the claims of `models` are assigned, and while such tasks wait it
  * counts pairs they would judge anyway. Telling them apart needs every such
- * partner's candidates, too slow for a preview.
+ * partner's candidates, too slow for a preview. With every claimable task's
+ * model in `models` and the pairs live claims hold for them in `judged`
+ * ({@link heldPairs}), it is exactly the union of their claims (the
+ * summary's pairs to judge, M6 S2b follow-up step 3b).
  *
  * @param relations every relation as it will be when the claims run (after
  *   the write's recompute)
@@ -427,6 +430,38 @@ export function pairsToJudge(src: {
   }
   for (const pair of assigned) {
     if (models.has(modelOf(pair.from)) || models.has(modelOf(pair.to))) add(pair);
+  }
+  return out;
+}
+
+// ------------------------------------------------- the agents' next run (M6 S2b follow-up step 3b)
+
+/** A claimed `relations` task as {@link heldPairs} reads it. */
+export interface HeldClaim {
+  modelKey: string;
+  /** The pairs its claim was assigned (`null` before the claim rendered). */
+  assignment: readonly TypedPair[] | null;
+}
+
+/**
+ * The pairs claimed tasks with a live lease hold for the models of `waiting`
+ * ({@link planClaim}'s rule 1; the caller passes the live claims only): the
+ * pairs of a claim's assignment whose other end lies in such a model the
+ * claim saw as it is now (`saw`), which that model's claim then skips. Pair
+ * keys.
+ */
+export function heldPairs<T extends HeldClaim>(
+  claimed: Iterable<T>,
+  waiting: ReadonlySet<string>,
+  saw: (claim: T, modelKey: string) => boolean,
+): Set<string> {
+  const out = new Set<string>();
+  for (const claim of claimed) {
+    for (const pair of claim.assignment ?? []) {
+      for (const end of [modelOf(pair.from), modelOf(pair.to)]) {
+        if (end !== claim.modelKey && waiting.has(end) && saw(claim, end)) out.add(pairKey(pair));
+      }
+    }
   }
   return out;
 }

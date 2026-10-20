@@ -3,6 +3,7 @@ import path from 'node:path';
 import {
   createProject,
   getProject,
+  getProjectSummary,
   importModels,
   listAnalyses,
   listAutoAcceptRules,
@@ -365,7 +366,9 @@ function cancelLines(tasks: ImportImpact['relationsTasks']): string[] {
  * bundle does not name (nothing is deleted); up to five examples each. A
  * preview of several batches says that a call into a later batch shows as
  * unresolved and the pairs between new models of different batches are not
- * counted, and its counts of agent work are "about".
+ * counted (where the whole count shows after the import: the waiting line
+ * and `analyzr status`, M6 S2b follow-up step 3b), and its counts of agent
+ * work are "about".
  */
 export function formatImpact(impact: ImportImpact, project: string, batches = 1): string {
   const sample = (items: readonly string[], count: number) =>
@@ -428,7 +431,7 @@ export function formatImpact(impact: ImportImpact, project: string, batches = 1)
   }
   if (batches > 1) {
     lines.push(
-      `  previewed in ${batches} batches, each against the project's head: a call into a later batch shows as unresolved, and the pairs between new models of different batches are not counted`,
+      `  previewed in ${batches} batches, each against the project's head: a call into a later batch shows as unresolved, and the pairs between new models of different batches are not counted (after the import, the waiting line and analyzr status count them)`,
     );
   }
   return `${lines.join('\n')}\n`;
@@ -649,12 +652,48 @@ export function formatImport(summary: ImportSummary, opts: { verbose?: boolean }
 export interface WaitingTasks {
   relations: number;
   placement: boolean;
+  /**
+   * About how many pairs the waiting relations tasks will judge
+   * (`ProjectSummary.pairsToJudge`, M6 S2b follow-up step 3b); absent while
+   * none waits or when the summary cannot be read.
+   */
+  pairs?: number;
+}
+
+/**
+ * The pairs the waiting relations tasks will judge (`GET …/summary`,
+ * permission `read`, so any credential works; M6 S2b follow-up step 3b),
+ * `null` when the summary cannot be read: the line is information only.
+ */
+export async function pairsToJudge(api: Api, project: string): Promise<number | null> {
+  try {
+    const summary = await call(
+      api,
+      `read the summary of ${project}`,
+      getProjectSummary({ client: api.client, path: { project } }),
+    );
+    return summary.pairsToJudge;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * "about 7300 pairs to judge" ("1 pair to judge"), the size of the agents'
+ * next run after the waiting models (`analyzr import`'s waiting line,
+ * `analyzr status`'s models line; the web's „etwa 7.300 mögliche
+ * Relationen“); `null` for none.
+ */
+export function pairsToJudgeText(n: number | undefined | null): string | null {
+  if (n === undefined || n === null || n <= 0) return null;
+  return n === 1 ? '1 pair to judge' : `about ${n} pairs to judge`;
 }
 
 /**
  * The queued tasks of a project (`GET …/analyses`, permission `read`, so any
  * credential works): every page of the relations tasks (200 each) and one
- * placement task. The project's state, not this import's effect.
+ * placement task, and while relations tasks wait the pairs they will judge
+ * ({@link pairsToJudge}). The project's state, not this import's effect.
  */
 export async function waitingTasks(api: Api, project: string): Promise<WaitingTasks> {
   const what = `list the waiting tasks of ${project}`;
@@ -687,7 +726,12 @@ export async function waitingTasks(api: Api, project: string): Promise<WaitingTa
       query: { state: 'queued', kind: 'placement', limit: 1 },
     }),
   );
-  return { relations, placement: placement.items.length > 0 };
+  const pairs = relations > 0 ? await pairsToJudge(api, project) : null;
+  return {
+    relations,
+    placement: placement.items.length > 0,
+    ...(pairs === null ? {} : { pairs }),
+  };
 }
 
 /**
@@ -934,7 +978,8 @@ export function trustSteps(
 
 /**
  * The next-step block after a text-mode import: the waiting tasks in the
- * spec's wording (`relations tasks` also for one), the step the identity
+ * spec's wording (`relations tasks` also for one), with the pairs they will
+ * judge when known and above 0 ({@link pairsToJudgeText}), the step the identity
  * warnings call for ({@link identitySteps}), the bulk accept of the unique
  * calls of derived models that wait ({@link trustSteps}), then the agent
  * step only when something waits (`then:` after another step), each slash
@@ -946,8 +991,9 @@ export function formatNextSteps(
   identity: readonly string[] = [],
   trust: readonly string[] = [],
 ): string {
+  const pairs = pairsToJudgeText(waiting.pairs);
   const lines = [
-    `${project}: ${waiting.relations} relations tasks waiting, placement task waiting: ${waiting.placement ? 'yes' : 'no'}`,
+    `${project}: ${waiting.relations} relations tasks waiting${pairs ? `, ${pairs}` : ''}, placement task waiting: ${waiting.placement ? 'yes' : 'no'}`,
     ...identity,
     ...trust,
   ];

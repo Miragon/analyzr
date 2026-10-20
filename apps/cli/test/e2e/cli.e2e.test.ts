@@ -27,6 +27,7 @@ import { Client } from '@modelcontextprotocol/client';
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
+import { pairsToJudgeText } from '../../src/commands/import.ts';
 import type { Status } from '../../src/commands/status.ts';
 import type { CliIo } from '../../src/io.ts';
 import { CLI_MAIN } from '../../src/mcp-config.ts';
@@ -120,6 +121,8 @@ describe('analyzr seed', () => {
       expect(expected, p.key).toBeDefined();
       expect(p.models).toBe(expected?.counts.models);
       expect(p.stages).toEqual({ waiting_for_agent: expected?.counts.models });
+      // S2b follow-up step 3b: every model waits, so the agents' first run has pairs to judge
+      if (p.key === 'nordwind-handel') expect(p.pairsToJudge).toBeGreaterThan(0);
       expect(p.relations).toEqual({
         accepted: expected?.counts.rules.accepted,
         proposed: expected?.counts.rules.proposed,
@@ -1477,7 +1480,13 @@ describe('analyzr import and models (M6 S1)', () => {
     expect(r.out).toContain(
       'm6-s1: 2 files, 2 created, 0 revised, 0 unchanged, 0 failed, 2 skipped (1 not BPMN, 1 same model key)\n',
     );
-    expect(r.out).toContain('m6-s1: 2 relations tasks waiting, placement task waiting: no\n');
+    // S2b follow-up step 3b: the pairs the waiting tasks will judge, as `status` counts them
+    const project = (await status()).projects.find((p) => p.key === 'm6-s1');
+    expect(project?.stages).toEqual({ waiting_for_agent: 2 });
+    const pairs = pairsToJudgeText(project?.pairsToJudge ?? null);
+    expect(r.out).toContain(
+      `m6-s1: 2 relations tasks waiting${pairs ? `, ${pairs}` : ''}, placement task waiting: no\n`,
+    );
     expect(r.out).toContain('  /analyzr:relations m6-s1\n');
 
     const again = await analyzr(['import', 'm6-s1', '-p', 'm6-s1', '--json']);

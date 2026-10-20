@@ -51,6 +51,7 @@ import {
   landscapeQuery,
   modelsQuery,
   openQuestionSummaryQuery,
+  projectSummaryQuery,
   valueChainQuery,
 } from '@/lib/queries';
 import { isBulkCall } from '@/lib/review';
@@ -348,9 +349,15 @@ function NextSteps({
   const calls = can.canReview
     ? callsWaitingText(landscape.data?.relations.filter(isBulkCall).length ?? 0)
     : null;
+  const waitingModels = models.data?.filter((m) => m.stage === 'waiting_for_agent').length ?? 0;
+  // The agents' next run (S2b follow-up step 3b), from a summary fetched after the import only
+  // (a failed fetch counts as fetched after mount too, with the data from before it); an older
+  // server's summary without the field leaves `waitingText`'s default, no pairs.
+  const next = useQuery({ ...projectSummaryQuery(project), enabled: fresh && waitingModels > 0 });
   const waiting = waitingText(
-    models.data?.filter((m) => m.stage === 'waiting_for_agent').length ?? 0,
+    waitingModels,
     chain.data?.pipeline.task?.state === 'queued',
+    next.isSuccess && next.isFetchedAfterMount ? next.data.pairsToJudge : 0,
   );
   const ask = askNowText(summary.data?.totals.ask ?? 0);
   return (

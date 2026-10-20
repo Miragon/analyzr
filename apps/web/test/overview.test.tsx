@@ -33,6 +33,7 @@ import {
   modelsQuery,
   openQuestionSummaryQuery,
   projectQuery,
+  projectSummaryQuery,
   valueChainQuery,
   type OpenQuestionSummary,
 } from '../src/lib/queries';
@@ -78,7 +79,7 @@ describe('„Als Nächstes“: the priority rules (first match wins)', () => {
       reviewItems: 3,
       firstRelation: 'rel_1',
     });
-    expect(step.primary).toEqual({ kind: 'connect-agent' });
+    expect(step.primary).toEqual({ kind: 'connect-agent', pairs: 0 });
   });
 
   it('starts the agent first while models wait, the review as the second line', () => {
@@ -88,7 +89,7 @@ describe('„Als Nächstes“: the priority rules (first match wins)', () => {
       reviewItems: 42,
       firstRelation: 'rel_1',
     });
-    expect(step.primary).toEqual({ kind: 'start-agent', waiting: 2 });
+    expect(step.primary).toEqual({ kind: 'start-agent', waiting: 2, pairs: 0 });
     expect(step.lines).toEqual([{ kind: 'review-too', count: 42, relationId: 'rel_1' }]);
   });
 
@@ -115,7 +116,7 @@ describe('„Als Nächstes“: the priority rules (first match wins)', () => {
     });
     expect(step.primary).toEqual({ kind: 'review', count: 2, relationId: 'rel_1' });
     expect(step.lines).toEqual([
-      { kind: 'waiting', count: 1 },
+      { kind: 'waiting', count: 1, pairs: 0 },
       { kind: 'failed', modelKeys: ['f'] },
     ]);
   });
@@ -137,7 +138,7 @@ describe('„Als Nächstes“: the priority rules (first match wins)', () => {
       derivedCalls: 3,
       firstRelation: 'rel_1',
     });
-    expect(step.primary).toEqual({ kind: 'start-agent', waiting: 1 });
+    expect(step.primary).toEqual({ kind: 'start-agent', waiting: 1, pairs: 0 });
     expect(step.lines).toEqual([
       { kind: 'failed', modelKeys: ['f'] },
       { kind: 'calls', count: 3, first: true },
@@ -162,7 +163,7 @@ describe('„Als Nächstes“: the priority rules (first match wins)', () => {
       firstRelation: 'rel_1',
       hasChain: false,
     });
-    expect(step.primary).toEqual({ kind: 'connect-agent' });
+    expect(step.primary).toEqual({ kind: 'connect-agent', pairs: 0 });
     expect(step.lines).toEqual([{ kind: 'calls', count: 1, first: true }, { kind: 'no-chain' }]);
   });
 
@@ -180,8 +181,29 @@ describe('„Als Nächstes“: the priority rules (first match wins)', () => {
     // part of the primary's count, not before the agent: „Davon …“
     expect(step.lines).toEqual([
       { kind: 'calls', count: 2, first: false },
-      { kind: 'waiting', count: 1 },
+      { kind: 'waiting', count: 1, pairs: 0 },
     ]);
+  });
+
+  it('carries the pairs the waiting tasks will judge on the agent row, not without waiting models (S2b follow-up step 3b)', () => {
+    const pairs = { ...base, pairsToJudge: 7300 };
+    expect(nextStep({ ...pairs, waiting: ['a', 'b'] }).primary).toEqual({
+      kind: 'start-agent',
+      waiting: 2,
+      pairs: 7300,
+    });
+    expect(nextStep({ ...pairs, waiting: ['a'], activeToken: false }).primary).toEqual({
+      kind: 'connect-agent',
+      pairs: 7300,
+    });
+    expect(nextStep({ ...pairs, waiting: ['a'], isOwner: false }).lines).toEqual([
+      { kind: 'waiting', count: 1, pairs: 7300 },
+    ]);
+    // only failed analyses: no waiting model, no pairs (a stale summary says nothing)
+    expect(nextStep({ ...pairs, failed: ['f'], activeToken: false }).primary).toEqual({
+      kind: 'connect-agent',
+      pairs: 0,
+    });
   });
 
   it('names a missing chain once relations exist, for reviewers only, at most two lines', () => {
@@ -290,6 +312,8 @@ interface Setup {
   summary?: OpenQuestionSummary;
   tokens?: AgentToken[];
   claimed?: AnalysisTask[];
+  /** `ProjectSummary.pairsToJudge` (S2b follow-up step 3b); no summary without it. */
+  pairs?: number;
 }
 
 function setup(path: string, s: Setup = {}) {
@@ -318,6 +342,14 @@ function setup(path: string, s: Setup = {}) {
   queryClient.setQueryData(analysesQuery('demo', 'claimed').queryKey, s.claimed ?? []);
   queryClient.setQueryData(analysesQuery('demo', 'failed').queryKey, []);
   queryClient.setQueryData(amendmentsQuery('demo').queryKey, []);
+  if (s.pairs !== undefined)
+    queryClient.setQueryData(projectSummaryQuery('demo').queryKey, {
+      lastEventAt: '2026-10-07T09:00:00.000Z',
+      reviewItems: 0,
+      openPlacements: 0,
+      ask: 0,
+      pairsToJudge: s.pairs,
+    });
   const router = createAppRouter({
     queryClient,
     history: createMemoryHistory({ initialEntries: [path] }),
@@ -378,6 +410,55 @@ describe('„Übersicht“', () => {
     );
     await user.keyboard('{Escape}');
     expect(screen.queryByTestId('agent-start')).toBeNull();
+  });
+
+  it('names the size of the agents’ next run beside „Agent starten“ and in the waiting line, within the budget', async () => {
+    setup('/projects/demo', {
+      models: [
+        model({ key: 'a/wait', stage: 'waiting_for_agent', openItems: 0 }),
+        model({ key: 'b/review', stage: 'waiting_for_review', openItems: 1 }),
+      ],
+      relations: [proposal('rel_01P', 'b/review', 'a/wait')],
+      tokens: [TOKEN],
+      pairs: 7300,
+    });
+    const block = await screen.findByTestId('next-step');
+    await within(block).findByRole('button', { name: 'Agent starten' });
+    expect((await within(block).findByTestId('next-step-pairs')).textContent).toBe(
+      'etwa 7.300 mögliche Relationen',
+    );
+    const budget = measure(block);
+    expect(budget.words).toBeLessThanOrEqual(40);
+    expect(budget.controls).toBeLessThanOrEqual(5);
+  });
+
+  it('adds the pairs to the waiting line for editors; one pair without „etwa“, none for 0', async () => {
+    setup('/projects/demo', {
+      role: 'editor',
+      models: [model({ key: 'a/wait', stage: 'waiting_for_agent', openItems: 0 })],
+      pairs: 1,
+    });
+    const block = await screen.findByTestId('next-step');
+    await waitFor(() =>
+      expect(
+        within(block)
+          .getAllByTestId('next-step-line')
+          .map((l) => l.textContent),
+      ).toContain('1 Modell wartet auf den Agenten · 1 mögliche Relation'),
+    );
+    expect(within(block).queryByTestId('next-step-pairs')).toBeNull();
+  });
+
+  it('says nothing of pairs when the waiting tasks will judge none', async () => {
+    setup('/projects/demo', {
+      models: [model({ key: 'a/wait', stage: 'waiting_for_agent', openItems: 0 })],
+      tokens: [TOKEN],
+      pairs: 0,
+    });
+    const block = await screen.findByTestId('next-step');
+    await within(block).findByRole('button', { name: 'Agent starten' });
+    expect(within(block).queryByTestId('next-step-pairs')).toBeNull();
+    expect(block.textContent).not.toContain('mögliche');
   });
 
   it('asks the owner to connect an agent while models wait and no token is active', async () => {

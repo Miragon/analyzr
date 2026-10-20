@@ -353,7 +353,7 @@ describe('analyzr import with a hand-written manifest', () => {
         '  change or lose an end of accepted relations: 0',
         '  findings: 2 added, 0 resolved: unresolved-call m/f00#Call, unresolved-call m/f00#Call',
         '  not in the bundle, kept in analyzr (nothing is deleted): 1 key: alt/modell',
-        "  previewed in 2 batches, each against the project's head: a call into a later batch shows as unresolved, and the pairs between new models of different batches are not counted",
+        "  previewed in 2 batches, each against the project's head: a call into a later batch shows as unresolved, and the pairs between new models of different batches are not counted (after the import, the waiting line and analyzr status count them)",
         '',
       ].join('\n'),
     );

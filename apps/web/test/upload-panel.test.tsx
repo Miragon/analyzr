@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { BPMN_FILE_SUFFIXES } from '@analyzr/contracts/paths';
 
 import { UploadPanel } from '../src/components/upload-panel';
+import { keys } from '../src/lib/queries';
 import { model, noLink, provenance, relation } from './support/fixtures';
 import { findToast, json, renderWithRouter, stubApi, type Call } from './support/render';
 
@@ -343,6 +344,15 @@ describe('UploadPanel', () => {
           totals: { ask: 9, agent: 0, proposal: 0, info: 0 },
           askByModel: {},
         }),
+      // S2b follow-up step 3b: the agents' next run, read after the import
+      'GET /api/v1/projects/demo/summary': () =>
+        json({
+          lastEventAt: '2026-10-07T09:00:00.000Z',
+          reviewItems: 0,
+          openPlacements: 0,
+          ask: 9,
+          pairsToJudge: 7300,
+        }),
     });
     await render();
     fireEvent.change(screen.getByTestId('file-input'), {
@@ -351,10 +361,10 @@ describe('UploadPanel', () => {
     await importNow();
     const next = await screen.findByTestId('upload-next');
     await waitFor(() => expect(within(next).queryByTestId('upload-next-loading')).toBeNull());
-    // „Agent verbinden“ once the owner's tokens are known
+    // „Agent verbinden“ once the owner's tokens are known, the pairs once the summary is read
     await waitFor(() =>
       expect(within(next).getByTestId('upload-next-agent').textContent).toBe(
-        '2 Modelle warten auf den AgentenAgent verbinden',
+        '2 Modelle warten auf den Agenten · etwa 7.300 mögliche RelationenAgent verbinden',
       ),
     );
     // without an active token the owner connects one first
@@ -368,6 +378,60 @@ describe('UploadPanel', () => {
       within(next).getByRole('link', { name: 'Offene Fragen ansehen' }).getAttribute('href'),
     ).toBe('/projects/demo/open-questions');
     expect(within(next).getByTestId('upload-overview').getAttribute('href')).toBe('/projects/demo');
+  });
+
+  it('names no pairs from a summary cached before the import when reading it again fails (S2b follow-up step 3b)', async () => {
+    const calls = stubApi({
+      [`POST ${IMPORT_PATH}`]: (call) =>
+        json({
+          files: (call.body as string[]).map((path) => ({
+            path,
+            modelKey: path.replace(/\.bpmn$/, ''),
+            outcome: 'created',
+            problem: null,
+          })),
+        }),
+      'GET /api/v1/projects/demo': () =>
+        json({
+          id: 'prj_01DEMO',
+          key: 'demo',
+          name: 'Demo',
+          role: 'owner',
+          lastSeq: 3,
+          createdAt: '2026-10-07T09:00:00.000Z',
+        }),
+      'GET /api/v1/projects/demo/agent-tokens': () => json({ items: [] }),
+      'GET /api/v1/projects/demo/models': () =>
+        json({
+          items: [model({ key: 'a', stage: 'waiting_for_agent' })],
+          nextCursor: null,
+        }),
+      'GET /api/v1/projects/demo/summary': () =>
+        json({ title: 'Internal Server Error', status: 500, code: 'internal' }, 500),
+    });
+    const { queryClient } = await render();
+    // the run's size as the projects list read it before the import
+    queryClient.setQueryData(keys.projectSummary('demo'), {
+      lastEventAt: '2026-10-07T09:00:00.000Z',
+      reviewItems: 0,
+      openPlacements: 0,
+      ask: 0,
+      pairsToJudge: 9999,
+    });
+    fireEvent.change(screen.getByTestId('file-input'), {
+      target: { files: [new File(['<x/>'], 'a.bpmn')] },
+    });
+    await importNow();
+    const next = await screen.findByTestId('upload-next');
+    await waitFor(() =>
+      expect(calls.some((c) => c.path === '/api/v1/projects/demo/summary')).toBe(true),
+    );
+    await waitFor(() =>
+      expect(within(next).getByTestId('upload-next-agent').textContent).toBe(
+        '1 Modell wartet auf den AgentenAgent verbinden',
+      ),
+    );
+    expect(next.textContent).not.toContain('9.999');
   });
 
   it('names the unique calls of derived models first, „Gesammelt annehmen“ leading to their bulk accept (M6 S2c)', async () => {

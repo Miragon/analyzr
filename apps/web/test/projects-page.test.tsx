@@ -38,6 +38,7 @@ const SUMMARY: ProjectSummary = {
   reviewItems: 48,
   openPlacements: 29,
   ask: 21,
+  pairsToJudge: 0,
 };
 /**
  * The day of the latest change as the list shows it, in the runner's zone

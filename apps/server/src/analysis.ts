@@ -18,6 +18,7 @@ import {
   createPairAssessor,
   generateCandidates,
   indexCandidates,
+  projectCandidates,
   runRules,
 } from '@analyzr/relations';
 
@@ -65,6 +66,7 @@ export const libraryAnalysis: AnalysisPort = {
     const prepared = indexCandidates(projectFacts);
     return (focusModelKey) => generateCandidates(projectFacts, focusModelKey, undefined, prepared);
   },
+  projectCandidates: (projectFacts) => projectCandidates(projectFacts),
   pairAssessor: (projectFacts) => createPairAssessor(projectFacts),
   async amend(xml, amendments, modelKey) {
     try {

@@ -71,7 +71,7 @@ import type {
   ValueChainRevisionId,
   Verdict,
 } from '@analyzr/contracts';
-import type { PairAssessment, PairQuery } from '@analyzr/relations';
+import type { PairAssessment, PairQuery, ProjectCandidates } from '@analyzr/relations';
 
 // ---------------------------------------------------------------- records
 
@@ -1501,7 +1501,7 @@ export interface AnalysisPort {
   runRules(projectFacts: ProjectFacts): RuleOutput;
   /**
    * Candidate pairs around one model, both directions (claim input, CONCEPT
-   * §3); without a focus model, every model's (the open-questions read model).
+   * §3); without a focus model, every model's.
    */
   candidates(projectFacts: ProjectFacts, focusModelKey?: string): Candidate[];
   /**
@@ -1510,6 +1510,13 @@ export interface AnalysisPort {
    * follow-up): the same candidates, cheaper for many focus models.
    */
   candidateSource(projectFacts: ProjectFacts): (focusModelKey: string) => Candidate[];
+  /**
+   * {@link candidates} without a focus model and, from the same pass, per
+   * model what {@link candidates} around it gives of a basis other than
+   * `compatible` (the open questions' read model, and with it the summary's
+   * pairs to judge, M6 S2b follow-up step 3b): no call per model.
+   */
+  projectCandidates(projectFacts: ProjectFacts): ProjectCandidates;
   /** Validates proposed pairs against the head facts and computes their tier. */
   pairAssessor(projectFacts: ProjectFacts): (pair: PairQuery) => PairAssessment;
   /**

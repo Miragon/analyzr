@@ -6,10 +6,17 @@
  */
 
 export type NextPrimary =
-  /** Models wait for an agent and the project has no active agent token (owners). */
-  | { kind: 'connect-agent' }
-  /** Models wait for an agent, a token is active (owners): the popover „Agent starten“. */
-  | { kind: 'start-agent'; waiting: number }
+  /**
+   * Models wait for an agent and the project has no active agent token
+   * (owners); `pairs` as for `start-agent`.
+   */
+  | { kind: 'connect-agent'; pairs: number }
+  /**
+   * Models wait for an agent, a token is active (owners): the popover „Agent
+   * starten“, with the pairs the waiting tasks will judge beside it
+   * ({@link NextStepInput.pairsToJudge}).
+   */
+  | { kind: 'start-agent'; waiting: number; pairs: number }
   /**
    * Only failed analyses or expired reservations wait (owners with a token):
    * a requeue alone runs nothing, so „Nochmal versuchen“ requeues and opens the popover.
@@ -26,7 +33,7 @@ export type NextLine =
   /** An agent holds models and nothing else waits for it (a status, no action). */
   | { kind: 'working'; count: number }
   /** Models wait for an agent; this viewer cannot start one (editors, viewers). */
-  | { kind: 'waiting'; count: number }
+  | { kind: 'waiting'; count: number; pairs: number }
   | { kind: 'failed'; modelKeys: string[] }
   | { kind: 'expired'; modelKeys: string[] }
   /**
@@ -72,6 +79,12 @@ export interface NextStepInput {
   canReview: boolean;
   /** The project has an active agent token (owners only; else ignored). */
   activeToken: boolean;
+  /**
+   * The pairs the waiting relations tasks will judge
+   * (`ProjectSummary.pairsToJudge`, M6 S2b follow-up step 3b), named beside
+   * the agent row; 0 (the default) while unknown or when none waits.
+   */
+  pairsToJudge?: number;
 }
 
 export interface NextStep {
@@ -87,16 +100,17 @@ const MAX_LINES = 2;
 export function nextStep(input: NextStepInput): NextStep {
   const stuck = [...input.failed, ...input.expired];
   const agentPending = input.waiting.length + stuck.length > 0;
+  const pairs = input.waiting.length > 0 ? (input.pairsToJudge ?? 0) : 0;
   const status: NextLine[] = [];
   let primary: NextPrimary | null = null;
 
   if (agentPending && input.isOwner) {
-    if (!input.activeToken) primary = { kind: 'connect-agent' };
+    if (!input.activeToken) primary = { kind: 'connect-agent', pairs };
     else if (input.waiting.length > 0)
-      primary = { kind: 'start-agent', waiting: input.waiting.length };
+      primary = { kind: 'start-agent', waiting: input.waiting.length, pairs };
     else primary = { kind: 'retry', modelKeys: stuck };
   } else if (input.waiting.length > 0) {
-    status.push({ kind: 'waiting', count: input.waiting.length });
+    status.push({ kind: 'waiting', count: input.waiting.length, pairs });
   } else if (!agentPending && input.working > 0) {
     // The agent works and nothing waits: the agent rows give way.
     status.push({ kind: 'working', count: input.working });

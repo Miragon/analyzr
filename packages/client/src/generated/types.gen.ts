@@ -396,6 +396,7 @@ export type ProjectSummary = {
   reviewItems: number;
   openPlacements: number;
   ask: number;
+  pairsToJudge: number;
 };
 
 /**

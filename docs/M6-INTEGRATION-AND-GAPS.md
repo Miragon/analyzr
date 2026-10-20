@@ -3,16 +3,16 @@
 Status: in progress (2026-10-15); owner decisions 24, 25, 28 and 29 (§2, HANDOFF §4); S0 (this
 concept, revised after review), S1, S3a, S3b, S4, S5a, S5c-1, S5c-2 (answering by action and model
 amendments, decision 25, §4.8), S2a (provenance, manifest, stable identity; its web parts came
-with the UI simplification's UX8, §8 "S2a as delivered"), S2b (the dry runs) with steps 1 to 3 of
-its follow-up (the agent work in the dry runs, relations side, placements and the surfaces, §8 "S2b
-follow-up step 1 as delivered", "S2b follow-up step 2 as delivered" and "S2b follow-up step 3 as
-delivered"),
+with the UI simplification's UX8, §8 "S2a as delivered"), S2b (the dry runs) with steps 1 to 3b
+of its follow-up (the agent work in the dry runs, relations side, placements, the surfaces and the
+size of the agents' next run, §8 "S2b follow-up step 1 as delivered", "S2b follow-up step 2 as
+delivered", "S2b follow-up step 3 as delivered" and "S2b follow-up step 3b as delivered"),
 S2c-1 (the trust class and the rule tier, §8 "S2c-1 as delivered"), S2c-2 (the fast path for
 derived calls, §8 "S2c-2 as delivered"), S2c-3 (owners' rules for derived calls, §8 "S2c-3 as
 delivered") and S2c-4 („Vor der Vertrauensregel angenommen“, §8 "S2c-4 as delivered"; with it
 all of S2c) done, the „erste Anfänge“ await the owner's review; next the rest of S2b's follow-up
-(optionally step 3b the backlog's pair count, step 4 the integrate plugin 0.1.3, step 5 the
-identity rows of decision 29 (1)), then S3c, then S6; after
+(step 4 the integrate plugin 0.1.3, then step 5 the identity rows of decision 29 (1)), then S3c,
+then S6; after
 the owner's live runs S5b, S7 and facts v2 · Branch:
 `feat/integration-and-gaps` ·
 Spec: [CONCEPT.md](CONCEPT.md) §1–§7 · Previous: [M4-VALUE-CHAIN.md](M4-VALUE-CHAIN.md) · Paused:
@@ -104,8 +104,10 @@ The size and cost of the first agent run on a customer landscape (§6 "Run size 
 estimate") already matter at step 5, during M6: S1 prints the tasks waiting, and since step 1 of
 S2b's follow-up the impact counts the pairs an import sets agents to judge (per request, against
 the head, so on a first import across batches a pair between two batches counts in neither; the
-backlog's count, optional step 3b, gives the first run's size; the „Vorschau“ and the CLI show it
-since step 3, and their batch notes name that gap).
+„Vorschau“ and the CLI show it since step 3, and their batch notes name that gap), and since step
+3b the project summary gives the first run's size, the pairs the waiting tasks will judge
+(`ProjectSummary.pairsToJudge`), in „Als Nächstes“, after an import and in the CLI („5 Modelle
+warten auf den Agenten · etwa 7.300 mögliche Relationen“).
 
 ## 2. Owner decisions 24 (2026-10-15), 25 (2026-10-17), 28 (2026-10-19) and 29 (2026-10-20)
 
@@ -508,6 +510,26 @@ The existing previews compute impact with pure code (`apps/server/src/domain/val
       mögliche Relationen zwischen neuen Modellen verschiedener Teile fehlen in der Zahl.“; the
       CLI: "and the pairs between new models of different batches are not counted"); the
       backlog's count, step 3b, is the full fix.
+    - **Step 3b, the size of the agents' next run (delivered 2026-10-20, §8 "S2b follow-up step
+      3b as delivered"):** `ProjectSummary.pairsToJudge`, required, REST only: over the stored
+      head, the distinct typed pairs the next claims of the relations tasks an agent may claim
+      now will be assigned, that is the queued ones (the models „warten auf den Agenten“) and the
+      claimed ones whose lease ran out with attempts left; a pair between two such models counts
+      once; pairs with a current agent judgement and those a decision settles are left out, as in
+      the dry runs; a task whose lease runs counts not, and neither does a pair of its assignment
+      with such a model its claim saw as it is now (`planClaim`'s rule 1). Exact for the stored
+      state when read (on 496 models, after a partial re-import, the next 440 claims'
+      assignments together are 16,586 pairs, equal to it); "about" („etwa“), as decisions and
+      imports before the claims change it and agents may examine more pairs than they are assigned.
+      „Als Nächstes“ names it beside „Agent starten“ or „Agent verbinden“ and in the waiting line
+      („5 Modelle warten auf den Agenten · etwa 7.300 mögliche Relationen“), so does the waiting
+      text on „Hochladen“ after an import, and the CLI's waiting line of `analyzr import` and the
+      models line of `analyzr status` (`about 7300 pairs to judge`); the batch notes point there
+      („…; die ganze Zahl steht nach dem Import unter „Als Nächstes“.“, `(after the import, the
+      waiting line and analyzr status count them)`). It reuses what the summary already reads: the
+      per-model candidates come from the open questions' whole-project candidate pass (the new
+      `projectCandidates` of `@analyzr/relations`), the summary is memoized per project state as
+      before, now also until the earliest live lease runs out.
 
   Lists are capped at 100 with counts.
 - **REST:** `POST …/imports?dryRun=true` and `PUT …/models/by-key/{key}?dryRun=true` answer the
@@ -518,7 +540,8 @@ The existing previews compute impact with pure code (`apps/server/src/domain/val
   per batch, each against the head; a call from batch 1 into batch 2 shows as `unresolved-call`
   in batch 1's preview, and the CLI and the „Vorschau“ say so (since the follow-up's step 3 also
   that the pairs between new models of different batches are not counted: the CLI always, the
-  „Vorschau“ when new models lie in two batches or more). Multi-batch imports are not atomic today
+  „Vorschau“ when new models lie in two batches or more; since step 3b where the whole number
+  shows after the import). Multi-batch imports are not atomic today
   either; a staged import with an exact preview is a later candidate (§6).
 - **M5:** `impact_of` reuses the relation-graph part (what depends on a process).
 
@@ -1794,7 +1817,7 @@ draft (after the owner's rated draft run, M4b) are later work.
 | Customer assessment report skill | the deliverable of a landscape analysis: coverage, gaps, network, placements, open questions, every statement citing refs. After S4. |
 | Inventory-first import | coverage against the customer's catalog from day one, without stub models. Needs a boundary entity: with placeholders. |
 | Instruction-like content signal | foreign exports and transcripts widen the injection surface; a cheap deterministic backstop as an extractor warning and gap signal. With S4 or S7. |
-| Run size and cost estimate | claim sizes against the 100 KB and 96 KB (`CLAIM_PLACEMENT_MAX_BYTES`) budgets, documentation cut by `CLAIM_DOC_CHARS`, CONCEPT §7's cost per revision. Before the first paid customer run; S2b's follow-up gives the pair count: since its step 1 per request (`relationsTasks.pairs`, the pairs an import sets agents to judge, against the head, so on a first import across batches a pair between two batches counts in neither; shown since its step 3 in the „Vorschau“ and `analyzr import --dry-run`, whose batch notes name that gap), the backlog's, the first run's size, in its optional step 3b. |
+| Run size and cost estimate | claim sizes against the 100 KB and 96 KB (`CLAIM_PLACEMENT_MAX_BYTES`) budgets, documentation cut by `CLAIM_DOC_CHARS`, CONCEPT §7's cost per revision. Before the first paid customer run; S2b's follow-up gives the pair count: since its step 1 per request (`relationsTasks.pairs`, the pairs an import sets agents to judge, against the head, so on a first import across batches a pair between two batches counts in neither; shown since its step 3 in the „Vorschau“ and `analyzr import --dry-run`, whose batch notes name that gap), and since its step 3b the backlog's, the first run's size (`ProjectSummary.pairsToJudge`, the pairs the next claims of the claimable relations tasks will be assigned, in „Als Nächstes“, after an import, in `analyzr import`'s waiting line and in `analyzr status`). |
 | Reindex with judgement carry-over, then facts v2 | no reindex exists (`packages/bpmn-facts/src/version.ts` named one until M6 S1); `facts_hash` includes `FACTS_VERSION`, so any fact change re-judges every pair. Carry-over first, then one bump with descriptive facts (collapsed subprocesses, data objects, black-box participants, task-to-pool messages), systems and tool identities. Only if `eval:descriptive` shows a large loss. |
 | Placeholders (external parties, phantom processes) | lifts CONCEPT §11's deferral; the computed boundary signals of §4.3 come first. Owner decision. |
 | MCP `put_model` or model drafts as proposals | shell-less agents (Claude Desktop) could submit models; only after the trust decision. Owner choice between the two. |
@@ -2009,7 +2032,7 @@ delivered".
     `analyzr:propose`). Then the next step (`/analyzr:relations <project>`, `/analyzr:placements
     <project>`, the start prompts in `examples/agents`). `--json` output unchanged.
   - Not possible over existing routes, so not in S1: a deletion or import preview (S2), the
-    number of candidate pairs the waiting tasks will judge (S2b's follow-up, its optional step 3b), requeueing a single
+    number of candidate pairs the waiting tasks will judge (S2b's follow-up, delivered in its step 3b as `ProjectSummary.pairsToJudge` with the waiting line's `about N pairs to judge`), requeueing a single
     pair (S5b queues exactly the affected work instead).
 - **Docs:** DEVELOPMENT.md "The `analyzr` CLI"; CONCEPT §4, which still lists `analyzr import
   <dir>` for R1; CONCEPT §3 "Requeue" and the comment in `packages/bpmn-facts/src/version.ts`,
@@ -2316,8 +2339,9 @@ note; „Importieren“ sends the same plan, „Abbrechen“ sends nothing. One 
 Left: the follow-up (judgements made non-current, tasks queued or cancelled, the placement task
 due, placements changed or missing), and the plugin's next version with the pre-approved
 `--dry-run` (since decision 29 (2) a bundled read-only script, not a CLI pattern; plugin 0.1.3).
-Steps 1 to 3 of the follow-up, the relations side, the placements and the surfaces, are delivered
-(2026-10-20, "S2b follow-up step 1 as delivered" to "S2b follow-up step 3 as delivered" below).
+Steps 1 to 3b of the follow-up, the relations side, the placements, the surfaces and the size of
+the agents' next run, are delivered (2026-10-20, "S2b follow-up step 1 as delivered" to "S2b
+follow-up step 3b as delivered" below).
 
 Left for S2b: `importImpact`, the dry runs (`POST …/imports?dryRun=true`, `PUT …?dryRun=true`,
 `analyzr import --dry-run`), the deletion impact in `models delete`, and the absent keys of
@@ -2935,7 +2959,8 @@ client regenerated); no route, no migration, MCP unchanged.
   A deletion cancels the model's open task and queues nothing (`pairs` 0, CONCEPT §3). Counted per
   request against the head, so a pair between models of two batches counts in both when both
   models are in the head; on a first import across batches it counts in neither (the first run's
-  size needs the backlog's count, step 3b).
+  size needs the backlog's count, step 3b, delivered the same day: "S2b follow-up step 3b as
+  delivered" below).
 - **Planned as the write plans.** The new pure `apps/server/src/domain/queue-plan.ts` (`planQueue`,
   `needsDoneTask`) follows `queueAnalysis` branch for branch; `queueAnalysis` is now read, plan,
   write, with the same reads and the same event order (`recompute-golden` unchanged). The dry run
@@ -3059,9 +3084,9 @@ Left: step 2 (placements: `placementsChanged`, `placementTask`; delivered the sa
 follow-up step 2 as delivered" below), step 3 (the surfaces: the „Vorschau“'s cost line, the
 claimed-task warning with a second click, the CLI's lines, the deletion listing; delivered the same
 day, "S2b follow-up step 3 as delivered" below), optionally 3b (`ProjectSummary.pairsToJudge` in
-„Als Nächstes“), step 4 (plugin 0.1.3: the key-map rebuild, `analyzr-read.mjs` by decision 29 (2),
-`exporterVersion`), step 5 (the identity rows of decision 29 (1), migrations 0021/0022); then S3c
-and S6.
+„Als Nächstes“; delivered the same day, "S2b follow-up step 3b as delivered" below), step 4 (plugin
+0.1.3: the key-map rebuild, `analyzr-read.mjs` by decision 29 (2), `exporterVersion`), step 5 (the
+identity rows of decision 29 (1), migrations 0021/0022); then S3c and S6.
 
 **S2b follow-up step 2 as delivered** (2026-10-20, on the branch, every gate green, with a review
 round's fixes; [DEVELOPMENT.md](DEVELOPMENT.md) "M6 S2b follow-up step 2 (2026-10-20)" and
@@ -3240,10 +3265,10 @@ Left: step 3 (the surfaces, as planned in §3.5 "Follow-up": the „Vorschau“'
 placement part „N Prozesse zu platzieren (… davon erneut)“ with the held-claim rule also appears for
 a deferred task, the placements line and list, the claimed-task warning with a second click, the
 CLI's lines, the deletion listing; delivered the same day, "S2b follow-up step 3 as delivered"
-below), optionally 3b (`ProjectSummary.pairsToJudge` in „Als Nächstes“),
-step 4 (plugin 0.1.3: the key-map rebuild, `analyzr-read.mjs` by decision 29 (2),
-`exporterVersion`), step 5 (the identity rows of decision 29 (1), migrations 0021/0022); then S3c
-and S6.
+below), optionally 3b (`ProjectSummary.pairsToJudge` in „Als Nächstes“; delivered the same day,
+"S2b follow-up step 3b as delivered" below), step 4 (plugin 0.1.3: the key-map rebuild,
+`analyzr-read.mjs` by decision 29 (2), `exporterVersion`), step 5 (the identity rows of decision 29
+(1), migrations 0021/0022); then S3c and S6.
 
 **S2b follow-up step 3 as delivered** (2026-10-20, on the branch, every gate green, with a review
 round's fixes; [DEVELOPMENT.md](DEVELOPMENT.md) "M6 S2b follow-up step 3 (2026-10-20)",
@@ -3420,16 +3445,179 @@ open UX point for the owner (HANDOFF §8). Open:
   only; the pairs judged again are listed.
 - **The number across batches**: `pairs` stays an upper bound while other models' tasks wait, and
   across batches it is no bound either way; on a first import in parts it falls far short (the
-  batch notes say so). Step 3b's backlog count is the full fix.
+  batch notes say so). Step 3b's backlog count is the full fix (delivered the same day, "S2b
+  follow-up step 3b as delivered" below: after the import „Als Nächstes“, the CLI's waiting line
+  and `analyzr status` give the whole number).
 - **The deletion's requeue hint** shows also when a placement task already waits (a deletion's
   impact is always `not-triggered`, so it cannot tell); `requeue` then answers that one waits.
 - **Arming is not announced to a screen reader**: the warning is announced when the preview renders
   and the button points to it, but its new name is not reliably read out (as in the amend form).
 
 Left: optionally 3b (`ProjectSummary.pairsToJudge` in „Als Nächstes“ and the CLI's waiting line, the
-first run's size that a preview in batches cannot give), step 4 (plugin 0.1.3: the key-map rebuild,
+first run's size that a preview in batches cannot give; delivered the same day, "S2b follow-up step
+3b as delivered" below), step 4 (plugin 0.1.3: the key-map rebuild,
 `analyzr-read.mjs` by decision 29 (2), `exporterVersion`; its report can reuse the web texts
 above), step 5 (the identity rows of decision 29 (1), migrations 0021/0022); then S3c and S6.
+
+**S2b follow-up step 3b as delivered** (2026-10-20, on the branch, every gate green, with a review
+round's fixes; [DEVELOPMENT.md](DEVELOPMENT.md) "M6 S2b follow-up step 3b (2026-10-20)" and "The
+agents' next run", [UX-SIMPLIFICATION.md](UX-SIMPLIFICATION.md) §2.3 and §7 "M6 S2b follow-up step
+3b's texts as delivered"): the size of the agents' next run (§3.5 "Follow-up"), the one number a
+dry run split into batches cannot give for a first import (a pair between new models of different
+batches counts in no batch). For the first analysis: right after a first import in parts, and on
+every „Übersicht“, the consultant sees how big the agents' run will be, so they can plan the agent
+run and its cost. Contracts first, REST only; no migration, no new route; MCP and its snapshots,
+the procedures, the claim inputs, the plugin and the recordings are untouched.
+
+- **The field** `ProjectSummary.pairsToJudge` (`GET /projects/{p}/summary`, permission `read`;
+  required, an integer from 0; the route's description names it; the client regenerated): over
+  the stored head, the distinct typed pairs the next claims of the relations tasks an agent may
+  claim now will be assigned. Those tasks are the ones `TaskRepo.claim` takes at the read's clock:
+  the queued ones (the models „warten auf den Agenten“) and the claimed ones whose lease ran out
+  with attempts left. Each pair once (one between two such models too), without the pairs with a
+  current agent judgement (link or no-link) and those a decision settles (accepted, or rejected
+  with unchanged endpoints), as the dry runs count them. A task whose lease runs adds nothing (its
+  pairs are its claim's), and neither does a pair of its assignment whose other end is such a model
+  its claim saw as it is now (rule 1 of the claim planning: that model's claim skips it); rules 2
+  and 3 only decide which claim judges a pair, so the union is exact for the stored state when
+  read. 0 when no such task waits.
+- **How it is counted** (`countPairsToJudge` in `apps/server/src/domain/use-cases/projects.ts`,
+  the pure `heldPairs` in `judgements.ts`): `pairsToJudge` over the claimable models, their own
+  candidates, the relations and current judgements the open questions' read model already read,
+  and as judged also the pairs live claims hold. The own candidates come from the read model's
+  candidate pass: the new `projectCandidates` of `@analyzr/relations` (the port method
+  `AnalysisPort.projectCandidates`) returns the whole-project candidates, identical to
+  `generateCandidates` without a focus, and from the same pass per model what `generateCandidates`
+  around it gives of a basis other than `compatible`; `CandidateCache` keeps both and
+  `loadOpenQuestionInput` returns them (`LoadedOpenQuestionInput.ownCandidates`), so the summary
+  makes no cache lookup of its own and generates no candidates. The new reads: the queued and the
+  claimed relations tasks, and one revision query (`revisions.hashesAt`) per live claim whose
+  assignment names a claimable model revised since that claim. Placement tasks judge no pairs.
+- **The memo** (`SummaryMemo`, per project on `lastSeq`): the summary reads the clock, for the
+  leases only; each entry keeps `validUntil`, the earliest lease of a claimed relations task that
+  has not run out, and the summary is built again once it passes, without an event.
+- **„Als Nächstes“ on „Übersicht“** (`lib/next-step.ts`, `components/next-step-block.tsx`,
+  `pairsToJudgeText` in `lib/agent-cost.ts`; the summary's query in `routes/project-models.tsx`
+  only while models wait): owners see the size beside „Agent starten“ or „Agent verbinden“ as
+  muted plain text, no control and no „ · “, once their tokens are known: [Agent starten] „etwa
+  7.300 mögliche Relationen“ (`next-step-pairs`). Editors and viewers get it in the waiting line:
+  „5 Modelle warten auf den Agenten · etwa 7.300 mögliche Relationen“, „1 Modell wartet auf den
+  Agenten · 1 mögliche Relation“. German numbers, exact; „etwa“ from 2 on, none for 1; nothing for
+  0, and nothing while only failed analyses or expired reservations wait (no model waits).
+- **„Hochladen“ after an import** (`waitingText(…, pairs)` in `lib/upload.ts`,
+  `components/upload-panel.tsx`): the same suffix on the waiting text, „5 Modelle und die
+  Platzierungen warten auf den Agenten · etwa 7.300 mögliche Relationen“, from a summary read
+  after the import that succeeded (`isSuccess && isFetchedAfterMount`), so no number from before
+  it and nothing when that read fails. The read is cheap there: the open questions' read after
+  the import has already filled the shared candidate cache.
+- **The batch notes** point to the whole number: „Vorschau je 50 Dateien; Aufrufe zwischen den
+  Teilen erscheinen hier als unaufgelöst, mögliche Relationen zwischen neuen Modellen verschiedener
+  Teile fehlen in der Zahl; die ganze Zahl steht nach dem Import unter „Als Nächstes“.“; the CLI's
+  `  previewed in 2 batches, each against the project's head: a call into a later batch shows as
+  unresolved, and the pairs between new models of different batches are not counted (after the
+  import, the waiting line and analyzr status count them)`.
+- **The CLI** (`pairsToJudge` and `pairsToJudgeText` in `apps/cli/src/commands/import.ts`,
+  `status.ts`): `analyzr import`'s waiting line `demo: 250 relations tasks waiting, about 7300
+  pairs to judge, placement task waiting: yes` (`1 pair to judge`), only when above 0, from `GET
+  …/summary` (one request more while relations tasks wait, any credential; left out when it
+  fails); `analyzr status`'s models line `  models     31 (31 waiting for agent), about 198 pairs
+  to judge` while models wait, and `--json`'s `pairsToJudge` per project (0 while none waits,
+  `null` when the summary cannot be read). `analyzr import --json` is unchanged: it prints no
+  waiting tasks.
+
+Deviations from the plan, with reasons:
+
+- **A new function in `@analyzr/relations`**, not the cached whole-project candidates alone (the
+  plan: "through the existing `CandidateCache`"): those overcount once only some models wait,
+  since a pair with a model that does not wait can have an assigned basis only from that model's
+  side, which the waiting model's claim does not assign (5,503 against the exact 2,940 for 50 of
+  496 models); generating each waiting model's own candidates instead cost 5.9–6.9 s on the first
+  summary after a head change (against 0.27 s) and was reverted. `projectCandidates` gives them from
+  the pass the cache already pays for, and that pass is as fast as before (medians of 9 on 496
+  models: HEAD's `generateCandidates` 5,345 ms, the new one 5,356 ms, `projectCandidates` 5,335 ms).
+  `generateCandidates`' output and `eval:candidates` are unchanged.
+- **Exact for the stored state**, while the plan asked for "about how many": „etwa“ / "about" in
+  the texts stands for what changes before the claims run.
+- **Claimed tasks whose lease ran out count, and the summary reads the clock** (the review round's
+  change; the implementer had counted every claim as live, with no clock): the count is the size
+  of the next run, while „N Modelle warten auf den Agenten“ still counts the queued tasks only. The
+  alternative, queued tasks only with expired claims holding nothing, would depend on the order of
+  the claims (HANDOFF §4).
+- **The suffix also beside „Agent verbinden“**: right after a first import the owner usually has
+  no token yet, which is exactly when the run gets planned.
+- **No „ · “ beside the owner's button**: the size sits beside it as muted plain text; the waiting
+  lines keep „ · “.
+- **`--json`**: `analyzr status --json` carries the field; `analyzr import --json` prints no
+  waiting tasks and stays unchanged.
+- **„Hochladen“** shows the suffix too: the step's task made it depend on a cheap summary read
+  there, which it is (above).
+
+The review round (a count-correctness lens and a surface-and-UX lens) found 12 points; 9 are
+fixed, 3 not taken. Fixed: (1) a second candidate-cache lookup in the summary could run the
+whole-project pass again under concurrency (the pass's own candidates now come with the read
+model's input; a test counts one pass per build with `CandidateCache(0)`); (2) `waitingPairs` and
+`CandidateCache.focusPairs` were not needed (removed: the plain `pairsToJudge` with the held pairs
+as judged); (3) an expired lease kept holding its pairs until the next event (the clock and
+`validUntil`, above; the test fails without the clock check, "expected 195 to be 198"); (4) the
+benchmark's old side ran the new candidate code (re-measured against the real HEAD; `emit` makes
+no closures per call); (5) a revision query per claimed task whether needed or not (now only for
+live claims with a claimable model revised since); (6) the batch notes did not say where the whole
+number shows (they do); (7) „Hochladen“ could show a number from before the import after a failed
+read (in TanStack Query 5.104.1 `isFetchedAfterMount` is true after a failed fetch too; now
+`isSuccess && isFetchedAfterMount`, with a test that fails on the old guard); (8) the route's
+description contradicted the UI (now the badge counts for editors and owners, `pairsToJudge` for
+every member); (9) the UI load guard's new check could pass silently (it asserts a count above 1).
+Not taken: „zu beurteilen“ in the suffix (the plan's text; two more words, `signavio-beispiel`'s
+„Als Nächstes“ would have 24 instead of 22: HANDOFF §4); no „etwa“ in front of an exact count
+(HANDOFF §4); the docs' old lines (left to the docs pass).
+
+Tests: server unit `next-run.test.ts` (new: the count over the pass's own candidates equals
+`pairsToJudge` over each model's own `generateCandidates` call on `_sample` and `nordwind-handel`
+for four sets of models, a pair between two claimable models once; `heldPairs` is what `planClaim`
+skips, rule 1), integration `pairs-to-judge.test.ts` (new, real PostgreSQL, the whole
+`nordwind-handel`: equal to the union of the claims' assignments after a first import, and with a
+held claim, a requeue and an acceptance; a lease that runs out, 198, 195 while held, 198 a second
+after the lease, and the memo with it; built again after an import, one candidate pass each),
+`project-summary.test.ts` and `open-questions.test.ts` (`pairsToJudge` 0 on an empty project and
+after the agent's run); relations (`projectCandidates` equals the per-focus `generateCandidates`,
+on synthetic facts and the corpus); contracts (required, never negative); web `lib.test.ts`,
+`overview.test.tsx` (the next-step texts, the singular, 0, UX1's budget), `upload-panel.test.tsx`
+(the suffix after an import, no stale number after a failed read), `bundle.test.ts` (227.9 KB); CLI
+`import.test.ts`, `seed-status.test.ts`, `manifest.test.ts`, `cli.e2e.test.ts`; Playwright
+`smoke.spec.ts` (after the bundle import the waiting text and „Übersicht“'s suffix equal REST's
+`pairsToJudge`) and `ui-load.spec.ts` (UX1's budget on `signavio-beispiel` with the suffix).
+
+What it costs and leaves open. Every gate green (server 1,783, web 659, CLI 278 plus 7 skipped,
+contracts 178, bpmn-facts 200, integrate 145, eval/tools 108, relations 91, agent-sim 57,
+procedures 37, demo 27, notices 9, client 4; dependency-cruiser 150 modules, no violations; the
+eval reports unchanged). Live-run neutral. The bundle entry is 227.9 KB gzip (+0.3 over step 3's
+227.6, ceiling 240). `getProjectSummary` on 496 models, HEAD against the new code, medians of 3:
+cold 5,429 → 5,662, 5,449 → 5,620 and 5,667 → 5,969 ms in the three states (all waiting; 100 done
+with 5 held; 50 of them re-imported; within the runs' spread), a rebuild over cached candidates
+15–83 ms more, memoized 1–2 ms before and after, so the projects list and „Übersicht“ are not
+measurably slower. The UI load guard: `signavio-beispiel`'s „Als Nächstes“ with the suffix 22
+words and 4 controls (budget 40 and 5), its „Übersicht“ 117 / 102 words (113 / 98 before); no
+budget constant changed. The e2e runs: the implementer's and the fixer's on their scratch stack
+`ui-load.spec.ts` 30 of 30, `smoke.spec.ts` with `upload-preview.spec.ts` 6 of 6; the lead's run on
+the final tree: the full Playwright suite 111 passed and 21 skipped, the demo check 152 of 152,
+`demo.spec.ts` 14 of 14, after a fix of an older web race its first run found (`RetryAgent`
+swapped its button for the popover's trigger as the owner's agent tokens arrived, so a click then
+was lost; it now keeps one element; DEVELOPMENT.md "M6 S2b follow-up step 3b (2026-10-20)"). The
+readings the owner may overrule are in HANDOFF §4 ("Taken during the M6 S2b follow-up step 3b").
+Open:
+
+- **A head nobody has read yet** costs the whole-project candidates once: `analyzr import` in text
+  mode and `analyzr status` now read the summary while models wait, about 6 s at 496 models and
+  30 ms at 31 (the web's first „Übersicht“ pays the same anyway).
+- **The number moves without the consultant's doing**: a lease that runs out makes its task count
+  again (the memo ends with it), and decisions and imports before the claims change it („etwa“).
+- **The suffix beside „Agent starten“ in a browser**: the e2e stacks' owners have no token, so the
+  specs check it beside „Agent verbinden“ and in the waiting text; a web unit test covers „Agent
+  starten“.
+
+Left: step 4 (plugin 0.1.3: the key-map rebuild, `analyzr-read.mjs` by decision 29 (2),
+`exporterVersion`), step 5 (the identity rows of decision 29 (1), migrations 0021/0022); then S3c
+and S6.
 
 **S3 "Toolkit".** S3a (part of the „erste Anfänge“): §3.11, report committed, CI drift check,
 and the `get_landscape` size per model of the seeded `nordwind-handel` with the v1 limit in §6.

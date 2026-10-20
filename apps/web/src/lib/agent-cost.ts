@@ -17,6 +17,20 @@ export function possibleRelationsText(n: number): string {
   return n === 1 ? '1 mögliche Relation' : `${de(n)} mögliche Relationen`;
 }
 
+/**
+ * The size of the agents' next run beside the models waiting for them
+ * (M6 S2b follow-up step 3b, „Als Nächstes“ on „Übersicht“ and after an
+ * import): „etwa 7.300 mögliche Relationen“, the pairs the waiting
+ * relations tasks will judge (`ProjectSummary.pairsToJudge`). „etwa“, as it
+ * is the run as of now (decisions and imports before the claims change it,
+ * agents may examine more pairs), except for one pair: „1 mögliche
+ * Relation“. `null` for none.
+ */
+export function pairsToJudgeText(n: number): string | null {
+  if (n <= 0) return null;
+  return n === 1 ? possibleRelationsText(1) : `etwa ${possibleRelationsText(n)}`;
+}
+
 /** The warning before a save that cancels a claimed relations task (M6 §4.8 c). */
 export const CLAIMED_WARNING =
   'Ein Agent bearbeitet dieses Modell gerade; seine Arbeit geht verloren.';

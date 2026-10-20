@@ -134,6 +134,8 @@ describe('„Agent starten“', () => {
         screen.getByRole('button', { name: 'Nochmal versuchen' }).getAttribute('aria-haspopup'),
       ).toBe('dialog'),
     );
+    // the same element turned into the trigger, so a click as the tokens land is not lost
+    expect(screen.getByRole('button', { name: 'Nochmal versuchen' })).toBe(retry);
     answer();
     expect(await screen.findByTestId('agent-start')).toBeTruthy();
     expect(screen.queryByText('Nochmal eingeplant')).toBeNull();

@@ -89,8 +89,11 @@ async function summary(key = P, call: Call = owner): Promise<ProjectSummary> {
 const waits = (item: { status: string; endpointState: string }) =>
   item.status === 'proposed' || (item.status === 'accepted' && item.endpointState !== 'ok');
 
+/** The summary without its pairs to judge (`pairs-to-judge.test.ts` checks those). */
+const counts = ({ pairsToJudge: _pairs, ...rest }: ProjectSummary) => rest;
+
 /** The counts as the web's badges compute them from the lists they load. */
-async function badges(): Promise<Omit<ProjectSummary, 'lastEventAt'>> {
+async function badges(): Promise<Omit<ProjectSummary, 'lastEventAt' | 'pairsToJudge'>> {
   const landscape = await json<Landscape>(await t.asOwner(`${API}/landscape`));
   const chainRes = await t.asOwner(chainPath(P));
   const detail = chainRes.status === 404 ? null : await json<ValueChainDetail>(chainRes);
@@ -144,6 +147,7 @@ describe('GET /projects/{project}/summary', () => {
       reviewItems: 0,
       openPlacements: 0,
       ask: 0,
+      pairsToJudge: 0,
     });
   });
 
@@ -153,7 +157,7 @@ describe('GET /projects/{project}/summary', () => {
     }
     // The unambiguous call is accepted by the rule tier, the message a key-tier proposal.
     const first = await summary();
-    expect(first).toEqual({ lastEventAt: await latestEventAt(), ...(await badges()) });
+    expect(counts(first)).toEqual({ lastEventAt: await latestEventAt(), ...(await badges()) });
     expect(first).toMatchObject({ reviewItems: 1, openPlacements: 0 });
     expect((await relation('call')).status).toBe('accepted');
 
@@ -167,7 +171,7 @@ describe('GET /projects/{project}/summary', () => {
       ),
     );
     const held = await summary();
-    expect(held).toEqual({ lastEventAt: await latestEventAt(), ...(await badges()) });
+    expect(counts(held)).toEqual({ lastEventAt: await latestEventAt(), ...(await badges()) });
     expect(held.reviewItems).toBe(0);
     expect(held.ask).toBe(first.ask + 1);
     expect(held.lastEventAt > first.lastEventAt).toBe(true);
@@ -177,7 +181,7 @@ describe('GET /projects/{project}/summary', () => {
       await t.asOwner(`${API}/relations/${message.id}/decision`, post({ verdict: 'accept' })),
     );
     const accepted = await summary();
-    expect(accepted).toEqual({ lastEventAt: await latestEventAt(), ...(await badges()) });
+    expect(counts(accepted)).toEqual({ lastEventAt: await latestEventAt(), ...(await badges()) });
     expect(accepted).toMatchObject({ reviewItems: 0, ask: first.ask });
 
     // A deleted callee: the accepted call's endpoint is missing, so it waits for a decision.
@@ -186,7 +190,7 @@ describe('GET /projects/{project}/summary', () => {
     expect((await t.asOwner(`${API}/models/${callee?.id}`, { method: 'DELETE' })).status).toBe(204);
     expect((await relation('call')).endpointState).toBe('missing');
     const missing = await summary();
-    expect(missing).toEqual({ lastEventAt: await latestEventAt(), ...(await badges()) });
+    expect(counts(missing)).toEqual({ lastEventAt: await latestEventAt(), ...(await badges()) });
     expect(missing.reviewItems).toBe(1);
   });
 
@@ -206,7 +210,7 @@ describe('GET /projects/{project}/summary', () => {
     });
     expect(created.status).toBe(201);
     const before = await summary();
-    expect(before).toEqual({ lastEventAt: await latestEventAt(), ...(await badges()) });
+    expect(counts(before)).toEqual({ lastEventAt: await latestEventAt(), ...(await badges()) });
     await json(
       await t.asToken(
         agent.secret,
@@ -225,7 +229,7 @@ describe('GET /projects/{project}/summary', () => {
       ),
     );
     const after = await summary();
-    expect(after).toEqual({ lastEventAt: await latestEventAt(), ...(await badges()) });
+    expect(counts(after)).toEqual({ lastEventAt: await latestEventAt(), ...(await badges()) });
     expect(after.openPlacements).toBe(before.openPlacements + 1);
   });
 

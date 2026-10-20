@@ -34,8 +34,9 @@ export {
   DEFAULT_LEXICAL_PER_ENDPOINT,
   generateCandidates,
   indexCandidates,
+  projectCandidates,
 } from './candidates.ts';
-export type { CandidateIndex, CandidateOptions } from './candidates.ts';
+export type { CandidateIndex, CandidateOptions, ProjectCandidates } from './candidates.ts';
 export { createPairAssessor } from './assess.ts';
 export type { PairAssessment, PairQuery, PairRejection, ProposalTier } from './assess.ts';
 export {

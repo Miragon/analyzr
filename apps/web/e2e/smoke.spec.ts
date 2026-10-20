@@ -238,6 +238,17 @@ test('upload: a bundle folder with its manifest imports as `analyzr import` does
   await expect(page.getByTestId('preview-claimed')).toHaveCount(0);
   await page.getByTestId('preview-import').click();
   await expect(page.getByTestId('import-headline')).toHaveText('6 Modelle importiert');
+  // S2b follow-up step 3b: „Als Nächstes“ names the size of the agents' run, the summary's count
+  const { pairsToJudge } = (await (
+    await request.get(`/api/v1/projects/${key}/summary`)
+  ).json()) as {
+    pairsToJudge: number;
+  };
+  expect(pairsToJudge).toBeGreaterThan(1);
+  const pairs = `etwa ${pairsToJudge.toLocaleString('de-DE')} mögliche Relationen`;
+  await expect(page.getByTestId('upload-next-agent')).toContainText(
+    `6 Modelle warten auf den Agenten · ${pairs}`,
+  );
   await expect(page.getByTestId('upload-bundle')).toHaveText(
     'Bundle erkannt: Signavio, exportiert am 14.10.2026 · 6 von 6 Dateien gelistet · Kurznamen aus dem Bundle',
   );
@@ -255,6 +266,8 @@ test('upload: a bundle folder with its manifest imports as `analyzr import` does
   await expect(page.getByTestId('project-source')).toHaveText(
     'Aus Signavio · exportiert am 14.10.2026',
   );
+  // … and „Übersicht“ beside the agent row („Agent verbinden“: no token yet)
+  await expect(page.getByTestId('next-step-pairs')).toHaveText(pairs);
   const [first] = manifest.files;
   await page.goto(`/projects/${key}/models/${first?.key ?? ''}`);
   await page.getByTestId('model-more').click();

@@ -17,7 +17,7 @@ import {
   modelKeyOwners,
 } from '@analyzr/contracts/paths';
 
-import { agentCostText } from './agent-cost';
+import { agentCostText, pairsToJudgeText } from './agent-cost';
 import { OUTSIDE_LABEL, RELATION_TYPES, formatBytes } from './labels';
 import {
   MAX_IMPORT_BYTES,
@@ -661,16 +661,26 @@ export function skippedText(skipped: readonly SkippedFile[]): { text: string; mo
  * What waits for an agent after an import, as `analyzr import` says it
  * (`formatNextSteps`): the models whose relations task is queued (their
  * stage `waiting_for_agent`) and the chain's placement task when it is
- * queued; `null` when nothing waits.
+ * queued, then the pairs those relations tasks will judge
+ * (`ProjectSummary.pairsToJudge`, M6 S2b follow-up step 3b) as „ · etwa
+ * 7.300 mögliche Relationen“ (`pairsToJudgeText`; nothing for 0); `null`
+ * when nothing waits.
  */
-export function waitingText(waitingModels: number, placementQueued: boolean): string | null {
+export function waitingText(
+  waitingModels: number,
+  placementQueued: boolean,
+  pairs = 0,
+): string | null {
   if (waitingModels === 0 && !placementQueued) return null;
   if (waitingModels === 0) return 'Die Platzierungen warten auf den Agenten';
   const models = waitingModels === 1 ? '1 Modell' : `${waitingModels} Modelle`;
-  if (placementQueued) return `${models} und die Platzierungen warten auf den Agenten`;
-  return waitingModels === 1
-    ? '1 Modell wartet auf den Agenten'
-    : `${models} warten auf den Agenten`;
+  const what = placementQueued
+    ? `${models} und die Platzierungen warten auf den Agenten`
+    : waitingModels === 1
+      ? '1 Modell wartet auf den Agenten'
+      : `${models} warten auf den Agenten`;
+  const size = pairsToJudgeText(pairs);
+  return size ? `${what} · ${size}` : what;
 }
 
 /**
@@ -858,8 +868,9 @@ export function sharedTopFolder(keys: readonly string[]): string | null {
  * previewed against the head without the others, so a call into another
  * batch shows as unresolved; with new models in two batches or more (a first
  * import), the possible relations between them count in no batch, so the
- * cost line's „etwa“ falls short, and the note says so too. `null` for one
- * batch.
+ * cost line's „etwa“ falls short, and the note says so too, and where the
+ * whole number shows after the import (the summary's `pairsToJudge` in „Als
+ * Nächstes“, M6 S2b follow-up step 3b). `null` for one batch.
  */
 export function batchNoteText(
   batches: readonly (readonly { path: string }[])[],
@@ -870,7 +881,7 @@ export function batchNoteText(
   const apart = batches.filter((b) => b.some((e) => created.has(e.path))).length > 1;
   return `Vorschau je 50 Dateien; Aufrufe zwischen den Teilen erscheinen hier als unaufgelöst${
     apart
-      ? ', mögliche Relationen zwischen neuen Modellen verschiedener Teile fehlen in der Zahl'
+      ? ', mögliche Relationen zwischen neuen Modellen verschiedener Teile fehlen in der Zahl; die ganze Zahl steht nach dem Import unter „Als Nächstes“'
       : ''
   }.`;
 }

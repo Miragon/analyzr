@@ -17,7 +17,12 @@ import {
   type Amendment,
   type AmendmentOutcome,
 } from '@analyzr/bpmn-facts';
-import { createPairAssessor, generateCandidates, indexCandidates } from '@analyzr/relations';
+import {
+  createPairAssessor,
+  generateCandidates,
+  indexCandidates,
+  projectCandidates,
+} from '@analyzr/relations';
 import {
   formatRef,
   type DerivedRelation,
@@ -494,6 +499,7 @@ export function fakeAnalysis(): AnalysisPort & { extractCalls: number } {
       return (focusModelKey: string) =>
         generateCandidates(projectFacts, focusModelKey, undefined, prepared);
     },
+    projectCandidates: (projectFacts: ProjectFacts) => projectCandidates(projectFacts),
     pairAssessor: (projectFacts: ProjectFacts) => createPairAssessor(projectFacts),
     readAmendable(xml: Uint8Array, _modelKey: string) {
       try {

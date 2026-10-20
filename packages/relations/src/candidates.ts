@@ -103,6 +103,11 @@ interface Context {
   /** Pairs fixed by the rule tier, with their basis and score. */
   readonly fixed: ReadonlyMap<string, { basis: CandidateBasis; score: number }>;
   readonly out: Map<string, Candidate>;
+  /**
+   * {@link projectCandidates} only: per focus model the best candidate of a
+   * basis other than `compatible` its own perspectives emit, by pair.
+   */
+  readonly byFocus?: Map<string, Map<string, Candidate>>;
   readonly lexicalN: number;
   readonly compatibleN: number;
 }
@@ -126,6 +131,27 @@ function signalsOf(from: Endpoint, to: Endpoint, sim: Similarity): CandidateSign
   };
 }
 
+const candidateOf = (
+  from: Endpoint,
+  to: Endpoint,
+  basis: CandidateBasis,
+  score: number,
+  sim: Similarity,
+): Candidate => ({
+  type: from.type,
+  from: from.ref,
+  to: to.ref,
+  basis,
+  score,
+  signals: signalsOf(from, to, sim),
+});
+
+/**
+ * Keeps the candidate of a pair with the better basis (the first on a tie;
+ * candidates of one pair and basis are equal whichever perspective emits
+ * them) and, for {@link projectCandidates}, notes it for the focus models
+ * whose perspectives emit it (`owners`).
+ */
 function emit(
   ctx: Context,
   from: Endpoint,
@@ -133,18 +159,28 @@ function emit(
   basis: CandidateBasis,
   score: number,
   sim: Similarity,
+  owners: readonly string[],
 ): void {
   const key = pairKey(from.type, from.ref, to.ref);
+  const rank = BASIS_RANK[basis];
   const existing = ctx.out.get(key);
-  if (existing !== undefined && BASIS_RANK[existing.basis] <= BASIS_RANK[basis]) return;
-  ctx.out.set(key, {
-    type: from.type,
-    from: from.ref,
-    to: to.ref,
-    basis,
-    score,
-    signals: signalsOf(from, to, sim),
-  });
+  let made: Candidate | undefined;
+  if (existing === undefined || BASIS_RANK[existing.basis] > rank) {
+    made = candidateOf(from, to, basis, score, sim);
+    ctx.out.set(key, made);
+  }
+  if (ctx.byFocus === undefined || basis === 'compatible') return;
+  for (const owner of owners) {
+    let pairs = ctx.byFocus.get(owner);
+    if (pairs === undefined) {
+      pairs = new Map();
+      ctx.byFocus.set(owner, pairs);
+    }
+    const known = pairs.get(key);
+    if (known !== undefined && BASIS_RANK[known.basis] <= rank) continue;
+    made ??= candidateOf(from, to, basis, score, sim);
+    pairs.set(key, made);
+  }
 }
 
 /**
@@ -171,16 +207,17 @@ function perspective(ctx: Context, self: Endpoint, partners: readonly Endpoint[]
     );
   let lexical = 0;
   let compatible = 0;
+  const owners = [self.modelKey];
   for (const r of ranked) {
     const fixed = ctx.fixed.get(pairKey(r.from.type, r.from.ref, r.to.ref));
     if (fixed !== undefined) {
-      emit(ctx, r.from, r.to, fixed.basis, fixed.score, r.sim);
+      emit(ctx, r.from, r.to, fixed.basis, fixed.score, r.sim, owners);
     } else if (lexical < ctx.lexicalN && hasLexicalEvidence(r.sim)) {
       lexical++;
-      emit(ctx, r.from, r.to, 'lexical', r.sim.score, r.sim);
+      emit(ctx, r.from, r.to, 'lexical', r.sim.score, r.sim, owners);
     } else if (compatible < ctx.compatibleN) {
       compatible++;
-      emit(ctx, r.from, r.to, 'compatible', r.sim.score, r.sim);
+      emit(ctx, r.from, r.to, 'compatible', r.sim.score, r.sim, owners);
     }
   }
 }
@@ -218,6 +255,56 @@ export function generateCandidates(
   options?: CandidateOptions,
   prepared?: CandidateIndex,
 ): Candidate[] {
+  return run(projectFacts, focusModelKey, options, prepared);
+}
+
+/** What {@link projectCandidates} returns. */
+export interface ProjectCandidates {
+  /** {@link generateCandidates} without a focus model. */
+  candidates: Candidate[];
+  /**
+   * Per model key, the candidates {@link generateCandidates} with that focus
+   * model gives of a basis other than `compatible` (the search space), in
+   * its order; a model without any is missing.
+   */
+  byFocus: Map<string, Candidate[]>;
+}
+
+/**
+ * {@link generateCandidates} without a focus model and, from the same pass,
+ * what each focus model's own call gives of a basis other than `compatible`
+ * (the server's summary of the agents' next run, M6 S2b follow-up step 3b):
+ * a focus model's candidates are those its own endpoints' perspectives emit,
+ * which the pass computes anyway, so the per-model part costs no call per
+ * model. The candidates are those {@link generateCandidates} returns.
+ *
+ * @throws {Error} when `prepared` indexes other facts
+ */
+export function projectCandidates(
+  projectFacts: ProjectFacts,
+  options?: CandidateOptions,
+  prepared?: CandidateIndex,
+): ProjectCandidates {
+  const byFocus = new Map<string, Map<string, Candidate>>();
+  const candidates = run(projectFacts, undefined, options, prepared, byFocus);
+  return {
+    candidates,
+    byFocus: new Map(
+      [...byFocus].map(([modelKey, pairs]) => [modelKey, sortCandidates([...pairs.values()])]),
+    ),
+  };
+}
+
+const sortCandidates = (list: Candidate[]): Candidate[] =>
+  list.sort((a, b) => b.score - a.score || compareTriples(a, b));
+
+function run(
+  projectFacts: ProjectFacts,
+  focusModelKey: string | undefined,
+  options: CandidateOptions | undefined,
+  prepared: CandidateIndex | undefined,
+  byFocus?: Map<string, Map<string, Candidate>>,
+): Candidate[] {
   if (prepared !== undefined && prepared.projectFacts !== projectFacts) {
     throw new Error('generateCandidates: the prepared index is of other facts');
   }
@@ -227,6 +314,7 @@ export function generateCandidates(
     forms,
     fixed,
     out: new Map(),
+    ...(byFocus === undefined ? {} : { byFocus }),
     lexicalN: options?.lexicalPerEndpoint ?? DEFAULT_LEXICAL_PER_ENDPOINT,
     compatibleN: options?.compatiblePerEndpoint ?? DEFAULT_COMPATIBLE_PER_ENDPOINT,
   };
@@ -262,10 +350,21 @@ export function generateCandidates(
         if (r.type !== 'call' || from === undefined || to === undefined) continue;
         if (isOpenCall(index, from) || (!inFocus(from) && !inFocus(to))) continue;
         const f = basisOf(r);
-        emit(ctx, from, to, f, r.confidence, bestSimilarity(formsOf(ctx, from), formsOf(ctx, to)));
+        // Either end's focus model emits it.
+        const owners =
+          from.modelKey === to.modelKey ? [from.modelKey] : [from.modelKey, to.modelKey];
+        emit(
+          ctx,
+          from,
+          to,
+          f,
+          r.confidence,
+          bestSimilarity(formsOf(ctx, from), formsOf(ctx, to)),
+          owners,
+        );
       }
     }
   }
 
-  return [...ctx.out.values()].sort((a, b) => b.score - a.score || compareTriples(a, b));
+  return sortCandidates([...ctx.out.values()]);
 }

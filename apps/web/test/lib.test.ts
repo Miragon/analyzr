@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest';
 import {
   agentCostText,
   claimedImportWarning,
+  pairsToJudgeText,
   possibleRelationsText,
   processesToPlace,
 } from '../src/lib/agent-cost';
@@ -494,7 +495,7 @@ describe('upload result (UX7)', () => {
     expect(sharedTopFolder(['gemeinsam/a'])).toBeNull();
   });
 
-  it('notes what a preview of several batches cannot see, the pairs between new models of two batches too (S2b follow-up)', () => {
+  it('notes what a preview of several batches cannot see, the pairs between new models of two batches too, and where their whole number shows (S2b follow-up, step 3b)', () => {
     const batch = (...paths: string[]) => paths.map((path) => ({ path }));
     const outcome = (path: string, o: string) => ({ path, outcome: o });
     const calls =
@@ -525,7 +526,7 @@ describe('upload result (UX7)', () => {
         [outcome('a.bpmn', 'created'), outcome('b.bpmn', 'created')],
       ),
     ).toBe(
-      `${calls}, mögliche Relationen zwischen neuen Modellen verschiedener Teile fehlen in der Zahl.`,
+      `${calls}, mögliche Relationen zwischen neuen Modellen verschiedener Teile fehlen in der Zahl; die ganze Zahl steht nach dem Import unter „Als Nächstes“.`,
     );
   });
 
@@ -877,6 +878,21 @@ describe('upload result (UX7)', () => {
     expect(waitingText(1, false)).toBe('1 Modell wartet auf den Agenten');
     expect(waitingText(5, true)).toBe('5 Modelle und die Platzierungen warten auf den Agenten');
     expect(waitingText(0, true)).toBe('Die Platzierungen warten auf den Agenten');
+  });
+
+  it('adds the pairs the waiting tasks will judge to what waits (S2b follow-up step 3b)', () => {
+    expect(waitingText(5, false, 7300)).toBe(
+      '5 Modelle warten auf den Agenten · etwa 7.300 mögliche Relationen',
+    );
+    expect(waitingText(5, true, 7300)).toBe(
+      '5 Modelle und die Platzierungen warten auf den Agenten · etwa 7.300 mögliche Relationen',
+    );
+    expect(waitingText(1, false, 1)).toBe('1 Modell wartet auf den Agenten · 1 mögliche Relation');
+    expect(waitingText(2, false, 0)).toBe('2 Modelle warten auf den Agenten');
+    expect(pairsToJudgeText(0)).toBeNull();
+    expect(pairsToJudgeText(1)).toBe('1 mögliche Relation');
+    expect(pairsToJudgeText(2)).toBe('etwa 2 mögliche Relationen');
+    expect(pairsToJudgeText(1234567)).toBe('etwa 1.234.567 mögliche Relationen');
   });
 
   it('says how many unique calls of derived models wait for a human (M6 S2c)', () => {
