@@ -33,7 +33,7 @@
  * Every source whose id is not `<Prefix>_<source>` and every id the final
  * pass changed counts as the loss `id-rewritten`.
  */
-import { MAX_ID_LENGTH, SAFE_ID_PATTERN, sanitizeId, shortHash } from '../ids.ts';
+import { capped, MAX_ID_LENGTH, SAFE_ID_PATTERN, sanitizeId, shortHash, uniqueId } from '../ids.ts';
 
 import type { Spec, SpecFlow, SpecNamed, SpecNode, SpecProcess } from './types.ts';
 
@@ -63,24 +63,6 @@ export const PLANE_ID = 'BPMNPlane_1';
 
 /** The suffixes bpmn-js appends to an element's id for ids of its own (label, drill-down plane). */
 export const BPMNJS_SUFFIXES: readonly string[] = ['_label', '_plane'];
-
-/** `id` cut to {@link MAX_ID_LENGTH}, ending in a hash of `raw` when cut (a copy of `capped` in `src/ids.ts`). */
-export function capped(id: string, source: string): string {
-  return id.length <= MAX_ID_LENGTH ? id : `${id.slice(0, MAX_ID_LENGTH - 9)}_${shortHash(source)}`;
-}
-
-/**
- * `candidate` if `taken` says it is free, else the first free
- * `<candidate>_<n>` for n = `from`, `from` + 1, … (a copy of `uniqueId` in `src/ids.ts`).
- */
-export function uniqueId(candidate: string, taken: (id: string) => boolean, from = 2): string {
-  if (!taken(candidate)) return candidate;
-  for (let n = from; ; n++) {
-    const suffix = `_${n}`;
-    const id = `${candidate.slice(0, MAX_ID_LENGTH - suffix.length)}${suffix}`;
-    if (!taken(id)) return id;
-  }
-}
 
 /** True for an id analyzr and bpmn-moddle both accept unchanged. */
 export function isRenderedId(id: string): boolean {

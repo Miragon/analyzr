@@ -544,7 +544,7 @@ describe('the run record at analyzr-spec', () => {
     expect(err).toBeInstanceOf(SpecBundleError);
     expect(err.code).toBe('invalid-specs');
     expect(err.message).toMatch(
-      /service\/reklamation\/reklamation\.spec\.yaml: changed after converter adhoc:[0-9a-f]{12} wrote it: run the converter again, or move it into a spec folder of its own and declare it reconstructed/,
+      /service\/reklamation\/reklamation\.spec\.yaml: changed after converter adhoc:[0-9a-f]{12} wrote it: never edit a converter's spec; fix the converter and run it again into a new folder/,
     );
   });
 

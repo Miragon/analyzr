@@ -36,7 +36,7 @@ export function shortHash(text: string): string {
 }
 
 /** `id` cut to {@link MAX_ID_LENGTH}, ending in a hash of `source` when cut. */
-function capped(id: string, source: string): string {
+export function capped(id: string, source: string): string {
   return id.length <= MAX_ID_LENGTH ? id : `${id.slice(0, MAX_ID_LENGTH - 9)}_${shortHash(source)}`;
 }
 

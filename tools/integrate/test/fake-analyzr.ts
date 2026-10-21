@@ -35,6 +35,9 @@ export const FAKE_IDENTITIES = [
 
 const list = <T>(items: T[] = []) => ({ count: items.length, items });
 
+/** The trust class analyzr gives an engine-less file uploaded with the owner key. */
+export const DERIVED = { class: 'derived', reasons: ['no-engine'] };
+
 /**
  * The impact of a dry run of `keys`: their relations tasks queued, the first one's claimed
  * task cancelled, 10 pairs per model (1 judged again), the placement task queued.
@@ -79,8 +82,10 @@ async function body(req: IncomingMessage): Promise<Buffer> {
 
 /**
  * Starts the fake analyzr. Project `missing` answers 404, project `moved` redirects to
- * `redirectTo`; a file whose name contains `fail` would fail; anything but the three requests
- * answers 418.
+ * `redirectTo`; a file whose name contains `fail` would fail, one with `unchanged` would stay
+ * unchanged, one with `identity` too while recording its new identity (`identityUpdated`), one
+ * with `camunda` would be modelled (no `trust`), every other one created; anything but the three
+ * requests answers 418.
  */
 export async function fakeAnalyzr(options: { redirectTo?: string } = {}): Promise<FakeAnalyzr> {
   const log: LoggedRequest[] = [];
@@ -167,7 +172,16 @@ export async function fakeAnalyzr(options: { redirectTo?: string } = {}): Promis
                   detail: 'no definitions',
                 },
               }
-            : { path: name, modelKey, outcome: 'created', warnings: [], warningCount: 0 };
+            : {
+                path: name,
+                modelKey,
+                outcome: /unchanged|identity/.test(name) ? 'unchanged' : 'created',
+                warnings: [],
+                warningCount: 0,
+                // the server's trust class: derived for engine-less files, absent for modelled ones
+                ...(name.includes('camunda') ? {} : { trust: DERIVED }),
+                ...(name.includes('identity') ? { identityUpdated: true } : {}),
+              };
         });
         json(200, {
           files,

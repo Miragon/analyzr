@@ -9,12 +9,13 @@ import path from 'node:path';
 import { extractFacts, sanitizeBlock, sanitizeLine } from '@analyzr/bpmn-facts';
 import { describe, expect, it } from 'vitest';
 
-import { assignIds, capped, uniqueId } from '../src/spec/ids.ts';
+import { capped, uniqueId } from '../src/ids.ts';
+import { assignIds } from '../src/spec/ids.ts';
 import { MAX_SLOTS } from '../src/spec/layout.ts';
 import { RenderError, renderSpec } from '../src/spec/render.ts';
 import * as text from '../src/spec/text.ts';
 import type { Spec } from '../src/spec/types.ts';
-import { ANALYZR_SPEC_VERSION } from '../src/spec/version.ts';
+import { ANALYZR_SPEC_VERSION } from '../src/version.ts';
 import { parseSpecText } from '../src/spec/yaml.ts';
 
 import { mulberry32 } from './spec-fuzz.ts';
@@ -30,11 +31,10 @@ import {
   specOf,
   SPEC_FIXTURES,
 } from './spec-support.ts';
-import { PACKAGE_ROOT } from './support.ts';
 
 /**
  * Per renderer version, the sha256 of the golden renders (names and bytes): a change to what
- * analyzr-spec writes for the same spec needs a new ANALYZR_SPEC_VERSION (src/spec/version.ts);
+ * analyzr-spec writes for the same spec needs a new ANALYZR_SPEC_VERSION (src/version.ts);
  * an optional field or enum value may join analyzr-spec/1 only when every existing render
  * stays byte-identical (M6 S3c §2.4). Only when a fixture itself changed may the hash of the
  * unreleased version be replaced. (0.1.0's was replaced once before any release, with the
@@ -120,7 +120,7 @@ describe('the golden renders', () => {
     const digest = hash.digest('hex');
     expect(
       digest,
-      `analyzr-spec ${ANALYZR_SPEC_VERSION} rendered these bytes before: bump ANALYZR_SPEC_VERSION in src/spec/version.ts and add {'<new version>': '${digest}'} to RENDER_OUTPUTS`,
+      `analyzr-spec ${ANALYZR_SPEC_VERSION} rendered these bytes before: bump ANALYZR_SPEC_VERSION in src/version.ts and add {'<new version>': '${digest}'} to RENDER_OUTPUTS`,
     ).toBe(RENDER_OUTPUTS[ANALYZR_SPEC_VERSION]);
   });
 
@@ -536,19 +536,13 @@ describe('ids', () => {
     ]);
   });
 
-  it('keeps the copies of capped and uniqueId equal to src/ids.ts', async () => {
-    const source = await readFile(path.join(PACKAGE_ROOT, 'src/ids.ts'), 'utf8');
-    const copy = await readFile(path.join(PACKAGE_ROOT, 'src/spec/ids.ts'), 'utf8');
-    const body = (code: string, name: string): string =>
-      /(?:export )?function (\w+)\([^]*?\n}\n/
-        .exec(code.slice(code.indexOf(`function ${name}(`) - 7))?.[0]
-        .replace(/^export /, '') ?? '';
-    for (const name of ['capped', 'uniqueId']) {
-      expect(body(copy, name), name).toBe(body(source, name));
-      expect(body(copy, name), name).not.toBe('');
-    }
+  it('caps and suffixes ids with the helpers of src/ids.ts (shared since plugin 0.1.4)', () => {
     expect(capped('a'.repeat(300), 'raw')).toHaveLength(255);
+    expect(capped('a'.repeat(300), 'raw')).toMatch(/_[0-9a-f]{8}$/);
     expect(uniqueId('a', (id) => id === 'a')).toBe('a_2');
+    expect(uniqueId('a'.repeat(255), (id) => id.length === 255 && !id.endsWith('_2'))).toHaveLength(
+      255,
+    );
   });
 });
 

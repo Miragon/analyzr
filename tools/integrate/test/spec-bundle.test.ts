@@ -184,7 +184,8 @@ describe('writeSpecBundle', () => {
     await writeFile(path.join(record.specs, 'analyzr-specs.json'), '{}\n');
     await expect(scanSpecs(record.specs)).resolves.toMatchObject({
       runRecord: true,
-      skipped: ['analyzr-specs.json'],
+      // the folder's record, never a file left out
+      skipped: [],
     });
     await expect(
       planSpecFolder(emptyKeymap(), record.specs, { system: SYSTEM }),

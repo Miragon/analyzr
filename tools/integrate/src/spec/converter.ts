@@ -80,7 +80,7 @@ import {
 } from './sandbox.ts';
 import { looksZip, readZipDirectory, ZIP_LIMITS, type ZipLimits } from './unzip.ts';
 import { MAX_LLM_MODEL_LENGTH, validateSpec } from './validate.ts';
-import { ANALYZR_CONVERT_VERSION, SPEC_FORMAT } from './version.ts';
+import { ANALYZR_CONVERT_VERSION, SPEC_FORMAT } from '../version.ts';
 import { formatSpec, parseSpecBytes } from './yaml.ts';
 
 export interface ConvertLimits {
@@ -186,6 +186,26 @@ const sha256Of = (bytes: Uint8Array): string => createHash('sha256').update(byte
  * syntax error or part of a string.
  */
 const IMPORT_WORD = /(?<![A-Za-z0-9_$\\])import\b/;
+
+/**
+ * What is wrong with a run's derivation and model id, or `null`: `reconstructed`
+ * needs the model the agent runs as, `converted` takes none (the CLI's usage
+ * check and {@link convertExport}'s).
+ */
+export function derivedProblem(
+  derived: ConvertOptions['derived'],
+  llmModel: string | null,
+): string | null {
+  if (derived === 'reconstructed') {
+    const model = llmModel ?? '';
+    return model.trim() === '' || model.length > MAX_LLM_MODEL_LENGTH || UNSTORABLE.test(model)
+      ? `--derived reconstructed needs --llm-model: the model you run as (1 to ${MAX_LLM_MODEL_LENGTH} characters)`
+      : null;
+  }
+  return llmModel === null
+    ? null
+    : '--llm-model goes with --derived reconstructed only: a converted model is read, not interpreted';
+}
 
 /** The script the child runs: this bundle itself, in source mode `src/cli/analyzr-convert.ts`. */
 export function childScript(moduleUrl: string = import.meta.url): string {
@@ -297,20 +317,8 @@ async function checkInputs(options: ConvertOptions): Promise<{
   }
   const converterSource = converterText(hashed.bytes, shown);
 
-  if (options.derived === 'reconstructed') {
-    const model = options.llmModel ?? '';
-    if (model.trim() === '' || model.length > MAX_LLM_MODEL_LENGTH || UNSTORABLE.test(model)) {
-      throw new ConvertError(
-        'derived',
-        `--derived reconstructed needs --llm-model: the model you run as (1 to ${MAX_LLM_MODEL_LENGTH} characters)`,
-      );
-    }
-  } else if (options.llmModel !== null) {
-    throw new ConvertError(
-      'derived',
-      '--llm-model goes with --derived reconstructed only: a converted model is read, not interpreted',
-    );
-  }
+  const derivedWrong = derivedProblem(options.derived, options.llmModel);
+  if (derivedWrong !== null) throw new ConvertError('derived', derivedWrong);
 
   assertSpecOutput(options.outDir, '--out', { workspace });
   const entries = await readdir(options.outDir).catch((err: NodeJS.ErrnoException) => {

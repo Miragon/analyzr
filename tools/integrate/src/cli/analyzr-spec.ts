@@ -1,6 +1,6 @@
 // Entry of analyzr-spec (M6 S3c §3.5): validates specs, renders them as BPMN, plans their keys
 // and writes their bundles. It runs no foreign code. Bundled into the plugin as
-// scripts/analyzr-spec.mjs from the release that ships it on; until then run from source
+// scripts/analyzr-spec.mjs since plugin 0.1.4; the tests also run it from source
 // (node tools/integrate/src/cli/analyzr-spec.ts).
 import { writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -17,6 +17,7 @@ import {
   type KeyRule,
   type RebuildReport,
 } from '../keymap.ts';
+import { existingKeysOf, identitiesOf, readJson, readKeymap, writeDetails } from '../plan-args.ts';
 import {
   planSpecFolder,
   readSpecFile,
@@ -26,16 +27,9 @@ import {
 } from '../spec/bundle.ts';
 import { compactSpecBundle, compactSpecPlan, compactValidation } from '../spec/compact.ts';
 import { assertSpecOutput, workspaceOf } from '../spec/guards.ts';
-import {
-  existingKeysOf,
-  identitiesOf,
-  readJson,
-  readKeymap,
-  writeDetails,
-} from '../spec/plan-args.ts';
 import { renderSpec } from '../spec/render.ts';
 import type { SpecOrigin } from '../spec/types.ts';
-import { ANALYZR_SPEC_VERSION } from '../spec/version.ts';
+import { ANALYZR_SPEC_VERSION } from '../version.ts';
 
 import { parse, printJson, run, UsageError } from './common.ts';
 

@@ -29,4 +29,7 @@ sandbox export yet (M6 §3.8, owner question §10.4); what analyzr itself does i
 
 - BPMN 2.0 export → the BPMN path of this skill (`normalize-bpmn`); verified on analyzr's
   side: any BPMN 2.0 parses, unknown extension content becomes a `parse-warning`.
-- `.bpm` and XPDL: in skill v0 the skill reports what it found and stops.
+- `.bpm`: ask for the BPMN 2.0 export (what a `.bpm` holds is to verify, so no converter is
+  written for it); XPDL: an ad-hoc converter (`converters.md`) is possible, but the BPMN 2.0
+  export is better.
+- PDF or Word documentation exports: `images.md`.

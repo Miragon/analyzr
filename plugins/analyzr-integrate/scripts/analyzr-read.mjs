@@ -694,7 +694,9 @@ function compactPreview(preview, extra) {
 		batchesWithNew: preview.batchesWithNew,
 		counts: {
 			...summary.counts,
-			skipped: summary.skipped?.length ?? 0
+			skipped: summary.skipped?.length ?? 0,
+			identityUpdated: summary.files.filter((f) => f.identityUpdated === true).length,
+			modelled: summary.files.filter((f) => f.outcome !== "failed" && f.trust === void 0).length
 		},
 		manifest: {
 			system: summary.manifest.system,
@@ -756,7 +758,7 @@ function compactPreview(preview, extra) {
 }
 //#endregion
 //#region src/version.ts
-const ANALYZR_READ_VERSION = "0.1.0";
+const ANALYZR_READ_VERSION = "0.1.1";
 //#endregion
 //#region src/cli/common.ts
 var UsageError = class extends Error {

@@ -18,10 +18,13 @@
  * `analyzr models list|requeue|delete`, and the manifest of M6 S2a (the
  * integrate plugin's golden bundle under its pinned keys, `analyzr models
  * external-ids`, unchanged bytes, the import warnings), with the identities
- * unchanged bytes record since M6 S2b follow-up step 5 (moved folders).
+ * unchanged bytes record since M6 S2b follow-up step 5 (moved folders), and the integrate
+ * plugin's bundled scripts of M6 S3c: a converter run, the spec bundles and their import with
+ * the plugin's `analyzr.mjs` against the checkout's `analyzr` (done-when D3 (d) and D4).
  */
 import { execFile } from 'node:child_process';
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { copyFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { PassThrough } from 'node:stream';
 import { promisify } from 'node:util';
@@ -34,6 +37,7 @@ import { pairsToJudgeText } from '../../src/commands/import.ts';
 import type { Status } from '../../src/commands/status.ts';
 import type { CliIo } from '../../src/io.ts';
 import { CLI_MAIN } from '../../src/cli-main.ts';
+import { nodeCommand } from '../../src/core-program.ts';
 import { runCli } from '../../src/program.ts';
 import { tempDir } from '../support/io.ts';
 import { REPO_ROOT, cleanEnv, createDatabase, startServer, type RunningServer } from './server.ts';
@@ -1852,6 +1856,215 @@ describe("the integrate plugin's analyzr-read.mjs against the server (M6 S2b fol
       'keys pinned, provenance stored for 0; 6 unchanged keep what analyzr had\n',
     );
     expect(await seqOf('m6-s2b5')).toBe((seq ?? 0) + 6);
+  });
+});
+
+describe("the integrate plugin's analyzr-convert.mjs, analyzr-spec.mjs and analyzr.mjs against the server (M6 S3c)", () => {
+  const scripts = path.join(REPO_ROOT, 'plugins/analyzr-integrate/scripts');
+  const fixtures = path.join(REPO_ROOT, 'tools/integrate/test/fixtures');
+  const ws = () => path.join(dir, 's3c-ws');
+  const arisBundle = () => path.join(ws(), 'bundles', '2026-10-14-aris');
+  const imagesBundle = () => path.join(ws(), 'bundles', '2026-10-14-images');
+  const CLI = path.join(scripts, 'analyzr.mjs');
+
+  /** Runs one of the plugin's bundled scripts, with the owner key file and nothing of ANALYZR_*. */
+  async function plugin(script: string, args: string[]) {
+    try {
+      const { stdout, stderr } = await promisify(execFile)(
+        process.execPath,
+        [path.join(scripts, script), ...args],
+        { cwd: dir, env: cleanEnv({ ANALYZR_OWNER_KEY_FILE: keyFile }) },
+      );
+      return { code: 0, stdout, stderr };
+    } catch (err) {
+      const e = err as { code?: number; stdout?: string; stderr?: string };
+      return { code: e.code ?? -1, stdout: e.stdout ?? '', stderr: e.stderr ?? '' };
+    }
+  }
+
+  /** What differs between two projects of the same bundle: their keys, names, ids and times. */
+  const same = (text: string, project: string, name: string): string =>
+    text
+      .replaceAll(project, '<project>')
+      .replaceAll(name, '<name>')
+      .replace(/\b[a-z]{2,4}_[0-9A-HJKMNP-TV-Z]{26}\b/g, '<id>')
+      .replace(/"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?Z"/g, '"<time>"');
+
+  // The skill's steps 2a, 2b, 3 and 4 with the bundled scripts: the synthetic AML export through
+  // its example converter (reconstructed: EPCs read as BPMN), and the picture spec of the
+  // golden fixtures (a spec the agent wrote) in a spec folder of its own.
+  beforeAll(async () => {
+    const exported = path.join(ws(), 'exports', '2026-10-14-aris');
+    for (const d of [exported, path.join(ws(), 'converters'), path.join(ws(), 'reports')]) {
+      await mkdir(d, { recursive: true });
+    }
+    await writeFile(path.join(ws(), 'analyzr-workspace.json'), '{}\n');
+    await copyFile(
+      path.join(fixtures, 'converters/aris/Export_Vertrieb.xml'),
+      path.join(exported, 'Export_Vertrieb.xml'),
+    );
+    const converter = path.join(ws(), 'converters', 'aris-epk.js');
+    await copyFile(path.join(fixtures, 'converters/aris-epk.js'), converter);
+    const sha256 = createHash('sha256')
+      .update(await readFile(converter))
+      .digest('hex');
+    const specs = path.join(ws(), 'specs', '2026-10-14-aris');
+    const convert = await plugin('analyzr-convert.mjs', [
+      'convert',
+      exported,
+      '--converter',
+      converter,
+      '--sha256',
+      sha256,
+      '--derived',
+      'reconstructed',
+      '--llm-model',
+      'claude-opus-5-5',
+      '--workspace',
+      ws(),
+      '--out',
+      specs,
+    ]);
+    expect(convert, convert.stderr).toMatchObject({ code: 0, stderr: '' });
+    const pictures = path.join(ws(), 'specs', '2026-10-14-images');
+    await mkdir(path.join(pictures, 'service'), { recursive: true });
+    await copyFile(
+      path.join(fixtures, 'spec/reconstructed.spec.yaml'),
+      path.join(pictures, 'service', 'reklamation.spec.yaml'),
+    );
+    for (const [folder, system, out] of [
+      [specs, 'aris', arisBundle()],
+      [pictures, 'images', imagesBundle()],
+    ] as const) {
+      const common = ['--workspace', ws(), '--system', system];
+      const plan = await plugin('analyzr-spec.mjs', [
+        'plan',
+        folder,
+        ...common,
+        '--whole-system',
+        '--write',
+      ]);
+      expect(plan, plan.stderr).toMatchObject({ code: 0, stderr: '' });
+      const bundled = await plugin('analyzr-spec.mjs', [
+        'bundle',
+        folder,
+        ...common,
+        '--out',
+        out,
+        '--exported-at',
+        '2026-10-14',
+      ]);
+      expect(bundled, bundled.stderr).toMatchObject({ code: 0, stderr: '' });
+    }
+  }, 120_000);
+
+  type Summary = {
+    counts: Record<string, number>;
+    files: { modelKey: string; trust?: { class: string; reasons: string[] } }[];
+    impact?: { acceptedCalls: { count: number }; callsProposed: { count: number } };
+  };
+
+  /** The same import with both CLIs, into s3c-a (the plugin's) and s3c-b (the checkout's). */
+  async function both(bundle: string, args: string[], create = false) {
+    const p = await plugin('analyzr.mjs', [
+      '--url',
+      server.url,
+      'import',
+      bundle,
+      '-p',
+      's3c-a',
+      ...(create ? ['--create', '--name', 'S3c A'] : []),
+      ...args,
+    ]);
+    expect(p, p.stderr).toMatchObject({ code: 0, stderr: '' });
+    const c = await analyzr([
+      'import',
+      bundle,
+      '-p',
+      's3c-b',
+      ...(create ? ['--create', '--name', 'S3c B'] : []),
+      ...args,
+    ]);
+    expect(c).toMatchObject({ code: 0, err: '' });
+    // the plugin's next steps name the command that runs it (with --url, not the default),
+    // and the start prompts as a part of analyzr's repository
+    const text = p.stdout
+      .replaceAll(`${nodeCommand(CLI)} --url ${server.url}`, 'analyzr')
+      .replaceAll(" (in analyzr's repository)", '');
+    expect(same(text, 's3c-a', 'S3c A'), args.join(' ')).toBe(same(c.out, 's3c-b', 'S3c B'));
+    return p.stdout;
+  }
+
+  const reconstructed = { class: 'derived', reasons: ['no-engine', 'reconstructed'] };
+
+  it('creates the projects with a picture’s bundle, previews and imports a converter bundle with analyzr.mjs exactly as the checkout’s analyzr does, then all unchanged (D3 (d), D4)', async () => {
+    // the picture's spec (the agent's reading) creates both projects
+    const pictures = JSON.parse(await both(imagesBundle(), ['--json'], true)) as Summary;
+    expect(pictures.counts).toEqual({ created: 1, revised: 0, unchanged: 0, failed: 0 });
+    expect(pictures.files).toEqual([
+      expect.objectContaining({ modelKey: 'service/reklamation', trust: reconstructed }),
+    ]);
+
+    // the converter bundle's preview: two new models, no call accepted or proposed (D3 (d))
+    const preview = JSON.parse(await both(arisBundle(), ['--dry-run', '--json'])) as Summary;
+    expect(preview.counts).toEqual({ created: 2, revised: 0, unchanged: 0, failed: 0 });
+    expect(preview.impact?.acceptedCalls.count).toBe(0);
+    expect(preview.impact?.callsProposed.count).toBe(0);
+    for (const f of preview.files) expect(f.trust, f.modelKey).toEqual(reconstructed);
+
+    const created = JSON.parse(await both(arisBundle(), ['--json'])) as Summary;
+    expect(created.counts).toEqual({ created: 2, revised: 0, unchanged: 0, failed: 0 });
+    for (const f of created.files) expect(f.trust, f.modelKey).toEqual(reconstructed);
+
+    // the dry run, the JSON and the text of a re-import: equal, every model unchanged
+    for (const args of [['--dry-run', '--json'], ['--json']]) {
+      const again = JSON.parse(await both(arisBundle(), args)) as Summary;
+      expect(again.counts, args.join(' ')).toEqual({
+        created: 0,
+        revised: 0,
+        unchanged: 2,
+        failed: 0,
+      });
+    }
+    expect(await both(arisBundle(), [])).toContain(
+      's3c-a: 2 files, 0 created, 0 revised, 2 unchanged, 0 failed\n',
+    );
+
+    for (const args of [
+      ['models', 'list'],
+      ['models', 'external-ids'],
+    ]) {
+      const p = await plugin('analyzr.mjs', [
+        '--url',
+        server.url,
+        ...args,
+        '-p',
+        's3c-a',
+        '--json',
+      ]);
+      expect(p, p.stderr).toMatchObject({ code: 0, stderr: '' });
+      const c = await analyzr([...args, '-p', 's3c-b', '--json']);
+      expect(same(p.stdout, 's3c-a', 'S3c A'), args.join(' ')).toBe(same(c.out, 's3c-b', 'S3c B'));
+    }
+    const models = JSON.parse(
+      (
+        await plugin('analyzr.mjs', [
+          '--url',
+          server.url,
+          'models',
+          'list',
+          '-p',
+          's3c-a',
+          '--json',
+        ])
+      ).stdout,
+    ) as { key: string; trust: { derivedKind: string; converter: string | null } | null }[];
+    const adhoc = expect.stringMatching(/^adhoc:[0-9a-f]{12}$/) as unknown;
+    expect(models.map((m) => [m.key, m.trust?.derivedKind, m.trust?.converter]).sort()).toEqual([
+      ['service/reklamation', 'reconstructed', null],
+      ['vertrieb/auftragsabwicklung', 'reconstructed', adhoc],
+      ['vertrieb/finanzen/bonitaetspruefung', 'reconstructed', adhoc],
+    ]);
   });
 });
 

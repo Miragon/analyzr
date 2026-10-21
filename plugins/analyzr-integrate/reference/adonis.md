@@ -30,5 +30,7 @@ sandbox export yet (M6 §3.8, owner question §10.4); what analyzr itself does i
 
 - BPMN 2.0 export → the BPMN path of this skill (`normalize-bpmn`); verified on analyzr's
   side: any BPMN 2.0 parses, `engine` is `null` without Camunda markers.
-- ADOxx XML → an ad-hoc converter that writes `analyzr-spec/1` (M6 S3c); in skill v0 the skill
-  reports what it found and stops.
+- ADOxx XML → an ad-hoc converter (`converters.md`) that writes `analyzr-spec/1`: BPMN models
+  with `--derived converted`, ADONIS's own business process diagrams with `--derived
+  reconstructed` (it interprets); source ids from the `INSTANCE` ids, `INTERREF`s to other models
+  as a `call` with `target` (to verify).

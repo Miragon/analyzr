@@ -1,6 +1,6 @@
 // The entry of the integrate plugin's bundled CLI `scripts/analyzr.mjs` (M6 S3c, owner
 // decision 30 (3)): the core program (every command of `analyzr` but `seed` and `mcp`), whose
-// next steps name `node <this file>` (and `--url` unless it is the default) and which sends the
+// next steps name `node <this file> --url <url>` and which sends the
 // owner key only to analyzr on this machine. Node 24 runs it from source as well (type stripping), as the parity tests do; no
 // shebang, since the bundle's banner writes one.
 import { buildPluginProgram, runProgram } from './core-program.ts';

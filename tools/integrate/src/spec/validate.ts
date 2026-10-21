@@ -29,7 +29,7 @@ import {
   type TaskKind,
   type Trigger,
 } from './types.ts';
-import { SPEC_FORMAT } from './version.ts';
+import { SPEC_FORMAT } from '../version.ts';
 import { MAX_PROBLEMS, type SpecProblem } from './yaml.ts';
 
 export type { SpecProblem } from './yaml.ts';

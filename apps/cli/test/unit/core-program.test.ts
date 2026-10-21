@@ -37,6 +37,8 @@ import {
 
 const SCRIPT = '/Users/berater/.claude/plugins/analyzr integrate/scripts/analyzr.mjs';
 const COMMAND = "node '/Users/berater/.claude/plugins/analyzr integrate/scripts/analyzr.mjs'";
+/** What the plugin's next steps name for analyzr at its default URL. */
+const AT_DEFAULT = `${COMMAND} --url http://127.0.0.1:7400`;
 const plugin = (io: CliIo): Command => buildPluginProgram(io, SCRIPT);
 
 let dir: string;
@@ -130,12 +132,12 @@ describe('the core program', () => {
     );
   });
 
-  it('names `node <script>`, the script shell-quoted, and --url unless it is the default', () => {
+  it('names `node <script>`, the script shell-quoted, and always --url, also the default', () => {
     expect(nodeCommand(SCRIPT)).toBe(COMMAND);
     expect(nodeCommand('/opt/plugins/scripts/analyzr.mjs')).toBe(
       'node /opt/plugins/scripts/analyzr.mjs',
     );
-    expect(pluginCommand(SCRIPT, 'http://127.0.0.1:7400')).toBe(COMMAND);
+    expect(pluginCommand(SCRIPT, 'http://127.0.0.1:7400')).toBe(AT_DEFAULT);
     expect(pluginCommand(SCRIPT, 'http://localhost:7400')).toBe(
       `${COMMAND} --url http://localhost:7400`,
     );
@@ -177,7 +179,7 @@ describe('the next steps of an import (commandName)', () => {
     const bundled = await importText(plugin);
     for (const sub of NAMED_COMMANDS.filter((c) => c !== 'status')) {
       expect(checkout, sub).toContain(`analyzr ${sub} `);
-      expect(bundled, sub).toContain(`${COMMAND} ${sub} `);
+      expect(bundled, sub).toContain(`${AT_DEFAULT} ${sub} `);
     }
     // no step names a command the consultant cannot run
     expect(bundled).not.toMatch(new RegExp(`analyzr (${NAMED_COMMANDS.join('|')}) `));
@@ -186,15 +188,23 @@ describe('the next steps of an import (commandName)', () => {
     );
     expect(checkout).toContain('other clients: the start prompts in examples/agents; a token:');
     expect(
-      bundled.replaceAll(COMMAND, 'analyzr').replaceAll(" (in analyzr's repository)", ''),
+      bundled.replaceAll(AT_DEFAULT, 'analyzr').replaceAll(" (in analyzr's repository)", ''),
     ).toBe(checkout);
   });
 
-  it('carry --url in the plugin unless it is the default, so they reach the same analyzr', async () => {
+  it('carry the --url of the run in the plugin, also the default, so they reach the same analyzr', async () => {
     const checkout = await importText(buildProgram);
     for (const [globals, env, url] of [
       [['--url', 'http://localhost:7500/'], {}, 'http://localhost:7500'],
       [[], { ANALYZR_URL: 'http://[::1]:7500' }, "'http://[::1]:7500'"],
+      [[], {}, 'http://127.0.0.1:7400'],
+      // the default named on the command line while the shell names another analyzr: a step
+      // run in that shell must still reach this one
+      [
+        ['--url', 'http://127.0.0.1:7400'],
+        { ANALYZR_URL: 'http://localhost:7500' },
+        'http://127.0.0.1:7400',
+      ],
     ] as const) {
       const bundled = await importText(plugin, [...globals], env);
       for (const sub of NAMED_COMMANDS.filter((c) => c !== 'status')) {
@@ -252,7 +262,7 @@ describe('the next steps of an import (commandName)', () => {
       'no projects yet: analyzr seed, or analyzr import <dir> --project <key> --create',
     );
     expect(await status(plugin)).toBe(
-      `no projects yet: ${COMMAND} import <dir> --project <key> --create`,
+      `no projects yet: ${AT_DEFAULT} import <dir> --project <key> --create`,
     );
     expect(await status(plugin, ['--url', 'http://localhost:7500'])).toBe(
       `no projects yet: ${COMMAND} --url http://localhost:7500 import <dir> --project <key> --create`,

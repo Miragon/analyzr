@@ -77,7 +77,7 @@ export interface CoreProgramOptions {
    * The command the next steps of `import` and the hint of `status` name, for
    * the URL the run talked to: `analyzr` in the checkout and the container
    * (`CLI_COMMAND`; the skill adds `--url`), in the plugin's bundle `node <path
-   * of analyzr.mjs>`, with `--url` unless it is the default
+   * of analyzr.mjs> --url <url>`, also for the default URL
    * ({@link pluginCommand}), so a consultant without a checkout can run each
    * of them against the same analyzr.
    */
@@ -851,12 +851,13 @@ export function nodeCommand(script: string): string {
 
 /**
  * The command the bundled CLI's next steps name: {@link nodeCommand}, then
- * `--url <url>` unless `url` is the default, so a step goes to the analyzr
- * the import went to, not to another one on this machine.
+ * always `--url <url>`, also the default one, so a step goes to the analyzr
+ * the command went to, not to another one on this machine that the shell
+ * running the step names in `ANALYZR_URL` (the integrate skill passes these
+ * lines on as printed).
  */
 export function pluginCommand(script: string, url: string): string {
-  const command = nodeCommand(script);
-  return url === DEFAULT_ANALYZR_URL ? command : `${command} --url ${shellArg(url)}`;
+  return `${nodeCommand(script)} --url ${shellArg(url)}`;
 }
 
 /**

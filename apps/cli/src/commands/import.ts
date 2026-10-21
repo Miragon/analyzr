@@ -48,7 +48,7 @@ import { manifestSubset, nestedManifests, readManifest, type LoadedManifest } fr
 /**
  * The command the next steps of the checkout's and the container's CLI name.
  * The integrate plugin's bundled CLI names the node command that runs it
- * instead, with `--url` unless it is the default (M6 S3c,
+ * instead, always with `--url` (M6 S3c,
  * `CoreProgramOptions.commandName`), so each step it prints is one a
  * consultant without a checkout can run against the same analyzr.
  */

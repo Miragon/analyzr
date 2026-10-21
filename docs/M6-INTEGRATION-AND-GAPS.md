@@ -12,11 +12,11 @@ and "S2b follow-up step 5 as delivered"),
 S2c-1 (the trust class and the rule tier, §8 "S2c-1 as delivered"), S2c-2 (the fast path for
 derived calls, §8 "S2c-2 as delivered"), S2c-3 (owners' rules for derived calls, §8 "S2c-3 as
 delivered") and S2c-4 („Vor der Vertrauensregel angenommen“, §8 "S2c-4 as delivered"; with it all of
-S2c) and steps 1 to 3 of S3c (`analyzr-spec/1` and the deterministic renderer, the converter runner
-`analyzr-convert` and the CLI core both `analyzr` CLIs share, all run from source, §8 "S3c step 1 as
-delivered", "S3c step 2 as delivered" and "S3c step 3 as delivered") done, the „erste Anfänge“ await
-the owner's review, and the integrate skill's pre-approval awaits one live check by the owner
-(HANDOFF §8); next S3c step 4 (the integrate plugin 0.1.4), then the safeguard of decision 30 (2),
+S2c) and S3c in four steps (`analyzr-spec/1` and the deterministic renderer, the converter runner
+`analyzr-convert`, the CLI core both `analyzr` CLIs share, and the integrate plugin 0.1.4 that
+bundles them with the converter and picture paths, §8 "S3c step 1 as delivered" to "S3c step 4 as
+delivered" and "S3c as delivered") done, the „erste Anfänge“ await the owner's review, and the
+integrate skill awaits the owner's live session (HANDOFF §8); next the safeguard of decision 30 (2),
 then S6; after the owner's live runs S5b, S7 and facts v2 · Branch: `feat/integration-and-gaps` ·
 Spec: [CONCEPT.md](CONCEPT.md) §1–§7 · Previous: [M4-VALUE-CHAIN.md](M4-VALUE-CHAIN.md) · Paused:
 the process network map (decision 22, issue [#2](https://github.com/Miragon/analyzr/issues/2)),
@@ -75,7 +75,7 @@ the command or screen and the slice that adds it ("today" means it exists now):
 2. **Convert.** `/analyzr-integrate:integrate-landscape <export>`: a bundle and a German report
    (S3b, for BPMN exports); S3c adds Visio, ARIS AML, PDFs and pictures in the same run, through
    `analyzr-spec/1` and its renderer (§3.9, decision 30; the renderer since step 1, in the skill
-   from plugin 0.1.4).
+   since plugin 0.1.4, step 4).
 3. **Import.** Create the project and import the bundle: `analyzr import <bundle> -p <project>
    --create --name …`, or „Neues Projekt“ and „Hochladen“ with the bundle folder in the web
    (today). The preview („Vorschau“ in the web, `--dry-run` in the CLI) came with S2b; the skill
@@ -281,8 +281,10 @@ collision-checked id function (§3.4 rule 2); A4, the converter runner in its ow
 stays in the report (§3.7 "Reaching analyzr"). The passages it changes say "(decision 30)"; HANDOFF
 §4 lists what each part amends. Open, not decided: calls from ad-hoc converters later (§10.12). Step
 1 of S3c delivered (1), A2 and A3 as far as the spec and the renderer go (§8 "S3c step 1 as
-delivered"), step 2 A1 and A4 as far as the runner goes (§8 "S3c step 2 as delivered") and step 3
-(3) as far as the CLI core goes (§8 "S3c step 3 as delivered").
+delivered"), step 2 A1 and A4 as far as the runner goes (§8 "S3c step 2 as delivered"), step 3
+(3) as far as the CLI core goes (§8 "S3c step 3 as delivered"), and step 4 the rest: (1) in the
+skill, the report line (2) asks for until the safeguard, (3) as the bundle `analyzr.mjs`, A1 and A4
+in the skill's converter path and A5 (§8 "S3c step 4 as delivered").
 
 ## 3. Part A: Integration toolkit
 
@@ -620,7 +622,8 @@ plugins/analyzr-integrate/
   .claude-plugin/plugin.json                                  # name analyzr-integrate, own version
   skills/integrate-landscape/SKILL.md                         # S3b
   skills/interview-guide/…, skills/interview-facts/…          # S6
-  reference/{signavio,aris,visio,adonis,bizagi,images}.md     # S3b, S3c
+  reference/{signavio,aris,visio,adonis,bizagi,images}.md     # S3b, S3c (images.md 0.1.4)
+  reference/{analyzr-spec,converters}.md                      # S3c, 0.1.4
   scripts/inspect.mjs, scripts/normalize-bpmn.mjs             # S3b
   scripts/analyzr-read.mjs (read-only preview, decision 29 (2))  # 0.1.3, S2b's follow-up step 4
   scripts/analyzr-spec.mjs (renderer, §3.9), scripts/analyzr.mjs (CLI)   # S3c, 0.1.4
@@ -663,12 +666,18 @@ plugins/analyzr-integrate/
   analyzr-workspace.json              # project key and name, ANALYZR_URL, the CLI form, source systems
   exports/<YYYY-MM-DD>-<system>/      # the customer's files, untouched
   converters/                         # ad-hoc converters, write-once copies adhoc-<12 hex>.js, S3c
-  specs/<YYYY-MM-DD>-<system>/        # analyzr-spec/1 files from a converter run or the agent, S3c
+  specs/<spec folder>/                # analyzr-spec/1 files from a converter run or the agent, S3c
   keymap.json                         # (system, externalId) → key, the key rule and scope per system
-  bundles/<YYYY-MM-DD>-<system>/      # the bundles (§3.2)
-  reports/<YYYY-MM-DD>-<system>.md    # the German reports
-  reports/<YYYY-MM-DD>-<system>.*.json  # the scripts' results (plan, bundle, models, external-ids, preview)
+  bundles/<YYYY-MM-DD>-<system>/      # the bundles (§3.2); a spec folder's under its name
+  reports/<YYYY-MM-DD>-<system>.md    # the German reports, one per export
+  reports/<folder>.*.json             # the scripts' results (plan, bundle, convert, preview, …)
 ```
+
+Each path of a system has folders of its own (plugin 0.1.4, §8 "S3c step 4 as delivered"): the BPMN
+files' bundle `bundles/<YYYY-MM-DD>-<system>`; a converter's specs `specs/<YYYY-MM-DD>-<system>`
+(`…-converter` when the export also has BPMN files of that system); the specs the agent reads from
+pictures `specs/<YYYY-MM-DD>-<system>-images` (`specs/<YYYY-MM-DD>-images` for the system
+`images`); every details file of a spec folder `reports/<spec folder>.<command>.json`.
 
 **Reaching analyzr.** The skill runs outside the checkout, and no documented setup puts an
 `analyzr` command on the host: the CLI is `pnpm analyzr` in a checkout or `analyzr` in the
@@ -681,34 +690,37 @@ in `analyzr-workspace.json`:
 1. `ANALYZR_CLI`, if set (for example `pnpm -C ~/Code/analyzr analyzr`);
 2. else `pnpm -C <checkout> analyzr` if the consultant names a checkout; the skill passes absolute
    paths;
-3. else, from plugin 0.1.4 (S3c step 4), the bundled CLI (decision 30): the workspace records
+3. else, since plugin 0.1.4 (S3c step 4), the bundled CLI (decision 30): the workspace records
    `"cli": "plugin"`, which the skill expands to `node <absolute plugin path>/scripts/analyzr.mjs`
    on every run (`$CLAUDE_PLUGIN_ROOT` is not set in the consultant's terminal);
 4. else, or when the consultant prefers it, the web: the models through „Hochladen“ with the bundle
    folder (with manifest and „Vorschau“ from S2), the chain through the `.vc.json` import on the
    chain page (both exist today); the workspace then records `"cli": null`.
 
+Since 0.1.4 a recorded `cli` is never replaced by the skill on its own; a recorded `null` stays,
+and the skill's last step offers the bundled CLI.
+
 The report always gives the command and the web path. The skill's own reads and its preview do
 not depend on that path: since plugin 0.1.3 they go through the plugin's `analyzr-read.mjs`
 (step 5), which talks only to an analyzr on this machine (127.0.0.1, `[::1]`, `localhost`) with
 `ANALYZR_TOKEN` or the owner key file, found as the CLI finds it; the CLI's read commands and dry
-run are its fallbacks, each approved once by the consultant. From plugin 0.1.4 (S3c step 4) the
+run are its fallbacks, each approved once by the consultant. Since plugin 0.1.4 (S3c step 4) the
 generate script also bundles `apps/cli` with the client and the contracts, every command but `seed`
 and `mcp`, into `plugins/analyzr-integrate/scripts/analyzr.mjs` (self-contained, drift test), so
 `node <plugin>/scripts/analyzr.mjs import …` works anywhere with Node 24 and names itself in the
 next steps it prints; it sends the owner key only to an analyzr on this machine. By decision 30 (3)
-every change of `apps/cli`, `packages/client` or `packages/contracts` then needs `generate` and a
+every change of `apps/cli`, `packages/client` or `packages/contracts` now needs `generate` and a
 new integrate plugin version (the drift test enforces it); `analyzr-read.mjs` stays zod-free. Its
-core is delivered in S3c step 3, run from source until 0.1.4 (§8 "S3c step 3 as delivered"):
+core came in S3c step 3 (§8 "S3c step 3 as delivered") and its bundle in step 4:
 `apps/cli/src/core-program.ts` holds the commands both CLIs share, and `src/plugin-main.ts` is the
 bundle's entry. Its next steps and `status`'s hint name `node <absolute path of analyzr.mjs>` (the
-path shell-quoted only where it needs it, as `shellArg` does), plus `--url <url>` when the run did
-not talk to the default URL, so step 4's skill can pass them on as printed (it rewrites only the
-checkout's `analyzr …` lines to `<cli> --url …`); it sends the owner key only to `127.0.0.1`,
-`[::1]` and `localhost` over http(s), an agent token anywhere; and its `token create` prints no
-Claude Desktop config outside the container, since the stdio bridge needs `analyzr mcp` from a
-checkout or the container. In both CLIs a word that reads as a flag is no option value (exit 2), so
-`import b -p p --create --name --dry-run` no longer imports.
+path shell-quoted only where it needs it, as `shellArg` does), plus `--url <url>`, since step 4
+also for the default URL, so the skill passes them on as printed (it rewrites only the checkout's
+`analyzr …` lines to `<cli> --url …`, never adding a second `--url`); it sends the owner key only to
+`127.0.0.1`, `[::1]` and `localhost` over http(s), an agent token anywhere; and its `token create`
+prints no Claude Desktop config outside the container, since the stdio bridge needs `analyzr mcp`
+from a checkout or the container. In both CLIs a word that reads as a flag is no option value (exit
+2), so `import b -p p --create --name --dry-run` no longer imports.
 
 **`/analyzr-integrate:integrate-landscape <export> [--workspace <dir>]`** (`disable-model-invocation:
 true`; Claude Code and Codex, since it needs a shell). The project comes from
@@ -727,16 +739,20 @@ import with `--create --name …`.
    BPMN models) or `reconstructed` for an interpretive one (EPCs, plain flowcharts; decision 30); no
    machine-readable model (PDF, picture) → the session agent reads it with its own file reader and
    writes a spec YAML, `reconstructed` with `llmModel` (S3c; no vision pipeline, decision 30 (1)).
-   Until plugin 0.1.4 (S3c step 4) only the BPMN path ships: for other formats the skill reports
-   what it found and stops. **The consultant confirms** the detected tool, the format and the path,
-   for a converter also the derivation. Since S3c step 2 the runner exists, run from source until
-   0.1.4 (§3.9 "Converter runs", §8 "S3c step 2 as delivered"): `convert` runs exactly the bytes
+   All three paths ship since plugin 0.1.4 (S3c step 4); before it, the skill reported other
+   formats and stopped. **The consultant confirms** the detected tool, the format and the path,
+   for a converter also the derivation. Since S3c step 2 the runner exists, bundled since 0.1.4
+   (§3.9 "Converter runs", §8 "S3c step 2 as delivered"): `convert` runs exactly the bytes
    whose full sha256 the consultant approved (`--sha256`), in a child Node under the permission
    model, with one read grant (its own script) and no environment, and writes the specs, a
    write-once copy `converters/adhoc-<12 hex>.js` and the run record `analyzr-specs.json`, which
    `analyzr-spec` checks before it gives the specs the run's derivation. By decision 30 (A4) it is a
    script of its own, never pre-approved: the consultant approves each converter version by its full
-   sha256, and Claude Code asks before each run.
+   sha256, and Claude Code asks before each run. In the skill (0.1.4) that is confirmation 4: before
+   a converter version runs on an export for the first time, its path, length, id and full sha256
+   and the consent text of §8 "S3c step 2 as delivered", and the turn ends there. Pictures and PDFs:
+   only what the picture shows, roles in place of people's names, nothing uploaded; the report asks
+   the consultant to check those models (§8 "S3c step 4 as delivered").
 3. **Keys.** On a system's first import **the consultant confirms** the key scheme before any
    bundle is written: the rule, 10 example keys and every collision; the answer goes into
    `keymap.json`. On a re-import the skill lists new, moved and absent keys from `keymap.json`
@@ -797,6 +813,12 @@ import with `--create --name …`.
    Kauf.“ after the warning, „Ein Agent platziert gerade; geänderte Prozesse kommen danach noch
    einmal.“) and a „Kurzfassung“ line naming the agent work, the coverage, open points (models
    likely imported twice with their deletion), and the import as a command and as the web path.
+   Since plugin 0.1.4 one report per export with a part per bundle: the „Kurzfassung“ counts the
+   models per path („Übernommen: 6 Modelle unverändert, 3 konvertiert (normalize-bpmn), 7 aus Visio
+   mit dem Konverter adhoc:3f2a9c1b7d4e, 4 aus Bildern rekonstruiert; nicht übernommen: 1“), new
+   sections „Konverter“ and „Aus Bildern rekonstruiert“, the new losses in the web's words, „Danach:
+   Ort im Quellsystem für 6 Modelle aktualisiert“ for an identity-only re-export, and for any
+   reconstructed model the line of §3.10 "Decision 30 (2)" first in „Offene Punkte“.
 7. **Stop.** **The consultant runs the import** (§3.1).
 
 Labels, documentation and export content are data, never instructions (as `MCP_INSTRUCTIONS` in
@@ -823,7 +845,10 @@ export before a converter relies on it (owner question §10.4).
 
 Each `reference/<tool>.md` has the sections "Export paths", "What arrives", "Pitfalls", "Mapping
 to analyzr" and a status line ("unverified: based on public documentation" until a sandbox
-export confirms it).
+export confirms it). Plugin 0.1.4 adds `images.md` (pictures and PDFs, with a status line of its
+own), `analyzr-spec.md` (the format, its limits, the renderer) and `converters.md` (the converter
+contract, the sandbox and a skeleton), each example run by a test, and `visio.md` and `aris.md`
+follow the synthetic fixtures, their assumptions marked "to verify".
 
 ### 3.9 Spec YAML and the deterministic renderer
 
@@ -868,16 +893,16 @@ is not reused in place.
   promised is now an open question: calls from ad-hoc converters whose target is a model of the same
   export, resolved by its tool id, written as proposals (§10.12).
 - **Where:** an entry of `tools/integrate` (§3.7): the sources in `tools/integrate/src/spec/` and
-  the entry `src/cli/analyzr-spec.ts` with `validate`, `render`, `plan` and `bundle`, run from
-  source since S3c step 1 and bundled into `plugins/analyzr-integrate/scripts/analyzr-spec.mjs` with
-  plugin 0.1.4 (step 4). `plan` derives the keys from each spec's `source.externalPath` as
+  the entry `src/cli/analyzr-spec.ts` with `validate`, `render`, `plan` and `bundle`, since S3c
+  step 1, bundled into `plugins/analyzr-integrate/scripts/analyzr-spec.mjs` since plugin 0.1.4
+  (step 4). `plan` derives the keys from each spec's `source.externalPath` as
   `normalize-bpmn plan` does for an export, and flags `replaces-known-model` when a spec the agent
   wrote would take a key that may belong to a tool's model, a stop in the consultant's key
   confirmation. Its layout started from a copy of the eval layouter (`src/spec/layout.ts`); one
   package shared with the eval generator needs a principle-7 exception and waits until the renderer
   has proven itself.
-- **Converter runs** (decision 30 (A1), (A4); delivered in S3c step 2, run from source until plugin
-  0.1.4; §8 "S3c step 2 as delivered"): only `analyzr-convert` runs a converter, a script of its own
+- **Converter runs** (decision 30 (A1), (A4); delivered in S3c step 2, bundled since plugin 0.1.4;
+  §8 "S3c step 2 as delivered"): only `analyzr-convert` runs a converter, a script of its own
   so that no approval of the spec commands covers running code. A converter is a script in the
   workspace's `converters/` (at most 1 MB, never naming `import`) that defines a synchronous
   `convert(input, helpers)`: it gets the export's files as plain data (path, size, sha256, a zip's
@@ -1019,7 +1044,10 @@ rule tier's derived calls), so a message name misread from a whiteboard can end 
 accepted by a rule such as „Nachricht ab 0,9“. A safeguard will block a rule whenever an endpoint's
 uploaded revision declares `reconstructed` (from S6 also `as-told`), in a small server step of its
 own after S3c and before S6; S3c does not change the server. Until then the skill's report says so
-for every bundle with reconstructed models (from plugin 0.1.4).
+for every bundle with reconstructed models (since plugin 0.1.4, the first line of „Offene Punkte“:
+„Bis analyzr das ausschließt, können deine Regeln für Agenten-Vorschläge (zum Beispiel „Nachricht
+ab 0,9“) Relationen und Platzierungen an KI-rekonstruierten Modellen annehmen; prüf diese Modelle
+deshalb, bevor der Agent startet.“).
 
 ### 3.11 `eval:descriptive`: measure the loss first
 
@@ -4198,7 +4226,9 @@ overrule are in HANDOFF §4 ("Taken during the M6 S2b follow-up step 5"). Open:
 - **The skill's report of an identity-only re-export** (plugin 0.1.3): its preview says „keine
   Änderung an Relationen und Befunden.“ and its `provenance-kept` label reads „Unverändert: analyzr
   behält die bisherige Herkunft“; the places are recorded once the consultant runs the import it
-  hands over. The list for the next plugin release is in HANDOFF §7 "M6".
+  hands over. Both texts changed with plugin 0.1.4 (S3c step 4): „Danach: Ort im Quellsystem für
+  6 Modelle aktualisiert“ and „Unverändert: analyzr behält die bisherige Angabe, wie die Datei
+  entstanden ist“.
 - **The result headline** after „Importieren“ does not name the recorded places (HANDOFF §4).
 - **`Model.source` describes the bytes**: a landscape first uploaded without a manifest shows no
   subtitle „Aus Signavio“ and no chip after its bundle is imported over it, until its bytes change;
@@ -4241,30 +4271,31 @@ test and plugin 0.1.4's release row).
    the renderer and its self-check, the spec bundle and the entry `analyzr-spec.ts` (`validate`,
    `render`, `plan`, `bundle`), run from source; the goldens, `RENDER_OUTPUTS`, the fuzz test, D1
    and D2 (a) in CI, the Playwright harness spec of D2 (b), `replaces-known-model`.
-2. **The converter runner `analyzr-convert.mjs`** (2.5 d; delivered 2026-10-21, run from source
-   until 0.1.4, "S3c step 2 as delivered" below): `convert` runs exactly the bytes whose full sha256
+2. **The converter runner `analyzr-convert.mjs`** (2.5 d; delivered 2026-10-21, bundled since
+   0.1.4, "S3c step 2 as delivered" below): `convert` runs exactly the bytes whose full sha256
    the consultant approved (`--sha256`, a new confirmation per converter version), in a context
    without host objects inside a child Node under `--permission`, with one read grant (its own
    script) and no environment, records them as `adhoc:<12 hex>` with a write-once copy in
    `converters/`, and declares `--derived converted|reconstructed` per mapping; the run record
    `analyzr-specs.json`, which `bundle` checks; Visio and AML fixtures with their converters; D3 (a)
    to (c).
-3. **The CLI core** (1.25 d; delivered 2026-10-21, run from source until 0.1.4, "S3c step 3 as
-   delivered" below): `apps/cli`'s commands in a shared core with the command name it prints (in the
-   bundled CLI `node <path of analyzr.mjs>`, with `--url` unless the default), the parse guard (a
-   word that reads as a flag is no option value, nor after `--` an argument: exit 2 in both CLIs),
-   the owner key sent only to loopback hosts and `token create` without a Claude Desktop entry in
-   the bundled CLI, its entry `plugin-main.ts`, the parity tests from source.
-4. **The integrate plugin 0.1.4** (1.75 d, planned): `analyzr-spec.mjs`, `analyzr-convert.mjs` and
-   `analyzr.mjs` (every command but `seed` and `mcp`) bundled, the copied helpers moved into shared
-   modules, SKILL.md with the converter and picture paths and the two items of S2b's follow-up step
-   5, the reference notes `images.md`, `analyzr-spec.md` and `converters.md`, the release row, and
-   the scratch-stack e2e of D3 (d) and D4.
+3. **The CLI core** (1.25 d; delivered 2026-10-21, bundled since 0.1.4, "S3c step 3 as delivered"
+   below): `apps/cli`'s commands in a shared core with the command name it prints (in the bundled
+   CLI `node <path of analyzr.mjs>`, with `--url` unless the default, since step 4 always), the
+   parse guard (a word that reads as a flag is no option value, nor after `--` an argument: exit 2
+   in both CLIs), the owner key sent only to loopback hosts and `token create` without a Claude
+   Desktop entry in the bundled CLI, its entry `plugin-main.ts`, the parity tests from source.
+4. **The integrate plugin 0.1.4** (1.75 d; delivered 2026-10-21, "S3c step 4 as delivered"
+   below): `analyzr-spec.mjs`, `analyzr-convert.mjs` and `analyzr.mjs` (every command but `seed` and
+   `mcp`) bundled, the copied helpers moved into shared modules, SKILL.md with the converter and
+   picture paths and the two items of S2b's follow-up step 5, the reference notes `images.md`,
+   `analyzr-spec.md` and `converters.md`, the release row, and the e2e of D3 (d) and D4 (on
+   Testcontainers; and with the bundled scripts on the lead's scratch stack).
 
 Steps 1–3 leave `plugins/analyzr-integrate/` byte-identical (`generate`, then `git diff --exit-code
 plugins/analyzr-integrate`), so 0.1.3 stays the released version and one release, 0.1.4, comes at
-the end. After S3c and before S6 comes the safeguard of decision 30 (2), a small server step of its
-own (§3.10).
+the end, with step 4. After S3c and before S6 comes the safeguard of decision 30 (2), a small
+server step of its own (§3.10).
 
 **S3a as delivered** (2026-10-15, branch `feat/integration-and-gaps`; every gate green, together
 with S3b): `pnpm eval:descriptive` (`eval/tools/src/descriptive.ts`, `descriptive-context.ts`,
@@ -4331,7 +4362,7 @@ the four sections and the status line "unverified: based on public documentation
 `.claude-plugin/marketplace.json` (`claude plugin validate --strict` passes for both with Claude
 Code 2.1.300); the private package `tools/integrate` (`@analyzr/integrate`, imported by nothing
 in `apps/` or `packages/`; it imports only the zod-free `@analyzr/contracts/paths`, so its keys
-are `modelKeyFromPath`'s; since S2b's follow-up step 4 also `/impact-merge`, and from plugin 0.1.4
+are `modelKeyFromPath`'s; since S2b's follow-up step 4 also `/impact-merge`, and since plugin 0.1.4
 `analyzr.mjs` bundles the full contracts with zod, decision 30 (3)) with the sources and 145 tests.
 `pnpm --filter @analyzr/integrate
 generate` bundles each entry with rolldown 1.2.12, the version Vite 8.3.2 locks (no new package
@@ -4767,7 +4798,8 @@ contracts, client, CLI, web, MCP and its snapshots, the procedures, the claim in
 - **The check at `analyzr-spec`** (`src/spec/bundle.ts`): `validate`, `plan` and `bundle` read the
   record (a regular file of at most 16 MB); a spec it lists is validated as converter output and
   refused when its sha256 differs ("changed after converter adhoc:… wrote it: run the converter
-  again, or move it into a spec folder of its own and declare it reconstructed"); `plan` and
+  again, or move it into a spec folder of its own and declare it reconstructed"; since step 4
+  "never edit a converter's spec; fix the converter and run it again into a new folder"); `plan` and
   `bundle` also refuse (`run-record`) without `--workspace`, when the copy is missing, changed, a
   symbolic or hard link, or the record's id does not match its sha256, and a record that is no valid
   JSON or holds untidy values (an unreadable record is one folder error, its specs listed
@@ -4965,8 +4997,8 @@ snapshots, the procedures, the migrations and the claim inputs are untouched.
 - **The command it names** (`commandName: (url) => string`): the checkout's CLI names `analyzr`;
   the plugin's `pluginCommand(script, url)`, `node <script>` with the script shell-quoted as
   `shellArg` quotes it (`node '/Users/x/Plugin Cache/scripts/analyzr.mjs'`), then `--url <url>`
-  when the URL from `--url` or `ANALYZR_URL` is not the default `http://127.0.0.1:7400`. It is
-  named in every step `import` prints: the amendment conflicts'
+  when the URL from `--url` or `ANALYZR_URL` is not the default `http://127.0.0.1:7400` (since step
+  4 always, "S3c step 4" below). It is named in every step `import` prints: the amendment conflicts'
   `questions -p … --kind amendment-conflict`, the identity steps' `models delete` and
   `models external-ids`, the owner rule steps' `rules apply`, `rules enable` and `rules add`, the
   agent step's `token create -p …` (with `(in analyzr's repository)` after "the start prompts in
@@ -5116,8 +5148,9 @@ owner may overrule: HANDOFF §4 ("Taken during M6 S3c step 3"). Open:
   run on the bundle.
 - **The skill's rewrite** (step 4): SKILL.md rewrites only lines that start with `analyzr …` (the
   checkout's) to `<cli> --url "<analyzrUrl>" …` and passes the plugin's lines, which start with
-  `node` and the script path (with their own `--url` unless the default), on as they are, never
-  adding a second `--url`.
+  `node` and the script path (with their own `--url` unless the default; since step 4 always, also
+  the default, HANDOFF §4 "Taken during M6 S3c step 4" (a)), on as they are, never adding a second
+  `--url`.
 - **What the guard does not catch**: a value with one dash (`--name -n`), a flag written without
   dashes, a value missing at the very end (commander's error, exit 1); and it refuses a real value
   without a space that starts with `--` (`--text "--siehe"`).
@@ -5125,6 +5158,358 @@ owner may overrule: HANDOFF §4 ("Taken during M6 S3c step 3"). Open:
 
 Left: step 4 of S3c (the integrate plugin 0.1.4), then the safeguard of decision 30 (2), then S6;
 after the owner's live runs S5b, S7 and facts v2.
+
+**S3c step 4 as delivered** (2026-10-21, on the branch, every gate green, with a review round's
+fixes; [DEVELOPMENT.md](DEVELOPMENT.md) "M6 S3c step 4 (2026-10-21)" and "The integrate plugin and
+`tools/integrate`"; owner decision 30, §2): the integrate plugin 0.1.4. For the first analysis: one
+skill run brings Visio, ARIS AML, PDFs and whiteboard pictures into analyzr in the same first pass
+as the BPMN exports, consultants without a checkout import with the bundled CLI, and an
+identity-only re-export says that its import records the new places. What changes: `tools/integrate`
+(the bundle entries and notices, the shared modules, the compact preview, `analyzr-convert`'s usage
+check, one message of `analyzr-spec`, the tests), `apps/cli` (one function, `pluginCommand`, with
+its tests and a new e2e case) and the plugin (its generated scripts and notices, `plugin.json`,
+SKILL.md and the reference notes); the server, contracts, client, web, MCP and its snapshots, the
+procedures, the migrations, the claim inputs, `plugins/analyzr`, `.claude-plugin/marketplace.json`,
+`packages/procedures`' pin of it, the lockfile and the root `THIRD-PARTY-NOTICES.md` are untouched.
+
+- **The bundles** (`tools/integrate/scripts/bundle.ts`): `ENTRIES` gain `analyzr-convert.mjs`,
+  `analyzr-spec.mjs` and `analyzr.mjs` (`'../../apps/cli/src/plugin-main.ts'`; the banner names the
+  entry relative to the repository, `from apps/cli/src/plugin-main.ts`). The dynamic-import check
+  allows only a chunk's reference to itself (`analyzr-convert`'s lazily imported modules, inlined
+  into its one chunk); `regionName` treats rolldown's `\0rolldown/runtime.js` region explicitly;
+  `GENERATED_RUNTIMES` maps `@analyzr/client` to `@hey-api/openapi-ts`, so the notices name the
+  generator whose template code the client carries ("Bundled as the runtime it generated into
+  `@analyzr/client`."), and their intro names `apps/cli`, `packages/client` and
+  `packages/contracts`. Sizes in bytes (gzip -9): `analyzr-spec.mjs` 496,944 (113,421),
+  `analyzr-convert.mjs` 335,915 (81,452), `analyzr.mjs` 652,192 (150,069); the rebuilt
+  `analyzr-read.mjs` 36,957 (11,401) and `normalize-bpmn.mjs` 244,061 (the plan-args move only);
+  `inspect.mjs` byte-identical at 32,676; the plugin 17 files, 1,933,960 bytes. Node built-ins,
+  pinned per bundle: `analyzr-spec.mjs` crypto, fs, fs/promises, module, path and util;
+  `analyzr-convert.mjs` the same plus child_process, url, vm and zlib; `analyzr.mjs` child_process,
+  crypto, events, fs, fs/promises, os, path, process and util. In the two spec bundles `__require`,
+  rolldown's one `createRequire(import.meta.url)` for `yaml`'s CommonJS build, loads only `process`
+  and `buffer`; `analyzr.mjs` has neither `__require` nor `import.meta`, and its regions are
+  `@analyzr/cli` (22), `@analyzr/client` (10), `@analyzr/contracts` (27), zod (20), commander (6)
+  and `analyzr@0.1.0-alpha.0/package.json` (its `--version`).
+- **The shared modules** (what steps 1–3 deferred): `src/plan-args.ts`, moved from `src/spec/`,
+  serves `normalize-bpmn`, `analyzr-spec` and `analyzr-convert` (`normalize-bpmn`'s own copies are
+  gone); `src/ids.ts` exports `capped`, which `spec/ids.ts` imports with `uniqueId`;
+  `src/version.ts` holds `ANALYZR_SPEC_VERSION` (0.1.0), `SPEC_FORMAT`, `SPEC_IMPORTER` and
+  `ANALYZR_CONVERT_VERSION` (0.1.0), and `src/spec/version.ts` is gone; `sanitizeLine` and
+  `sanitizeBlock` stay pinned copies in `src/spec/text.ts` (below). No model byte moves:
+  `RENDER_OUTPUTS['0.1.0']`, `CONVERTER_OUTPUTS` and `NORMALIZE_BPMN_VERSION` are unchanged.
+- **The preview** (`src/preview.ts`, `ANALYZR_READ_VERSION` 0.1.1): `FileOutcome` types `trust` and
+  `identityUpdated`, and `compactPreview` adds `counts.identityUpdated` (the unchanged files whose
+  new place in the tool the import records, the count of the web's „Ort im Quellsystem für 6 Modelle
+  aktualisiert“, `identityUpdateText` in `apps/web/src/lib/upload.ts`) and `counts.modelled` (the
+  files not failed and without `trust`, since the server sets it only for derived ones; a bundle of
+  rendered specs never holds one).
+- **The bundled CLI's next steps** (`apps/cli/src/core-program.ts`, the review round):
+  `pluginCommand(script, url)` is `node <script> --url <url>` for every URL, the default
+  `http://127.0.0.1:7400` included, so a step pasted into a shell whose `ANALYZR_URL` names another
+  analyzr still reaches the one the run talked to; the checkout's CLI keeps `analyzr`.
+- **`analyzr-convert` and `analyzr-spec`**: `derivedProblem` (`src/spec/converter.ts`) checks
+  `--derived` and `--llm-model` before anything else, so `--derived reconstructed` without a model
+  id is a usage error (exit 2) in the CLI and still the refusal `derived` in `convertExport`; a
+  converter's spec edited after its run is refused with "changed after converter adhoc:… wrote it:
+  never edit a converter's spec; fix the converter and run it again into a new folder"; `scanSpecs`
+  no longer lists the run record `analyzr-specs.json` among the skipped files. In bundle mode the
+  child's one read grant is the bundle itself.
+- **The release**: `plugin.json` 0.1.4 with a new description (the three paths; a converter the
+  agent writes and the consultant approves before each version runs, in a sandboxed Node that cannot
+  guarantee a ban on network access; the bundled CLI, which takes the owner key or an agent token
+  and sends the owner key only to analyzr on this machine); `RELEASES['0.1.4']`
+  `c5d396e863ca18b7137330575ff83227fb6d0f045280336b2725f844f1c65eb2` with a comment, the older rows
+  untouched; `marketplace.json` and `packages/procedures`' pin of it unchanged (R24). `claude plugin
+  validate --strict` with Claude Code 2.1.306: "✔ Validation passed" for the plugin (with one
+  informational `ICON_MISSING`, no icon, which the validator says does not change the result) and
+  for the marketplace.
+- **SKILL.md** (71,900 bytes, 931 lines; 0.1.3's had 44 KB): `allowed-tools` byte-identical (its
+  line's sha256 `ef99f17e…a62a`, pinned in `plugin.test.ts`), six `${CLAUDE_SKILL_DIR}` in the body,
+  no `Bash(` and no allow rule. The scripts paragraph adds `analyzr-spec.mjs` (it runs no foreign
+  code), `analyzr-convert.mjs` (honest about the network) and `analyzr.mjs` (the consultant's CLI,
+  of which the agent runs only the read fallbacks); every script but the two pre-approved ones asks,
+  each run approved on its own, never with „don't ask again“. Ground rules: 2 (`SCRIPTS/analyzr.mjs`
+  only for reads and `import --dry-run`, never `--create` or `--name`), 4 (no upload, no web OCR, no
+  connector for pictures), 5 (four confirmations; confirmation 4 ends the turn in every permission
+  mode), new 7 (a converter is code the agent writes: show it, give its id and full sha256, run it
+  only after the yes with exactly that `--sha256`; specs from pictures hold only what the picture
+  shows) and new 8 (only the scripts write BPMN, bundles and converter output; the only specs the
+  agent writes are those of step 2b). The workspace gains `converters/` and `specs/` with the
+  folders per path of §3.7, `cli` `"plugin"` (expanded on every run to `node "<SCRIPTS absolute,
+  without ..>/analyzr.mjs"`, never recorded as a path) and the rewrite rule: a line the CLI prints
+  that starts with `analyzr ` becomes `<cli> --url "<analyzrUrl>" …`, one that starts with `node`
+  and the path of `analyzr.mjs` is passed on exactly as printed, never with a second `--url`.
+- **The paths** (steps 0–2b): step 0.4 keeps a recorded `cli`, else takes `$ANALYZR_CLI`, a named
+  checkout or `"plugin"`, and `null` only for the web (A5); a recorded `null` stays, and step 7
+  offers the bundled CLI. Step 1 reads `REFERENCE/images.md` when pictures or PDFs are counted. Step
+  2 names three paths per group of files plus "not readable here" (`.vsd`, `.bpm`); the derivation
+  goes with the path (A1); pictures and PDFs are looked at first, since next to a tool's models they
+  are often printouts or landscape maps, and a picture's system is the tool whose model it shows,
+  else `images`; for the converter and picture paths the archive and scope questions move to
+  confirmation 2. The Signavio example now reads „… Ich würde die 6 BPMN-Dateien mit
+  „normalize-bpmn“ übernehmen. Das PDF zeigt eine Prozesslandkarte, kein einzelnes Prozessmodell;
+  ich übernehme es nicht und nenne es im Bericht. …“, and a mixed one „Ich habe 9 Dateien gefunden:
+  2 Visio-Dateien (VSDX mit BPMN-Schablone) und 7 Fotos von Whiteboards. Die Visio-Seiten übernehme
+  ich mit einem Konverter, den ich dir vorher zeige; weil er nur Formen der BPMN-Schablone
+  übersetzt, zeigt analyzr sie als „Konvertiert“. Die Fotos lese ich selbst ab; analyzr kennzeichnet
+  sie als „KI-rekonstruiert“. Passt das so: Werkzeug „visio“ für die Visio-Dateien, „images“ für die
+  Fotos?“ Step 2a: read the notes, write `converters/<system>-<purpose>.js`, measure it (`shasum -a
+  256`, `wc -l`), ask confirmation 4 in the words S3c step 2 drafted (above) and end the turn, run
+  `analyzr-convert.mjs convert … --sha256 <the sha256 you showed> … --out "<ws>/specs/<spec folder>"
+  --json-out "<ws>/reports/<spec folder>.convert.json"`, say what it did from its output („Der
+  Konverter hat 2 von 3 Dateien gelesen und 2 Modelle geschrieben; nicht übernommen: „Liesmich.txt“
+  (keine VSDX-Datei), Seite „Legende“ (keine Prozessformen).“; a file another confirmed path takes
+  over is not „nicht übernommen“), on a failure fix the converter, ask again and use a new folder,
+  and keep the converter for the next export. Step 2b (decision 30 (1)): the agent's own file reader
+  only; only what the picture shows (an unreadable label gets the `note` „unleserlich“, no flow
+  without a line); roles, never people's names, in lanes, names, `documentation`, message and signal
+  names, notes, `notes`, the tool path and `source.file` („Frau Meier prüft“ becomes
+  „Sachbearbeitung prüft“); a call `type: call` with `target`; no `externalId` or `url`; `validate`
+  until no error is left.
+- **Keys, bundle, preview** (steps 3–5): for a spec folder `analyzr-spec.mjs plan` with the same
+  flags (`folders`, `archiveLike`, `replacesKnownModel`; the key table reads „Quelle → Schlüssel“).
+  `replaces-known-model` asks one of two questions (HANDOFF §4 "Taken during M6 S3c step 4" (e)),
+  with a tool id or `exists-in-analyzr` „Das Bild „Whiteboard Reklamation“ bekäme den Schlüssel
+  „service/reklamation“, den schon ein Modell aus dem Werkzeug hat; der Import würde es ersetzen.
+  Soll das Bild einen eigenen Schlüssel bekommen (zum Beispiel „bilder/service/reklamation“), oder
+  soll ich es weglassen?“, without one „… den schon ein Modell hat, das vielleicht aus einem
+  Werkzeug stammt. Ist es dasselbe Modell wie bei einem früheren Bild (dann behalte ich den
+  Schlüssel), soll es einen eigenen Schlüssel bekommen, oder soll ich es weglassen?“; a picture's
+  tool path is never `--exclude`d. "Absent, but from another path": models of the run's other bundle
+  and of a picture spec folder of the system are flagged in plan, bundle and preview, never up for
+  deletion („Die 4 Modelle aus `bundles/2026-10-14-signavio-images` fehlen hier nicht, sie kommen
+  mit dem zweiten Import.“). Step 4 bundles a spec folder with `analyzr-spec.mjs bundle`. Step 5
+  reads `counts.identityUpdated` and `counts.modelled` from the preview, whose details go to
+  `reports/<bundle folder>.preview.json`, and stops a spec bundle whose preview shows
+  `counts.modelled`, `impact.acceptedCalls` or `impact.callsProposed.count` above 0: „Dieses Bündel
+  enthält Dateien, die „analyzr-spec“ so nicht zeichnet: analyzr würde sie als modelliert einstufen
+  oder Aufrufziele darin finden. Ich empfehle keinen Import.“
+- **The report** (step 6), one per export with a part per bundle: the „Kopf“ names „analyzr-spec
+  <version>“, „analyzr-convert <version>“ and „Konverter adhoc:<12 hex>“; the „Kurzfassung“ counts
+  the models per path (R30: „Übernommen: 6 Modelle unverändert, 3 konvertiert (normalize-bpmn), 7
+  aus Visio mit dem Konverter adhoc:3f2a9c1b7d4e, 4 aus Bildern rekonstruiert; nicht übernommen: 1“,
+  for a reconstructing converter „7 aus ARIS mit dem Konverter adhoc:c987bfc789d4,
+  KI-rekonstruiert“) and recommends an identity-only import („Der Import ändert kein Modell, hält
+  aber den neuen Ort im Quellsystem für 6 Modelle fest; führ ihn trotzdem aus.“); „Gefunden“ labels
+  a converter's `unread` („größer als 64 MB, nicht gelesen“) and `zipRefused` („Archiv nicht
+  geöffnet“), `validate`'s refusals by the message it prints („mehr als 5.000 Knoten“, „mehr als
+  10.000 Verbindungen“, „mehr als 1.000 Prozesse, Pools, Bahnen und Datenspeicher“, „keine reguläre
+  Datei (ein Link oder Ordner)“) and `bundle`'s failures (`layout-too-large` „zu viele lange
+  Verbindungen für das Layout“, `too-large` „gezeichnet größer als 5 MB“, `too-many-elements` „mehr
+  als 50.000 Elemente“, `self-check` „Selbstprüfung des Renderers fehlgeschlagen“); „Übernommen“ has
+  the Art values „konvertiert (adhoc:<12 hex>)“, „KI-rekonstruiert (adhoc:<12 hex>)“ and „aus Bild
+  rekonstruiert“; the new section 4a „Konverter“ („adhoc:3f2a9c1b7d4e
+  (`converters/adhoc-3f2a9c1b7d4e.js`, von mir geschrieben, von dir zum Ausführen freigegeben,
+  Prüfsumme <64 hex>). Er hat 2 von 2 Dateien gelesen und 7 Modelle geschrieben.“, „Weggelassen: 12
+  Elemente ohne Prozessbedeutung“, „Der Konverter bleibt unverändert in `converters/`; für den
+  nächsten Export nehme ich ihn wieder, damit unveränderte Modelle unverändert bleiben.“) and 4b
+  „Aus Bildern rekonstruiert“ („Diese 4 Modelle habe ich aus Bildern und PDFs abgelesen
+  (<llmModel>). analyzr zeigt sie als „KI-rekonstruiert“. Prüf sie bitte gegen die Vorlage, bevor du
+  ihnen vertraust: Namen, Reihenfolge und Verzweigungen können falsch gelesen sein.“, the table
+  „Bild | Schlüssel | Unsicher“ by each spec's `source.file`, and „In Bahnen und Dateinamen standen
+  Personennamen; ich habe Rollen eingesetzt: <source.file>: <die Rollen>.“); the losses in the web's
+  words („Layout erzeugt (von analyzr gezeichnet, nicht aus dem Werkzeug)“, „Texte gekürzt (Namen
+  auf 200, Beschreibungen auf 2.000 Zeichen)“, `link-unresolved` „Verweis nicht aufgelöst“, in the
+  web „Verweise ohne Ziel“, with each call „Aufruf von „<Ziel>“ als zugeklappter Teilprozess
+  gezeichnet: Verknüpfe ihn nach dem Import in der Modellansicht mit „Verknüpfen mit …“.“, and „Aus
+  Konvertern und Bildern trägt analyzr keine Aufrufziele ein; die Aufrufe stehen oben unter „Verweis
+  nicht aufgelöst“.“); `provenance-kept` „Unverändert: analyzr behält die bisherige Angabe, wie die
+  Datei entstanden ist“ (0.1.3's „… die bisherige Herkunft“ is gone) and `trust-kept` „Unverändert:
+  analyzr behält, ob es die Aufrufe des Modells annimmt oder nur vorschlägt“, both the web's
+  (`apps/web/src/lib/provenance.ts`); in „Vorschau“ „Ort im Quellsystem für 6 Modelle aktualisiert“
+  („für 1 Modell“) only when nothing is created or revised, as the only line „Danach: Ort im
+  Quellsystem für 6 Modelle aktualisiert“, the web's rule; „Offene Punkte“ opens, for every bundle
+  with `counts.reconstructed` above 0, with the line of §3.10 "Decision 30 (2)"; „Import“ gives one
+  command per bundle, „Den Befehl führst du selbst aus (im Terminal oder mit `! <Befehl>`).“, for
+  `"plugin"` „Die mitgelieferte CLI (`analyzr.mjs`) braucht Node 24 und schickt den Owner-Zugang nur
+  an analyzr auf diesem Rechner. Der Pfad gilt für die installierte Version des Plugins; nach einem
+  Update des Plugins frag mich nach dem neuen Befehl.“, and the web path always. Step 7: „Die Bündel
+  liegen in `bundles/2026-10-14-visio` (7 Modelle, konvertiert mit adhoc:3f2a9c1b7d4e) und
+  `bundles/2026-10-14-images` (4 Modelle aus Fotos, KI-rekonstruiert). Den Bericht findest du in
+  `reports/2026-10-14-visio.md`. Den Import startest du selbst im Terminal oder per „Hochladen“ im
+  Web.“, with `cli` `null` „Ohne Checkout geht der Import auch im Terminal, mit der CLI, die dieses
+  Plugin mitbringt (Node 24). Soll ich sie für diesen Workspace eintragen?“. The guard setup: the
+  three new scripts always ask, and no lasting rule is offered, also never one for
+  `analyzr-convert.mjs`.
+- **The reference notes**: `analyzr-spec.md` (the format, its limits, what the renderer does, two
+  examples: a converter's, validated as converter output, and a picture's, equal to the
+  `reconstructed` golden spec and rendered), `converters.md` (the derivation per mapping, the
+  contract, the sandbox: `'im' + 'port'`, the top level run as a function body, `zip.error`,
+  `unread`, `content`, entries sorted, the error format, no deep recursion over XML trees; the
+  rules, how it runs, and a compact VSDX page converter as the skeleton, which a test runs on the
+  Visio fixture: 3 models, 0 failed, 2 of 3 files and 10 entries read, 2 skipped, every spec valid
+  and rendered), `images.md` (a status line of its own, the four sections and an example, validated,
+  rendered and extracted by a test; the pitfall of printouts next to the models); `visio.md` and
+  `aris.md` follow the synthetic fixtures (plan §6.4, the assumptions marked "to verify"),
+  `adonis.md` names the ADOxx converter path and `bizagi.md` asks for BPMN instead of a `.bpm`.
+- **The notices** (the plugin's, 13 packages, 18,539 bytes): for `analyzr-spec.mjs` bpmn-moddle
+  10.3.1, min-dash 5.1.0, moddle 8.2.1, moddle-xml 12.3.1, saxen 11.2.0 (MIT) and yaml 2.9.1 (ISC);
+  for `analyzr-convert.mjs` yaml; for `analyzr.mjs` zod 4.6.5, commander 15.0.0,
+  `@asteasolutions/zod-to-openapi` 9.1.0 (in the module graph, its code tree-shaken) and
+  `@hey-api/openapi-ts` 0.99.0 (`GENERATED_RUNTIMES`); rolldown 1.2.12 for its runtime helpers in
+  all three. `pnpm notices` leaves the root file unchanged (no dependency changed).
+
+Deviations from the plan, with reasons:
+
+- **No `@analyzr/cli` devDependency of `tools/integrate`** (step 3's Open): with it `pnpm install`
+  links the CLI's bin and makes `apps/cli/src/main.ts` executable on every install (it happened, and
+  was reverted with the lockfile). The relative entry path is all rolldown needs; the coupling is
+  named in `ENTRIES`, the package description, the drift test's stale message and HANDOFF §9.
+- **No `exporter="analyzr-spec"` flag in `normalize-bpmn`** (optional in the plan): it would change
+  the output and the versions of `inspect` and `normalize-bpmn`, while `render` refuses outputs
+  below `exports/` and ground rule 8 plus the preview's stop cover a BPMN written past the renderer.
+- **`sanitizeLine` and `sanitizeBlock` stay pinned copies**: `bpmn-facts` is a devDependency only,
+  and bundling it would bring zod into `analyzr-spec.mjs` (R12); `capped`, `uniqueId` and
+  `plan-args.ts` are shared.
+- **rolldown 1.2.12 in the plugin's notices**: its runtime helpers are in the three new bundles,
+  which the plan's list missed.
+- **`--url` always in the bundled CLI's steps** (the review round), against step 3's "unless the
+  default" (HANDOFF §4 (a)).
+- **Confirmation 4 per converter version and export**: a rerun of the same bytes on the same export
+  into a new folder asks nothing new; a new export or a new sha256 asks again.
+- **`replaces-known-model` has a way out**: the plan's "own key" had no mechanism, since editing the
+  key map would hit the tool model's entry; the skill moves the spec to the system `images`
+  (`--prefix bilder`) or deletes it, and never excludes the tool path.
+- **Pictures in a tool's export go to `images`** unless they show that tool's model (the fixer's
+  reading of R10).
+- **The report and its files**: one report per export with a part per bundle; the new sections are
+  4a and 4b, so the references to sections 9 and 11 stay; each path has folders of its own and every
+  details file of a spec folder is `reports/<spec folder>.<command>.json`, so two bundles of one
+  system never overwrite each other.
+- **The preview's stop text in plain words**: the plan's „Dieses Bündel stammt nicht vollständig aus
+  dem Renderer; …“ named an internal.
+- **`converters.md`'s skeleton is a compact page converter**, not the fixture's 346-line one: the
+  plugin ships no fixtures; it points to `visio.md` for the rest.
+- **The Signavio example looks at the PDF first** and leaves a landscape map out instead of reading
+  it.
+- **The e2e case of D3 (d) and D4 uses the ARIS fixture and the picture golden**, since `apps/cli`
+  has no zip writer for a VSDX; the Visio run in bundle mode is in the drift test, and Visio against
+  a server ran on the lead's scratch stack with the bundled scripts (no warning, no relation, then
+  all `unchanged`).
+
+The review round (skill, release, flows): of 28 distinct findings 26 fixed, 1 rejected, 2 items for
+this docs pass. Major (flows): leaving out a picture with `--exclude` removed the tool's own model,
+since exclusions hold for the whole system; the skill now deletes the agent's own spec instead and
+never excludes a picture's tool path. Fixed among the others: `replaces-known-model`'s dead end and
+wording; the decision-30 (2) line dropping out for converter-only runs (now the first line of
+„Offene Punkte“, pinned there by a test); the picture folder named differently in four places; the
+Signavio example reading a PDF unseen; the Visio-plus-photos example without derivation and system;
+picture models listed as absent by another path; the roles rule leaving fields out; step 0.4
+ignoring a recorded `cli`; the report naming pictures by their original file name; the
+version-specific plugin path recorded without a word; one loss code with three labels; jargon in the
+stop text; `trust-kept` without a label; the frontmatter's wording; built-ins not pinned per bundle
+and `__require` counted only as calls; the root version's coupling unnamed; a staged rename without
+its final content; `skipped` across paths; folder name collisions; the bundled CLI without `--url`
+at the default; the changed-spec message inviting a relabel; labels keyed on codes `validate` never
+prints; a missing `--llm-model` exiting 1; the model name rule in `analyzr-spec.md` (the process
+whose BPMN id sorts first gives its `pool` in a collaboration, else its `name`). Rejected:
+„unverändert“ in two meanings (the plan's own wording, R30; HANDOFF §4 (c)). Left for the docs pass:
+the package graph's coupling (above, HANDOFF §9, DEVELOPMENT.md) and, the open part of a fixed
+finding, `validate`'s silence on symbolic links (not done: the agent writes specs with its own Write
+tool, so no link arises). The three reviews listed 34, six of which repeat another review's.
+
+Tests (`tools/integrate`, 407, 390 before): `drift.test.ts` (the fresh build equal to the committed
+files, the stale message of `analyzr.mjs` naming `apps/cli`, `packages/client`, `packages/contracts`
+and the root version; Node built-ins only and pinned per bundle, no `getBuiltinModule`,
+`process.binding`, `_linkedBinding` or `process.dlopen`, `__require` only for `process` and `buffer`
+through one `createRequire` and referenced once more than called; region names, also with a
+prerelease version or `\0rolldown/runtime.js`; the package list; `analyzr-spec.mjs` and
+`analyzr-convert.mjs` zod-free and only `analyzr-convert.mjs` with the runner; `analyzr.mjs` with
+`sendImport`, `anyCredential`, `keepOwnerKeyLocal` and `guardValues` and without `seed`, MCP or
+`main.ts` code; from copies away from `node_modules`: `analyzr-spec.mjs` renders the 9 goldens byte
+for byte equal to `test/fixtures/spec/*.bpmn` and validates as the source does,
+`analyzr-convert.mjs`, its child granted the copied script alone, converts the Visio fixture with
+the source run's summary, specs and record, the bundled `analyzr-spec` then plans and bundles them
+file for file as the source does, and `analyzr.mjs` prints the root package's version and a help
+without `seed` and `mcp`), `plugin.test.ts` (the file list, headings and script set; every CLI
+command the agent may run or prints, per section, the bundled CLI never given a command of its own;
+`convert` only through `analyzr-convert.mjs` with `--sha256 <the sha256 you showed>`; the consent
+strings; no Bash rule; the identity, provenance and trust texts against the web's `upload.ts` and
+`provenance.ts`; the reconstructed texts and the decision-30 (2) line in „Offene Punkte“ only; the
+folder names; no `--exclude` for a picture; the reference notes' examples run),
+`analyzr-read.test.ts` (both new counts), `fake-analyzr.ts` (`trust` as the server returns it,
+unchanged, `identityUpdated` and modelled files), `cli.test.ts` (a shared-module check instead of
+the copy comparison; `--llm-model` missing or misplaced exits 2), `spec-render.test.ts` (behaviour
+checks of `capped` and `uniqueId` instead of the copy comparison) and `spec-bundle.test.ts` (the run
+record not skipped). `apps/cli` (327, 317 before; 297 unit, 30 e2e, plus 7 skipped):
+`unit/plugin-main.test.ts` runs its 9 cases on the source entry and on
+`plugins/analyzr-integrate/scripts/analyzr.mjs` copied to `<tmp>/Plugin Cache/scripts/` (a path with
+a space, no `node_modules`), 18 in all; `unit/core-program.test.ts` (`--url` always, also with
+`--url http://127.0.0.1:7400` while `ANALYZR_URL` names another analyzr); `e2e/cli.e2e.test.ts`
+(new: "the integrate plugin's analyzr-convert.mjs, analyzr-spec.mjs and analyzr.mjs against the
+server (M6 S3c)": the bundled `analyzr-convert.mjs` runs the ARIS fixture's converter,
+`reconstructed`, and the bundled `analyzr-spec.mjs` plans and bundles its specs and the picture
+golden spec; the picture bundle creates `s3c-a` with `analyzr.mjs` and `s3c-b` with the checkout's
+CLI; the converter bundle's dry run: 2 created, `acceptedCalls` 0 and `callsProposed` 0 (D3 (d));
+the import, a second dry run and the JSON and text re-imports, all unchanged, `models list` and
+`models external-ids` equal between both CLIs once project keys, names, ids and times are normalized
+(D4); the trust class `derived` with `no-engine` and `reconstructed`, `converter` `adhoc:<12 hex>`
+for the ARIS models and null for the picture's).
+
+What it costs and leaves open. Every gate green (integrate 407 (390), CLI 327 (317) plus 7 skipped,
+server 1,804, web 663, bpmn-facts 200, contracts 178, eval/tools 108, relations 91, agent-sim 57,
+procedures 37, demo 27, notices 9, client 4; the eval reports unchanged, `git diff --exit-code
+eval/reports` clean; `pnpm notices` left the root file unchanged; `generate` leaves every plugin
+file's sha256 as it was, and the drift and plugin tests pass after it). No new dependency; live-run
+neutral (the pipeline plugin, the procedures, MCP, the claim inputs and the recordings are
+untouched; only consultants who install 0.1.4 see the new paths). No Docker project of the
+implementing agents' own was needed, and Testcontainers left no container behind. The lead's run on
+a scratch stack (D3 (d) and D4 with the Visio fixture through the bundled scripts): on the scratch
+stack `analyzr-s3c4` the bundled `analyzr-convert.mjs`, `analyzr-spec.mjs`, `analyzr.mjs` and
+`analyzr-read.mjs`, run from a copy of the plugin in a folder with a space outside the repository,
+took the fixtures' Visio (`converted`) and ARIS (`reconstructed`) exports through convert, validate,
+plan, bundle and import with the owner key: 2 and 2 models `created`, no extractor warning, every
+revision `derived` with its `adhoc:` converter, no relation at all, the dry run's `callsProposed`
+and `acceptedCalls` 0, a second import and the preview all `unchanged`, the next steps naming `node
+'<path>' --url …`; the owner key refused for 192.0.2.1 and `--name --dry-run` refused with exit 2
+before any request. The commit: this step's commit on the branch, with which 0.1.4 counts as
+released. The readings the owner may overrule: HANDOFF §4 ("Taken during M6 S3c step 4"). Open:
+
+- **No live session yet**: no LLM call was made, so the three paths, confirmation 4 and Claude
+  Code's prompts before `analyzr-convert.mjs`, a picture read into a spec, the bundled CLI from a
+  consultant's terminal and the guard setup's sandbox with a converter run are the owner's one live
+  session (HANDOFF §8); whether a 72 KB skill loads and behaves completely is part of it.
+- **Rules on reconstructed models**: until the safeguard of decision 30 (2), an owner's agent rule
+  can accept relations and placements on models a bundle declares `reconstructed`; the report says
+  so (§3.10).
+- **No network guarantee and typed-array memory** for converter runs, as in step 2 (HANDOFF §4
+  "Taken during M6 S3c step 2" (b), (c)).
+- **The package graph does not show the coupling**: a filtered test run after a change of
+  `apps/cli`, the client, the contracts or the root `package.json`'s version must include
+  `@analyzr/integrate`.
+- **`validate` skips a symbolic link** in a spec folder without a word; `claude plugin validate
+  --strict` reports the informational `ICON_MISSING`.
+- **The root `THIRD-PARTY-NOTICES.md`** does not name `@hey-api/openapi-ts`, whose runtime the
+  client also carries into the web bundle and the CLI; `tools/notices` could take the plugin's
+  `GENERATED_RUNTIMES` (queued, HANDOFF §7).
+- **Outside `docs/`**: `examples/agents/claude-code/README.md` still says the skill pre-approves
+  only its `inspect` script (stale since 0.1.3) and names the BPMN path only, and
+  `examples/agents/codex/README.md` lacks `converters/`, `specs/` and the picture path, which needs
+  an agent that can view pictures.
+- **A real or sandbox Visio or ARIS export** (§10.4) is still untried.
+
+Left: the safeguard of decision 30 (2), then S6; after the owner's live runs S5b, S7 and facts v2.
+
+**S3c as delivered** (2026-10-21, four steps on the branch, each with every gate green and a review
+round's fixes; owner decision 30; HANDOFF §4 "Taken during M6 S3c step 1" to "Taken during M6 S3c
+step 4"; planned at about 8.5 d). Step 1 gave the strict format `analyzr-spec/1` and a deterministic
+renderer to BPMN 2.0 with DI and no engine (decision 30 A2, A3; integrate 205 → 332 tests); step 2
+the converter runner `analyzr-convert`, which runs exactly the approved bytes of an agent's
+converter twice in a sandboxed child Node (A1, A4; 332 → 390); step 3 the CLI core both CLIs share,
+with the parse guard in both and the owner key for this machine only in the bundled CLI ((3); CLI
+286 → 317); step 4 the plugin 0.1.4, which bundles all three and teaches the skill the converter and
+picture paths ((1), (3), A5, the report line (2) asks for; integrate 390 → 407, CLI 317 → 327).
+The done-when: D1 (every rendered model extracts without a warning, `engine` null: 9 goldens, 200
+random specs, the converter fixtures) and D2 (a) (bpmn-js's tree walker under the importer's
+refusals) in CI, D2 (b) in Chromium (the harness spec, 2 of 2, not in CI), D3 (a)–(c) (no
+`calledElement` from the schema, the renderer or a converter) in the tests, D3 (d) and D4 (a
+converter bundle's dry run with no call accepted or proposed, the bundled CLI's import equal to the
+checkout's, then all unchanged) on Testcontainers, D3 (d) also on the lead's scratch stack from
+source in step 2, both with the bundled scripts there in step 4, and D5 (the drift test and
+`RELEASES['0.1.4']`). What S3c does not do: the safeguard of decision 30 (2) (next), calls from
+ad-hoc converters (§10.12), bundled converters of the plugin's own (§9), and a real or sandbox
+export of Visio or ARIS (§10.4).
 
 **S4 "Open questions".** Scope: §4.1–§4.4 without `extractor-loss` (S2); summaries only with the
 owner's OK. Does not touch: `FindingKind`, the claim inputs, MCP, stages. Done when: every source
@@ -5912,7 +6297,8 @@ specs (S3c, §3.7 step 2); only an automated vision pipeline stays out.
     regelt?“ Options: (a) a safeguard that blocks a rule when an endpoint's uploaded revision
     declares `reconstructed` or `as-told`, as a small server step before the first customer picture
     import; (b) keep it as it is, and the report says so. Recommendation: (a), after S3c and before
-    S6, which brings `as-told`; until then the report says it (from plugin 0.1.4).
+    S6, which brings `as-told`; until then the report says it (since plugin 0.1.4, the first line
+    of „Offene Punkte“ for every bundle with reconstructed models, §8 "S3c step 4 as delivered").
 12. **Calls from ad-hoc converters, later. Open (decision 30 left it open).** §3.9 kept
     `calledElement` out of the specs of `adhoc:` converters until the owner decided §3.10, to be
     revisited with S2c and its decision-19 extension per converter; S2c is delivered, so a rendered

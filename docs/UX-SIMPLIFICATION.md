@@ -2424,12 +2424,16 @@ first uploaded without it, is one import away from the current places, with a te
 `analyzr import`'s manifest line says the same in English (`6 unchanged keep their first revision's,
 6 of them record a new tool id, folder or link`; M6 §8). The integrate skill's report (plugin 0.1.3)
 keeps „Danach: keine Änderung an Relationen und Befunden.“ and „Unverändert: analyzr behält die
-bisherige Herkunft“ until its next release (HANDOFF §7 "M6"). The UI load guard: every screen as
-after step 4 (the „Vorschau“'s new part appears only for an identity-only re-export, and „Herkunft“
-is a dialog the
-guard does not measure). Open for the owner (HANDOFF §4 "Taken during the M6 S2b follow-up step 5"):
-„Importieren“ with its text, the headline without the places, „Herkunft“'s system in the value, and
-the `provenance-kept` text, which names no rule. Not verified: a real phone, a screen reader.
+bisherige Herkunft“ until its next release; since plugin 0.1.4 (M6 S3c step 4) it uses the web's
+words: „Danach: Ort im Quellsystem für 6 Modelle aktualisiert“ by the same rule (only when no file
+is created or revised), „Unverändert: analyzr behält die bisherige Angabe, wie die Datei entstanden
+ist“ for `provenance-kept` and „Unverändert: analyzr behält, ob es die Aufrufe des Modells annimmt
+oder nur vorschlägt“ for `trust-kept`, each checked against `upload.ts` and `provenance.ts` by its
+plugin test. The UI load guard: every screen as after step 4 (the „Vorschau“'s new part appears only
+for an identity-only re-export, and „Herkunft“ is a dialog the guard does not measure). Open for the
+owner (HANDOFF §4 "Taken during the M6 S2b follow-up step 5"): „Importieren“ with its text, the
+headline without the places, „Herkunft“'s system in the value, and the `provenance-kept` text, which
+names no rule. Not verified: a real phone, a screen reader.
 
 ## 8. Keep as is
 

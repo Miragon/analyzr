@@ -1,14 +1,13 @@
 /**
- * The key map and the analyzr listings `analyzr-spec plan` reads, and the
- * details file it writes: copies of the helpers of
- * `src/cli/normalize-bpmn.ts` (a test compares both copies), so the shipped
- * `normalize-bpmn.mjs` stays byte-identical until the plugin release that
- * moves them into one module both entries share.
+ * The key map and the analyzr listings `plan` reads, and the details file
+ * `plan` and `bundle` write: shared by the entries of normalize-bpmn,
+ * analyzr-spec and analyzr-convert (until plugin 0.1.4 analyzr-spec held a
+ * copy, so the shipped normalize-bpmn.mjs stayed byte-identical).
  */
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
-import { emptyKeymap, parseKeymap, type AnalyzrIdentity, type Keymap } from '../keymap.ts';
+import { emptyKeymap, parseKeymap, type AnalyzrIdentity, type Keymap } from './keymap.ts';
 
 export const KEYMAP_FILE = 'keymap.json';
 

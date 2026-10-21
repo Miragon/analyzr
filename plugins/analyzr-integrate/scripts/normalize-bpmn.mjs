@@ -8909,6 +8909,77 @@ function assertWritable(target, option, exportPath) {
 	if (checkout !== null) throw new PathGuardError(`${option} ${target} lies inside the analyzr checkout ${checkout}: customer data stays outside it, in a workspace per customer`);
 }
 //#endregion
+//#region src/plan-args.ts
+const KEYMAP_FILE = "keymap.json";
+async function readKeymap(workspace) {
+	const file = path.join(workspace, KEYMAP_FILE);
+	let text;
+	try {
+		text = await readFile(file, "utf8");
+	} catch (err) {
+		if (err.code === "ENOENT") return {
+			file,
+			keymap: emptyKeymap()
+		};
+		throw err;
+	}
+	let value;
+	try {
+		value = JSON.parse(text);
+	} catch {
+		throw new Error(`${file} is not valid JSON`);
+	}
+	return {
+		file,
+		keymap: parseKeymap(value)
+	};
+}
+async function readJson(file) {
+	try {
+		return JSON.parse(await readFile(file, "utf8"));
+	} catch (err) {
+		if (err.code === "ENOENT") throw new Error(`${file} does not exist`, { cause: err });
+		throw new Error(`${file} is not valid JSON`, { cause: err });
+	}
+}
+const isObject = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
+function existingKeysOf(value, file) {
+	if (Array.isArray(value)) {
+		const models = value.map((v) => typeof v === "string" ? {
+			key: v,
+			id: null
+		} : isObject(v) && typeof v["key"] === "string" ? {
+			key: v["key"],
+			id: typeof v["id"] === "string" ? v["id"] : null
+		} : null);
+		if (models.every((m) => m !== null)) return {
+			keys: models.map((m) => m.key),
+			modelIds: new Map(models.flatMap((m) => m.id === null ? [] : [[m.key, m.id]]))
+		};
+	}
+	throw new Error(`${file}: expected the output of analyzr models list --json (a list of models with key)`);
+}
+const isNullableString = (v) => v === null || typeof v === "string";
+function identitiesOf(value, file) {
+	const items = isObject(value) ? value["items"] : value;
+	if (Array.isArray(items)) {
+		const identities = items.map((v) => isObject(v) && typeof v["key"] === "string" && typeof v["system"] === "string" && isNullableString(v["externalId"] ?? null) && isNullableString(v["externalPath"] ?? null) ? {
+			key: v["key"],
+			system: v["system"],
+			externalId: v["externalId"] ?? null,
+			externalPath: v["externalPath"] ?? null
+		} : null);
+		if (identities.every((i) => i !== null)) return identities;
+	}
+	throw new Error(`${file}: expected the output of analyzr models external-ids --json ({"items": [{key, system, externalId, externalPath}]})`);
+}
+async function writeDetails(file, value) {
+	if (file === void 0) return null;
+	await mkdir(path.dirname(path.resolve(file)), { recursive: true });
+	await writeFile(file, `${JSON.stringify(value, null, 2)}\n`);
+	return file;
+}
+//#endregion
 //#region src/cli/common.ts
 var UsageError = class extends Error {
 	constructor(message) {
@@ -8993,78 +9064,9 @@ Nothing is ever written into <export> or into an analyzr checkout.
 Exit 0, 1 when the work fails, 2 on a usage error.
 analyzr-integrate normalize-bpmn ${NORMALIZE_BPMN_VERSION}
 `;
-const KEYMAP_FILE = "keymap.json";
-async function readKeymap(workspace) {
-	const file = path.join(workspace, KEYMAP_FILE);
-	let text;
-	try {
-		text = await readFile(file, "utf8");
-	} catch (err) {
-		if (err.code === "ENOENT") return {
-			file,
-			keymap: emptyKeymap()
-		};
-		throw err;
-	}
-	let value;
-	try {
-		value = JSON.parse(text);
-	} catch {
-		throw new Error(`${file} is not valid JSON`);
-	}
-	return {
-		file,
-		keymap: parseKeymap(value)
-	};
-}
-async function readJson(file) {
-	try {
-		return JSON.parse(await readFile(file, "utf8"));
-	} catch (err) {
-		if (err.code === "ENOENT") throw new Error(`${file} does not exist`, { cause: err });
-		throw new Error(`${file} is not valid JSON`, { cause: err });
-	}
-}
-const isObject = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
-function existingKeysOf(value, file) {
-	if (Array.isArray(value)) {
-		const models = value.map((v) => typeof v === "string" ? {
-			key: v,
-			id: null
-		} : isObject(v) && typeof v["key"] === "string" ? {
-			key: v["key"],
-			id: typeof v["id"] === "string" ? v["id"] : null
-		} : null);
-		if (models.every((m) => m !== null)) return {
-			keys: models.map((m) => m.key),
-			modelIds: new Map(models.flatMap((m) => m.id === null ? [] : [[m.key, m.id]]))
-		};
-	}
-	throw new Error(`${file}: expected the output of analyzr models list --json (a list of models with key)`);
-}
-const isNullableString = (v) => v === null || typeof v === "string";
-function identitiesOf(value, file) {
-	const items = isObject(value) ? value["items"] : value;
-	if (Array.isArray(items)) {
-		const identities = items.map((v) => isObject(v) && typeof v["key"] === "string" && typeof v["system"] === "string" && isNullableString(v["externalId"] ?? null) && isNullableString(v["externalPath"] ?? null) ? {
-			key: v["key"],
-			system: v["system"],
-			externalId: v["externalId"] ?? null,
-			externalPath: v["externalPath"] ?? null
-		} : null);
-		if (identities.every((i) => i !== null)) return identities;
-	}
-	throw new Error(`${file}: expected the output of analyzr models external-ids --json ({"items": [{key, system, externalId, externalPath}]})`);
-}
 function required(value, option) {
 	if (value === void 0 || value === "") throw new UsageError(`${option} is required`);
 	return value;
-}
-async function writeDetails(file, value) {
-	if (file === void 0) return null;
-	await mkdir(path.dirname(path.resolve(file)), { recursive: true });
-	await writeFile(file, `${JSON.stringify(value, null, 2)}\n`);
-	return file;
 }
 const wantsHelp = (argv) => argv.includes("--help") || argv.includes("-h");
 async function fileCommand(argv) {

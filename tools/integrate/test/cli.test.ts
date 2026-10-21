@@ -517,7 +517,7 @@ describe('output size for a landscape of 200 models', () => {
   }, 120_000);
 });
 
-describe('analyzr-spec (M6 S3c, run from source until the plugin ships it)', () => {
+describe('analyzr-spec (M6 S3c, from source; drift.test.ts runs the bundle)', () => {
   const SPECS = path.join(PACKAGE_ROOT, 'test/fixtures/spec');
 
   /** A workspace with a spec folder holding copies of the given fixtures. */
@@ -868,40 +868,26 @@ describe('analyzr-spec (M6 S3c, run from source until the plugin ships it)', () 
     await expect(readFile(path.join(ws, 'keymap.json'))).rejects.toThrow();
   });
 
-  it('keeps its copies of normalize-bpmn’s plan helpers equal to the originals', async () => {
-    const original = await readFile(path.join(PACKAGE_ROOT, 'src/cli/normalize-bpmn.ts'), 'utf8');
-    const copy = await readFile(path.join(PACKAGE_ROOT, 'src/spec/plan-args.ts'), 'utf8');
-    /** A top-level declaration's text from its name to the end of its body, `export ` dropped. */
-    const declaration = (code: string, name: string): string => {
-      const m = new RegExp(`^(?:export )?(?:async )?(function|const) ${name}\\b`, 'm').exec(code);
-      if (m === null) return '';
-      const rest = code.slice(m.index);
-      const end = m[1] === 'function' ? rest.indexOf('\n}\n') + 2 : rest.indexOf(';\n') + 1;
-      return rest
-        .slice(0, end)
-        .replace(/^export /, '')
-        .replace(/\s+/g, ' ')
-        .replace(/\( /g, '(') // prettier wraps the exported copy's longer lines
-        .replace(/,? \)/g, ')')
-        .trim();
-    };
-    for (const name of [
-      'KEYMAP_FILE',
-      'readKeymap',
-      'readJson',
-      'isObject',
-      'existingKeysOf',
-      'isNullableString',
-      'identitiesOf',
-      'writeDetails',
-    ]) {
-      expect(declaration(copy, name), name).not.toBe('');
-      expect(declaration(copy, name), name).toBe(declaration(original, name));
+  it('shares normalize-bpmn’s plan helpers, not a copy (src/plan-args.ts since plugin 0.1.4)', async () => {
+    for (const entry of ['normalize-bpmn', 'analyzr-spec']) {
+      const code = await readFile(path.join(PACKAGE_ROOT, `src/cli/${entry}.ts`), 'utf8');
+      expect(code, entry).toMatch(/\bfrom '\.\.\/plan-args\.ts';/);
+      for (const name of [
+        'readKeymap',
+        'readJson',
+        'existingKeysOf',
+        'identitiesOf',
+        'writeDetails',
+      ]) {
+        expect(code, `${entry} ${name}`).not.toMatch(
+          new RegExp(`^(?:async )?function ${name}\\b`, 'm'),
+        );
+      }
     }
   });
 });
 
-describe('analyzr-convert (M6 S3c, run from source until the plugin ships it)', () => {
+describe('analyzr-convert (M6 S3c, from source; drift.test.ts runs the bundle)', () => {
   it('prints its usage and exits 2 on usage errors', async () => {
     expect(await cli('analyzr-convert', ['--help'])).toMatchObject({
       code: 0,
@@ -939,6 +925,14 @@ describe('analyzr-convert (M6 S3c, run from source until the plugin ships it)', 
       [
         ['convert', 'e', ...without('--derived'), '--derived', 'export'],
         /--derived is converted or reconstructed/,
+      ],
+      [
+        ['convert', 'e', ...without('--derived'), '--derived', 'reconstructed'],
+        /--derived reconstructed needs --llm-model: the model you run as/,
+      ],
+      [
+        ['convert', 'e', ...full, '--llm-model', 'claude-opus-5-5'],
+        /--llm-model goes with --derived reconstructed only/,
       ],
       [['convert', 'e', ...without('--workspace')], /--workspace is required/],
       [['convert', 'e', ...without('--out')], /--out is required/],
@@ -996,10 +990,11 @@ describe('analyzr-convert (M6 S3c, run from source until the plugin ships it)', 
 
     const validated = await cli('analyzr-spec', ['validate', specs]);
     expect(validated.code, validated.stdout).toBe(0);
-    expect(JSON.parse(validated.stdout)).toMatchObject({
+    expect(JSON.parse(validated.stdout)).toEqual({
       specs: 2,
       valid: 2,
-      errors: { count: 0 },
+      errors: { count: 0, items: [] },
+      warnings: { count: 0, items: [] },
     });
     const planned = await cli('analyzr-spec', [
       'plan',
@@ -1025,6 +1020,8 @@ describe('analyzr-convert (M6 S3c, run from source until the plugin ships it)', 
     expect(bundled.code, bundled.stderr).toBe(0);
     expect(JSON.parse(bundled.stdout)).toMatchObject({
       counts: { models: 2, converted: 2, reconstructed: 0, failed: 0 },
+      // the run record analyzr-specs.json is the folder's, no file left out
+      skipped: { count: 0, items: [] },
       calls: {
         count: 1,
         items: [{ key: 'vertrieb/prozesse/auftragsabwicklung', target: 'Bonitätsprüfung' }],

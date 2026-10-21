@@ -64,6 +64,7 @@ import {
 } from '../src/preview.ts';
 
 import {
+  DERIVED,
   FAKE_IDENTITIES,
   FAKE_MODELS,
   fakeAnalyzr,
@@ -279,7 +280,15 @@ describe('analyzr-read preview', () => {
       credential: 'owner-key',
       batches: 1,
       batchesWithNew: 1,
-      counts: { created: 6, revised: 0, unchanged: 0, failed: 0, skipped: 0 },
+      counts: {
+        created: 6,
+        revised: 0,
+        unchanged: 0,
+        failed: 0,
+        skipped: 0,
+        identityUpdated: 0,
+        modelled: 0,
+      },
       manifest: {
         system: 'signavio',
         listed: 6,
@@ -324,6 +333,7 @@ describe('analyzr-read preview', () => {
         outcome: 'created',
         warnings: [],
         warningCount: 0,
+        trust: DERIVED,
       })),
       counts: { created: 6, revised: 0, unchanged: 0, failed: 0 },
       manifest: { system: 'signavio', listed: 6, stored: 6, kept: 0, unlisted: [], missing: [] },
@@ -385,6 +395,44 @@ describe('analyzr-read preview', () => {
         placement: { outcome: 'queued', toPlace: 2, again: 2, due: 2 },
       },
       details: null,
+    });
+  });
+
+  it('counts the unchanged files that record a new place in the tool, and the modelled ones (plugin 0.1.4)', async () => {
+    const bundle = path.join(dir, 'identity-bundle');
+    await mkdir(bundle, { recursive: true });
+    const paths = ['a-identity.bpmn', 'b-identity.bpmn', 'c-unchanged.bpmn', 'd-camunda.bpmn'];
+    for (const p of paths) await writeFile(path.join(bundle, p), '<definitions/>');
+    const manifest = {
+      format: 'analyzr-import/1',
+      source: { system: 'tool' },
+      files: paths.map((p) => ({ path: p, key: `k/${path.basename(p, '.bpmn')}` })),
+    };
+    await writeFile(path.join(bundle, 'analyzr-import.json'), JSON.stringify(manifest));
+    const r = await read(['preview', bundle, '-p', 'kunde-x', '--url', server.url]);
+    expect(r).toMatchObject({ code: 0, stderr: '' });
+    expect(JSON.parse(r.stdout)).toMatchObject({
+      counts: {
+        created: 1,
+        revised: 0,
+        unchanged: 3,
+        failed: 0,
+        skipped: 0,
+        identityUpdated: 2,
+        modelled: 1,
+      },
+    });
+    // a failed file is not counted as modelled (it has no trust either)
+    const failing = path.join(dir, 'failing-bundle');
+    await mkdir(failing, { recursive: true });
+    await writeFile(path.join(failing, 'x-fail.bpmn'), '<definitions/>');
+    await writeFile(
+      path.join(failing, 'analyzr-import.json'),
+      JSON.stringify({ ...manifest, files: [{ path: 'x-fail.bpmn', key: 'k/x' }] }),
+    );
+    const f = await read(['preview', failing, '-p', 'kunde-x', '--url', server.url]);
+    expect(JSON.parse(f.stdout)).toMatchObject({
+      counts: { failed: 1, identityUpdated: 0, modelled: 0 },
     });
   });
 

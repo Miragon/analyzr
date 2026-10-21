@@ -56,7 +56,7 @@ import { renderSpec, RenderError, type RenderSummary, type SpecLoss } from './re
 import { cleanLine } from './text.ts';
 import type { Spec, SpecOrigin } from './types.ts';
 import { MAX_NOTE_LENGTH, validateSpec } from './validate.ts';
-import { ANALYZR_SPEC_VERSION, SPEC_IMPORTER } from './version.ts';
+import { ANALYZR_SPEC_VERSION, SPEC_IMPORTER } from '../version.ts';
 import { MAX_SPEC_BYTES, parseSpecBytes, tooLargeProblem, type SpecProblem } from './yaml.ts';
 
 /** The names of spec files in a folder. */
@@ -165,7 +165,7 @@ export async function readSpecFile(
         {
           path: '',
           code: 'changed-after-run',
-          message: `changed after converter ${recorded.converter} wrote it: run the converter again, or move it into a spec folder of its own and declare it reconstructed`,
+          message: `changed after converter ${recorded.converter} wrote it: never edit a converter's spec; fix the converter and run it again into a new folder`,
         },
       ],
     };
@@ -213,6 +213,8 @@ export async function scanSpecs(target: string): Promise<ScannedSpecs> {
   const specs: SpecFile[] = [];
   const skipped: string[] = [];
   for (const f of listing.files) {
+    // the run record is the folder's, no file left out (`runRecord`)
+    if (f === recordFile) continue;
     if (!single && !SPEC_FILE.test(f.path)) {
       skipped.push(f.path);
       continue;

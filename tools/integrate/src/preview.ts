@@ -70,6 +70,14 @@ export interface FileOutcome {
   warningCount?: number;
   importWarnings?: { code: string; message: string; otherKeys?: string[]; previous?: unknown }[];
   amendments?: { conflicts: { count: number } };
+  /** The trust class, present only when `derived` (M6 S2c): a file without it counts as modelled. */
+  trust?: { class: string; reasons?: string[] };
+  /**
+   * An unchanged file whose declared identity (system, tool id, tool folder,
+   * link) differs from the model's newest one (M6 S2b follow-up step 5): the
+   * import records it.
+   */
+  identityUpdated?: true;
   [extra: string]: unknown;
 }
 
@@ -392,6 +400,11 @@ function byCode(items: readonly { code: string }[]): Record<string, number> {
  * processes it places ({@link processesToPlace}). `batches` above 1: every
  * count of the agent work is approximate; `batchesWithNew` above 1: the
  * pairs between new models of different batches are not counted.
+ * `counts.identityUpdated` counts the unchanged files whose new place in the
+ * tool the import records (the web's „Ort im Quellsystem für 6 Modelle
+ * aktualisiert“), `counts.modelled` the files analyzr would classify as
+ * modelled (no `trust`: the server sets it only for derived ones), which a
+ * bundle of rendered specs never holds (M6 S3c).
  */
 export function compactPreview(
   preview: Preview,
@@ -441,7 +454,12 @@ export function compactPreview(
     credential: extra.credential,
     batches: summary.batches,
     batchesWithNew: preview.batchesWithNew,
-    counts: { ...summary.counts, skipped: summary.skipped?.length ?? 0 },
+    counts: {
+      ...summary.counts,
+      skipped: summary.skipped?.length ?? 0,
+      identityUpdated: summary.files.filter((f) => f.identityUpdated === true).length,
+      modelled: summary.files.filter((f) => f.outcome !== 'failed' && f.trust === undefined).length,
+    },
     manifest: {
       system: summary.manifest.system,
       listed: summary.manifest.listed,

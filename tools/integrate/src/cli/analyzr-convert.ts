@@ -2,13 +2,13 @@
 // to its full sha256, on one export, and writes analyzr-spec/1 files and the run record for
 // analyzr-spec. The only script that executes code an agent wrote: it runs it in a child Node
 // under the permission model, without write access, environment or file access of its own.
-// Bundled into the plugin as scripts/analyzr-convert.mjs from the release that ships it on; until
-// then run from source (node tools/integrate/src/cli/analyzr-convert.ts).
+// Bundled into the plugin as scripts/analyzr-convert.mjs since plugin 0.1.4; the tests also run it
+// from source (node tools/integrate/src/cli/analyzr-convert.ts).
 //
 // Its static imports load nothing but Node built-ins: the child (`__child`) then loads only the
 // modules it needs, so in source mode its one read grant, tools/integrate/src, suffices.
 import { CHILD_COMMAND } from '../spec/sandbox.ts';
-import { ANALYZR_CONVERT_VERSION } from '../spec/version.ts';
+import { ANALYZR_CONVERT_VERSION } from '../version.ts';
 
 import { parse, run, UsageError } from './common.ts';
 
@@ -67,21 +67,24 @@ async function convertCommand(argv: readonly string[]): Promise<void> {
   if (derived !== 'converted' && derived !== 'reconstructed') {
     throw new UsageError('--derived is converted or reconstructed');
   }
+  const llmModel = values['llm-model'] ?? null;
+  const { convertExport, derivedProblem } = await import('../spec/converter.ts');
+  const derivedWrong = derivedProblem(derived, llmModel);
+  if (derivedWrong !== null) throw new UsageError(derivedWrong);
   const workspace = required(values.workspace, '--workspace');
   const out = required(values.out, '--out');
   const { assertSpecOutput } = await import('../spec/guards.ts');
   if (values['json-out'] !== undefined) {
     assertSpecOutput(values['json-out'], '--json-out', { specs: out, workspace });
   }
-  const { convertExport } = await import('../spec/converter.ts');
   const { compactConvert } = await import('../spec/compact.ts');
-  const { writeDetails } = await import('../spec/plan-args.ts');
+  const { writeDetails } = await import('../plan-args.ts');
   const result = await convertExport({
     exportPath: positionals[0] ?? '',
     converter,
     sha256,
     derived,
-    llmModel: values['llm-model'] ?? null,
+    llmModel,
     workspace,
     outDir: out,
   });
