@@ -6,13 +6,18 @@
  * with the manifest `analyzr-import.json` next to it, so `analyzr import`
  * and „Hochladen“ take the keys the consultant confirmed.
  *
- * The derivation is the spec's own: a spec the agent wrote declares
- * `reconstructed` (with the model it runs as) and becomes
- * `{kind: reconstructed, converter: null, llmModel}`; `as-told` waits for
- * an interview source (S6). Converter output is read only together with the
- * run record of its converter, which this version does not read yet: a
- * folder holding `analyzr-specs.json` is refused.
+ * The derivation follows how a spec was produced (S3c §3.6, R5). A spec a
+ * converter run wrote is listed, with its sha256, in the folder's run record
+ * `analyzr-specs.json` (`record.ts`): it is read as converter output and
+ * takes the run's derivation, `{kind: converted | reconstructed, converter:
+ * adhoc:<12 hex>, llmModel}`, but only while the record checks out (the
+ * write-once copy of the converter in the workspace's `converters/` holds
+ * the recorded bytes) and the spec is unchanged since the run. Any other
+ * spec is one the agent wrote: it declares `reconstructed` (with the model
+ * it runs as) and becomes `{kind: reconstructed, converter: null,
+ * llmModel}`; `as-told` waits for an interview source (S6).
  */
+import { createHash } from 'node:crypto';
 import { constants } from 'node:fs';
 import { mkdir, open, readdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -38,6 +43,15 @@ import {
   type PlanOptions,
 } from '../keymap.ts';
 
+import {
+  converterCopyProblem,
+  MAX_RECORD_BYTES,
+  readRunRecord,
+  RUN_RECORD_FILE,
+  sumLosses,
+  type RecordedSpec,
+  type RunRecord,
+} from './record.ts';
 import { renderSpec, RenderError, type RenderSummary, type SpecLoss } from './render.ts';
 import { cleanLine } from './text.ts';
 import type { Spec, SpecOrigin } from './types.ts';
@@ -48,8 +62,7 @@ import { MAX_SPEC_BYTES, parseSpecBytes, tooLargeProblem, type SpecProblem } fro
 /** The names of spec files in a folder. */
 export const SPEC_FILE = /\.spec\.(?:ya?ml|json)$/i;
 
-/** A converter run's record next to the specs it wrote (M6 S3c §4.3, read from the converter step on). */
-export const RUN_RECORD_FILE = 'analyzr-specs.json';
+export { RUN_RECORD_FILE };
 
 /** One spec file as read. */
 export interface SpecFile {
@@ -60,6 +73,10 @@ export interface SpecFile {
   spec: Spec | null;
   errors: SpecProblem[];
   warnings: SpecProblem[];
+  /** sha256 of the file's bytes (`null` when it could not be read). */
+  sha256: string | null;
+  /** The run record's entry of a spec a converter wrote, else `null` (a spec the agent wrote). */
+  recorded: RecordedSpec | null;
 }
 
 export interface ScannedSpecs {
@@ -68,8 +85,12 @@ export interface ScannedSpecs {
   skipped: string[];
   hidden: number;
   symlinks: number;
-  /** The folder holds a converter's run record. */
+  /** The folder holds a converter's run record (`analyzr-specs.json`). */
   runRecord: boolean;
+  /** The record, when it could be read. */
+  record: RunRecord | null;
+  /** Why the record could not be read, or `null`. */
+  recordProblem: string | null;
 }
 
 /**
@@ -77,7 +98,11 @@ export interface ScannedSpecs {
  * regular file only (a symbolic link, a pipe or a device is refused before
  * anything is read, and opening a pipe does not wait for a writer).
  */
-async function readBounded(absolute: string, file: string): Promise<Uint8Array | SpecProblem> {
+async function readBounded(
+  absolute: string,
+  file: string,
+  max = MAX_SPEC_BYTES,
+): Promise<Uint8Array | SpecProblem> {
   let handle;
   try {
     handle = await open(absolute, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
@@ -98,17 +123,17 @@ async function readBounded(absolute: string, file: string): Promise<Uint8Array |
     if (!info.isFile()) {
       return { path: '', code: 'not-a-file', message: 'not a regular file: a spec is a file' };
     }
-    if (info.size > MAX_SPEC_BYTES) return tooLargeProblem(info.size);
-    // to its end, even if it grew since: at most one byte more than a spec may have
+    if (info.size > max) return tooLargeProblem(info.size);
+    // to its end, even if it grew since: at most one byte more than the file may have
     const chunks: Uint8Array[] = [];
     let length = 0;
     for (;;) {
-      const chunk = new Uint8Array(Math.min(64 * 1024, MAX_SPEC_BYTES + 1 - length));
+      const chunk = new Uint8Array(Math.min(64 * 1024, max + 1 - length));
       const { bytesRead } = await handle.read(chunk, 0, chunk.length, null);
       if (bytesRead === 0) break;
       chunks.push(chunk.subarray(0, bytesRead));
       length += bytesRead;
-      if (length > MAX_SPEC_BYTES) break;
+      if (length > max) break;
     }
     return Buffer.concat(chunks, length);
   } finally {
@@ -116,42 +141,103 @@ async function readBounded(absolute: string, file: string): Promise<Uint8Array |
   }
 }
 
-/** Reads one spec file and validates it. */
+/**
+ * Reads one spec file and validates it, as converter output when `recorded`
+ * (its run record's entry) is given: then a file whose bytes differ from the
+ * recorded ones is refused, since its derivation is the run's only while it
+ * is what the converter wrote.
+ */
 export async function readSpecFile(
   absolute: string,
   file: string,
   origin: SpecOrigin,
+  recorded: { entry: RecordedSpec; converter: string } | null = null,
 ): Promise<SpecFile> {
   const bytes = await readBounded(absolute, file);
-  if (!(bytes instanceof Uint8Array)) {
-    return { file, absolute, spec: null, errors: [bytes], warnings: [] };
+  const base = { file, absolute, spec: null, warnings: [], recorded: recorded?.entry ?? null };
+  if (!(bytes instanceof Uint8Array)) return { ...base, errors: [bytes], sha256: null };
+  const sha256 = createHash('sha256').update(bytes).digest('hex');
+  if (recorded !== null && recorded.entry.sha256 !== sha256) {
+    return {
+      ...base,
+      sha256,
+      errors: [
+        {
+          path: '',
+          code: 'changed-after-run',
+          message: `changed after converter ${recorded.converter} wrote it: run the converter again, or move it into a spec folder of its own and declare it reconstructed`,
+        },
+      ],
+    };
   }
   const parsed = parseSpecBytes(bytes);
-  if (parsed.errors.length > 0) {
-    return { file, absolute, spec: null, errors: parsed.errors, warnings: [] };
-  }
+  if (parsed.errors.length > 0) return { ...base, sha256, errors: parsed.errors };
   const result = validateSpec(parsed.value, { origin });
-  return { file, absolute, spec: result.spec, errors: result.errors, warnings: result.warnings };
+  return { ...base, sha256, spec: result.spec, errors: result.errors, warnings: result.warnings };
+}
+
+/** The run record of a spec folder, or why it cannot be read. */
+async function readRecord(absolute: string): Promise<RunRecord | string> {
+  const bytes = await readBounded(absolute, RUN_RECORD_FILE, MAX_RECORD_BYTES);
+  if (!(bytes instanceof Uint8Array)) {
+    return bytes.code === 'too-large'
+      ? `${RUN_RECORD_FILE}: larger than ${MAX_RECORD_BYTES} bytes, which analyzr-convert never writes`
+      : `${RUN_RECORD_FILE}: ${bytes.message}`;
+  }
+  let value: unknown;
+  try {
+    value = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
+  } catch {
+    return `${RUN_RECORD_FILE}: not valid JSON in UTF-8`;
+  }
+  const record = readRunRecord(value);
+  return typeof record === 'string' ? `${RUN_RECORD_FILE}: ${record}` : record;
 }
 
 /**
- * The spec files of a folder (or one spec file), sorted by path, validated
+ * The spec files of a folder (or one spec file), sorted by path: those the
+ * folder's run record lists are validated as converter output, the others
  * as written by the agent; two specs naming one tool path or one tool id
- * are errors of the later one (one spec per model).
+ * are errors of the later one (one spec per model). A folder whose record
+ * cannot be read has one problem, `recordProblem`: its specs are listed
+ * unchecked (no spec, no error), since which of them a converter wrote is
+ * unknown.
  */
 export async function scanSpecs(target: string): Promise<ScannedSpecs> {
   const listing = await listExport(target);
   const single = listing.files.length === 1 && listing.files[0]?.absolute === path.resolve(target);
+  const recordFile = single ? undefined : listing.files.find((f) => f.path === RUN_RECORD_FILE);
+  const read = recordFile === undefined ? null : await readRecord(recordFile.absolute);
+  const record = typeof read === 'string' ? null : read;
+  const byFile = new Map((record?.specs ?? []).map((s) => [s.file, s]));
   const specs: SpecFile[] = [];
   const skipped: string[] = [];
-  let runRecord = false;
   for (const f of listing.files) {
     if (!single && !SPEC_FILE.test(f.path)) {
-      if (f.path === RUN_RECORD_FILE) runRecord = true;
       skipped.push(f.path);
       continue;
     }
-    specs.push(await readSpecFile(f.absolute, f.path, 'hand'));
+    if (typeof read === 'string') {
+      specs.push({
+        file: f.path,
+        absolute: f.absolute,
+        spec: null,
+        errors: [],
+        warnings: [],
+        sha256: null,
+        recorded: null,
+      });
+      continue;
+    }
+    const entry = byFile.get(f.path);
+    specs.push(
+      entry === undefined || record === null
+        ? await readSpecFile(f.absolute, f.path, 'hand')
+        : await readSpecFile(f.absolute, f.path, 'converter', {
+            entry,
+            converter: record.converter.id,
+          }),
+    );
   }
   const paths = new Map<string, string>();
   const ids = new Map<string, string>();
@@ -183,7 +269,15 @@ export async function scanSpecs(target: string): Promise<ScannedSpecs> {
       ids.set(externalId, s.file);
     }
   }
-  return { specs, skipped, hidden: listing.hidden, symlinks: listing.symlinks, runRecord };
+  return {
+    specs,
+    skipped,
+    hidden: listing.hidden,
+    symlinks: listing.symlinks,
+    runRecord: recordFile !== undefined,
+    record,
+    recordProblem: typeof read === 'string' ? read : null,
+  };
 }
 
 /** The models of valid specs as planning sees them: the tool path with `.bpmn` as their path. */
@@ -215,13 +309,30 @@ export class SpecBundleError extends Error {
   }
 }
 
-/** Refuses a folder whose specs cannot be planned or bundled. */
-function assertPlannable(scanned: ScannedSpecs, target: string): void {
-  if (scanned.runRecord) {
+/**
+ * Refuses a folder whose specs cannot be planned or bundled; a run record
+ * must check out against the converter's copy in `workspace`.
+ */
+async function assertPlannable(
+  scanned: ScannedSpecs,
+  target: string,
+  workspace: string | undefined,
+): Promise<void> {
+  if (scanned.recordProblem !== null) {
     throw new SpecBundleError(
       'run-record',
-      `${RUN_RECORD_FILE}: specs a converter wrote are bundled with the converter's run record, which this analyzr-spec ${ANALYZR_SPEC_VERSION} does not read yet; move the specs you wrote into a folder of their own`,
+      `${scanned.recordProblem}: the specs a converter wrote are read with their run's record only; run analyzr-convert again`,
     );
+  }
+  if (scanned.record !== null) {
+    if (workspace === undefined) {
+      throw new SpecBundleError(
+        'run-record',
+        `${RUN_RECORD_FILE}: the converter of these specs is checked in the workspace's ${'converters/'}: name the workspace`,
+      );
+    }
+    const problem = await converterCopyProblem(workspace, scanned.record);
+    if (problem !== null) throw new SpecBundleError('run-record', problem);
   }
   if (scanned.specs.length === 0) {
     throw new SpecBundleError('no-specs', `no spec file (*.spec.yaml) below ${target}`);
@@ -232,7 +343,11 @@ function assertPlannable(scanned: ScannedSpecs, target: string): void {
       'invalid-specs',
       `${invalid.length} of ${scanned.specs.length} specs have errors (${invalid
         .slice(0, 3)
-        .map((s) => `${s.file}: ${s.errors[0]?.path ?? ''}: ${s.errors[0]?.message ?? ''}`)
+        .map((s) =>
+          [s.file, s.errors[0]?.path ?? '', s.errors[0]?.message ?? '']
+            .filter((part) => part !== '')
+            .join(': '),
+        )
         .join('; ')}${invalid.length > 3 ? '; …' : ''}): run validate and fix every error`,
     );
   }
@@ -297,21 +412,27 @@ export function planSpecs(
   return { plan, specs };
 }
 
-/** Plans a spec folder (see {@link planSpecs}); refuses a folder with invalid specs. */
+/**
+ * Plans a spec folder (see {@link planSpecs}); refuses a folder with invalid
+ * specs, and one whose run record does not check out in `workspace`.
+ */
 export async function planSpecFolder(
   keymap: Keymap,
   target: string,
   options: PlanOptions,
   folder?: string,
+  workspace?: string,
 ): Promise<SpecPlan & { scanned: ScannedSpecs }> {
   const scanned = await scanSpecs(target);
-  assertPlannable(scanned, target);
+  await assertPlannable(scanned, target, workspace);
   return { ...planSpecs(keymap, scanned, options, folder), scanned };
 }
 
 export interface SpecBundleOptions {
   specDir: string;
   outDir: string;
+  /** The workspace whose `converters/` holds the copy a run record names (needed with a record). */
+  workspace?: string;
   system: string;
   keymap: Keymap;
   /** When the customer exported or drew it (ISO 8601 date or date-time), or `null`. */
@@ -400,7 +521,7 @@ export async function writeSpecBundle(options: SpecBundleOptions): Promise<SpecB
       ? null
       : normalizeExportedAt(options.exportedAt);
   const scanned = await scanSpecs(options.specDir);
-  assertPlannable(scanned, options.specDir);
+  await assertPlannable(scanned, options.specDir, options.workspace);
   const asTold = scanned.specs.filter((s) => s.spec?.derived?.kind === 'as-told');
   if (asTold.length > 0) {
     throw new SpecBundleError(
@@ -428,11 +549,24 @@ export async function writeSpecBundle(options: SpecBundleOptions): Promise<SpecB
   const manifestFiles: ManifestFile[] = [];
   const failed: SpecBundleResult['failed'] = [];
   const names: { key: string; externalId: string | null; names: string[] }[] = [];
+  const record = scanned.record;
   for (const planned of specs) {
-    const spec = byFile.get(planned.spec)?.spec;
+    const file = byFile.get(planned.spec);
+    const spec = file?.spec;
     if (spec === null || spec === undefined) continue;
-    const derived = spec.derived;
-    if (derived === null) continue; // a spec the agent wrote always declares it (validated)
+    // a converter's spec takes its run's derivation, a spec the agent wrote its own (validated)
+    const recorded = file?.recorded ?? null;
+    const derived =
+      recorded !== null && record !== null
+        ? {
+            kind: record.derived.kind,
+            converter: record.converter.id,
+            llmModel: record.derived.llmModel,
+          }
+        : spec.derived === null
+          ? null
+          : { kind: 'reconstructed' as const, converter: null, llmModel: spec.derived.llmModel };
+    if (derived === null) continue;
     let rendered;
     try {
       rendered = await renderSpec(spec, { key: planned.key });
@@ -452,16 +586,17 @@ export async function writeSpecBundle(options: SpecBundleOptions): Promise<SpecB
     await mkdir(path.dirname(absolute), { recursive: true });
     await writeFile(absolute, rendered.bytes);
     const { source } = spec;
+    const losses = sumLosses(recorded?.losses ?? [], rendered.losses);
     files.push({
       spec: planned.spec,
       path: target,
       key: planned.key,
       externalId: source.externalId,
       externalPath: source.externalPath,
-      kind: 'reconstructed',
-      converter: null,
+      kind: derived.kind,
+      converter: derived.converter,
       llmModel: derived.llmModel,
-      losses: rendered.losses,
+      losses,
       calls: rendered.summary.calls,
       notes: notesOf(spec),
       textTruncated: rendered.summary.textTruncated,
@@ -480,8 +615,8 @@ export async function writeSpecBundle(options: SpecBundleOptions): Promise<SpecB
       ...(source.externalId === null ? {} : { externalId: source.externalId }),
       externalPath: source.externalPath,
       ...(source.url === null ? {} : { url: source.url }),
-      derived: { kind: 'reconstructed', converter: null, llmModel: derived.llmModel, from: [] },
-      ...(rendered.losses.length === 0 ? {} : { losses: rendered.losses }),
+      derived: { ...derived, from: [] },
+      ...(losses.length === 0 ? {} : { losses }),
       sha256: rendered.sha256,
     });
     names.push({
@@ -500,7 +635,7 @@ export async function writeSpecBundle(options: SpecBundleOptions): Promise<SpecB
     format: MANIFEST_FORMAT,
     source: {
       system: options.system,
-      systemVersion: null,
+      systemVersion: record?.systemVersion ?? null,
       exportedAt,
       importer: { name: SPEC_IMPORTER, version: ANALYZR_SPEC_VERSION },
       ...(plan.scope === null ? {} : { scope: plan.scope }),

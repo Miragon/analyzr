@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<PageContents xmlns="http://schemas.microsoft.com/office/visio/2012/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xml:space="preserve">
+  <Shapes>
+    <Shape ID="1" Master="11"><Cell N="PinX" V="2"/><Cell N="PinY" V="8"/><Text>Legende: Formen der BPMN-Schablone</Text></Shape>
+    <Shape ID="2" Master="11"><Cell N="PinX" V="2"/><Cell N="PinY" V="7"/><Text>Gelb: in Abstimmung</Text></Shape>
+  </Shapes>
+</PageContents>

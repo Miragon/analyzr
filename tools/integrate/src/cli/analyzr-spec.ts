@@ -52,8 +52,10 @@ const USAGE = `Usage:
       [--exported-at <date>] [--inventory <inventory.json>] [--json-out <file>]
 
 validate   checks analyzr-spec/1 files (*.spec.yaml, *.spec.yml or *.spec.json below a
-           folder, or one file of any name) as specs you wrote: every error and
-           warning as "<spec file>: <path>: <message>". Writes nothing.
+           folder, or one file of any name) as specs you wrote, and those the folder's
+           run record (analyzr-specs.json, from analyzr-convert) lists as converter
+           output, unchanged since the run: every error and warning as
+           "<spec file>: <path>: <message>". Writes nothing.
 render     renders one spec as BPMN 2.0 with DI into the new file <out.bpmn>, for
            checks: --key sets the definitions id (default spec); --origin converter
            checks it as converter output (no derived; loose positions are warnings).
@@ -68,7 +70,10 @@ plan       plans the model key of every spec of the folder against <dir>/keymap.
            it) records the plan in keymap.json.
 bundle     writes the import bundle (analyzr-import/1) into the empty folder <dir>:
            every spec rendered at its key's path, analyzr-import.json, and
-           inventory.json with --inventory. Every spec needs a confirmed key. Exit 1
+           inventory.json with --inventory. Every spec needs a confirmed key. A spec
+           a converter run wrote is converted or reconstructed with adhoc:<12 hex>
+           only while the run record checks out: the copy converters/adhoc-<12 hex>.js
+           in the workspace holds the recorded bytes and the spec is unchanged. Exit 1
            when models failed: the bundle holds all others.
 
 plan and bundle print a short summary on stdout and, with --json-out, the complete
@@ -89,7 +94,11 @@ async function validateCommand(argv: readonly string[]): Promise<void> {
   const { positionals } = parse(argv, {});
   if (positionals.length !== 1) throw new UsageError('validate expects one <spec file or folder>');
   const scanned = await scanSpecs(positionals[0] ?? '');
-  const result = compactValidation(scanned.specs, scanned.skipped);
+  const result = compactValidation(
+    scanned.specs,
+    scanned.skipped,
+    scanned.recordProblem === null ? [] : [scanned.recordProblem],
+  );
   process.stdout.write(formatCompactJson(result));
   if (result.errors.count > 0) process.exitCode = 1;
 }
@@ -202,6 +211,7 @@ async function planCommand(argv: readonly string[]): Promise<void> {
       reset: values.reset === true,
     },
     folder,
+    workspace,
   );
   let written: string | null = null;
   if (values.write === true) {
@@ -253,6 +263,7 @@ async function bundleCommand(argv: readonly string[]): Promise<void> {
   const result = await writeSpecBundle({
     specDir,
     outDir: out,
+    workspace,
     system,
     keymap,
     exportedAt: values['exported-at'] ?? null,

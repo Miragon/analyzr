@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Pages xmlns="http://schemas.microsoft.com/office/visio/2012/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xml:space="preserve">
+  <Page ID="0" NameU="Auftragsabwicklung" Name="Auftragsabwicklung"><Rel r:id="rId1"/></Page>
+  <Page ID="1" NameU="Auftragsabwicklung – Versand" Name="Auftragsabwicklung – Versand"><Rel r:id="rId2"/></Page>
+  <Page ID="2" NameU="Legende" Name="Legende"><Rel r:id="rId3"/></Page>
+</Pages>

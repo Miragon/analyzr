@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<PageContents xmlns="http://schemas.microsoft.com/office/visio/2012/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xml:space="preserve">
+  <Shapes>
+    <Shape ID="4" Master="7" Type="Group"><Cell N="PinX" V="6"/><Cell N="PinY" V="9"/><Text>Kunde</Text></Shape>
+    <Shape ID="1" Master="7" Type="Group"><Cell N="PinX" V="6"/><Cell N="PinY" V="6"/><Text>Vertrieb</Text></Shape>
+    <Shape ID="3" Master="8"><Cell N="PinX" V="6"/><Cell N="PinY" V="5"/><Cell N="Relationships" F="SUM(DEPENDSON(4,Sheet.1!SheetRef()))"/><Text>Buchhaltung</Text></Shape>
+    <Shape ID="2" Master="8"><Cell N="PinX" V="6"/><Cell N="PinY" V="7"/><Cell N="Relationships" F="SUM(DEPENDSON(4,Sheet.1!SheetRef()))"/><Text>Innendienst</Text></Shape>
+    <Shape ID="10" Master="2"><Cell N="PinX" V="1"/><Cell N="PinY" V="7"/><Cell N="Relationships" F="SUM(DEPENDSON(4,Sheet.2!SheetRef()))"/>
+      <Section N="Property"><Row N="BpmnTriggerOrResult"><Cell N="Value" V="Message"/></Row><Row N="BpmnMessageName"><Cell N="Value" V="Auftrag"/></Row></Section>
+      <Text>Auftrag<cp IX="0"/> eingegangen</Text></Shape>
+    <Shape ID="11" Master="1"><Cell N="PinX" V="2"/><Cell N="PinY" V="7"/><Cell N="Relationships" F="SUM(DEPENDSON(4,Sheet.2!SheetRef()))"/><Text>Auftrag prüfen</Text></Shape>
+    <Shape ID="12" Master="5"><Cell N="PinX" V="3"/><Cell N="PinY" V="7"/><Cell N="Relationships" F="SUM(DEPENDSON(4,Sheet.2!SheetRef()))"/>
+      <Section N="Property"><Row N="BpmnGatewayType"><Cell N="Value" V="Exclusive"/></Row></Section>
+      <Text>Auftrag vollständig?</Text></Shape>
+    <Shape ID="13" Master="4"><Cell N="PinX" V="4"/><Cell N="PinY" V="5"/><Cell N="Relationships" F="SUM(DEPENDSON(4,Sheet.3!SheetRef()))"/>
+      <Section N="Property"><Row N="BpmnActivityType"><Cell N="Value" V="Call Activity"/></Row></Section>
+      <Text>Bonitätsprüfung</Text></Shape>
+    <Shape ID="14" Master="1"><Cell N="PinX" V="5"/><Cell N="PinY" V="7"/><Cell N="Relationships" F="SUM(DEPENDSON(4,Sheet.2!SheetRef()))"/>
+      <Section N="Property"><Row N="BpmnTaskType"><Cell N="Value" V="Send"/></Row><Row N="BpmnMessageName"><Cell N="Value" V="Auftragsbestätigung"/></Row></Section>
+      <Text>Bestätigung senden</Text></Shape>
+    <Shape ID="15" Master="1"><Cell N="PinX" V="4"/><Cell N="PinY" V="7.5"/><Cell N="Relationships" F="SUM(DEPENDSON(4,Sheet.2!SheetRef()))"/><Text>Rückfrage stellen</Text></Shape>
+    <Shape ID="16" Master="3"><Cell N="PinX" V="5"/><Cell N="PinY" V="7.5"/><Cell N="Relationships" F="SUM(DEPENDSON(4,Sheet.2!SheetRef()))"/><Text>Auftrag zurückgestellt</Text></Shape>
+    <Shape ID="17" Master="10"><Cell N="PinX" V="6"/><Cell N="PinY" V="7"/><Cell N="Relationships" F="SUM(DEPENDSON(4,Sheet.2!SheetRef()))"/>
+      <Section N="Hyperlink"><Row N="OffPageConnector"><Cell N="SubAddress" V="Auftragsabwicklung – Versand"/></Row></Section>
+      <Text>Versand</Text></Shape>
+    <Shape ID="18" Master="6"><Cell N="PinX" V="2"/><Cell N="PinY" V="3"/><Text>CRM</Text></Shape>
+    <Shape ID="19" Master="11"><Cell N="PinX" V="8"/><Cell N="PinY" V="3"/><Text>Stand: Entwurf</Text></Shape>
+    <Shape ID="30" Master="20"/>
+    <Shape ID="31" Master="20"/>
+    <Shape ID="32" Master="20"><Text>ja</Text></Shape>
+    <Shape ID="33" Master="20"><Text>nein</Text></Shape>
+    <Shape ID="34" Master="20"/>
+    <Shape ID="35" Master="20"/>
+    <Shape ID="36" Master="20"/>
+    <Shape ID="37" Master="21"><Text>Auftrag</Text></Shape>
+    <Shape ID="38" Master="21"><Text>Auftragsbestätigung</Text></Shape>
+    <Shape ID="39" Master="22"/>
+    <Shape ID="40" Master="20"/>
+  </Shapes>
+  <Connects>
+    <Connect FromSheet="30" FromCell="BeginX" ToSheet="10" ToCell="PinX"/>
+    <Connect FromSheet="30" FromCell="EndX" ToSheet="11" ToCell="PinX"/>
+    <Connect FromSheet="31" FromCell="BeginX" ToSheet="11" ToCell="PinX"/>
+    <Connect FromSheet="31" FromCell="EndX" ToSheet="12" ToCell="PinX"/>
+    <Connect FromSheet="32" FromCell="BeginX" ToSheet="12" ToCell="PinX"/>
+    <Connect FromSheet="32" FromCell="EndX" ToSheet="13" ToCell="PinX"/>
+    <Connect FromSheet="33" FromCell="BeginX" ToSheet="12" ToCell="PinX"/>
+    <Connect FromSheet="33" FromCell="EndX" ToSheet="15" ToCell="PinX"/>
+    <Connect FromSheet="34" FromCell="BeginX" ToSheet="13" ToCell="PinX"/>
+    <Connect FromSheet="34" FromCell="EndX" ToSheet="14" ToCell="PinX"/>
+    <Connect FromSheet="35" FromCell="BeginX" ToSheet="14" ToCell="PinX"/>
+    <Connect FromSheet="35" FromCell="EndX" ToSheet="17" ToCell="PinX"/>
+    <Connect FromSheet="36" FromCell="BeginX" ToSheet="15" ToCell="PinX"/>
+    <Connect FromSheet="36" FromCell="EndX" ToSheet="16" ToCell="PinX"/>
+    <Connect FromSheet="37" FromCell="BeginX" ToSheet="4" ToCell="PinX"/>
+    <Connect FromSheet="37" FromCell="EndX" ToSheet="10" ToCell="PinX"/>
+    <Connect FromSheet="38" FromCell="BeginX" ToSheet="14" ToCell="PinX"/>
+    <Connect FromSheet="38" FromCell="EndX" ToSheet="4" ToCell="PinX"/>
+    <Connect FromSheet="39" FromCell="BeginX" ToSheet="18" ToCell="PinX"/>
+    <Connect FromSheet="39" FromCell="EndX" ToSheet="11" ToCell="PinX"/>
+    <Connect FromSheet="40" FromCell="BeginX" ToSheet="15" ToCell="PinX"/>
+  </Connects>
+</PageContents>

@@ -15,3 +15,10 @@ export const SPEC_FORMAT = 'analyzr-spec/1';
 
 /** The importer a spec bundle's manifest names. */
 export const SPEC_IMPORTER = 'analyzr-integrate/analyzr-spec';
+
+/**
+ * The version of `analyzr-convert` (M6 S3c §4, R21), the converter runner: a
+ * run record names it as `runner`. It lives here until the plugin release
+ * that ships `analyzr-convert.mjs` moves it next to `src/version.ts`.
+ */
+export const ANALYZR_CONVERT_VERSION = '0.1.0';

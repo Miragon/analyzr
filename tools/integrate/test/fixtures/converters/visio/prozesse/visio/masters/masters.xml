@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Masters xmlns="http://schemas.microsoft.com/office/visio/2012/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xml:space="preserve">
+  <Master ID="1" NameU="Task" Name="Aufgabe"/>
+  <Master ID="2" NameU="Start Event" Name="Startereignis"/>
+  <Master ID="3" NameU="End Event" Name="Endereignis"/>
+  <Master ID="4" NameU="Collapsed Sub-Process" Name="Reduzierter Unterprozess"/>
+  <Master ID="5" NameU="Gateway" Name="Gateway"/>
+  <Master ID="6" NameU="Data Store" Name="Datenspeicher"/>
+  <Master ID="7" NameU="Pool / Lane" Name="Pool/Bahn"/>
+  <Master ID="8" NameU="Swimlane" Name="Schwimmbahn"/>
+  <Master ID="9" NameU="Intermediate Event" Name="Zwischenereignis"/>
+  <Master ID="10" NameU="Off-page reference" Name="Seitenübergreifender Verweis"/>
+  <Master ID="11" NameU="Text Annotation" Name="Textanmerkung"/>
+  <Master ID="20" NameU="Sequence Flow" Name="Sequenzfluss"/>
+  <Master ID="21" NameU="Message Flow" Name="Nachrichtenfluss"/>
+  <Master ID="22" NameU="Association" Name="Zuordnung"/>
+</Masters>

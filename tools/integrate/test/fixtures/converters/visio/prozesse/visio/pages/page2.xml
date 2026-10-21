@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<PageContents xmlns="http://schemas.microsoft.com/office/visio/2012/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xml:space="preserve">
+  <Shapes>
+    <Shape ID="1" Master="7" Type="Group"><Cell N="PinX" V="6"/><Cell N="PinY" V="6"/><Text>Vertrieb</Text></Shape>
+    <Shape ID="2" Master="8"><Cell N="PinX" V="6"/><Cell N="PinY" V="6"/><Cell N="Relationships" F="SUM(DEPENDSON(4,Sheet.1!SheetRef()))"/><Text>Versand</Text></Shape>
+    <Shape ID="3" Master="10"><Cell N="PinX" V="1"/><Cell N="PinY" V="6"/><Cell N="Relationships" F="SUM(DEPENDSON(4,Sheet.2!SheetRef()))"/>
+      <Section N="Hyperlink"><Row N="OffPageConnector"><Cell N="SubAddress" V="Auftragsabwicklung"/></Row></Section>
+      <Text>Von Auftragsabwicklung</Text></Shape>
+    <Shape ID="4" Master="1"><Cell N="PinX" V="2"/><Cell N="PinY" V="6"/><Cell N="Relationships" F="SUM(DEPENDSON(4,Sheet.2!SheetRef()))"/>
+      <Section N="Property"><Row N="BpmnTaskType"><Cell N="Value" V="User"/></Row></Section>
+      <Text>Versand beauftragen</Text></Shape>
+    <Shape ID="5" Master="3"><Cell N="PinX" V="3"/><Cell N="PinY" V="6"/><Cell N="Relationships" F="SUM(DEPENDSON(4,Sheet.2!SheetRef()))"/><Text>Auftrag versandt</Text></Shape>
+    <Shape ID="6" Master="20"/>
+    <Shape ID="7" Master="20"/>
+  </Shapes>
+  <Connects>
+    <Connect FromSheet="6" FromCell="BeginX" ToSheet="3" ToCell="PinX"/>
+    <Connect FromSheet="6" FromCell="EndX" ToSheet="4" ToCell="PinX"/>
+    <Connect FromSheet="7" FromCell="BeginX" ToSheet="4" ToCell="PinX"/>
+    <Connect FromSheet="7" FromCell="EndX" ToSheet="5" ToCell="PinX"/>
+  </Connects>
+</PageContents>

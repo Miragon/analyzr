@@ -8,6 +8,8 @@ import { archiveLike, capped, compactPlan } from '../compact.ts';
 import type { RebuildReport } from '../keymap.ts';
 
 import type { ScannedSpecs, SpecBundleResult, SpecFile, SpecPlan } from './bundle.ts';
+import type { ConvertResult } from './converter.ts';
+import { sumLosses } from './record.ts';
 
 const LIST = 30;
 const SHORT_LIST = 20;
@@ -20,13 +22,25 @@ export function problemLine(file: string, problem: { path: string; message: stri
     : `${file}: ${problem.path}: ${problem.message}`;
 }
 
-/** `validate`'s result: how many specs, how many valid, every error and warning as a line. */
-export function compactValidation(specs: readonly SpecFile[], skipped: readonly string[] = []) {
-  const errors = specs.flatMap((s) => s.errors.map((p) => problemLine(s.file, p)));
+/**
+ * `validate`'s result: how many specs, how many valid, every error and
+ * warning as a line; `folderErrors` (a run record that cannot be read) come
+ * first.
+ */
+export function compactValidation(
+  specs: readonly SpecFile[],
+  skipped: readonly string[] = [],
+  folderErrors: readonly string[] = [],
+) {
+  const errors = [
+    ...folderErrors,
+    ...specs.flatMap((s) => s.errors.map((p) => problemLine(s.file, p))),
+  ];
   const warnings = specs.flatMap((s) => s.warnings.map((p) => problemLine(s.file, p)));
   return {
     specs: specs.length,
-    valid: specs.filter((s) => s.errors.length === 0).length,
+    // a spec not checked (its folder's run record cannot be read) is no valid one
+    valid: specs.filter((s) => s.spec !== null && s.errors.length === 0).length,
     errors: capped(errors, PROBLEMS),
     warnings: capped(warnings, PROBLEMS),
     ...(skipped.length === 0 ? {} : { skipped: capped([...skipped], SHORT_LIST) }),
@@ -120,5 +134,53 @@ export function compactSpecBundle(result: SpecBundleResult): Record<string, unkn
             proposed: capped(coverage.proposed, SHORT_LIST),
             missing: capped(coverage.missing, SHORT_LIST),
           },
+  };
+}
+
+/** A converter run at a glance: what it read and wrote, what failed, then the lists cut short. */
+export function compactConvert(result: ConvertResult): Record<string, unknown> {
+  const { record } = result;
+  return {
+    converter: record.converter.id,
+    sha256: record.converter.sha256,
+    copy: record.converter.file,
+    derived: record.derived,
+    reads: record.reads,
+    counts: {
+      models: record.specs.length,
+      failed: record.failed.length,
+      duplicates: record.duplicates.length,
+      skipped: record.skipped.length,
+      unread: record.unread.length,
+      zipRefused: record.zipRefused.length,
+      symlinksSkipped: record.symlinksSkipped,
+      hiddenSkipped: record.hiddenSkipped,
+    },
+    losses: Object.fromEntries(
+      sumLosses(...record.specs.map((s) => s.losses)).map((l) => [l.code, l.count]),
+    ),
+    warnings: record.specs.reduce((n, s) => n + s.warningCount, 0),
+    specs: result.outDir,
+    record: result.recordFile,
+    files: capped(
+      record.specs.map((s) => ({
+        file: s.file,
+        externalPath: s.externalPath,
+        warnings: s.warningCount,
+      })),
+      LIST,
+    ),
+    failed: capped(
+      record.failed.map((f) => ({
+        model: f.model,
+        externalPath: f.externalPath,
+        errors: f.errors.slice(0, 3),
+        errorCount: f.errorCount,
+      })),
+      LIST,
+    ),
+    skipped: capped(record.skipped, SHORT_LIST),
+    unread: capped(record.unread, SHORT_LIST),
+    zipRefused: capped(record.zipRefused, SHORT_LIST),
   };
 }

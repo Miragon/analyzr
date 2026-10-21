@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<PageContents xmlns="http://schemas.microsoft.com/office/visio/2012/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xml:space="preserve">
+  <Shapes>
+    <Shape ID="1" Master="2"><Cell N="PinX" V="1"/><Cell N="PinY" V="5"/><Text>Reklamation eingegangen</Text></Shape>
+    <Shape ID="2" Master="1"><Cell N="PinX" V="2"/><Cell N="PinY" V="5"/><Text>Reklamation prüfen</Text></Shape>
+    <Shape ID="3" Master="5"><Cell N="PinX" V="3"/><Cell N="PinY" V="5"/>
+      <Section N="Property"><Row N="BpmnGatewayType"><Cell N="Value" V="Exclusive"/></Row></Section>
+      <Text>Berechtigt?</Text></Shape>
+    <Shape ID="4" Master="1"><Cell N="PinX" V="4"/><Cell N="PinY" V="6"/>
+      <Section N="Property"><Row N="BpmnTaskType"><Cell N="Value" V="Service"/></Row></Section>
+      <Text>Gutschrift erstellen</Text></Shape>
+    <Shape ID="5" Master="1"><Cell N="PinX" V="4"/><Cell N="PinY" V="4"/>
+      <Section N="Property"><Row N="BpmnTaskType"><Cell N="Value" V="Send"/></Row></Section>
+      <Text>Ablehnung senden</Text></Shape>
+    <Shape ID="6" Master="3"><Cell N="PinX" V="5"/><Cell N="PinY" V="5"/><Text>Reklamation erledigt</Text></Shape>
+    <Shape ID="10" Master="20"/>
+    <Shape ID="11" Master="20"/>
+    <Shape ID="12" Master="20"><Text>ja</Text></Shape>
+    <Shape ID="13" Master="20"><Text>nein</Text></Shape>
+    <Shape ID="14" Master="20"/>
+    <Shape ID="15" Master="20"/>
+  </Shapes>
+  <Connects>
+    <Connect FromSheet="10" FromCell="BeginX" ToSheet="1" ToCell="PinX"/>
+    <Connect FromSheet="10" FromCell="EndX" ToSheet="2" ToCell="PinX"/>
+    <Connect FromSheet="11" FromCell="BeginX" ToSheet="2" ToCell="PinX"/>
+    <Connect FromSheet="11" FromCell="EndX" ToSheet="3" ToCell="PinX"/>
+    <Connect FromSheet="12" FromCell="BeginX" ToSheet="3" ToCell="PinX"/>
+    <Connect FromSheet="12" FromCell="EndX" ToSheet="4" ToCell="PinX"/>
+    <Connect FromSheet="13" FromCell="BeginX" ToSheet="3" ToCell="PinX"/>
+    <Connect FromSheet="13" FromCell="EndX" ToSheet="5" ToCell="PinX"/>
+    <Connect FromSheet="14" FromCell="BeginX" ToSheet="4" ToCell="PinX"/>
+    <Connect FromSheet="14" FromCell="EndX" ToSheet="6" ToCell="PinX"/>
+    <Connect FromSheet="15" FromCell="BeginX" ToSheet="5" ToCell="PinX"/>
+    <Connect FromSheet="15" FromCell="EndX" ToSheet="6" ToCell="PinX"/>
+  </Connects>
+</PageContents>

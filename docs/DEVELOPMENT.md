@@ -43,9 +43,10 @@ rows of owner decision 29 (1),
 [step 2](#m6-s2b-follow-up-step-2-2026-10-20), [step 3](#m6-s2b-follow-up-step-3-2026-10-20),
 [step 3b](#m6-s2b-follow-up-step-3b-2026-10-20),
 [step 4](#m6-s2b-follow-up-step-4-2026-10-20) and
-[step 5](#m6-s2b-follow-up-step-5-2026-10-20)) and step 1 of S3c (`analyzr-spec/1` and its
-deterministic renderer, run from source until the integrate plugin 0.1.4,
-[M6 S3c step 1](#m6-s3c-step-1-2026-10-21)) are in. The public read-only demo of
+[step 5](#m6-s2b-follow-up-step-5-2026-10-20)) and steps 1 and 2 of S3c (`analyzr-spec/1` and its
+deterministic renderer, and the converter runner `analyzr-convert`, run from source until the
+integrate plugin 0.1.4, [M6 S3c step 1](#m6-s3c-step-1-2026-10-21) and
+[step 2](#m6-s3c-step-2-2026-10-21)) are in. The public read-only demo of
 owner decision 20 runs at https://analyzr-demo.fly.dev after the first deploy
 ([Demo deployment (Fly.io)](#demo-deployment-flyio)).
 
@@ -69,7 +70,7 @@ end to end](#verified-end-to-end) lists exactly what was run and what was not.
 | `apps/server`: full CONCEPT §2 schema, domain use cases with `policy.require`, ingest/import/delete as one transaction (facts, rule tier, assertions, endpoint state, analysis tasks, events) with the real `@analyzr/bpmn-facts` and `@analyzr/relations`, every REST route of the contracts, local mode (Host/Origin guard, owner session cookie, owner key for the CLI, agent tokens), MCP `/mcp` with the eight read tools, the built web UI at `/` | working; importing `nordwind-handel` and `stadtwerke-auental` reproduces the rule relations and findings of `eval:candidates` exactly (integration test); MCP contract test with the SDK client |
 | `packages/procedures`: the procedures `analyzr-relations@0.2.0` (`relations.md`, status `released`, M3; judge each pair once) and `analyzr-placements@0.1.0` (`placements.md`, `released`, `kind: placement`, M4 S5), the loader for MCP `get_procedure`, the wrappers for the MCP prompts `work_pipeline` and `place_processes` and the Claude Code skills (`renderPipelineWrapper`, `renderAdHocWrapper`, `renderSkill`, `pnpm --filter @analyzr/procedures generate`), the `draft_value_chain` prompt text (`prompts/`) ([below](#the-relations-procedure-m3), [placements](#the-placement-pipeline-and-analyzr-placements-m4-s5)) | working; unit tests (frontmatter, wrappers, the guard against skill expansion), the drift test of the generated skill and plugin version, a sha256 guard that keeps a released version's skill from changing, and a server test that keeps the procedure's limits, invalid reasons (relations and no-links), tool names and tool arguments in line with the contracts and the MCP tools; three LLM dev runs of `0.1.0` on `nordwind-handel` (Sonnet 5.5: precision 100 %, recall 78.6 %, 0 must_not_link; [M3](#m3-2026-10-08)) |
 | `plugins/analyzr`: Claude Code plugin `analyzr` (0.3.0, its own version since S5) with the generated skills `/analyzr:relations [project] [max-tasks]` and `/analyzr:placements [project] [max-tasks]` and no MCP server; `.claude-plugin/marketplace.json`: the repository as marketplace `analyzr` (`claude plugin install analyzr@analyzr`) | working; `claude plugin validate --strict` passes for both manifests (Claude Code 2.1.295 for 0.3.0); drift tests and the per-release sha256 table in `@analyzr/procedures`; not yet run with a model |
-| `plugins/analyzr-integrate` and `tools/integrate` (M6 S3b, [below](#the-integrate-plugin-and-toolsintegrate-m6-s3b)): the second Claude Code plugin (0.1.3; 0.1.1 and 0.1.2 changed only texts: the skill in M6 S2a, the skill and the Signavio note in S2c-2; 0.1.3 in S2b's follow-up step 4: the read-only `analyzr-read.mjs`, pre-approved next to `inspect.mjs`, with which the skill previews an import itself, `plan --from-analyzr` rebuilding a lost key map, the report's „Vorschau“ with the agent work, `exporterVersion` declared tidied) with `/analyzr-integrate:integrate-landscape` for BPMN 2.0 exports, the reference notes per tool and the bundled scripts `inspect.mjs`, `normalize-bpmn.mjs` and `analyzr-read.mjs`; their sources and tests in `@analyzr/integrate`; since M6 S3c step 1 also the sources of `analyzr-spec` (`analyzr-spec/1`, its validator and the deterministic renderer, [M6 S3c step 1](#m6-s3c-step-1-2026-10-21)), run from source until 0.1.4 bundles it | working; 332 tests (normalized outputs extracted with `@analyzr/bpmn-facts`, keys and the rebuild from analyzr, bundle, inventory, the scripts as the plugin runs them, `analyzr-read` against a fake analyzr with its refusals, the drift test, the release table; since M6 S3c step 1 the spec validator, the renderer on 9 golden specs and 200 seeded random ones with their facts extracted, bpmn-js's tree walker with the importer's refusals and the layout checks), the Playwright harness `e2e/spec-render-import.spec.ts` (renders in bpmn-js, no server, not in CI), the CLI and web tests on the golden bundle, the CLI e2e running the bundled `analyzr-read.mjs` against a real server ([M6 S2b follow-up step 4](#m6-s2b-follow-up-step-4-2026-10-20)), `claude plugin validate --strict` (Claude Code 2.1.300; for 0.1.2 and 0.1.3 Claude Code 2.1.303, [M6 S2c-2](#m6-s2c-2-2026-10-20)); followed by hand by the implementing agent and imported into a scratch stack with the checkout CLI and „Hochladen“; not yet invoked as a skill in a Claude Code or Codex session, its guard setup and the pre-approval of `analyzr-read.mjs` not tried live ([HANDOFF.md](HANDOFF.md) §8) |
+| `plugins/analyzr-integrate` and `tools/integrate` (M6 S3b, [below](#the-integrate-plugin-and-toolsintegrate-m6-s3b)): the second Claude Code plugin (0.1.3; 0.1.1 and 0.1.2 changed only texts: the skill in M6 S2a, the skill and the Signavio note in S2c-2; 0.1.3 in S2b's follow-up step 4: the read-only `analyzr-read.mjs`, pre-approved next to `inspect.mjs`, with which the skill previews an import itself, `plan --from-analyzr` rebuilding a lost key map, the report's „Vorschau“ with the agent work, `exporterVersion` declared tidied) with `/analyzr-integrate:integrate-landscape` for BPMN 2.0 exports, the reference notes per tool and the bundled scripts `inspect.mjs`, `normalize-bpmn.mjs` and `analyzr-read.mjs`; their sources and tests in `@analyzr/integrate`; since M6 S3c step 1 also the sources of `analyzr-spec` (`analyzr-spec/1`, its validator and the deterministic renderer, [M6 S3c step 1](#m6-s3c-step-1-2026-10-21)) and since step 2 of the converter runner `analyzr-convert` (an agent's converter, approved by its sha256, run twice in a sandboxed child Node into specs and a run record, [M6 S3c step 2](#m6-s3c-step-2-2026-10-21)), run from source until 0.1.4 bundles them | working; 390 tests (normalized outputs extracted with `@analyzr/bpmn-facts`, keys and the rebuild from analyzr, bundle, inventory, the scripts as the plugin runs them, `analyzr-read` against a fake analyzr with its refusals, the drift test, the release table; since M6 S3c step 1 the spec validator, the renderer on 9 golden specs and 200 seeded random ones with their facts extracted, bpmn-js's tree walker with the importer's refusals and the layout checks; since step 2 the converter runner's escapes, limits, zip guards and run record on synthetic Visio and AML exports with example converters), the Playwright harness `e2e/spec-render-import.spec.ts` (renders in bpmn-js, no server, not in CI), the CLI and web tests on the golden bundle, the CLI e2e running the bundled `analyzr-read.mjs` against a real server ([M6 S2b follow-up step 4](#m6-s2b-follow-up-step-4-2026-10-20)), `claude plugin validate --strict` (Claude Code 2.1.300; for 0.1.2 and 0.1.3 Claude Code 2.1.303, [M6 S2c-2](#m6-s2c-2-2026-10-20)); followed by hand by the implementing agent and imported into a scratch stack with the checkout CLI and „Hochladen“; not yet invoked as a skill in a Claude Code or Codex session, its guard setup and the pre-approval of `analyzr-read.mjs` not tried live ([HANDOFF.md](HANDOFF.md) §8) |
 | `examples/agents` (M3, placements since M4 S5): reference setups for Claude Code (interactive, headless `run-headless.sh [--skill placements]`), Claude Desktop (both bridge entries, German start prompts for relations, placements and drafting a chain) and Codex; documentation, not workspace packages, not in the image; no Agent SDK setup for now (owner decision 16, [HANDOFF.md](HANDOFF.md) §4) | checked without a model ([M3](#m3-2026-10-08)): shellcheck and dry runs of `run-headless.sh` against fakes (incl. failed batches, a reused log directory and a trailing slash in `ANALYZR_URL`), the Codex TOML parses; no setup has run a model yet |
 | M2 backend: analysis pipeline (claim/submit/release, lease, long-poll), claim input (with the M3 additions: message-flow ends, partner and process documentation, findings, and `judged`/`skip`), submissions, ad-hoc proposals, review (accept/reject/hold/correct, bulk, notes, timeline), model engine, relation provenance, answered findings hidden ([below](#analysis-pipeline-and-review-m2)); judge each pair once (`analyzr-relations@0.2.0`: the basis of agent judgements, the assignment at the claim, stored no-links, `Relation.noLinks`, `uncovered`; [below](#judge-each-pair-once)) | working over REST and MCP; real-Postgres integration tests incl. concurrent claims, lease expiry, cancellation, decision memory across re-uploads, the claim-input size and additions on both corpus landscapes, judge each pair once (`judge-once.test.ts`); MCP contract test with the SDK client; reviewed in the web UI ([Review in the web UI](#review-in-the-web-ui-m2)); end to end against the Docker stack with the simulation agent (HTTP and the bridge in the container; before 0.2.0) and in the browser (`e2e/pipeline.spec.ts`: review, re-upload, `suppressed` vs. `reopened`) |
 | `apps/cli`: `analyzr seed` (M3: `--project`, `--token-name`; M4 S4: `--value-chains`), `import` (M6 S1: the shared file rule, keys derived before sending, skipped plain XML, extractor warnings, the waiting tasks and the next agent step), `models list/requeue/delete` (M6 S1; since S5c-2 `models amend|pull`), `questions` (M6 S4; since S5a `questions [list]` and `questions answer`; since S5c-1 `questions outside|link|place` and notes without kinds; since S5c-2 `questions amend`; since UX2a `questions --group` and the groups in its summary line), `amendments list|export|withdraw` (M6 S5c-2), the amendments in `import`'s output (M6 S5c-2), `import` reading the manifest `analyzr-import.json` (pinned keys, provenance, import warnings with `next:` lines) and `models external-ids` (M6 S2a), `import`'s `next:` line with the web link for the unique calls of derived models and its agent-token notice (M6 S2c-2), `rules add --derived` and, with the owner key, `import`'s dry-run line and `next:` step for owners' rules for derived calls (M6 S2c-3), `rules pre-trust` and the system line's count of acceptances from before the trust rule (M6 S2c-4), `token create/list/revoke`, `status`, `health`, and `analyzr mcp` (stdio bridge for Claude Desktop) | working; unit tests, an e2e test against a real server, and a live check against the running Docker stack |
@@ -710,7 +711,9 @@ tools/notices/    @analyzr/notices: writes THIRD-PARTY-NOTICES.md from `pnpm lic
 tools/integrate/  @analyzr/integrate (M6 S3b): sources and tests of the integrate plugin's scripts (src/cli/{inspect,normalize-bpmn,analyzr-read}.ts;
                   analyzr-read since M6 S2b follow-up step 4), scripts/generate.ts bundles them into plugins/analyzr-integrate/scripts;
                   since M6 S3c step 1 src/spec/ and src/cli/analyzr-spec.ts (analyzr-spec/1 and its renderer, run from source until 0.1.4);
-                  test/fixtures: a synthetic export, a golden bundle, the golden specs (fixtures/spec/)
+                  since step 2 src/cli/analyzr-convert.ts (the converter runner, its modules in src/spec/, also from source until 0.1.4);
+                  test/fixtures: a synthetic export, a golden bundle, the golden specs (fixtures/spec/), synthetic Visio and AML
+                  exports with their example converters (fixtures/converters/)
 docs/             CONCEPT.md, HANDOFF.md, M1-SKELETON.md, M2-PIPELINE-REVIEW.md, M3-RELATIONS-PROCEDURE.md, M3-LIVE-RUNS.md,
                   M4-VALUE-CHAIN.md, M6-INTEGRATION-AND-GAPS.md, this file, adr/ (ADR-0001), screenshots/
 ```
@@ -777,7 +780,7 @@ Node cannot load it).
 | `ANALYZR_E2E_URL=http://127.0.0.1:7480 pnpm --filter @analyzr/web e2e demo` | Playwright walk through the demo's read views; fails on any write request, API error or write action shown (skips on a non-demo server) |
 | `pnpm --filter @analyzr/client generate` | regenerates `packages/client` after a contracts change |
 | `pnpm --filter @analyzr/procedures generate` | writes one skill per released pipeline procedure (`plugins/analyzr/skills/relations/SKILL.md` from `relations.md`, `plugins/analyzr/skills/placements/SKILL.md` from `placements.md`) and `PLUGIN_VERSION` into `plugins/analyzr/.claude-plugin/plugin.json`; run it after every change of a procedure or a wrapper and commit the result ([Conventions](#conventions)) |
-| `pnpm --filter @analyzr/integrate generate` | bundles `tools/integrate/src/cli/{inspect,normalize-bpmn,analyzr-read}.ts` with rolldown into the self-contained `plugins/analyzr-integrate/scripts/{inspect,normalize-bpmn,analyzr-read}.mjs` and writes the plugin's `THIRD-PARTY-NOTICES.md`; run it after every change of `tools/integrate/src` or of a bundled dependency and commit the result (the drift test fails until they match), and move the plugin version ([below](#the-integrate-plugin-and-toolsintegrate-m6-s3b)); `src/cli/analyzr-spec.ts` and `src/spec/` (M6 S3c step 1) are in no entry until plugin 0.1.4, so a change there leaves the plugin unchanged (run it from source: `node tools/integrate/src/cli/analyzr-spec.ts`) |
+| `pnpm --filter @analyzr/integrate generate` | bundles `tools/integrate/src/cli/{inspect,normalize-bpmn,analyzr-read}.ts` with rolldown into the self-contained `plugins/analyzr-integrate/scripts/{inspect,normalize-bpmn,analyzr-read}.mjs` and writes the plugin's `THIRD-PARTY-NOTICES.md`; run it after every change of `tools/integrate/src` or of a bundled dependency and commit the result (the drift test fails until they match), and move the plugin version ([below](#the-integrate-plugin-and-toolsintegrate-m6-s3b)); `src/cli/analyzr-spec.ts` and `src/spec/` (M6 S3c step 1) and `src/cli/analyzr-convert.ts` (step 2) are in no entry until plugin 0.1.4, so a change there leaves the plugin unchanged (run them from source: `node tools/integrate/src/cli/analyzr-spec.ts`, `node tools/integrate/src/cli/analyzr-convert.ts`) |
 | `pnpm --filter @analyzr/server db:generate` | writes the next migration after a schema change |
 
 ### Server configuration
@@ -2270,10 +2273,10 @@ node $S bundle "$WS/specs/2026-10-14-images" --workspace "$WS" --system images \
 
 | Command | What it does |
 |---|---|
-| `validate <spec file or folder>` | checks `*.spec.yaml`, `*.spec.yml` and `*.spec.json` below a folder (also one file of any name) as specs the agent wrote: every error and warning as `<spec file>: <path>: <message>`, a tool path or tool id twice in a folder as `duplicate-model`; writes nothing; exit 1 on an error, never on a warning |
+| `validate <spec file or folder>` | checks `*.spec.yaml`, `*.spec.yml` and `*.spec.json` below a folder (also one file of any name) as specs the agent wrote, and since S3c step 2 those the folder's run record `analyzr-specs.json` lists as converter output, unchanged since the run (`changed-after-run`; an unreadable record is one error): every error and warning as `<spec file>: <path>: <message>`, a tool path or tool id twice in a folder as `duplicate-model`; writes nothing; exit 1 on an error, never on a warning |
 | `render <spec> <out.bpmn> [--key <model key>] [--origin hand\|converter]` | one spec into a new `.bpmn` file, for checks: `--key` sets the definitions id (default `spec`), `--origin converter` checks the spec as converter output (no `derived`; loose positions are warnings) |
 | `plan <spec folder> --workspace <dir> --system <s> …` | the model keys against `keymap.json` from each spec's `source.externalPath` (and `externalId`), exactly as `normalize-bpmn plan` plans an export, with the same flags (`--strip`, `--prefix`, `--scope`, `--whole-system`, `--exclude`, `--no-exclude`, `--existing`, `--from-analyzr`, `--reset`, `--write`, `--json-out`), plus the specs' tool folders and archive-like folders and the flag `replaces-known-model`: a spec the agent wrote takes a key the map holds with a tool id, one without unless this spec folder wrote the system's last plan (`plan --write` records it as `lastExport`, `specs/<folder>`), or a new key analyzr already has (`--existing`); the skill stops there |
-| `bundle <spec folder> --workspace <dir> --system <s> --out <dir> [--exported-at <date>] [--inventory <file>] [--json-out <file>]` | the bundle in an empty folder: every spec rendered at its confirmed key's path, `analyzr-import.json` (importer `analyzr-integrate/analyzr-spec`, `derived` `reconstructed` with the spec's `llmModel`, the losses `id-rewritten`, `layout-generated`, `link-unresolved`, `text-truncated`) and, with `--inventory`, `inventory.json`; refuses invalid specs, unconfirmed keys, `as-told` specs (until S6) and a folder with a converter run's record `analyzr-specs.json` (until S3c step 2); exit 1 with `failed` entries (the bundle holds every other model) |
+| `bundle <spec folder> --workspace <dir> --system <s> --out <dir> [--exported-at <date>] [--inventory <file>] [--json-out <file>]` | the bundle in an empty folder: every spec rendered at its confirmed key's path, `analyzr-import.json` (importer `analyzr-integrate/analyzr-spec`, `derived` `reconstructed` with the spec's `llmModel` for a spec the agent wrote, since S3c step 2 the run's `converted` or `reconstructed` with `adhoc:<12 hex>` and `systemVersion` for one a converter run wrote, the losses `id-rewritten`, `layout-generated`, `link-unresolved`, `text-truncated`, summed with a converter's) and, with `--inventory`, `inventory.json`; refuses invalid specs, unconfirmed keys and `as-told` specs (until S6), and since S3c step 2, like `plan`, a folder whose run record does not check out in `--workspace` (`run-record`, below); exit 1 with `failed` entries (the bundle holds every other model) |
 
 No output goes into the spec folder, below the `exports/` of the workspace (the folder with
 `analyzr-workspace.json`) the input or the output lies in, or into an analyzr checkout
@@ -2323,6 +2326,142 @@ renders into a temporary folder with `tools/integrate/test/spec-fuzz-write.ts`, 
 `NavigatedViewer`: 0 warnings, 0 errors, every participant, lane, flow node, data store, flow, data
 association and message flow drawn, counts only. It takes no other folder, so customer renders never
 pass through the checkout's test output.
+
+**`analyzr-convert`** (M6 S3c step 2, [M6-INTEGRATION-AND-GAPS.md](M6-INTEGRATION-AND-GAPS.md) §3.9
+"Converter runs" and §8 "S3c step 2 as delivered", owner decision 30 (A1) and (A4),
+[below](#m6-s3c-step-2-2026-10-21); the entry `src/cli/analyzr-convert.ts`, the parent
+`src/spec/converter.ts`, the child `child.ts`, the in-context helpers `inner.ts`, the sandbox
+`sandbox.ts`, the zip reader `unzip.ts`, the run record `record.ts`) runs one ad-hoc converter, a
+script the agent wrote, on one export of the workspace, and writes one `analyzr-spec/1` file per
+model and the run record `analyzr-specs.json` into a new spec folder for `analyzr-spec plan` and
+`bundle`. It is the only script that executes code an agent wrote, so it is a script of its own
+(decision 30 (A4)) that no approval of the spec commands covers, and it is never pre-approved: the
+consultant approves each converter version by its full sha256, and Claude Code asks before each
+run (never "don't ask again"). It is in no bundle before plugin 0.1.4 (S3c step 4), which also
+teaches the skill to write converters, so until then it runs from source and consultants do not
+reach it:
+
+```
+C=tools/integrate/src/cli/analyzr-convert.ts
+node $C convert "$WS/exports/2026-10-14-visio" --converter "$WS/converters/visio-bpmn.js" \
+  --sha256 <64 hex> --derived converted --workspace "$WS" --out "$WS/specs/2026-10-14-visio" \
+  --json-out "$WS/reports/2026-10-14-visio.convert.json"
+node $C convert "$WS/exports/2026-10-14-aris" --converter "$WS/converters/aris-epk.js" \
+  --sha256 <64 hex> --derived reconstructed --llm-model claude-opus-5-5 --workspace "$WS" \
+  --out "$WS/specs/2026-10-14-aris"
+```
+
+`--derived` is chosen per mapping: `converted` for BPMN shapes read one to one (the Visio BPMN
+stencil, AML BPMN models), `reconstructed` with `--llm-model`, the model the agent runs as, for
+interpretive mappings such as EPCs and plain flowcharts (decision 30 (A1)); `--llm-model` with
+`converted` is refused. `--sha256` (either case) must equal the sha256 of the converter's bytes,
+read once; a converter changed after the consultant's yes is refused. `--out` must be new or empty
+(choosing a `-2` name is the skill's), never below `exports/` or in a checkout, and `--json-out`
+(the whole record) must lie outside it. There is no `--dry-run`. Exit 0, 1 when the run is refused
+or a model failed (the others are written), 2 on a usage error; the internal codes of a refused run
+(`ConvertError.code`, pinned by the tests; stderr carries only the message) are `workspace`,
+`export`, `converter`, `sha256`, `import`, `derived`, `out`, `copy`, `too-large`, `sandbox`,
+`timeout`, `out-of-memory`, `output-too-large`, `not-deterministic`, `converter-error` and `result`.
+The short JSON on stdout names the converter's id, sha256 and copy, the derivation, `reads` (files
+and zip entries the converter read, counted by the child), `counts` (`models`, `failed`,
+`duplicates`, `skipped`, `unread`, `zipRefused`, `symlinksSkipped`, `hiddenSkipped`), the summed
+losses and the warnings.
+
+**The converter contract.** A converter is a script in the workspace's `converters/` that defines
+one synchronous `convert(input, helpers)`. The runner compiles its text as a function body inside
+the context, so its top-level declarations are local, and it must not contain the word `import`
+anywhere, comments and strings included (compare with `'im' + 'port'` for an element named so).
+`input.files` lists every regular, non-hidden file of the export, sorted, as
+`{path, size, sha256, zip, unread}`: `zip` is `null` or `{entries: [{name, size}], error}` (entries
+sorted by name; `error` set and no entries when the archive failed a guard), and `unread` is the
+reason a file over 64 MB was not read (`sha256` null). The helpers are functions of the context
+itself: `helpers.text(path, entry?)` decodes a file or zip entry as `inspect` does;
+`helpers.bytes(path, entry?)` gives a `Uint8Array` of the context; `helpers.xml(text)` gives
+`{root}`, its elements `{name, local, ns, attrs, children, text, content}` (`text` the element's own
+character data joined, `content` its text runs and child indexes in document order; a DOCTYPE
+skipped, entities other than the predefined ones left as written); `helpers.sourceId(...parts)`
+joins non-empty strings and numbers with `-` (control characters become `_`, over 200 characters
+become 187, `-` and 12 hex). A helper on an unread file throws. It returns
+`{models, skipped?, systemVersion?}`: `models` are `analyzr-spec/1` objects without `format` and
+`derived`, each with optional `losses: [{code, count}]` (at most 16 codes, each a `LossCode`, counts
+0 to 1e9), `skipped` is `[{path, reason}]`, any other field fails the run. No clock, no randomness,
+no locale-dependent formatting: `Date.now()`, `new Date()` and `Date()` without an argument,
+`Math.random()` and `Intl` formatting without a date throw, while `new Date("2026-10-14")` parses in
+UTC. Its errors read like `converter adhoc:…: run 1: TypeError: …` with its frame
+(`at convert (converter.js:2:9)`). Each model is validated as converter output
+(`origin: 'converter'`: no `derived`, `externalId` and `url` allowed, loose positions warnings); a
+model that fails, or shares its tool path or tool id with another (every holder fails), is listed in
+`failed`; one returned twice byte for byte is written once (`duplicates`); the others are written as
+YAML named by their tool path as a key (`vertrieb/prozesse/auftrag.spec.yaml`). The two example
+converters of the fixtures are the skeleton for `reference/converters.md`, which comes with
+plugin 0.1.4.
+
+**The sandbox, and what it cannot guarantee.** The parent reads the export itself (below
+`<workspace>/exports/`; hidden files and symbolic links skipped and counted, every file opened
+without following a link) and sends the converter's approved bytes and every file on the child's
+stdin. The child is `process.execPath` with `--permission`, `--allow-fs-read=<its own script>` (in
+source mode `tools/integrate/src`, decided by the script's extension),
+`--disallow-code-generation-from-strings` and `--max-old-space-size=4096`, `cwd` the script's folder
+and exactly `TZ=UTC`, `LANG=C` and `LC_ALL=C` as its environment, so no `ANALYZR_TOKEN`, cloud or
+Git credential and no `NODE_OPTIONS` (which Node reads for permission flags) reaches it. It refuses
+with exit 2 unless the permission model is active, `execArgv` holds exactly these flags (any heap
+size), the environment exactly these three variables (macOS's `__CF_USER_TEXT_ENCODING` tolerated)
+and no write, child-process, worker, addon, WASI or inspector permission is granted; started by hand
+outside that sandbox it refuses. It runs the converter twice, each time in a fresh
+`vm.createContext(Object.create(null))` with `codeGeneration: {strings: false, wasm: false}` and
+`microtaskMode: 'afterEvaluate'`, with `Atomics`, `SharedArrayBuffer`, `WebAssembly`, `WeakRef` and
+`FinalizationRegistry` deleted, and the helpers built inside the context over a bridge that passes
+strings only, deleted from the global before any converter code runs; it reads nothing the context
+throws beyond plain data properties, and both runs must give the same JSON and read the same files.
+Node 24.15 has no network permission (`net.connect` works under `--permission`): the converter
+reaches no network only because its context holds no host object, so the usage text and the consent
+text drafted for step 4 say that Node cannot guarantee a ban on network access, and the consultant
+is invited to read the converter before saying yes. The heap limit does not bound `ArrayBuffer`s and
+typed arrays, which V8 keeps outside the heap, so a hostile approved converter can use up the
+machine's memory within its 120 s ([HANDOFF.md](HANDOFF.md) §4 "Taken during M6 S3c step 2" (b),
+(c)). Recheck the network at the next Node upgrade.
+
+| Limit | Value |
+|---|---|
+| Converter | 1 MB, UTF-8, a regular file directly in `converters/` with one name |
+| Export | 64 MB per file (a larger one reaches the converter unread), 512 MB of bytes sent per run (else: run on one folder or file at a time) |
+| Zip archives | no ZIP64, split or encrypted archive; methods 0 and 8; safe, unique entry names; no overlapping data; no symbolic-link entry; 64 MB per entry, 256 MB per archive, a ratio of at most 1:200 (entries up to 1 MB exempt), at most 10,000 entries; an entry never inflated beyond its declared size, size and CRC checked |
+| Time | 120 s per run (top level and `convert` together, promise jobs included), 300 s for the whole child (then it is killed) |
+| Memory | a 4 GB heap (`out-of-memory` when Node aborts); typed arrays outside it |
+| Result | 256 MB of JSON; at most 10,000 models and 10,000 skipped entries, reasons of at most 500 characters, `systemVersion` tidied, at most 100 |
+| Helpers | `helpers.xml` text at most 64M characters, a raw source id 64K characters, the inflated-entry cache 256 MB |
+| Spec | 2 MB as YAML (a larger one fails its model) |
+| Record | 16 MB (`convert` refuses a run whose record would be larger) |
+
+**The run record and its check.** Before the run `convert` writes the write-once copy
+`converters/adhoc-<first 12 hex>.js` (`wx`; an existing copy must hold the same bytes, else `copy`),
+so the code behind a bundle stays auditable after the agent edits its working copy; the run is
+recorded as `adhoc:<12 hex>`. `<out>/analyzr-specs.json` (`analyzr-specs/1`, no timestamps, so the
+same converter on the same export writes the same record) holds `converter` (`id`, `sha256`, `file`
+the copy, `workingCopy`), `derived` (`kind`, `llmModel`), `runner` (`analyzr-convert@0.1.0`,
+`ANALYZR_CONVERT_VERSION` in `src/spec/version.ts` until 0.1.4 moves it to `src/version.ts`),
+`export`, `systemVersion`, `reads` (`files`, `of`, `entries`), `specs` (`file`, `sha256`,
+`externalPath`, `externalId`, `losses`, the first 5 `warnings` and `warningCount`), `failed`
+(`model`, `externalPath`, the first 5 `errors` and `errorCount`), `duplicates`, `skipped`, `unread`,
+`zipRefused`, `symlinksSkipped` and `hiddenSkipped`. `analyzr-spec validate`, `plan` and `bundle`
+read it (a regular file of at most 16 MB): a spec it lists is converter output and is refused when
+its sha256 differs from the recorded one (`changed-after-run`: run the converter again, or move the
+spec into a folder of its own and declare it `reconstructed`); `plan` and `bundle` refuse the folder
+(`run-record`) without `--workspace`, when the copy is missing, changed, a symbolic or hard link, or
+the id does not match the sha256, and when the record is no valid JSON or holds values `convert`
+never writes (an `llmModel` with control characters or over 120 characters, an untidy
+`systemVersion`). A spec the record does not list is one the agent wrote. These checks catch
+mistakes, not forgery: an agent could write a record too, so the skill's rule that only the scripts
+write specs and bundles and the preview's stop on modelled files and calls stay the guard.
+
+**Fixtures.** `test/fixtures/converters/` (hand-made, synthetic, marked unverified in its
+`README.md`, never from a customer, `eval/corpus` or the holdout): the parts of
+`Vertrieb/Prozesse.vsdx` and `Service/Reklamation.vsdx` (zipped by the tests with
+`test/zip-writer.ts`) and the converter `visio-bpmn.js` (`converted`), an AML export
+`aris/Export_Vertrieb.xml` and the converter `aris-epk.js` (`reconstructed`). Their bytes matter:
+the tests approve them by their sha256. The shape data names, the lane container formula, the
+off-page hyperlink row and the styled AML texts are assumptions, to verify with a sandbox export
+(M6 §10.4).
 
 ### Open questions (M6 S4)
 
@@ -5222,6 +5361,48 @@ agent's recordings ([Recordings](#simulation-agent-and-evalreplay-m2)).
   --from-analyzr`, `bundle` with exit 1 for a failed model, `plan` exit 1 on invalid specs;
   `spec/plan-args.ts` against `normalize-bpmn`'s helpers); Playwright
   `e2e/spec-render-import.spec.ts` (new, above).
+- M6 S3c step 2 "the converter runner": `tools/integrate/test` (390 tests, 332 before)
+  `spec-converter.test.ts` (new, 27: the Visio and ARIS fixtures through `convert` with their exact
+  run record, the AML DOCTYPE skipped and its entity left as written, the same specs and record on
+  every run and the copy kept once; the example converters on edited copies of their fixtures (an
+  untriggered intermediate event, a reference that fans out, pages in another order and named
+  otherwise, an EPC without elements, styled and mixed text); D3 (a), no field and no type becoming
+  a `calledElement`, and (b, c), the calls as collapsed subprocesses with `link-unresolved` and the
+  manifest, checked with the contracts' `ImportManifest`, saying `converted` or `reconstructed` with
+  `adhoc:<12 hex>`, the renders through the structure checks, bpmn-moddle, bpmn-js's tree walker and
+  the DI checks and `extractFacts` without a warning or a `call` fact; the record at `analyzr-spec`:
+  listed specs validated as converter output and the others as the agent's, a spec edited after the
+  run, a copy missing, changed or a link, a record that cannot be read (one folder error) and one
+  read strictly; the result: valid models written and every invalid one listed (a declared
+  `derived`, bad losses, not a model, a shared tool id or path), the first warning and error lines
+  with their counts, nothing written when the record would be too large, a spec over 2 MB, `-2`
+  names, a result that is no object with a list of models, compile errors and throws with their
+  line; the refusals before a run: another sha256, a converter outside `converters/`, a link, a
+  second name, over 1 MB, not UTF-8 or naming `import`, an export outside `exports/`, a workspace
+  without its file, a wrong derivation, an `--out` not empty, below `exports/` or in a checkout, a
+  file over 64 MB passed on unread and an export over 512 MB refused before it is read, a copy with
+  other bytes; the child's script in source and bundle mode; the losses read strictly and summed),
+  `spec-sandbox.test.ts` (new, 18: every constructor chain ending in `EvalError` and no host global,
+  `Error.prepareStackTrace` frames leading nowhere, endless loops and promise jobs timing out, jobs
+  after the run changing nothing, the clock and randomness throwing, the result cap, the bridge
+  boundary (a host `RangeError`, a non-string, `''` and `'!msg'`, every helper error the context's
+  own), two runs that differ in their result or in what they read, the parent stopping a child that
+  outlives its time or writes too much; files, zip entries and XML as plain data with the reads
+  counted, a symbolic link and paths outside the export never seen, an archive that fails a guard
+  passed on unopened and a damaged entry an error; the child started by hand refusing in 7 cases,
+  its sandbox self-check, a token and `NODE_OPTIONS` in the parent never reaching it, a local TCP
+  listener counting 0 connections; source ids, the context's global names and the usage naming
+  `__child`), `spec-unzip.test.ts` (new, 9: a VSDX listed as `inspect` lists it with every entry
+  inflated back to its bytes, entries sorted by name, a symbolic-link entry refused, directories
+  left out and stored entries read, names that leave the archive, ZIP64, split and encrypted
+  archives, other methods and broken records, entries sharing data, the size limits and the ratio,
+  the size and checksum of every inflated entry) and `cli.test.ts` (4 new: `analyzr-convert`'s usage
+  and exit 2 on usage errors, the Visio export converted from source and then validated, planned and
+  bundled by `analyzr-spec`, exit 1 for a refused run and for failed models with no details written
+  into the spec folder, and `validate` reporting a record it cannot read); helpers
+  `test/converter-support.ts` (the fixture exports and workspaces) and `test/zip-writer.ts` (a small
+  zip writer for the fixtures and hostile archives). The two child-spawning files run with a 60 s
+  per-test timeout.
 
 ## CI
 
@@ -7718,3 +7899,99 @@ real or sandbox Visio or ARIS export (M6 §10.4), other browsers than Chromium, 
 and not fixed (cosmetic, flagged by no check): a message flow from a node can cross shapes of its
 own pool below that node, and a task name of nearly 200 characters overflows its fixed 100 × 80 box
 in bpmn-js.
+
+### M6 S3c step 2 (2026-10-21)
+
+Same machine; step 2 of M6 S3c (the converter runner `analyzr-convert`,
+[M6-INTEGRATION-AND-GAPS.md](M6-INTEGRATION-AND-GAPS.md) §3.9 "Converter runs" and §8 "S3" and "S3c
+step 2 as delivered", owner decision 30 (A1) and (A4), [The integrate plugin and
+`tools/integrate`](#the-integrate-plugin-and-toolsintegrate-m6-s3b) "`analyzr-convert`") on
+`feat/integration-and-gaps` on top of S3c step 1. One script runs an ad-hoc converter, a script the
+agent writes, on one export: exactly the bytes whose full sha256 the consultant approved
+(`--sha256`), twice, each time in a `vm` context without host objects inside a child Node under the
+permission model (one read grant, its own script; no write, child process, worker, addon, WASI or
+inspector; no code generation from strings; three fixed environment variables; time, heap and output
+limits; the child refuses to run outside that sandbox), on files the parent reads itself (no link
+followed, zip guards, a file over 64 MB passed on unread). It writes one `analyzr-spec/1` file per
+model, the write-once copy `converters/adhoc-<12 hex>.js` and the run record `analyzr-specs.json`,
+which `analyzr-spec validate`, `plan` and `bundle` now check before they give those specs the run's
+derivation (`--derived converted|reconstructed`, chosen per mapping, with `adhoc:<12 hex>`); in
+`tools/integrate/src/spec/` and the entry `src/cli/analyzr-convert.ts`, run from source until
+plugin 0.1.4, with synthetic Visio (VSDX) and ARIS AML exports and their example converters. Built
+by an implementing agent, reviewed adversarially (escapes, correctness, release and tests): no
+working escape, every finding that held up fixed, none rejected, several of them test gaps rather
+than defects. The one major finding was a missing test of the bridge between the child and the
+converter's context (the code was safe; the new test fails on the mutant that rethrows the bridge's
+error). Fixed among the others: the two runs compared by their read counts only; a shared tool path
+or tool id keeping its first holder; a run record that could outgrow the 16 MB `analyzr-spec` reads;
+`helpers.xml` losing the order of mixed text; one file over 64 MB refusing the whole run (it told
+the consultant to move the file out of the export, against the skill's ground rule 6); six bugs in
+the example converters; zip entries in archive order; the record reader without the manifest's
+limits; "run twice", the parent's timeout and its stdout cap untested end to end; the consent
+wording; zip link entries not refused. The fixer's own find, not fixed: `--max-old-space-size` does
+not bound typed-array memory. The readings taken are in [HANDOFF.md](HANDOFF.md) §4 ("Taken during
+M6 S3c step 2"). For the first analysis: once plugin 0.1.4 ships, the integrate skill turns Visio
+and ARIS AML exports into specs in the same first pass as the BPMN exports: the agent writes a small
+converter, the consultant approves each version by its hash, and it runs boxed in.
+
+1. Gates, from the fix round's run: every gate green (`pnpm format:check`, `pnpm -r typecheck`,
+   `pnpm -r lint` with dependency-cruiser, 150 modules, no violations, `pnpm -r test` with
+   Testcontainers: integrate 390 (332 before), server 1,804, web 663, CLI 286 plus 7 skipped (the
+   live project), contracts 178, bpmn-facts 200, relations 91, agent-sim 57, procedures 37, demo 27,
+   notices 9, client 4, eval/tools 108; `pnpm eval:candidates`, `pnpm eval:replay`,
+   `pnpm eval:placements`, `pnpm eval:descriptive`); `git diff --exit-code eval/reports` clean; the
+   integrate `generate` followed by `git diff --exit-code plugins/analyzr-integrate` clean, so
+   plugin 0.1.3 is byte-identical (the new modules are in no entry, and `src/zip.ts`, which
+   `inspect.mjs` and `normalize-bpmn.mjs` bundle, is unchanged; the runner reads zips with
+   `src/spec/unzip.ts`). No new dependency, and `THIRD-PARTY-NOTICES.md` is unchanged. No server,
+   contract, client, CLI, web, MCP, procedure, migration, facts or trust-rule change; the pipeline
+   plugin and the recordings are untouched, so it is live-run neutral.
+2. What was checked: the escapes named in the security critiques and reviews, each failing with an
+   error of the context itself (`helpers.text.constructor('return process')()` and the same chain
+   over every helper, a helper's error, the input, the XML tree, a `Uint8Array`, `this`,
+   `globalThis` and the global's prototype; `this.constructor.constructor`; the async, generator and
+   async-generator constructors, `eval`, indirect `eval` and `Function`: `EvalError`; `process`,
+   `process.getBuiltinModule`, `require`, `Atomics.wait` on a `SharedArrayBuffer` and
+   `WebAssembly.Memory`: `ReferenceError`; `Error.prepareStackTrace` frames reaching only the
+   context; a replaced runner); endless loops at the top level and in `convert`, endless promise
+   jobs and an endless `await` loop timing out, a job queued after `return` changing nothing, a huge
+   output refused, the clock and randomness throwing, a dynamic `import` refused before the run; the
+   child started by hand refusing in 7 cases (without the permission model, without the
+   code-generation flag, with a write grant, with `--allow-fs-read=*`, with `NODE_OPTIONS`, with a
+   token in its environment, with another `TZ`) and gaining nothing inside its exact sandbox; the
+   parent run with `ANALYZR_TOKEN` set and a `NODE_OPTIONS` that grants reads and writes everywhere
+   and child processes, of which the converter saw nothing; a local TCP listener counting 0
+   connections after `fetch`, `require`, the helper, `this` and error chains, `WebSocket` and
+   `XMLHttpRequest` (and, measured, `net.connect` itself working under `--permission`); a symbolic
+   link in the export, `../` and absolute paths never read; a zip bomb passed on unopened, a damaged
+   entry an error; D3 (a)–(c) on the fixtures. The two fixture runs: Visio `adhoc:dc5dcd69948a`, 2
+   of 3 files and 12 entries read, 2 models, 2 skipped, `element-dropped` 4; ARIS
+   `adhoc:c987bfc789d4`, `reconstructed`, 2 models, 1 skipped, `element-dropped` 2. Before the
+   review round the implementing agent also bundled the entry in a scratch folder (335 KB, no
+   dynamic `import(`; only rolldown's `createRequire` shim, through which `yaml` loads the built-ins
+   `process` and `buffer`) and ran it from a copy away from `node_modules`, its child granted only
+   its own file: the specs and the record were byte-identical to the source run's.
+3. The lead's run, on the scratch stack `analyzr-s3c2` (ports 7690 and 55690, no seed): a workspace
+   in the scratchpad with the fixtures' Visio export (the two `.vsdx` zipped from
+   `test/fixtures/converters/visio/`, plus `Liesmich.txt`) and ARIS export; `analyzr-convert
+   convert` from source with each fixture converter's full sha256: Visio `adhoc:dc5dcd69948a`,
+   `converted`, 2 of 3 files and 12 entries read, 2 models, 2 skipped, `element-dropped` 4; ARIS
+   `adhoc:c987bfc789d4`, `reconstructed` with `llmModel`, 1 of 1 file, 2 models, 1 skipped,
+   `element-dropped` 2. `analyzr-spec validate`, `plan --write` and `bundle` passed for both (one
+   call each, rendered as a collapsed subprocess with `link-unresolved`). The bundles, copied into
+   the server container, imported with its `analyzr import --create`: 2 and 2 `created`,
+   `extract_warnings` empty on every revision, every revision's trust class `derived` with its
+   derivation and converter, no relation in either project (so no call proposed or accepted, D3
+   (d)); a second import gave all four `unchanged`. The stack, its volume and image are removed. No
+   Playwright run: neither the web nor the server changed; `analyzr-local` not rebuilt.
+
+Not checked: a converter run in a Claude Code or Codex session (the skill does not use
+`analyzr-convert` before plugin 0.1.4, and no LLM call was made), so neither the consent question
+nor Claude Code's prompt before each run; a converter's bundle imported into a running analyzr
+(D3 (d) and D4 belong to step 4); a real or sandbox Visio or ARIS export (M6 §10.4); heap exhaustion
+(Node aborts, and macOS writes a crash report for every run; the parent reports `out-of-memory` from
+stderr); CI (the gates ran on this machine). Seen and not fixed: `ArrayBuffer`s and typed arrays are
+outside the heap limit (measured on Node 24.15: 2 GB of `Uint8Array`s under a 256 MB heap), so a
+hostile approved converter can use up the machine's memory within its 120 s; and Node 24 has no
+network permission, so the converter reaches no network only because its context holds no host
+object ([HANDOFF.md](HANDOFF.md) §4 "Taken during M6 S3c step 2" (b), (c)).

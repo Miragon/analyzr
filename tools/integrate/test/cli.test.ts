@@ -7,6 +7,12 @@ import { promisify } from 'node:util';
 import { describe, expect, it } from 'vitest';
 
 import {
+  converter as converterFile,
+  fixtureConverter,
+  visioExport,
+  workspace as convertWorkspace,
+} from './converter-support.ts';
+import {
   bpmn,
   PACKAGE_ROOT,
   REPO_ROOT,
@@ -28,7 +34,7 @@ interface Result {
 }
 
 async function cli(
-  entry: 'inspect' | 'normalize-bpmn' | 'analyzr-spec',
+  entry: 'inspect' | 'normalize-bpmn' | 'analyzr-spec' | 'analyzr-convert',
   args: readonly string[],
 ): Promise<Result> {
   try {
@@ -892,5 +898,237 @@ describe('analyzr-spec (M6 S3c, run from source until the plugin ships it)', () 
       expect(declaration(copy, name), name).not.toBe('');
       expect(declaration(copy, name), name).toBe(declaration(original, name));
     }
+  });
+});
+
+describe('analyzr-convert (M6 S3c, run from source until the plugin ships it)', () => {
+  it('prints its usage and exits 2 on usage errors', async () => {
+    expect(await cli('analyzr-convert', ['--help'])).toMatchObject({
+      code: 0,
+      stdout: matching(/^Usage:[\s\S]*analyzr-integrate analyzr-convert 0\.1\.0\n$/),
+    });
+    expect(await cli('analyzr-convert', ['convert', '--help'])).toMatchObject({ code: 0 });
+    const sha = 'a'.repeat(64);
+    const full = [
+      '--converter',
+      'c.js',
+      '--sha256',
+      sha,
+      '--derived',
+      'converted',
+      '--workspace',
+      'w',
+      '--out',
+      'o',
+    ];
+    const without = (option: string): string[] => {
+      const i = full.indexOf(option);
+      return [...full.slice(0, i), ...full.slice(i + 2)];
+    };
+    for (const [args, message] of [
+      [[], /a command is required/],
+      [['validate'], /unknown command validate/],
+      [['convert', ...full], /convert expects one <export>/],
+      [['convert', 'e', ...without('--converter')], /--converter is required/],
+      [['convert', 'e', ...without('--sha256')], /--sha256 is required/],
+      [
+        ['convert', 'e', ...without('--sha256'), '--sha256', 'abc'],
+        /--sha256 is the converter's full sha256 \(64 hex characters\)/,
+      ],
+      [['convert', 'e', ...without('--derived')], /--derived is required/],
+      [
+        ['convert', 'e', ...without('--derived'), '--derived', 'export'],
+        /--derived is converted or reconstructed/,
+      ],
+      [['convert', 'e', ...without('--workspace')], /--workspace is required/],
+      [['convert', 'e', ...without('--out')], /--out is required/],
+      [['convert', 'e', ...full, '--dry-run'], /Unknown option '--dry-run'/],
+    ] as const) {
+      expect(await cli('analyzr-convert', args), args.join(' ')).toMatchObject({
+        code: 2,
+        stderr: matching(message),
+      });
+    }
+  });
+
+  it('converts the Visio export, and analyzr-spec validates, plans and bundles the specs', async () => {
+    const ws = await convertWorkspace();
+    const exported = await visioExport(ws);
+    const conv = await fixtureConverter(ws, 'visio-bpmn.js');
+    const specs = path.join(ws, 'specs', '2026-10-14-visio');
+    const report = path.join(ws, 'reports', '2026-10-14-visio.convert.json');
+    const args = [
+      'convert',
+      exported,
+      '--converter',
+      conv.file,
+      '--sha256',
+      conv.sha256.toUpperCase(),
+      '--derived',
+      'converted',
+      '--workspace',
+      ws,
+      '--out',
+      specs,
+    ];
+    const run = await cli('analyzr-convert', [...args, '--json-out', report]);
+    expect(run.code, run.stderr).toBe(0);
+    const id = `adhoc:${conv.sha256.slice(0, 12)}`;
+    expect(JSON.parse(run.stdout)).toMatchObject({
+      converter: id,
+      sha256: conv.sha256,
+      copy: `converters/adhoc-${conv.sha256.slice(0, 12)}.js`,
+      derived: { kind: 'converted', llmModel: null },
+      reads: { files: 2, of: 3, entries: 12 },
+      counts: { models: 2, failed: 0, skipped: 2, zipRefused: 0 },
+      losses: { 'element-dropped': 4 },
+      record: path.join(specs, 'analyzr-specs.json'),
+      details: report,
+    });
+    expect(JSON.parse(await readFile(report, 'utf8'))).toEqual(
+      JSON.parse(await readFile(path.join(specs, 'analyzr-specs.json'), 'utf8')),
+    );
+    // a second run into the same folder is refused: every run writes a new one
+    expect(await cli('analyzr-convert', args)).toMatchObject({
+      code: 1,
+      stderr: matching(/is not empty: write every run into a new folder/),
+    });
+
+    const validated = await cli('analyzr-spec', ['validate', specs]);
+    expect(validated.code, validated.stdout).toBe(0);
+    expect(JSON.parse(validated.stdout)).toMatchObject({
+      specs: 2,
+      valid: 2,
+      errors: { count: 0 },
+    });
+    const planned = await cli('analyzr-spec', [
+      'plan',
+      specs,
+      '--workspace',
+      ws,
+      '--system',
+      'visio',
+      '--write',
+    ]);
+    expect(planned.code, planned.stderr).toBe(0);
+    const bundle = path.join(ws, 'bundles', '2026-10-14-visio');
+    const bundled = await cli('analyzr-spec', [
+      'bundle',
+      specs,
+      '--workspace',
+      ws,
+      '--system',
+      'visio',
+      '--out',
+      bundle,
+    ]);
+    expect(bundled.code, bundled.stderr).toBe(0);
+    expect(JSON.parse(bundled.stdout)).toMatchObject({
+      counts: { models: 2, converted: 2, reconstructed: 0, failed: 0 },
+      calls: {
+        count: 1,
+        items: [{ key: 'vertrieb/prozesse/auftragsabwicklung', target: 'Bonitätsprüfung' }],
+      },
+    });
+    const manifest = JSON.parse(
+      await readFile(path.join(bundle, 'analyzr-import.json'), 'utf8'),
+    ) as {
+      files: { derived: { kind: string; converter: string } }[];
+    };
+    expect(manifest.files.map((f) => f.derived)).toEqual([
+      { kind: 'converted', converter: id, llmModel: null, from: [] },
+      { kind: 'converted', converter: id, llmModel: null, from: [] },
+    ]);
+  });
+
+  it('exits 1 for a refused run and for failed models, and never writes its details into the spec folder', async () => {
+    const ws = await convertWorkspace();
+    const exported = await visioExport(ws);
+    const conv = await fixtureConverter(ws, 'visio-bpmn.js');
+    const base = [
+      'convert',
+      exported,
+      '--converter',
+      conv.file,
+      '--derived',
+      'converted',
+      '--workspace',
+      ws,
+    ];
+    expect(
+      await cli('analyzr-convert', [
+        ...base,
+        '--sha256',
+        'b'.repeat(64),
+        '--out',
+        path.join(ws, 'specs', 'a'),
+      ]),
+    ).toMatchObject({
+      code: 1,
+      stderr: matching(
+        /^analyzr-convert: --converter .* has the sha256 [0-9a-f]{64}, not the approved b{64}: it changed after the consultant approved it; show the new version and ask again\n$/,
+      ),
+    });
+    const out = path.join(ws, 'specs', 'b');
+    expect(
+      await cli('analyzr-convert', [
+        ...base,
+        '--sha256',
+        conv.sha256,
+        '--out',
+        out,
+        '--json-out',
+        path.join(out, 'x.json'),
+      ]),
+    ).toMatchObject({
+      code: 1,
+      stderr: matching(/--json-out .* lies inside the spec folder/),
+    });
+    const half = await converterFile(
+      ws,
+      'half.js',
+      "function convert() {\n  return { models: [{ source: { externalPath: 'A/Gut' }, processes: [{ source: 'p', nodes: [{ source: 's', type: 'start' }] }] }, { source: { externalPath: 'A/Schlecht' }, processes: [] }] };\n}\n",
+    );
+    const failed = await cli('analyzr-convert', [
+      'convert',
+      exported,
+      '--converter',
+      half.file,
+      '--sha256',
+      half.sha256,
+      '--derived',
+      'converted',
+      '--workspace',
+      ws,
+      '--out',
+      path.join(ws, 'specs', 'c'),
+    ]);
+    expect(failed.code).toBe(1);
+    expect(JSON.parse(failed.stdout)).toMatchObject({
+      counts: { models: 1, failed: 1 },
+      failed: {
+        count: 1,
+        items: [
+          {
+            model: 1,
+            externalPath: 'A/Schlecht',
+            errors: [matching(/^models\[1\]: processes: must not be empty/)],
+          },
+        ],
+      },
+    });
+  });
+
+  it('lets analyzr-spec validate report a run record it cannot read', async () => {
+    const ws = await convertWorkspace();
+    const specs = path.join(ws, 'specs', 'x');
+    await mkdir(specs, { recursive: true });
+    await writeFile(path.join(specs, 'analyzr-specs.json'), '{"format":"analyzr-specs/0"}\n');
+    const r = await cli('analyzr-spec', ['validate', specs]);
+    expect(r.code).toBe(1);
+    expect(JSON.parse(r.stdout)).toMatchObject({
+      specs: 0,
+      errors: { count: 1, items: ['analyzr-specs.json: format: expected "analyzr-specs/1"'] },
+    });
   });
 });
