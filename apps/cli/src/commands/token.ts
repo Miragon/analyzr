@@ -62,7 +62,17 @@ export interface TokenCreateOptions extends TokenOptions {
   scopes: string[];
   expires: string;
   json?: boolean;
+  /** The CLI entry of the Claude Desktop configuration ({@link formatCreatedToken}). */
+  mcpEntry: string | null;
 }
+
+/**
+ * Said instead of a Claude Desktop configuration by the integrate plugin's
+ * bundled CLI outside the container (M6 S3c): it has no `mcp`, so a
+ * configuration would name a file that does not exist.
+ */
+export const NO_STDIO_BRIDGE =
+  "Claude Desktop: the stdio bridge needs analyzr mcp from an analyzr checkout or the container (docs/DEVELOPMENT.md); the plugin's analyzr.mjs has no mcp";
 
 /** Creates an agent token as the owner; returns it including its secret. */
 export async function createToken(
@@ -77,19 +87,42 @@ export async function createToken(
   );
 }
 
-/** Text shown once after creating a token: the secret and client configurations. */
+/**
+ * Text shown once after creating a token: the secret and client
+ * configurations, for Claude Desktop the `docker exec` bridge inside the
+ * container (`ANALYZR_CONTAINER`), else `mcp` of `mcpEntry`; with `null`
+ * (the bundled CLI, M6 S3c) {@link NO_STDIO_BRIDGE} instead.
+ */
 export function formatCreatedToken(
   io: CliIo,
   url: string,
   project: string,
   token: CreatedAgentToken,
+  mcpEntry: string | null,
 ): string {
   const target = {
     url,
     token: token.secret,
     node: process.execPath,
+    entry: mcpEntry ?? undefined,
     container: io.env['ANALYZR_CONTAINER'],
   };
+  const desktop =
+    target.container || target.entry !== undefined
+      ? [
+          'Claude Desktop (claude_desktop_config.json):',
+          ...(target.container
+            ? [
+                '  Claude Desktop starts it without your shell PATH: replace "docker" with its',
+                '  absolute path (`which docker`, on macOS usually /usr/local/bin/docker).',
+              ]
+            : []),
+          claudeDesktopConfig(target)
+            .split('\n')
+            .map((l) => `  ${l}`)
+            .join('\n'),
+        ]
+      : [NO_STDIO_BRIDGE];
   return [
     `Agent token "${token.name}" for project ${project}`,
     `  id       ${token.id}`,
@@ -103,17 +136,7 @@ export function formatCreatedToken(
     'Claude Code:',
     `  ${claudeCodeCommand(target)}`,
     '',
-    'Claude Desktop (claude_desktop_config.json):',
-    ...(target.container
-      ? [
-          '  Claude Desktop starts it without your shell PATH: replace "docker" with its',
-          '  absolute path (`which docker`, on macOS usually /usr/local/bin/docker).',
-        ]
-      : []),
-    claudeDesktopConfig(target)
-      .split('\n')
-      .map((l) => `  ${l}`)
-      .join('\n'),
+    ...desktop,
     '',
   ].join('\n');
 }
@@ -130,7 +153,7 @@ export async function tokenCreateCommand(io: CliIo, opts: TokenCreateOptions): P
   io.stdout(
     opts.json
       ? `${JSON.stringify(token, null, 2)}\n`
-      : formatCreatedToken(io, opts.url, opts.project, token),
+      : formatCreatedToken(io, opts.url, opts.project, token, opts.mcpEntry),
   );
 }
 

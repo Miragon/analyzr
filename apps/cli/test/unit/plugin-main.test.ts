@@ -1,0 +1,376 @@
+// M6 S3c step 3: the parity of the integrate plugin's bundled CLI with the checkout's, from
+// source: `node src/plugin-main.ts` and `node src/main.ts` as child processes, each against a
+// fake analyzr over real HTTP (test/support/fake-server.ts). They send the same requests (keys,
+// batches, multipart file names, manifest parts) and print the same, except that the plugin's
+// steps name the command that runs it. Step 4 repeats these on the bundle itself.
+import { spawn } from 'node:child_process';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { createServer as createTcpServer } from 'node:net';
+import type { AddressInfo } from 'node:net';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+
+import { CLI_MAIN } from '../../src/cli-main.ts';
+import { NO_STDIO_BRIDGE } from '../../src/commands/token.ts';
+import { buildPluginProgram, nodeCommand } from '../../src/core-program.ts';
+import { fakeServer, type FakeServer, type Handler } from '../support/fake-server.ts';
+import { commandTree } from '../support/help.ts';
+import { OWNER_KEY, ownerKeyFile, tempDir, testIo } from '../support/io.ts';
+import { NAMED_COMMANDS, nextStepRoutes, writeNextStepBundle } from '../support/next-steps.ts';
+
+const PLUGIN_MAIN = fileURLToPath(new URL('../../src/plugin-main.ts', import.meta.url));
+const PLUGIN_COMMAND = nodeCommand(PLUGIN_MAIN);
+const escape = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+/** The golden bundle of @analyzr/integrate (synthetic Signavio export, 6 models). */
+const SIGNAVIO = fileURLToPath(
+  new URL('../../../../tools/integrate/test/fixtures/signavio/bundle/', import.meta.url),
+);
+
+let dir: string;
+let keyFile: string;
+
+beforeAll(async () => {
+  dir = await tempDir();
+  keyFile = await ownerKeyFile(dir);
+  await writeNextStepBundle(path.join(dir, 'next'));
+  for (let i = 0; i < 61; i++) {
+    const file = path.join(dir, 'many', `m${String(i).padStart(3, '0')}.bpmn`);
+    await mkdir(path.dirname(file), { recursive: true });
+    await writeFile(file, '<definitions/>');
+  }
+});
+
+afterAll(async () => {
+  await rm(dir, { recursive: true, force: true });
+});
+
+interface Run {
+  code: number | null;
+  stdout: string;
+  stderr: string;
+}
+
+/**
+ * Runs `entry` with `args` in `dir`, with only PATH, HOME, the owner key file and `env` set
+ * (never the caller's ANALYZR_TOKEN or proxy settings).
+ */
+function run(
+  entry: string,
+  args: readonly string[],
+  env: Record<string, string> = {},
+): Promise<Run> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [entry, ...args], {
+      cwd: dir,
+      env: {
+        PATH: process.env['PATH'] ?? '',
+        HOME: dir,
+        ANALYZR_OWNER_KEY_FILE: keyFile,
+        ...env,
+      },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    let stdout = '';
+    let stderr = '';
+    child.stdout.on('data', (d: Buffer) => (stdout += d.toString()));
+    child.stderr.on('data', (d: Buffer) => (stderr += d.toString()));
+    child.on('error', reject);
+    child.on('close', (code) => resolve({ code, stdout, stderr }));
+  });
+}
+
+/** A fake per CLI, so both run at once; each sees only its own requests. */
+async function both(
+  routes: Record<string, Handler>,
+  args: (url: string) => string[],
+  env: Record<string, string> = {},
+): Promise<{ plugin: Run; checkout: Run; servers: [FakeServer, FakeServer] }> {
+  const servers: [FakeServer, FakeServer] = [await fakeServer(routes), await fakeServer(routes)];
+  try {
+    const [plugin, checkout] = await Promise.all([
+      run(PLUGIN_MAIN, args(servers[0].url), env),
+      run(CLI_MAIN, args(servers[1].url), env),
+    ]);
+    return { plugin, checkout, servers };
+  } finally {
+    await Promise.all(servers.map((s) => s.close()));
+  }
+}
+
+/**
+ * The plugin's text as the checkout prints it: its command (with the `--url` of its fake) named
+ * `analyzr`, the port of its fake.
+ */
+const asCheckout = (text: string): string =>
+  text
+    .replace(
+      new RegExp(`${escape(PLUGIN_COMMAND)} --url http://127\\.0\\.0\\.1:\\d+`, 'g'),
+      'analyzr',
+    )
+    .replaceAll(" (in analyzr's repository)", '')
+    .replace(/127\.0\.0\.1:\d+/g, '127.0.0.1:<port>');
+const ported = (text: string): string => text.replace(/127\.0\.0\.1:\d+/g, '127.0.0.1:<port>');
+
+// Child processes: generous for a loaded machine (each starts in about 0.15 s alone).
+describe(
+  'the plugin’s CLI from source (plugin-main.ts) against the checkout’s',
+  { timeout: 30_000 },
+  () => {
+    it('prints the version and a help without seed and mcp', async () => {
+      const version = await run(PLUGIN_MAIN, ['--version']);
+      expect(version).toEqual({
+        code: 0,
+        stdout: (await run(CLI_MAIN, ['--version'])).stdout,
+        stderr: '',
+      });
+      const help = await run(PLUGIN_MAIN, ['--help']);
+      expect(help.code).toBe(0);
+      for (const cmd of [
+        'health',
+        'status',
+        'import',
+        'models',
+        'questions',
+        'amendments',
+        'token',
+        'value-chain',
+        'rules',
+      ]) {
+        expect(help.stdout).toMatch(new RegExp(`^  ${cmd}\\b`, 'm'));
+      }
+      expect(help.stdout).not.toMatch(/^ {2}(seed|mcp)\b/m);
+    });
+
+    it('every command below the root has the checkout’s help', async () => {
+      const paths = commandTree(buildPluginProgram(testIo().io, PLUGIN_MAIN))
+        .slice(1)
+        .map(({ path: at }) => at.split(' ').slice(1));
+      expect(paths.length).toBeGreaterThan(35);
+      for (let i = 0; i < paths.length; i += 8) {
+        await Promise.all(
+          paths.slice(i, i + 8).map(async (words) => {
+            const [plugin, checkout] = await Promise.all([
+              run(PLUGIN_MAIN, [...words, '--help']),
+              run(CLI_MAIN, [...words, '--help']),
+            ]);
+            expect(plugin.code, words.join(' ')).toBe(0);
+            expect(plugin, words.join(' ')).toEqual(checkout);
+          }),
+        );
+      }
+    });
+
+    it('a dry run of the golden Signavio bundle: the same JSON and the same requests', async () => {
+      const routes = nextStepRoutes('kunde-x');
+      const json = await both(routes, (url) => [
+        '--url',
+        url,
+        'import',
+        SIGNAVIO,
+        '-p',
+        'kunde-x',
+        '--dry-run',
+        '--json',
+      ]);
+      expect(json.plugin.code).toBe(0);
+      expect(json.plugin).toEqual(json.checkout);
+      const [a, b] = json.servers;
+      expect(a.log).toEqual(b.log);
+      expect(a.log).toHaveLength(1);
+      expect(a.log[0]).toMatchObject({
+        method: 'POST',
+        url: '/api/v1/projects/kunde-x/imports?dryRun=true',
+        authorization: `Bearer ${OWNER_KEY}`,
+      });
+      expect(a.log[0]?.files).toHaveLength(6);
+      expect(JSON.parse(a.log[0]?.manifest ?? '{}')).toMatchObject({ format: 'analyzr-import/1' });
+
+      const text = await both(routes, (url) => [
+        '--url',
+        url,
+        'import',
+        SIGNAVIO,
+        '-p',
+        'kunde-x',
+        '--dry-run',
+      ]);
+      expect(text.plugin.code).toBe(0);
+      expect(text.plugin.stdout).toBe(text.checkout.stdout);
+      expect(text.plugin.stdout).toContain('kunde-x: dry run, nothing imported; the import would');
+    });
+
+    it('a folder of 61 files: two batches in both, the batch line naming the command', async () => {
+      const routes = nextStepRoutes('kunde-x');
+      const r = await both(routes, (url) => [
+        '--url',
+        url,
+        'import',
+        'many',
+        '-p',
+        'kunde-x',
+        '--dry-run',
+      ]);
+      expect(r.plugin.code).toBe(0);
+      expect(r.servers[0].log.map((l) => l.files.length)).toEqual([50, 11]);
+      expect(r.servers[0].log).toEqual(r.servers[1].log);
+      expect(r.plugin.stdout).toContain(
+        `the waiting line and ${PLUGIN_COMMAND} --url ${r.servers[0].url} status count them`,
+      );
+      expect(r.checkout.stdout).toContain('the waiting line and analyzr status count them');
+      expect(asCheckout(r.plugin.stdout)).toBe(r.checkout.stdout);
+    });
+
+    it('an import with --create --name: the same keys, requests and text; every step names the command that runs it', async () => {
+      const r = await both(nextStepRoutes('kunde-x'), (url) => [
+        '--url',
+        url,
+        'import',
+        'next',
+        '-p',
+        'kunde-x',
+        '--create',
+        '--name',
+        'Kunde X',
+      ]);
+      expect(r.checkout).toMatchObject({ code: 0, stderr: '' });
+      expect(r.plugin).toMatchObject({ code: 0, stderr: '' });
+      expect(r.servers[0].log).toEqual(r.servers[1].log);
+      expect(r.servers[0].log.map((l) => `${l.method} ${l.url.replace(/\?.*/, '')}`)).toEqual([
+        'GET /api/v1/projects/kunde-x',
+        'POST /api/v1/projects',
+        'POST /api/v1/projects/kunde-x/imports',
+        'GET /api/v1/projects/kunde-x/analyses',
+        'GET /api/v1/projects/kunde-x/analyses',
+        'GET /api/v1/projects/kunde-x/summary',
+        'GET /api/v1/projects/kunde-x/relations',
+        'GET /api/v1/projects/kunde-x/auto-accept-rules',
+      ]);
+      for (const sub of NAMED_COMMANDS.filter((c) => c !== 'status')) {
+        expect(r.checkout.stdout, sub).toContain(`analyzr ${sub} `);
+        expect(r.plugin.stdout, sub).toContain(
+          `${PLUGIN_COMMAND} --url ${r.servers[0].url} ${sub} `,
+        );
+      }
+      expect(r.plugin.stdout).not.toMatch(new RegExp(`analyzr (${NAMED_COMMANDS.join('|')}) `));
+      expect(asCheckout(r.plugin.stdout)).toBe(ported(r.checkout.stdout));
+    });
+
+    it('token create: the plugin names no main.ts, the checkout its own', async () => {
+      const r = await both(nextStepRoutes('kunde-x'), (url) => [
+        '--url',
+        url,
+        'token',
+        'create',
+        '-p',
+        'kunde-x',
+      ]);
+      expect(r.plugin.code).toBe(0);
+      expect(r.servers[0].log).toEqual(r.servers[1].log);
+      expect(r.plugin.stdout).toContain(NO_STDIO_BRIDGE);
+      expect(r.plugin.stdout).not.toContain('main.ts');
+      expect(r.checkout.stdout).toContain(JSON.stringify(CLI_MAIN));
+    });
+
+    it('import b -p p --create --name --dry-run exits 2 and sends nothing, in both', async () => {
+      for (const [args, option, value] of [
+        [['--create', '--name', '--dry-run'], '--name', 'name'],
+        [['--create', '--name', '--dry-run', '--name', 'Kunde X'], '--name', 'name'],
+        [['-p', '--dry-run', '-p', 'kunde-x'], '--project', 'project'],
+      ] as const) {
+        const r = await both({}, (url) => [
+          '--url',
+          url,
+          'import',
+          'next',
+          '-p',
+          'kunde-x',
+          ...args,
+        ]);
+        const refused = {
+          code: 2,
+          stdout: '',
+          stderr: `analyzr: ${option} "--dry-run": an option value never starts with --; did you forget the ${value}?\n`,
+        };
+        expect(r.plugin, args.join(' ')).toEqual(refused);
+        expect(r.checkout, args.join(' ')).toEqual(refused);
+        expect([...r.servers[0].log, ...r.servers[1].log]).toEqual([]);
+      }
+    });
+
+    it('refuses the owner key for another host before any request; an agent token is sent', async () => {
+      const remote = await run(PLUGIN_MAIN, [
+        '--url',
+        'http://192.0.2.1:7400',
+        'models',
+        'list',
+        '-p',
+        'kunde-x',
+      ]);
+      expect(remote.code).toBe(1);
+      expect(remote.stderr).toContain(
+        'sends the owner key only to analyzr on this machine (127.0.0.1, [::1], localhost), not to 192.0.2.1',
+      );
+      const server = await fakeServer(nextStepRoutes('kunde-x'));
+      try {
+        const token = `analyzr_at_${'t'.repeat(49)}`;
+        const sent = await run(
+          PLUGIN_MAIN,
+          ['--url', server.url, 'models', 'list', '-p', 'kunde-x'],
+          { ANALYZR_TOKEN: token },
+        );
+        expect(sent.code).toBe(0);
+        expect(server.log.map((l) => l.authorization)).toEqual([`Bearer ${token}`]);
+      } finally {
+        await server.close();
+      }
+    });
+
+    it('sends the owner key past Node’s proxy support straight to this machine; the checkout does not', async () => {
+      let tunnelled = 0;
+      const proxy = createTcpServer((socket) => {
+        tunnelled++;
+        socket.destroy();
+      });
+      await new Promise<void>((resolve) => proxy.listen(0, '127.0.0.1', resolve));
+      const env = {
+        NODE_USE_ENV_PROXY: '1',
+        HTTP_PROXY: `http://127.0.0.1:${(proxy.address() as AddressInfo).port}`,
+      };
+      try {
+        const r = await both(
+          nextStepRoutes('kunde-x'),
+          (url) => ['--url', url, 'models', 'list', '-p', 'kunde-x'],
+          env,
+        );
+        expect(r.plugin).toMatchObject({ code: 0, stderr: '' });
+        expect(r.servers[0].log.map((l) => l.authorization)).toEqual([`Bearer ${OWNER_KEY}`]);
+        // the checkout's CLI is unchanged: Node tunnels its request, which the proxy drops
+        expect(r.checkout.code).toBe(1);
+        expect(r.servers[1].log).toEqual([]);
+        expect(tunnelled).toBeGreaterThan(0);
+        // a no_proxy Node does not read as "never" (` * `) is replaced, not kept
+        const noProxies: Record<string, string>[] = [
+          { no_proxy: ' * ' },
+          { NO_PROXY: '* ' },
+          { no_proxy: 'corp.example' },
+        ];
+        for (const no of noProxies) {
+          const before = tunnelled;
+          const p = await both(
+            nextStepRoutes('kunde-x'),
+            (url) => ['--url', url, 'models', 'list', '-p', 'kunde-x'],
+            { ...env, ...no },
+          );
+          expect(p.plugin, JSON.stringify(no)).toMatchObject({ code: 0, stderr: '' });
+          expect(p.servers[0].log.map((l) => l.authorization)).toEqual([`Bearer ${OWNER_KEY}`]);
+          expect(p.checkout.code, JSON.stringify(no)).toBe(1);
+          expect(tunnelled).toBeGreaterThan(before);
+        }
+      } finally {
+        await new Promise<void>((resolve) => proxy.close(() => resolve()));
+      }
+    });
+  },
+);

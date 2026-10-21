@@ -1,7 +1,7 @@
 import { createAnalyzrClient, type Client } from '@analyzr/client';
 import type { ApiProblem } from '@analyzr/contracts';
 
-import type { Credential } from './credentials.ts';
+import { keepOwnerKeyLocal, type Credential } from './credentials.ts';
 import { ApiError, CliError } from './errors.ts';
 import type { CliIo } from './io.ts';
 
@@ -11,7 +11,16 @@ export interface Api {
   url: string;
 }
 
+/**
+ * A REST client for `url` with `credential`; the bundled CLI's owner key only
+ * for analyzr on this machine ({@link keepOwnerKeyLocal}).
+ *
+ * @throws {CliError} for the bundled CLI's owner key and another host, before any request
+ */
 export function createApi(io: CliIo, url: string, credential?: Credential): Api {
+  if (credential?.kind === 'owner-key' && credential.loopbackOnly === true) {
+    keepOwnerKeyLocal(io, url);
+  }
   return {
     url,
     client: createAnalyzrClient({

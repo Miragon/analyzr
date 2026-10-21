@@ -9,6 +9,10 @@
  *   variables, and the CLI refuses a file that others can read.
  * - **Agent token** (`analyzr_at_…`, `--token` or `ANALYZR_TOKEN`): a project-bound
  *   credential for `analyzr mcp`, and for `import`/`status` when given.
+ *
+ * The integrate plugin's bundled CLI (M6 S3c, R33) sends the owner key only to
+ * analyzr on this machine ({@link keepOwnerKeyLocal}); an agent token goes
+ * anywhere, in both CLIs.
  */
 import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
@@ -25,13 +29,28 @@ import { CliError } from './errors.ts';
 import type { CliIo } from './io.ts';
 
 export type Credential =
-  { kind: 'owner-key'; secret: string; file: string } | { kind: 'agent-token'; secret: string };
+  | {
+      kind: 'owner-key';
+      secret: string;
+      file: string;
+      /** The bundled CLI's key: `createApi` sends it only to this machine ({@link keepOwnerKeyLocal}). */
+      loopbackOnly?: true;
+    }
+  | { kind: 'agent-token'; secret: string };
 
 export interface CredentialOptions {
   /** `--token` (else `ANALYZR_TOKEN`). */
   token?: string | undefined;
   /** `--owner-key-file` (else `ANALYZR_OWNER_KEY_FILE`, else the XDG default). */
   ownerKeyFile?: string | undefined;
+  /**
+   * The bundled CLI (M6 S3c): the owner key goes only to analyzr on this
+   * machine; `url` is checked before the key file is read, so a refused host
+   * is said first ({@link keepOwnerKeyLocal}; `createApi` checks again).
+   */
+  ownerKeyLoopbackOnly?: boolean | undefined;
+  /** The server URL the command talks to (`--url`, else `ANALYZR_URL`, else the default). */
+  url?: string | undefined;
 }
 
 /** True if `--owner-key-file` or `ANALYZR_OWNER_KEY_FILE` names the owner key file (else: the default location). */
@@ -107,8 +126,14 @@ export function agentToken(io: CliIo, opts: CredentialOptions): string | undefin
 
 /** The owner's credential (owner-only commands: seed, token). */
 export async function ownerCredential(io: CliIo, opts: CredentialOptions): Promise<Credential> {
+  if (opts.ownerKeyLoopbackOnly === true && opts.url !== undefined) keepOwnerKeyLocal(io, opts.url);
   const file = ownerKeyFile(io, opts);
-  return { kind: 'owner-key', secret: await readOwnerKey(file), file };
+  return {
+    kind: 'owner-key',
+    secret: await readOwnerKey(file),
+    file,
+    ...(opts.ownerKeyLoopbackOnly === true ? { loopbackOnly: true as const } : {}),
+  };
 }
 
 /** An agent token if one is given, else the owner key (import, status). */
@@ -122,4 +147,53 @@ export function describeCredential(c: Credential): string {
   return c.kind === 'owner-key'
     ? `owner key ${c.file}`
     : `agent token ${c.secret.slice(0, AGENT_TOKEN_PREFIX.length + 8)}…`;
+}
+
+/** The hosts the bundled CLI sends the owner key to: this machine (local mode, decision 6). */
+export const LOOPBACK_HOSTS: ReadonlySet<string> = new Set(['127.0.0.1', '[::1]', 'localhost']);
+
+/**
+ * The bundled CLI's check before the owner key is sent to `url` (M6 S3c,
+ * R33), as `analyzr-read.mjs` judges a host: an http(s) URL whose host, as
+ * fetch parses it, is one of {@link LOOPBACK_HOSTS} (so `127.1`,
+ * `2130706433` and `[0:0::1]` pass as the same addresses; `127.0.0.2`,
+ * `[::ffff:127.0.0.1]`, `localhost.` and `http://127.0.0.1@example.com` do
+ * not), with no user name or password. Then `no_proxy` and `NO_PROXY` are
+ * `*`, as `analyzr-read.mjs` sets them: Node's proxy support
+ * (`NODE_USE_ENV_PROXY`, `--use-env-proxy`) would tunnel even a request to
+ * 127.0.0.1 through `HTTP(S)_PROXY`, its fetch reads them at each request,
+ * and only an exact `*` means never (not ` * `); every request of a command
+ * with the owner key goes to this machine, so no proxy is lost. A redirect
+ * cannot carry the key off either: fetch drops `Authorization` on a redirect
+ * to another origin.
+ *
+ * @throws {CliError} naming the host and the agent token for another
+ *   analyzr, never the URL as given (it may hold a password)
+ */
+export function keepOwnerKeyLocal(io: CliIo, url: string): void {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new CliError(
+      'the URL of --url or ANALYZR_URL is no URL; analyzr on this machine is like http://127.0.0.1:7400',
+    );
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new CliError(
+      `the owner key goes to analyzr over http(s) only, not ${parsed.protocol} (--url or ANALYZR_URL)`,
+    );
+  }
+  if (parsed.username !== '' || parsed.password !== '') {
+    throw new CliError(
+      'the owner key goes to no URL with a user name or password (--url or ANALYZR_URL)',
+    );
+  }
+  if (!LOOPBACK_HOSTS.has(parsed.hostname)) {
+    throw new CliError(
+      `this analyzr CLI sends the owner key only to analyzr on this machine (127.0.0.1, [::1], localhost), not to ${parsed.hostname}; for another analyzr use an agent token (--token or ANALYZR_TOKEN)`,
+    );
+  }
+  io.env['no_proxy'] = '*';
+  io.env['NO_PROXY'] = '*';
 }

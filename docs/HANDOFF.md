@@ -478,9 +478,39 @@ and code are in English.
   the first analysis: once 0.1.4 ships, the integrate skill turns Visio and ARIS AML exports into
   specs in the same first pass as the BPMN exports: the agent writes a small converter, the
   consultant approves each version by its checksum, and it runs boxed in.
-  **Next:** S3c steps 3–4 (the CLI core in `apps/cli`, the integrate plugin 0.1.4 with the three
-  new scripts), then the safeguard step of decision 30 (2), then S6 (interviews); after the owner's
-  live runs S5b, S7 and facts v2 as recommended (§7 "M6"; M6 §8 "After S2a").
+  **M6 S3c step 3 "the CLI core"** (done 2026-10-21 on the branch, every gate green with a review
+  round's fixes: three reviews (behaviour, security, structure), of their findings 16 fixed with
+  tests, 3 in part and 2 rejected with a reason, the one major a bypass of the parse guard by a
+  repeated option or the `--` that ends the options, fixed; M6 §8 "S3c step 3 as delivered";
+  DEVELOPMENT.md "M6 S3c step 3 (2026-10-21)"; decision 30 (3), (A5)): only `apps/cli` changes.
+  `src/core-program.ts` holds the 34 commands both CLIs share (`buildCoreProgram`: every one but
+  `seed` and `mcp`, moved unchanged except that `import` and `status` take the command name,
+  `token create` the entry and `globals()` the loopback flag), which `src/program.ts` extends with
+  `mcp` and `seed` in today's order (the help of all 43 command paths pinned by a snapshot taken
+  before the split, unchanged), and `src/plugin-main.ts` is the entry of the bundled CLI
+  `analyzr.mjs`, run from source until plugin 0.1.4 (not in the bundle's entries yet; 0.1.3 stays
+  byte for byte after `generate`). The plugin's CLI names the command that runs it in every next
+  step `import` prints and in `status`'s hint (`node <path of analyzr.mjs>`, with `--url <url>`
+  unless the default; the checkout's keeps `analyzr`), sends the owner key only to `127.0.0.1`,
+  `[::1]` and `localhost` over http(s) (an agent token anywhere) and prints no Claude Desktop config
+  naming a file it lacks. Both CLIs refuse a word that reads as a flag (`--` and no space) as an
+  option value or, after `--`, as an argument: exit 2 before anything is read or sent, so
+  `import b -p p --create --name --dry-run` says `analyzr: --name "--dry-run": an option value never
+  starts with --; did you forget the name?` instead of importing for real. Parity tests run
+  `plugin-main.ts` and `main.ts` as child processes against fakes: the same requests, batches and
+  output except the command name. CLI 317 tests (286) plus 7 skipped, every other count unchanged;
+  no server, contract, client, web, MCP, procedure, dependency or plugin change, live-run neutral; a
+  scratch bundle of the entry (not in `ENTRIES`) weighs 653 KB (151 KB gzip) and runs away from
+  `node_modules`; the readings taken are in §4 ("Taken during M6 S3c step 3"); the lead's run: every
+  gate on the final tree, with the CLI e2e suite (29 tests on Testcontainers: the import lines with
+  `analyzr` as before) and the parity tests of the plugin entry run from source; no stack, since
+  neither the server nor the web changed (the bundle against a stack is D4, step 4). For the first
+  analysis: once 0.1.4 ships, a consultant without a checkout imports a landscape with the plugin's
+  CLI and gets next steps that name a command they can run against the same analyzr, and a dry run
+  whose project name was forgotten can no longer import for real.
+  **Next:** S3c step 4 (the integrate plugin 0.1.4 with the three new scripts), then the safeguard
+  step of decision 30 (2), then S6 (interviews); after the owner's live runs S5b, S7 and facts v2
+  as recommended (§7 "M6"; M6 §8 "After S2a").
 
 ## 2. Read in this order
 
@@ -776,7 +806,9 @@ and code are in English.
     plan; §8, M6 §10.12). (1), (A2) and (A3) are delivered in S3c step 1 as far as the spec and the
     renderer go (2026-10-21; M6 §8 "S3c step 1 as delivered"), (A1) and (A4) in step 2 as far as
     the runner goes (`--derived` per run, `analyzr-convert` a script of its own, run from source;
-    2026-10-21; M6 §8 "S3c step 2 as delivered"); the rest comes with steps 3–4 and the safeguard
+    2026-10-21; M6 §8 "S3c step 2 as delivered"), (3) in step 3 as far as the CLI core goes (the
+    commands both CLIs share and the bundle's entry `plugin-main.ts`, run from source, in no bundle
+    yet; 2026-10-21; M6 §8 "S3c step 3 as delivered"); the rest comes with step 4 and the safeguard
     step.
 
 **Taken during decision 20 by the implementing agent (the owner may overrule; details in
@@ -1287,6 +1319,54 @@ parent reports it as `out-of-memory` from stderr; (p) `ANALYZR_CONVERT_VERSION` 
 Recorded readings and concept text this step changes: those decision 30 (4) decided (A1, `--derived`
 per run, and A4, the runner a script of its own); amendments to recorded decisions: none.
 
+**Taken during M6 S3c step 3 by the implementing agents and the review round's fixer (the owner may
+overrule each; details in M6 §8 "S3c step 3 as delivered" and DEVELOPMENT.md "The `analyzr` CLI"),
+the ones you most likely want to decide first:** (a) **`--url` in the plugin's printed commands**
+(the fixer, against plan §5.2, which left it to the skill): the plugin's CLI names
+`node <path of analyzr.mjs>` (the path shell-quoted only where it needs it, as `shellArg` does) plus
+`--url <url>` whenever the run talked to another URL than the default `http://127.0.0.1:7400` (from
+`--url` or `ANALYZR_URL`), so its steps are complete as printed and reach the analyzr the import
+went to; the checkout's CLI still prints plain `analyzr`, which the skill rewrites to
+`<cli> --url "<analyzrUrl>" …` as today, and step 4's skill must pass the plugin's lines, which
+start with `node` and the script path, on unchanged, never adding a second `--url`. Alternative:
+plain `node <path>`, and the skill inserts `--url` after the script path; (b) **`--owner-key-file`
+is not carried** into the printed steps: a step without it fails with a clear "no owner key" error,
+while a missing `--url` could write to another analyzr. Alternative: carry it when it was given; (c)
+**exit 2 for the parse guard** (plan §5.3, R34), while commander's own usage errors (an unknown
+option, a value missing at the very end) keep its exit 1. Alternative: 1 for both; (d) **the guard
+refuses only a word that reads as a flag**, two dashes and no whitespace (`/^--\S*$/`; the fixer,
+against plan §5.3's "any option value that starts with `--`", which refused free text): `--text
+"-- siehe oben"` and `--name "--dry-run x"` pass; `--dryrun`, `--` and `--name=--x` are refused,
+and so is a real value without a space such as `--text "--siehe"` (written with a space or another
+first character it passes); it does not catch a value with one dash (`--name -n`), a flag written
+without dashes or a value missing at the end (commander's error, exit 1); (e) **no proxy refusal**:
+before it sends the owner key the plugin's CLI sets `no_proxy` and `NO_PROXY` to exactly `*`, as
+`analyzr-read.mjs` does, so Node's proxy support (`NODE_USE_ENV_PROXY`, `--use-env-proxy`) never
+tunnels it, also not with `no_proxy=' * '`; porting `analyzr-read.mjs`'s `assertNoProxy` was
+rejected, since it would refuse the consultant's CLI behind a proxy, Node reads the variables at
+every request (a child-process test pins it) and the owner key works only against a loopback
+server anyway. The others: (f) the loopback rule judges the host as fetch parses the URL (`127.1`,
+`2130706433`, `[0:0::1]` and `LOCALHOST` pass; `127.0.0.2`, `[::ffff:127.0.0.1]`, `localhost.`,
+`a.localhost`, `0.0.0.0` and `127.0.0.1.example.com` do not), refuses a scheme other than `http:`
+and `https:` and a URL with a user name or password, never prints the URL as given (it may hold a
+password), runs in `ownerCredential` before the key file is read (so the host is said before a
+missing key file) and again in `createApi`; `status` says it in its note "no credentials, so no
+projects" and exits 0; a redirect cannot carry the key off, since Node 24.15's fetch drops
+`Authorization` on a redirect to another origin (checked); (g) the plugin's `--help` keeps
+`Usage: analyzr …`, the same on every machine and without a path, and its description says to run
+it as `node <path of analyzr.mjs> <command>`; (h) beyond the plan's list, the batch line of a dry
+run in batches (`… <cmd> status count them`) and `status`'s hint for an analyzr without projects
+(`no projects yet: <cmd> import <dir> --project <key> --create`, without `seed`) name the command
+too; the start-prompt line adds `(in analyzr's repository)` for any command but `analyzr`; other
+commands' hints (`models external-ids`, `questions`, `amend`) keep `analyzr`, as the plan says;
+(i) `CLI_MAIN` moved to `src/cli-main.ts` and `runProgram` lives in `src/core-program.ts`, so no
+bundle of `plugin-main.ts` carries a `main.ts` path, `seed` or `mcp`; a static import-graph test
+enforces it (not dependency-cruiser), and any new entry must go through `runProgram` or `runCli`,
+or it has no guard; (j) no shebang in `plugin-main.ts`, since the bundle's banner writes one (a
+second makes rolldown warn `DUPLICATE_SHEBANG`, which `bundle.ts` turns into an error). Recorded
+readings and concept text this step changes: none (R33 and R34 are the plan's; decision 30 (3)
+takes effect for the CLI core); amendments to recorded decisions: none.
+
 ## 5. What exists
 
 | Path | Content |
@@ -1301,7 +1381,7 @@ per run, and A4, the runner a script of its own); amendments to recorded decisio
 | `tools/integrate` | `@analyzr/integrate` (M6 S3b, decision 24.8): the sources and tests of the integrate plugin's scripts (`inspect`, `normalize-bpmn` with `file`, `plan` (since M6 S2b's follow-up step 4 with `--from-analyzr`, the pure `rebuildFromAnalyzr` and `inferRule` in `src/keymap.ts`), `bundle`, `inventory`, and since step 4 `analyzr-read` with `models`, `external-ids` and `preview`: `src/analyzr.ts` the request guard and the credential, `src/preview.ts` the bundle walked as the CLI walks it and the batches merged with `@analyzr/contracts/impact-merge`), bundled by `pnpm --filter @analyzr/integrate generate` with a drift test (`analyzr-read.mjs` holds only Node built-ins, its sources and the zod-free `@analyzr/contracts/paths` and `/impact-merge`); since M6 S3c step 1 the sources of `analyzr-spec` in `src/spec/` (the `analyzr-spec/1` types, the YAML reader that refuses tags, anchors and aliases, the validator, the id function with category prefixes, the layout, the renderer with its self-check, the spec bundle) with the entry `src/cli/analyzr-spec.ts` (`validate`, `render`, `plan`, `bundle`), run from source and in no bundle until plugin 0.1.4, with `yaml` as a dependency and `bpmn-js` for its tests only; since S3c step 2 the converter runner `analyzr-convert` (the entry `src/cli/analyzr-convert.ts` with `convert`; in `src/spec/` the parent `converter.ts`, the child `child.ts` with the in-context helpers of `inner.ts` in the sandbox of `sandbox.ts`, the zip reader `unzip.ts` beside the unchanged `src/zip.ts`, the run record `record.ts`, which `analyzr-spec plan` and `bundle` check), also run from source and in no bundle until 0.1.4; a synthetic Signavio-style export and its golden bundle, which the CLI and web tests import; since S3c step 1 nine synthetic golden specs with their renders (`RENDER_OUTPUTS`); since step 2 a synthetic Visio export (VSDX parts the tests zip) and ARIS AML export with their example converters (`test/fixtures/converters/`, unverified); a fake analyzr for the script's tests; imported by nothing in `apps/` or `packages/` |
 | `examples/agents` | reference setups: Claude Code (interactive and `run-headless.sh [--skill placements]`), Claude Desktop (configs + German start prompts for relations, placements and drafting a chain), Codex; documentation, not in the image |
 | `apps/server` | Hono server: domain (pure, dependency-cruiser enforced), Drizzle/PostgreSQL, REST `/api/v1`, MCP `/mcp` (stateless Streamable HTTP), local mode, agent tokens, pipeline, review; since M4 S1/S2 the value chain and placements (`src/domain/value-chain/`: storage, lifecycle, `prepareRevision`, rule proposals, findings; REST under `/value-chains`, six MCP tools; the web page since S3); since decision 19 the owner's auto-accept rules (`src/domain/auto-accept/`, seven owner-only routes and the ledger for every reviewer, no MCP); since M6 S4 the open questions (`src/domain/open-questions/`: one read model over findings, chain findings, holds, agents' questions, unsure verdicts, coded no-links, summaries and unjudged pairs plus the gap signals, computed on read; `GET …/open-questions` and `…/open-questions/export?format=markdown\|csv`, permission `read`; no MCP until S7); since M6 S5a the answers (the append-only `open_question_answer`, migrations 0011/0012; `POST …/open-questions/{q}/answers` and `…/open-questions/answers?dryRun=`, permission `review`, humans only; on a relation or placement a human note through the note use cases); since M6 S5c-1 the actions (`open-questions/actions.ts`, pure: each item's actions, R1 and R1b, what a link writes or accepts; `POST …/open-questions/{q}/actions` for link, place, choose copy and the outside mark, `…/answers/{a}/withdrawal`, permission `review`, humans only; the append-only `open_question_answer_withdrawal`, migrations 0013/0014; items versioned by what they ask about; the safeguard `competing-call` also counts a human's manual link from the call element to another target); since M6 S5c-2 the model amendments (`src/domain/amendments/`, pure: planning against the uploaded revision, the fields a human may set, derivation, effect and cost, the change list; the append-only `model_amendment` and `model_amendment_withdrawal`, migrations 0015/0016; uploaded plus amended revisions with the plan on the head; the routes of tag `amendments`, `review` and `write`, humans only; the open question `amendment-conflict`); since M6 S2a provenance and stable identity (`src/domain/provenance.ts`, pure: the manifest checked, the uploaded revision's declared `source`, the import warnings, the `external-ids` list; readers follow an amended head's `source.upstream`, and since M6 S2b's follow-up step 5 take the system, tool id, tool folder and link from the model's newest row of the append-only `model_identity` (migrations 0021/0022 with the triggers, the guard and the backfill; written also for an unchanged file whose declaration differs, with the internal event `model.identity_declared`; `Model.identity`, REST only), before it from the newest revision a manifest declared; `model_revision.extract_warnings`, migration 0017; the open question `extractor-loss`); since UX2a (decision 26) the open questions' groups (`group` on every item from a `Record` over the kinds: `ask` „Zu klären“, `agent`, `proposal`, `info`; the repeatable `group` filter; `totals` and `askByModel` on every page), the question first with its reason apart (`text`, `detail`), the customer export in plain German (dated, „Betrifft“, no folder, the id only in HTML comments, the CSV column `Ansprechpartner`, `ask` by default under the old file name); since the first wave's review an agent's coded no-link joins the rule tier's item about the same gap (read model only) and a primary link reads „Verknüpfen mit …“; since M6 S2c-1 the trust rule (`src/domain/trust.ts`, pure: the class stored on every uploaded revision as `source.trust`, a unique call of a derived caller proposed at 0.9 instead of accepted, a call target set in analyzr modelled; `callsProposed` in the dry runs, the import warning `trust-kept`; no migration, no MCP; since S2c-2 the system rule counts only the calls a bulk accept takes, the contracts' `isBulkDerivedCall`; since S2c-3 the owners' rules for derived calls: `proposedBy`, `derivedKind` and `converter` on the rule revisions with migration 0018, the safeguards `agent-upload` (every rule) and `amendment-conflict`, the fifth write path `autoAcceptDerivedCalls` after the recompute of an import, an amendment write or a deletion, `ImportImpact.autoAcceptedCalls` for owners, `derivedGroups` in the preview; since S2c-4 the owner's review of the acceptances from before S2c, „Vor der Vertrauensregel angenommen“: `src/domain/use-cases/trust-review.ts`, `preTrustAcceptances` and `storedTrust` in `trust.ts`, the append-only `revision_trust_review` with migrations 0019/0020, `GET …/pre-trust-calls` and `POST …/pre-trust-calls/review?dryRun=`, owners only, the event `revision.trust_reviewed`); since M6 S2b the dry runs and the deletion impact (the pure `src/domain/import-impact.ts` over `planRecompute`, permission `read`, nothing written), since its follow-up step 1 with the relations tasks the write would queue and cancel (the pure `src/domain/queue-plan.ts`, which the write's `queueAnalysis` shares), the pairs agents then judge and those judged again (`pairsToJudge`, `judgementShift` in `judgements.ts`), and the amendment cost counted the same way; since step 2, with a live value chain, the accepted placements whose process the write changes or removes and the placement task's outcome with the processes due, newly due and placed again (the pure `src/domain/value-chain/model-impact.ts` over the pipeline's pure `pipelineInputs`, which `loadPipelineInputs` shares; the rule tier planned by `planRulePlacements`, which the write's `recomputeRulePlacements` shares; one stored fact order, `src/domain/fact-order.ts`); since step 3b the summary's `pairsToJudge`, the pairs the next claims of the claimable relations tasks will be assigned (`countPairsToJudge` in `src/domain/use-cases/projects.ts` over the open questions' candidate pass, `heldPairs` in `judgements.ts`; the summary memo holds until the earliest live lease runs out) |
-| `apps/cli` | `analyzr health / status / import (reads analyzr-import.json since M6 S2a) / seed [--project --issue-tokens --token-name --value-chains] / models list\|requeue\|delete\|external-ids [--system] / questions [list] [--model --kind --source --ask-who --state --group (since UX2a) --format text\|md\|csv\|json -o] / questions answer <id> --text \| --from <csv> [--dry-run] (notes; `--kind` refused since M6 S5c-1) / questions outside <id> [--note] [--undo <answer>] / questions link <id> --to <target>… \| --pair <from> <to> [--note] / questions place <id> --step <id>\|@outside \| --process <target> [--note] / questions amend <id> / models amend <key> --element <id> … \| pull <key> [--original] / amendments list\|export\|withdraw [--rev] / token create\|list\|revoke / value-chain push\|pull / rules list\|show\|add\|edit\|enable\|disable\|preview\|apply\|revoke [--derived …] / rules pre-trust [--model] [--revoke\|--keep] / mcp` (stdio bridge; `rules add --derived` since M6 S2c-3, `rules pre-trust` since S2c-4; since M6 S2b's follow-up step 3 `import --dry-run` names the agent work, the relations tasks it cancels with a warning for a claimed one and the placements losing their process, and `models delete` lists the task cancelled, the placements and the processes made due; since step 3b `import`'s waiting line and `status`'s models line add `about 7300 pairs to judge`, `status --json` `pairsToJudge`) |
+| `apps/cli` | `analyzr health / status / import (reads analyzr-import.json since M6 S2a) / seed [--project --issue-tokens --token-name --value-chains] / models list\|requeue\|delete\|external-ids [--system] / questions [list] [--model --kind --source --ask-who --state --group (since UX2a) --format text\|md\|csv\|json -o] / questions answer <id> --text \| --from <csv> [--dry-run] (notes; `--kind` refused since M6 S5c-1) / questions outside <id> [--note] [--undo <answer>] / questions link <id> --to <target>… \| --pair <from> <to> [--note] / questions place <id> --step <id>\|@outside \| --process <target> [--note] / questions amend <id> / models amend <key> --element <id> … \| pull <key> [--original] / amendments list\|export\|withdraw [--rev] / token create\|list\|revoke / value-chain push\|pull / rules list\|show\|add\|edit\|enable\|disable\|preview\|apply\|revoke [--derived …] / rules pre-trust [--model] [--revoke\|--keep] / mcp` (stdio bridge; `rules add --derived` since M6 S2c-3, `rules pre-trust` since S2c-4; since M6 S2b's follow-up step 3 `import --dry-run` names the agent work, the relations tasks it cancels with a warning for a claimed one and the placements losing their process, and `models delete` lists the task cancelled, the placements and the processes made due; since step 3b `import`'s waiting line and `status`'s models line add `about 7300 pairs to judge`, `status --json` `pairsToJudge`; since M6 S3c step 3 every command but `seed` and `mcp` in `src/core-program.ts` (`buildCoreProgram`), which `src/program.ts` extends with both, and `src/plugin-main.ts`, the entry of the integrate plugin's bundled CLI `analyzr.mjs` from 0.1.4 (run from source until then): its next steps and `status`'s hint name `node <path>` (with `--url` unless the default), it sends the owner key only to `127.0.0.1`, `[::1]` and `localhost`, its `token create` names no Claude Desktop entry; in both the parse guard: a word that reads as a flag as an option value, or as an argument after `--`, is a usage error, exit 2, so `import b -p p --create --name --dry-run` no longer imports) |
 | `apps/web` | projects, models, relations, findings, bpmn-js model view, upload, connect-an-agent, inbox, review screen; since M4 S3 the value chain page (`/projects/{key}/value-chain`: renderer viewer/modeler in a lazy chunk, placement review, save with dry run and conflict, drafts, link editing) and the step view; since decision 19 the tab „Regeln“ (auto-accept rules with live preview, apply, revoke) and the marks and filters of auto-accepted items in the review views, since M6 S2c-3 with the third „Art“ „Eindeutige Aufrufe aus abgeleiteten Modellen“ (offered by the bulk toast after accepting such calls) and the „Vorschau“ line naming what an owner's rules take at once, since M6 S2c-4 with the system rule's line „… vor der Vertrauensregel angenommen – prüfen…“ and its dialog („Behalten“, „Zurück in die Prüfung“); since M6 S2b's follow-up step 3 the „Vorschau“'s line of the agent work an import sets off, its lists of the placements losing their process and of the pairs judged again, and the warning with a second click („Trotzdem importieren“) before an import that cancels an agent's claim (`lib/agent-cost.ts`, shared with the amend form); since step 3b „etwa 7.300 mögliche Relationen“, the size of the agents' next run, beside „Agent starten“ or „Agent verbinden“ and in the waiting line of „Als Nächstes“ and after an import; since M6 S4 the tab „Offene Fragen“ (every gap as a question, filters, Markdown and CSV export) and the model view's section of the same name, since M6 S5a with „Antworten aus CSV übernehmen“ (a preview first) for reviewers, since M6 S5c-1 with an action on every question (pickers, inline decisions, the outside mark, „Rückgängig“) and „Notiz hinzufügen“ instead of S5a's „Beantworten“, and „Verknüpfen mit …“ on a collapsed subprocess in the model view; since M6 S5c-2 the amend form at a question with „Sammeln“ and its bar, the conflicts with both values side by side, „Ergänzen“ in the model view with history, overlay, badge and both BPMN downloads, every withdrawal after its cost, and the change list in the models tab; since M6 S2a the open-question kind „Elemente beim Import verloren“ (S2a's „Herkunft“, badges and the manifest of a dropped folder come with the UI simplification); since UX1 (decision 26) the shell of four object tabs („Übersicht“, „Relationen“, „Wertschöpfungskette“, „Offene Fragen“, badges from one hook), „Hochladen“ as a button, the owners' menu „Einstellungen“ („Agent verbinden“, „Annahmeregeln“, the former tab „Regeln“), the list „Befunde“ behind a link in „Offene Fragen“, „Übersicht“ with „Als Nächstes“, the popover „Agent starten“, the export hub, search, phase chips and „Offene Punkte“, failed writes in German, the server banner only on trouble; since UX2b „Offene Fragen“ as lean cards „Zu klären“ (the badge's number) with one intro line, three filters, „Zur Information“ and „Erledigte zeigen“ closed, the agents' questions on their proposals, the dialog „Für den Kunden exportieren …“ and a hold answered in one dialog from its card, its „Vorgemerkt“ row and the review screen and decided with „Jetzt entscheiden“ (the inline decision panels gone), the model view's „Fragen“ with „Zu klären“ only; since the first wave's review „Offene Punkte“ as text with its split in a tooltip, the customer export of the open items only, the agent's summary closed in the model view; the UI load guard `e2e/ui-load.spec.ts` |
 | `apps/agent-sim` | LLM-free reference agent that works the pipeline over MCP, both task kinds since M4 S5 |
 | `apps/demo` | `analyzr-demo seed\|serve\|check` (owner decision 20): seeds the read-only demo while its image is built, supervises PostgreSQL and the server in the container, checks a running demo from outside |
@@ -2145,7 +2225,54 @@ relation at all (so no call proposed or accepted, D3 (d)), a second import all `
 first analysis: once 0.1.4 ships, the integrate skill turns Visio and ARIS AML exports into specs in
 the same first pass as the BPMN exports: the agent writes a small converter, the consultant approves
 each version by its hash, and it runs boxed in.
-**Next:** S3c steps 3–4 (the CLI core in `apps/cli`, the integrate plugin 0.1.4), then the
+**S3c step 3 "the CLI core"** (**done 2026-10-21** on the branch, every gate green with a review
+round's fixes: three reviews (behaviour, security, structure), of their findings (nits and parts
+counted) 16 fixed with tests, 3 in part and 2 rejected with a reason, the one major a bypass of
+the parse guard by a repeated option or the `--` that ends the options, fixed; M6 §8 "S3c step 3
+as delivered"; DEVELOPMENT.md "M6 S3c step 3 (2026-10-21)" and "The `analyzr` CLI"; decision 30
+(3), (A5)): only `apps/cli` changes. `src/core-program.ts`'s `buildCoreProgram(io, {description,
+commandName, mcpEntry, ownerKeyLoopbackOnly})` holds the 34 commands both CLIs share (every one
+but `seed`, which reads the checkout's `eval/corpus`, and `mcp`, whose MCP SDK would more than
+double the bundle), moved unchanged from `src/program.ts` except that `import` and `status` take the
+command name, `token create` the entry and `globals()` the loopback flag; `src/program.ts` now adds
+`mcp` and `seed` in today's order; the help of all 43 command paths is pinned by a snapshot taken
+before the split and unchanged after it. `src/plugin-main.ts`, the bundle's entry (not in
+`tools/integrate`'s `ENTRIES` before step 4), runs the core with `commandName`
+`node <path of analyzr.mjs>` (from `process.argv[1]`, shell-quoted only where it needs it, as
+`shellArg` does) plus `--url <url>` when the run talked to another than the default URL, named in
+every next step `import` prints (the amendment conflicts' `questions`, `models delete` and
+`external-ids` after identity warnings, the owner rule steps' `rules apply`, `enable` and `add`,
+`token create` with `(in analyzr's repository)` after the start prompts, `value-chain push`, the
+batch line's `status`) and in `status`'s hint for an analyzr without projects (without `seed`),
+while the checkout's CLI keeps `analyzr`; with `mcpEntry` null, so `token create` outside the
+container prints the Claude Code command and `Claude Desktop: the stdio bridge needs analyzr mcp
+from an analyzr checkout or the container (docs/DEVELOPMENT.md); the plugin's analyzr.mjs has no
+mcp` instead of a config naming a missing file (`CLI_MAIN` moved to `src/cli-main.ts`, so no bundle
+carries a `main.ts` path); and with `ownerKeyLoopbackOnly`: the owner key goes only to `127.0.0.1`,
+`[::1]` and `localhost` (the host as fetch parses it, over http(s), no user name or password in the
+URL; `no_proxy` and `NO_PROXY` set to `*` first), checked before the key file is read and again
+before the request; an agent token goes anywhere, and the checkout's CLI is unchanged. The parse
+guard (`guardValues`, which `runProgram` sets on the whole tree of either CLI, `seed` and `mcp`
+included): a word that reads as a flag (`--` and no whitespace) given as an option value at any
+occurrence (a repeated option, a list, `--name=--x`, the global options), or as an argument after
+`--`, is a usage error, exit 2, before any action runs (`analyzr: --name "--dry-run": an option
+value never starts with --; did you forget the name?`, `analyzr: argument "--dry-run": an argument
+never starts with --; an option belongs before the -- that ends them`); text with a space,
+environment values and defaults pass. CLI 317 tests (286) plus 7 skipped: `core-program.test.ts`
+(19), `plugin-main.test.ts` (9: both entries as child processes against fakes, the same requests,
+batches and output except the command name, the guard, the loopback rule, the proxy), the help
+snapshot, `token create` without an entry, a bundle of rendered specs; every other count unchanged;
+no server, contract, client, web, MCP, procedure, migration, dependency or plugin change (0.1.3 byte
+for byte after `generate`); live-run neutral; a scratch bundle of `plugin-main.ts` (rolldown as
+`bundle.ts` runs it, not in `ENTRIES`): 652,994 bytes (150,641 gzip), one chunk, no warning, no
+dynamic import, running away from `node_modules`; the readings taken are in §4 ("Taken during M6 S3c
+step 3"); the lead's run: every gate on the final tree, with the CLI e2e suite (29 tests on
+Testcontainers: the import lines with `analyzr` as before) and the parity tests of the plugin entry
+run from source; no stack, since neither the server nor the web changed (the bundle against a stack
+is D4, step 4). For the first analysis: once 0.1.4 ships, a consultant without a checkout imports a
+landscape with the plugin's CLI and gets next steps that name a command they can run against the
+same analyzr, and a dry run whose project name was forgotten can no longer import for real.
+**Next:** S3c step 4 (the integrate plugin 0.1.4 with the three new scripts), then the
 safeguard step of decision 30 (2), then S6 (interviews); after the owner's live runs
 S5b, S7 and facts v2. The owner's review of S1–S2a, ideally on a sandbox or anonymized export (M6
 §10.4), can run alongside. Nothing of M6 changes released procedures, claim inputs or the MCP

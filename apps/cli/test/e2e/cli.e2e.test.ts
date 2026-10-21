@@ -33,7 +33,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { pairsToJudgeText } from '../../src/commands/import.ts';
 import type { Status } from '../../src/commands/status.ts';
 import type { CliIo } from '../../src/io.ts';
-import { CLI_MAIN } from '../../src/mcp-config.ts';
+import { CLI_MAIN } from '../../src/cli-main.ts';
 import { runCli } from '../../src/program.ts';
 import { tempDir } from '../support/io.ts';
 import { REPO_ROOT, cleanEnv, createDatabase, startServer, type RunningServer } from './server.ts';

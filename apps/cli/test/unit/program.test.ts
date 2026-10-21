@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { runCli } from '../../src/program.ts';
+import { buildProgram, runCli } from '../../src/program.ts';
+import { helpTexts } from '../support/help.ts';
 import { json, testIo } from '../support/io.ts';
 
 function jsonFetch(body: unknown, status = 200, seen: string[] = []): typeof globalThis.fetch {
@@ -73,6 +74,12 @@ describe('analyzr', () => {
     const chain = testIo();
     expect(await runCli(['value-chain', '--help'], chain.io)).toBe(0);
     for (const cmd of ['push', 'pull', 'requeue']) expect(chain.out()).toContain(cmd);
+  });
+
+  it('keeps the help of every command (snapshot taken before the core program split, M6 S3c)', async () => {
+    await expect(helpTexts(buildProgram(testIo().io))).toMatchFileSnapshot(
+      '__snapshots__/help.txt',
+    );
   });
 
   it('health prints the server health from ANALYZR_URL', async () => {

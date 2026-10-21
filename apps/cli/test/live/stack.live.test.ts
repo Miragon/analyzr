@@ -31,7 +31,8 @@ import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
 import type { CreatedAgentToken } from '@analyzr/contracts';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { CLI_MAIN, claudeDesktopServer } from '../../src/mcp-config.ts';
+import { CLI_MAIN } from '../../src/cli-main.ts';
+import { claudeDesktopServer } from '../../src/mcp-config.ts';
 
 const run = promisify(execFile);
 const LIVE_URL = process.env['ANALYZR_LIVE_URL']?.replace(/\/+$/, '');
@@ -225,6 +226,7 @@ describe.skipIf(!LIVE_URL)(`live analyzr at ${LIVE_URL ?? '(ANALYZR_LIVE_URL not
       url: LIVE_URL ?? '',
       token: token.secret,
       node: process.execPath,
+      entry: CLI_MAIN,
     });
     expect(path.isAbsolute(entry.command)).toBe(true);
     await exercise(await connect(desktop(entry)));
@@ -311,6 +313,7 @@ describe.skipIf(!LIVE_URL)(`live analyzr at ${LIVE_URL ?? '(ANALYZR_LIVE_URL not
       url: LIVE_URL ?? '',
       token: revoked.secret,
       node: process.execPath,
+      entry: CLI_MAIN,
     });
     await expect(connect(desktop(entry))).rejects.toThrow(/rejected the agent token/);
   });

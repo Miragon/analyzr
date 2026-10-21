@@ -45,6 +45,15 @@ import {
 import type { CliIo } from '../io.ts';
 import { manifestSubset, nestedManifests, readManifest, type LoadedManifest } from '../manifest.ts';
 
+/**
+ * The command the next steps of the checkout's and the container's CLI name.
+ * The integrate plugin's bundled CLI names the node command that runs it
+ * instead, with `--url` unless it is the default (M6 S3c,
+ * `CoreProgramOptions.commandName`), so each step it prints is one a
+ * consultant without a checkout can run against the same analyzr.
+ */
+export const CLI_COMMAND = 'analyzr';
+
 export interface ImportSummary {
   project: string;
   files: ImportFileOutcome[];
@@ -370,9 +379,14 @@ function cancelLines(tasks: ImportImpact['relationsTasks']): string[] {
  * unresolved and the pairs between new models of different batches are not
  * counted (where the whole count shows after the import: the waiting line
  * and `analyzr status`, M6 S2b follow-up step 3b), and its counts of agent
- * work are "about".
+ * work are "about"; `command` names the CLI in that line ({@link CLI_COMMAND}).
  */
-export function formatImpact(impact: ImportImpact, project: string, batches = 1): string {
+export function formatImpact(
+  impact: ImportImpact,
+  project: string,
+  batches = 1,
+  command = CLI_COMMAND,
+): string {
   const sample = (items: readonly string[], count: number) =>
     items.length === 0 ? '' : `: ${named(items, count)}`;
   const added = impact.files.reduce((n, f) => n + f.processesAdded.length, 0);
@@ -433,7 +447,7 @@ export function formatImpact(impact: ImportImpact, project: string, batches = 1)
   }
   if (batches > 1) {
     lines.push(
-      `  previewed in ${batches} batches, each against the project's head: a call into a later batch shows as unresolved, and the pairs between new models of different batches are not counted (after the import, the waiting line and analyzr status count them)`,
+      `  previewed in ${batches} batches, each against the project's head: a call into a later batch shows as unresolved, and the pairs between new models of different batches are not counted (after the import, the waiting line and ${command} status count them)`,
     );
   }
   return `${lines.join('\n')}\n`;
@@ -615,9 +629,13 @@ function skippedWhy(s: SkippedFile): string {
  * The import as text: one line per file (with the extractor's warnings by
  * code and, for a model with live amendments, what became of them), the
  * skipped files and a summary, then the amendments in conflict. `verbose`
- * also lists every warning entry the result carries (≤ 20 per file).
+ * also lists every warning entry the result carries (≤ 20 per file);
+ * `command` names the CLI in the conflicts' step ({@link CLI_COMMAND}).
  */
-export function formatImport(summary: ImportSummary, opts: { verbose?: boolean } = {}): string {
+export function formatImport(
+  summary: ImportSummary,
+  opts: { verbose?: boolean; command?: string } = {},
+): string {
   const recorded = summary.files.filter((f) => f.identityUpdated === true).length;
   const lines: string[] = summary.manifest ? manifestLines(summary.manifest, recorded) : [];
   for (const f of summary.files) {
@@ -659,7 +677,7 @@ export function formatImport(summary: ImportSummary, opts: { verbose?: boolean }
   const conflicts = summary.files.reduce((n, f) => n + (f.amendments?.conflicts.count ?? 0), 0);
   if (conflicts > 0) {
     lines.push(
-      `${summary.project}: ${conflicts === 1 ? '1 amendment no longer applies' : `${conflicts} amendments no longer apply`}; see analyzr questions -p ${summary.project} --kind amendment-conflict`,
+      `${summary.project}: ${conflicts === 1 ? '1 amendment no longer applies' : `${conflicts} amendments no longer apply`}; see ${opts.command ?? CLI_COMMAND} questions -p ${summary.project} --kind amendment-conflict`,
     );
   }
   return `${lines.join('\n')}\n`;
@@ -755,9 +773,9 @@ export async function waitingTasks(api: Api, project: string): Promise<WaitingTa
  * The next step for the identity warnings of an import (M6 §3.4), one line
  * each, or none: after `external-id-moved` the same tool model may be in the
  * landscape twice; after `external-id-changed` a key may hold models of two
- * systems.
+ * systems. `command` names the CLI ({@link CLI_COMMAND}).
  */
-export function identitySteps(summary: ImportSummary): string[] {
+export function identitySteps(summary: ImportSummary, command = CLI_COMMAND): string[] {
   const p = summary.project;
   const lines: string[] = [];
   const moved = summary.files.filter((f) =>
@@ -766,7 +784,7 @@ export function identitySteps(summary: ImportSummary): string[] {
   const [first] = [...moved.filter((f) => f.outcome === 'created'), ...moved];
   if (first) {
     lines.push(
-      `next: same model twice? delete the extra key (analyzr models delete -p ${p} ${first.modelKey ?? '<key>'}) and re-import with the key pinned (keymap.json; analyzr models external-ids -p ${p} lists analyzr's keys)`,
+      `next: same model twice? delete the extra key (${command} models delete -p ${p} ${first.modelKey ?? '<key>'}) and re-import with the key pinned (keymap.json; ${command} models external-ids -p ${p} lists analyzr's keys)`,
     );
   }
   const changed = summary.files
@@ -915,7 +933,7 @@ export function ruleName(source: DerivedSource, taken: readonly string[] = []): 
  * it is on (rules are never retroactive; apply shows its dry run first),
  * else `analyzr rules enable <id>`; without one, `analyzr rules add --name …
  * --derived … [--converter …]`, which creates it off (it says how to turn
- * it on).
+ * it on). `command` names the CLI ({@link CLI_COMMAND}).
  */
 export function ruleStep(
   project: string,
@@ -924,6 +942,7 @@ export function ruleStep(
     AutoAcceptRule,
     'id' | 'name' | 'enabled' | 'proposedBy' | 'derivedKind' | 'converter'
   >[],
+  command = CLI_COMMAND,
 ): string {
   const p = shellArg(project);
   const naming = rules.filter(
@@ -935,8 +954,8 @@ export function ruleStep(
   const existing = naming.find((r) => r.enabled) ?? naming[0];
   if (existing) {
     return existing.enabled
-      ? `  or let the owner rule ${JSON.stringify(existing.name)} accept them: analyzr rules apply ${existing.id} -p ${p}`
-      : `  or turn on the owner rule ${JSON.stringify(existing.name)} for that source: analyzr rules enable ${existing.id} -p ${p}`;
+      ? `  or let the owner rule ${JSON.stringify(existing.name)} accept them: ${command} rules apply ${existing.id} -p ${p}`
+      : `  or turn on the owner rule ${JSON.stringify(existing.name)} for that source: ${command} rules enable ${existing.id} -p ${p}`;
   }
   const converter =
     source.derivedKind === 'converted' ? ` --converter ${shellArg(source.converter ?? '')}` : '';
@@ -946,7 +965,7 @@ export function ruleStep(
       rules.map((r) => r.name),
     ),
   );
-  return `  or add an owner rule that accepts that source's next calls: analyzr rules add --name ${name} --derived ${source.derivedKind}${converter} -p ${p}`;
+  return `  or add an owner rule that accepts that source's next calls: ${command} rules add --name ${name} --derived ${source.derivedKind}${converter} -p ${p}`;
 }
 
 /**
@@ -1000,13 +1019,15 @@ export function trustSteps(
  * warnings call for ({@link identitySteps}), the bulk accept of the unique
  * calls of derived models that wait ({@link trustSteps}), then the agent
  * step only when something waits (`then:` after another step), each slash
- * command only for its kind.
+ * command only for its kind. `command` names the CLI ({@link CLI_COMMAND});
+ * any other (the plugin's bundled CLI) says where the start prompts are.
  */
 export function formatNextSteps(
   project: string,
   waiting: WaitingTasks,
   identity: readonly string[] = [],
   trust: readonly string[] = [],
+  command = CLI_COMMAND,
 ): string {
   const pairs = pairsToJudgeText(waiting.pairs);
   const lines = [
@@ -1021,7 +1042,7 @@ export function formatNextSteps(
     if (waiting.relations > 0) lines.push(`  /analyzr:relations ${project}`);
     if (waiting.placement) lines.push(`  /analyzr:placements ${project}`);
     lines.push(
-      `  other clients: the start prompts in examples/agents; a token: analyzr token create -p ${project}`,
+      `  other clients: the start prompts in examples/agents${command === CLI_COMMAND ? '' : " (in analyzr's repository)"}; a token: ${command} token create -p ${project}`,
     );
   }
   return `${lines.join('\n')}\n`;
@@ -1035,6 +1056,7 @@ async function ownerRuleStep(
   api: Api,
   project: string,
   source: DerivedSource,
+  command: string,
 ): Promise<string | null> {
   try {
     const list = await call(
@@ -1042,7 +1064,7 @@ async function ownerRuleStep(
       `list the auto-accept rules of ${project}`,
       listAutoAcceptRules({ client: api.client, path: { project } }),
     );
-    return ruleStep(project, source, list.items);
+    return ruleStep(project, source, list.items, command);
   } catch {
     return null;
   }
@@ -1077,6 +1099,8 @@ export interface ImportOptions extends CredentialOptions {
   json?: boolean;
   /** M6 S2b: preview with `?dryRun=true` (permission `read`): the outcomes and the impact, nothing imported. */
   dryRun?: boolean;
+  /** The CLI the printed next steps name (M6 S3c; default {@link CLI_COMMAND}). */
+  commandName?: string;
 }
 
 /**
@@ -1104,7 +1128,8 @@ export function agentTokenNotice(source: '--token' | 'ANALYZR_TOKEN'): string {
  * (a read-only token too): the same lines, then what the import would change
  * ({@link formatImpact}); nothing is imported, and a file that would fail
  * exits 1 as well. With an agent token, both say {@link agentTokenNotice}
- * on stderr first (M6 S2c).
+ * on stderr first (M6 S2c). Every step it prints names `commandName`
+ * (M6 S3c, default {@link CLI_COMMAND}).
  */
 export async function importCommand(io: CliIo, dir: string, opts: ImportOptions): Promise<void> {
   if (opts.dryRun && opts.create) {
@@ -1113,6 +1138,7 @@ export async function importCommand(io: CliIo, dir: string, opts: ImportOptions)
   // Read and check everything locally first: a refused manifest creates no project.
   const prepared = await prepareImport(path.resolve(io.cwd, dir));
   const credential = opts.create ? await ownerCredential(io, opts) : await anyCredential(io, opts);
+  const command = opts.commandName ?? CLI_COMMAND;
   // M6 S2c: an agent token makes every revision derived, so no unique call is accepted.
   if (credential.kind === 'agent-token') {
     io.stderr(`${agentTokenNotice(opts.token === undefined ? 'ANALYZR_TOKEN' : '--token')}\n`);
@@ -1127,9 +1153,11 @@ export async function importCommand(io: CliIo, dir: string, opts: ImportOptions)
   // skipped for its key never gets here alone: the `.bpmn…` file that has the key was sent.
   const nothing = summary.files.length === 0;
   if (opts.json) io.stdout(`${JSON.stringify(summary, null, 2)}\n`);
-  else io.stdout(formatImport(summary, { verbose: opts.verbose === true }));
+  else io.stdout(formatImport(summary, { verbose: opts.verbose === true, command }));
   if (summary.impact) {
-    if (!opts.json) io.stdout(formatImpact(summary.impact, opts.project, summary.batches));
+    if (!opts.json) {
+      io.stdout(formatImpact(summary.impact, opts.project, summary.batches, command));
+    }
     if (nothing)
       throw new CliError(
         `no BPMN files below ${dir}: ${skippedText(summary.skipped) ?? '0 skipped'}`,
@@ -1143,7 +1171,7 @@ export async function importCommand(io: CliIo, dir: string, opts: ImportOptions)
     // Never sent with the models (M6 §3.2): the human pushes the chain, after a dry run.
     const chain = path.resolve(io.cwd, dir, summary.manifest.valueChain);
     io.stdout(
-      `value chain: the bundle has ${summary.manifest.valueChain}; push it with analyzr value-chain push ${shellArg(chain)} -p ${shellArg(opts.project)} --dry-run, then without --dry-run (owner key)\n`,
+      `value chain: the bundle has ${summary.manifest.valueChain}; push it with ${command} value-chain push ${shellArg(chain)} -p ${shellArg(opts.project)} --dry-run, then without --dry-run (owner key)\n`,
     );
   }
   if (!opts.json && !nothing) {
@@ -1156,13 +1184,14 @@ export async function importCommand(io: CliIo, dir: string, opts: ImportOptions)
         credential.kind === 'owner-key' && calls.length > 0
           ? ruleSource(summary, prepared.manifest, calls)
           : null;
-      const rule = source ? await ownerRuleStep(api, opts.project, source) : null;
+      const rule = source ? await ownerRuleStep(api, opts.project, source, command) : null;
       io.stdout(
         formatNextSteps(
           opts.project,
           waiting,
-          identitySteps(summary),
+          identitySteps(summary, command),
           trustSteps(summary, calls.length, api.url, rule),
+          command,
         ),
       );
     } catch (err) {

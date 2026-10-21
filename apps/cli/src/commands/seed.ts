@@ -19,6 +19,7 @@ import {
 import { parse as parseYaml } from 'yaml';
 
 import { call, callOrNull, callWithResponse, createApi, type Api } from '../api.ts';
+import { CLI_MAIN } from '../cli-main.ts';
 import { ownerCredential, type CredentialOptions } from '../credentials.ts';
 import { ApiError, CliError } from '../errors.ts';
 import type { CliIo } from '../io.ts';
@@ -451,7 +452,9 @@ export async function seedCommand(
     }
     io.stdout(`  ${r.models} models, relations: ${rel || 'none'}, ${r.findings} findings\n`);
     if (r.valueChain) io.stdout(formatValueChainSeed(r.valueChain));
-    if (r.token) io.stdout(`\n${formatCreatedToken(io, opts.url, r.project, r.token)}\n`);
+    if (r.token) {
+      io.stdout(`\n${formatCreatedToken(io, opts.url, r.project, r.token, CLI_MAIN)}\n`);
+    }
   }
   if (opts.json) io.stdout(`${JSON.stringify(results, null, 2)}\n`);
   else if (!opts.issueTokens) {

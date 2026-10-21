@@ -2,8 +2,10 @@ import { rm } from 'node:fs/promises';
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { parseExpiry, parseScopes } from '../../src/commands/token.ts';
-import { CLI_MAIN } from '../../src/mcp-config.ts';
+import { CLI_MAIN } from '../../src/cli-main.ts';
+import { NO_STDIO_BRIDGE, parseExpiry, parseScopes } from '../../src/commands/token.ts';
+import { buildPluginProgram } from '../../src/core-program.ts';
+import type { CliIo } from '../../src/io.ts';
 import { runCli } from '../../src/program.ts';
 import { OWNER_KEY, fakeApi, json, ownerKeyFile, problem, tempDir, testIo } from '../support/io.ts';
 
@@ -135,6 +137,41 @@ describe('analyzr token create', () => {
       name: 'agent',
       scopes: ['analyzr:read', 'analyzr:propose'],
       expiresInDays: 90,
+    });
+  });
+
+  it('names no file of a missing mcp in the plugin’s bundled CLI (M6 S3c): the Claude Code command and where the bridge is', async () => {
+    const plugin = (io: CliIo) => buildPluginProgram(io, '/opt/plugin/scripts/analyzr.mjs');
+    const api = fakeApi({
+      'POST /api/v1/projects/p/agent-tokens': () => json(created(['analyzr:read']), 201),
+    });
+    const t = testIo({ ANALYZR_OWNER_KEY_FILE: keyFile }, api.fetch);
+    expect(await runCli(['token', 'create', '-p', 'p'], t.io, plugin)).toBe(0);
+    const out = t.out();
+    expect(out).toContain(`\n${SECRET}\n`);
+    expect(out).toContain(
+      `  claude mcp add --transport http analyzr http://127.0.0.1:7400/mcp --header "Authorization: Bearer ${SECRET}"\n\n${NO_STDIO_BRIDGE}\n`,
+    );
+    expect(NO_STDIO_BRIDGE).toBe(
+      "Claude Desktop: the stdio bridge needs analyzr mcp from an analyzr checkout or the container (docs/DEVELOPMENT.md); the plugin's analyzr.mjs has no mcp",
+    );
+    expect(out).not.toContain('main.ts');
+    expect(out).not.toContain('claude_desktop_config.json');
+    expect(out).not.toContain('{');
+
+    // inside the container the docker exec bridge names no file of the plugin either
+    const container = testIo(
+      { ANALYZR_OWNER_KEY_FILE: keyFile, ANALYZR_CONTAINER: 'analyzr-server-1' },
+      api.fetch,
+    );
+    expect(await runCli(['token', 'create', '-p', 'p'], container.io, plugin)).toBe(0);
+    const desktop = JSON.parse(container.out().slice(container.out().indexOf('{'))) as {
+      mcpServers: { analyzr: unknown };
+    };
+    expect(desktop.mcpServers.analyzr).toEqual({
+      command: 'docker',
+      args: ['exec', '-i', '-e', 'ANALYZR_TOKEN', 'analyzr-server-1', 'analyzr', 'mcp'],
+      env: { ANALYZR_TOKEN: SECRET },
     });
   });
 

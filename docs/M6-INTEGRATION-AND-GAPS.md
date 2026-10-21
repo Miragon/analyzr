@@ -12,12 +12,12 @@ and "S2b follow-up step 5 as delivered"),
 S2c-1 (the trust class and the rule tier, §8 "S2c-1 as delivered"), S2c-2 (the fast path for
 derived calls, §8 "S2c-2 as delivered"), S2c-3 (owners' rules for derived calls, §8 "S2c-3 as
 delivered") and S2c-4 („Vor der Vertrauensregel angenommen“, §8 "S2c-4 as delivered"; with it all of
-S2c) and steps 1 and 2 of S3c (`analyzr-spec/1` and the deterministic renderer, and the converter
-runner `analyzr-convert`, both run from source, §8 "S3c step 1 as delivered" and "S3c step 2 as
-delivered") done, the „erste Anfänge“ await the owner's review, and the integrate skill's
-pre-approval awaits one live check by the owner (HANDOFF §8); next S3c steps 3–4 (the CLI core, the
-integrate plugin 0.1.4), then the safeguard of decision 30 (2), then S6; after the owner's live runs
-S5b, S7 and facts v2 · Branch: `feat/integration-and-gaps` ·
+S2c) and steps 1 to 3 of S3c (`analyzr-spec/1` and the deterministic renderer, the converter runner
+`analyzr-convert` and the CLI core both `analyzr` CLIs share, all run from source, §8 "S3c step 1 as
+delivered", "S3c step 2 as delivered" and "S3c step 3 as delivered") done, the „erste Anfänge“ await
+the owner's review, and the integrate skill's pre-approval awaits one live check by the owner
+(HANDOFF §8); next S3c step 4 (the integrate plugin 0.1.4), then the safeguard of decision 30 (2),
+then S6; after the owner's live runs S5b, S7 and facts v2 · Branch: `feat/integration-and-gaps` ·
 Spec: [CONCEPT.md](CONCEPT.md) §1–§7 · Previous: [M4-VALUE-CHAIN.md](M4-VALUE-CHAIN.md) · Paused:
 the process network map (decision 22, issue [#2](https://github.com/Miragon/analyzr/issues/2)),
 which keeps the name M5. M6 goes ahead of it; that amends decision 22's "next milestone" (decision
@@ -258,9 +258,10 @@ CLI pattern but a read-only script bundled with the plugin, `analyzr-read.mjs`, 
 `allowed-tools` pre-approves: it has only `GET …/models`, `GET …/external-ids` and
 `POST …/imports` with `dryRun=true` built in, talks to loopback hosts only and follows no
 redirect; the real import stays with the consultant. A rule over the CLI form is not safe:
-`import b -p p --create --name --dry-run` parses `--dry-run` as the value of `--name` and imports for real, the
-CLI's prefix differs per workspace, and `--url` could send the key elsewhere. It came with
-plugin 0.1.3 (step 4 of the follow-up, §8 "S2b follow-up step 4 as delivered").
+`import b -p p --create --name --dry-run` parses `--dry-run` as the value of `--name` and imports
+for real (since S3c step 3 the parse guard refuses it, §3.6), the CLI's prefix differs per
+workspace, and `--url` could send the key elsewhere. It came with plugin 0.1.3 (step 4 of the
+follow-up, §8 "S2b follow-up step 4 as delivered").
 
 Decision 30 (2026-10-21, at the start of S3c; HANDOFF §4) answers the questions of the S3c plan,
 each with the recommended option: (1) **„Agent liest ab (Empfohlen)“**: pictures and PDFs are read
@@ -280,7 +281,8 @@ collision-checked id function (§3.4 rule 2); A4, the converter runner in its ow
 stays in the report (§3.7 "Reaching analyzr"). The passages it changes say "(decision 30)"; HANDOFF
 §4 lists what each part amends. Open, not decided: calls from ad-hoc converters later (§10.12). Step
 1 of S3c delivered (1), A2 and A3 as far as the spec and the renderer go (§8 "S3c step 1 as
-delivered").
+delivered"), step 2 A1 and A4 as far as the runner goes (§8 "S3c step 2 as delivered") and step 3
+(3) as far as the CLI core goes (§8 "S3c step 3 as delivered").
 
 ## 3. Part A: Integration toolkit
 
@@ -605,6 +607,7 @@ The existing previews compute impact with pure code (`apps/server/src/domain/val
 | Preview | `value-chain push --dry-run`, `rules preview`, `rules apply --dry-run` and `rules revoke --dry-run`; nothing for models | S2: `import --dry-run`, deletion impact in `models delete` |
 | Open questions | none | S4: `analyzr questions`; S5a: `analyzr questions answer` (also `--from <csv>`); S5c-1: `analyzr questions outside\|link\|place`, notes without a kind |
 | Model amendments | none | S5c-2: `analyzr models amend\|pull`, `analyzr amendments list\|export\|withdraw` |
+| A flag taken as an option value | commander gives an option that takes a value the next word, whatever it is, so `import b -p p --create --name --dry-run` created project `p` with the name "--dry-run" and imported for real | S3c step 3: the parse guard in both CLIs, a word that reads as a flag (`--` and no whitespace) is no option value and, after `--`, no argument: a usage error, exit 2, before anything is read or sent (§8 "S3c step 3 as delivered") |
 | Zip, URL, git sources; adapter hook | none | later (a zip library is a new dependency; the web would need a lazy chunk under the 240 KB entry ceiling, decision 21) |
 
 ### 3.7 The second plugin `analyzr-integrate`
@@ -695,7 +698,17 @@ and `mcp`, into `plugins/analyzr-integrate/scripts/analyzr.mjs` (self-contained,
 `node <plugin>/scripts/analyzr.mjs import …` works anywhere with Node 24 and names itself in the
 next steps it prints; it sends the owner key only to an analyzr on this machine. By decision 30 (3)
 every change of `apps/cli`, `packages/client` or `packages/contracts` then needs `generate` and a
-new integrate plugin version (the drift test enforces it); `analyzr-read.mjs` stays zod-free.
+new integrate plugin version (the drift test enforces it); `analyzr-read.mjs` stays zod-free. Its
+core is delivered in S3c step 3, run from source until 0.1.4 (§8 "S3c step 3 as delivered"):
+`apps/cli/src/core-program.ts` holds the commands both CLIs share, and `src/plugin-main.ts` is the
+bundle's entry. Its next steps and `status`'s hint name `node <absolute path of analyzr.mjs>` (the
+path shell-quoted only where it needs it, as `shellArg` does), plus `--url <url>` when the run did
+not talk to the default URL, so step 4's skill can pass them on as printed (it rewrites only the
+checkout's `analyzr …` lines to `<cli> --url …`); it sends the owner key only to `127.0.0.1`,
+`[::1]` and `localhost` over http(s), an agent token anywhere; and its `token create` prints no
+Claude Desktop config outside the container, since the stdio bridge needs `analyzr mcp` from a
+checkout or the container. In both CLIs a word that reads as a flag is no option value (exit 2), so
+`import b -p p --create --name --dry-run` no longer imports.
 
 **`/analyzr-integrate:integrate-landscape <export> [--workspace <dir>]`** (`disable-model-invocation:
 true`; Claude Code and Codex, since it needs a shell). The project comes from
@@ -765,8 +778,9 @@ import with `--create --name …`.
    with the CLI's and the web's merge. Into an existing project only: for a missing one the skill
    says „Das Projekt <project> gibt es in analyzr noch nicht. Leg es an („Neues Projekt“ im Web),
    dann zeige ich dir die Vorschau.“ No rule over the CLI form is pre-approved (`import b -p p
-   --create --name --dry-run` parses `--dry-run` as `--name`'s value and imports for real; the CLI's
-   prefix differs per workspace; `--url` could send the key elsewhere); the CLI's `--dry-run` stays
+   --create --name --dry-run` parses `--dry-run` as `--name`'s value and imports for real, which
+   since S3c step 3 the parse guard of both CLIs refuses (exit 2, nothing sent); the CLI's prefix
+   differs per workspace; `--url` could send the key elsewhere); the CLI's `--dry-run` stays
    the fallback, printed for the consultant (approved once, never with "don't ask again", if the
    agent is to run it), and the real import stays with the consultant (step 7). Whether the
    pre-approval holds beyond the turn that invoked the skill, and the other points of a live
@@ -2129,7 +2143,7 @@ delivered".
   and its text „Erlaubt sind …“ (`apps/web/src/components/upload-panel.tsx`) are built from
   `BPMN_FILE_SUFFIXES`; the CLI's „no BPMN files (*.bpmn) below …“
   (`apps/cli/src/commands/import.ts`) and the `import` argument help „directory with .bpmn
-  files“ (`apps/cli/src/program.ts`) name all four suffixes.
+  files“ (`apps/cli/src/program.ts`, since S3c step 3 `core-program.ts`) name all four suffixes.
 - **Duplicate keys.** The CLI and the web derive every key with `modelKeyFromPath` before
   sending; a file without a valid key, or whose key an earlier file of the same import already
   has, is reported `failed` locally with the server's wording (`validation-failed`, „the path
@@ -4235,10 +4249,12 @@ test and plugin 0.1.4's release row).
    `converters/`, and declares `--derived converted|reconstructed` per mapping; the run record
    `analyzr-specs.json`, which `bundle` checks; Visio and AML fixtures with their converters; D3 (a)
    to (c).
-3. **The CLI core** (1.25 d, planned): `apps/cli`'s commands in a shared core with the command name
-   it prints, the parse guard (an option value that starts with `--` is a usage error, in both
-   CLIs), the owner key sent only to loopback hosts by the bundled CLI, the parity tests from
-   source.
+3. **The CLI core** (1.25 d; delivered 2026-10-21, run from source until 0.1.4, "S3c step 3 as
+   delivered" below): `apps/cli`'s commands in a shared core with the command name it prints (in the
+   bundled CLI `node <path of analyzr.mjs>`, with `--url` unless the default), the parse guard (a
+   word that reads as a flag is no option value, nor after `--` an argument: exit 2 in both CLIs),
+   the owner key sent only to loopback hosts and `token create` without a Claude Desktop entry in
+   the bundled CLI, its entry `plugin-main.ts`, the parity tests from source.
 4. **The integrate plugin 0.1.4** (1.75 d, planned): `analyzr-spec.mjs`, `analyzr-convert.mjs` and
    `analyzr.mjs` (every command but `seed` and `mcp`) bundled, the copied helpers moved into shared
    modules, SKILL.md with the converter and picture paths and the two items of S2b's follow-up step
@@ -4909,6 +4925,206 @@ readings the owner may overrule: HANDOFF §4 ("Taken during M6 S3c step 2"). Ope
 
 Left: steps 3–4 of S3c (the CLI core, the integrate plugin 0.1.4), then the safeguard of
 decision 30 (2), then S6; after the owner's live runs S5b, S7 and facts v2.
+
+**S3c step 3 as delivered** (2026-10-21, on the branch, every gate green, with a review round's
+fixes; [DEVELOPMENT.md](DEVELOPMENT.md) "M6 S3c step 3 (2026-10-21)" and "The `analyzr` CLI";
+owner decision 30 (3) and (A5), §2): the CLI core. For the first analysis: once plugin 0.1.4
+ships, a consultant without a checkout imports a landscape with the plugin's `analyzr.mjs` and
+gets next steps that name a command they can run against the same analyzr, and a dry run whose
+project name was forgotten (`--create --name --dry-run`) can no longer import for real, in either
+CLI. Only `apps/cli` changes (its sources and tests): `pnpm analyzr` and the container's `analyzr`
+behave as before except the parse guard, every existing CLI test and the CLI e2e suite stay green,
+and the plugin stays 0.1.3 byte for byte after `generate` (`tools/integrate`'s `ENTRIES` are
+unchanged, so no bundle includes the new entry); the server, contracts, client, web, MCP and its
+snapshots, the procedures, the migrations and the claim inputs are untouched.
+
+- **The core** (`apps/cli/src/core-program.ts`): `buildCoreProgram(io, {description, commandName,
+  mcpEntry, ownerKeyLoopbackOnly})` defines the 34 commands both CLIs share, moved unchanged from
+  `program.ts` except that `import` and `status` take the command name, `token create` the entry and
+  `globals()` the loopback flag: `health`, `status`, `import`,
+  `models list|requeue|delete|external-ids|amend|pull`,
+  `questions list|answer|outside|link|place|amend`, `amendments list|export|withdraw`,
+  `token create|list|revoke`, `value-chain push|pull|requeue` and
+  `rules list|show|add|edit|enable|disable|preview|apply|revoke|pre-trust`. It imports neither
+  `seed`, which reads the checkout's `eval/corpus`, nor `mcp`, whose MCP SDK would more than double
+  the bundle. `globalOptions` reads `--url`, `--token` and `--owner-key-file`; `runProgram(argv,
+  io, build)`, the former body of `runCli`, adds the parse guard, parses and returns the exit code.
+  `program.ts`'s `buildProgram` is the core with `commandName` `analyzr` (`CLI_COMMAND`),
+  `mcpEntry` `CLI_MAIN` and `ownerKeyLoopbackOnly: false`, then `mcp` and `seed` in today's order;
+  `runCli(argv, io, build = buildProgram)`. A snapshot of the help of all 43 command paths
+  (`test/unit/__snapshots__/help.txt`), recorded before the split, is unchanged after it.
+- **The entry** (`apps/cli/src/plugin-main.ts`, run from source by Node 24's type stripping until
+  step 4 bundles it): `runProgram(argv, processIo, (io) => buildPluginProgram(io,
+  process.argv[1] ?? 'analyzr.mjs'))`, the core with the description `PLUGIN_DESCRIPTION`
+  (`analyzr command line, bundled with the analyzr-integrate plugin (no seed, no mcp; run it as
+  node <path of analyzr.mjs> <command>, as its next steps name it): …`), `commandName` from
+  `pluginCommand`, `mcpEntry: null` and `ownerKeyLoopbackOnly: true`. A static walk of its import
+  graph finds none of `main.ts`, `program.ts`, `cli-main.ts`, `commands/seed.ts`,
+  `commands/mcp.ts` and `mcp-bridge.ts`, and exactly the packages `@analyzr/client`,
+  `@analyzr/contracts`, `@analyzr/contracts/impact-merge`, `commander` and Node built-ins.
+- **The command it names** (`commandName: (url) => string`): the checkout's CLI names `analyzr`;
+  the plugin's `pluginCommand(script, url)`, `node <script>` with the script shell-quoted as
+  `shellArg` quotes it (`node '/Users/x/Plugin Cache/scripts/analyzr.mjs'`), then `--url <url>`
+  when the URL from `--url` or `ANALYZR_URL` is not the default `http://127.0.0.1:7400`. It is
+  named in every step `import` prints: the amendment conflicts'
+  `questions -p … --kind amendment-conflict`, the identity steps' `models delete` and
+  `models external-ids`, the owner rule steps' `rules apply`, `rules enable` and `rules add`, the
+  agent step's `token create -p …` (with `(in analyzr's repository)` after "the start prompts in
+  examples/agents" for any command but `analyzr`), the value chain's `value-chain push … --dry-run`
+  and the batch line of a dry run in batches (`… <cmd> status count them`); and in `status`'s hint
+  for an analyzr without projects, which in the plugin reads
+  `no projects yet: <cmd> import <dir> --project <key> --create` (no `seed`). Other commands' hints
+  (`models external-ids` naming `analyzr models delete`, `questions`, `amend`) keep `analyzr`;
+  `--owner-key-file` is never carried.
+- **`token create` without a stdio bridge**: with `mcpEntry` null and no `ANALYZR_CONTAINER` it
+  prints the Claude Code command and, instead of a Claude Desktop config naming a file the bundle
+  lacks, `Claude Desktop: the stdio bridge needs analyzr mcp from an analyzr checkout or the
+  container (docs/DEVELOPMENT.md); the plugin's analyzr.mjs has no mcp`; inside the container the
+  `docker exec` config as before. `CLI_MAIN` moved to `src/cli-main.ts` (`seed.ts` and the live
+  test pass it), and `McpConfigTarget.entry` names the CLI entry, needed unless `container` is set.
+- **The parse guard** (R34; `guardValues`, which `runProgram` sets on the whole tree of either CLI,
+  `seed` and `mcp` included): commander gives an option that takes a value the next word, whatever
+  it is. Now a word that reads as a flag, `--` and no whitespace (`/^--\S*$/`), is never an option
+  value: an `option:<name>` listener checks every occurrence on the command line as given (also one
+  a repeated option overwrites, an item of a list such as `--scopes`, `--to` or `--ids`,
+  `--name=--x`, `-p--x` and the global options), and a root `preAction` hook refuses such a word as
+  an argument, which it can only be after the `--` that ends the options. Either is a usage error,
+  exit 2, before any action runs, so nothing is read or sent:
+  `analyzr: --name "--dry-run": an option value never starts with --; did you forget the name?`
+  (the option's placeholder, with `number`, `revision`, `sequence number`, `model id` and
+  `converter` for `n`, `rev`, `seq`, `llmModel` and `name@version`) and
+  `analyzr: argument "--dry-run": an argument never starts with --; an option belongs before the -- that ends them`.
+  Commander's own usage errors keep its exit 1. Text with a space (`--text "-- siehe oben"`), a
+  value with one dash (`--name -x`), environment values and defaults pass; a real value without a
+  space that starts with `--` is refused.
+- **The owner key only for this machine** (R33; `keepOwnerKeyLocal` in `src/credentials.ts`, the
+  plugin only): before the owner key is sent, the URL must parse, use `http:` or `https:`, carry no
+  user name or password, and have a host, as fetch parses it, of `127.0.0.1`, `[::1]` or
+  `localhost` (so `127.1`, `2130706433`, `[0:0::1]` and `LOCALHOST` pass; `127.0.0.2`,
+  `[::ffff:127.0.0.1]`, `localhost.`, `a.localhost`, `0.0.0.0` and `127.0.0.1.example.com` do not);
+  then `no_proxy` and `NO_PROXY` become exactly `*`, as `analyzr-read.mjs` sets them, so Node's
+  proxy support (`NODE_USE_ENV_PROXY`, `--use-env-proxy`), which would tunnel even a request to
+  127.0.0.1 and reads the variables at each request, never sees the key. It runs in
+  `ownerCredential` before the key file is read (so the host is said first) and again in
+  `createApi` for a key marked `loopbackOnly`; the refusal (`this analyzr CLI sends the owner key
+  only to analyzr on this machine (127.0.0.1, [::1], localhost), not to 192.0.2.1; for another
+  analyzr use an agent token (--token or ANALYZR_TOKEN)`, exit 1) never prints the URL as given,
+  which may hold a password, and `status` reports it in its note `no credentials, so no projects:
+  …` and exits 0. An agent token goes to any host, in both CLIs; the checkout's CLI sends the owner
+  key to any `--url` as before (its e2e tests run against Testcontainers hosts). A redirect cannot
+  carry the key off: Node 24.15's fetch drops `Authorization` on a redirect to another origin
+  (checked).
+- **The scratch bundle** (measured once, not added to `ENTRIES`): rolldown 1.2.12 with the settings
+  of `tools/integrate/scripts/bundle.ts` made one chunk of 652,994 bytes (150,641 gzip) from
+  `plugin-main.ts`, without a warning or a dynamic import. In the implementing agent's count it
+  holds the contracts (37 modules) with zod 4.6.5 (20), the client (13), commander 15.0.0 (7), the
+  CLI's own 22 modules and the root `package.json`'s version, with `@asteasolutions/zod-to-openapi`
+  9.1.0 in `moduleIds` (1); it contains `function sendImport(` and `function anyCredential(`, no
+  `seedCommand`, `@modelcontextprotocol`, `__require(` or `import.meta.url`, and imports Node
+  built-ins only (`node:child_process` from commander among them). Copied away from `node_modules`,
+  `--version` printed `0.1.0-alpha.0`, `--help` listed the 9 top-level commands without `seed` and
+  `mcp`, the guard exited 2, and the owner key was refused for 10.0.0.1 and for a `ws:` URL.
+
+Deviations from the plan, with reasons:
+
+- **`--url` in the plugin's printed commands** (the review round): plan §5.2 left it to the skill's
+  rewrite of `analyzr …` to `<cli> --url "<analyzrUrl>" …`, which the plugin's lines, starting with
+  `node <path>`, would not match, so a step could reach another analyzr on this machine. The
+  plugin's steps are complete as printed; the checkout's keep `analyzr`.
+- **The guard checks every occurrence and refuses only words that read as flags** (the review
+  round): the plan's `preAction` hook saw only an option's final value, so `--name --dry-run --name
+  K` or `-p --dry-run -p p` passed, and nothing checked an argument after `--`; and "any value that
+  starts with `--`" refused free text such as `--text "-- siehe oben"`.
+- **`runProgram` lives in `core-program.ts`**, not in `program.ts`: importing `program.ts` would
+  pull `seed` and `mcp` into the bundle; `runCli` keeps its name, with the builder as a parameter.
+- **`CLI_MAIN` moved to `src/cli-main.ts`**: left in `mcp-config.ts`, which the bundle needs,
+  rolldown kept `fileURLToPath(new URL("./main.ts", import.meta.url))`, since it cannot tell the
+  call is free of side effects.
+- **No shebang in `plugin-main.ts`**: the bundle's banner writes one, and a second makes rolldown
+  warn `DUPLICATE_SHEBANG`, which `bundle.ts`'s `onLog` turns into an error.
+- **The plugin's help keeps `Usage: analyzr …`**: commander's program name stays, so help and
+  errors are the same on every machine and hold no path; `PLUGIN_DESCRIPTION` says how to run it.
+- **The host is checked twice**, in `ownerCredential` (so a refused host is said before a missing
+  key file) and in `createApi`; beyond the plan, the proxy variables, the scheme and credentials in
+  the URL.
+- **The batch line and `status`'s hint name the command too**, which the plan's list of the
+  import's lines left out.
+- **The parity tests use a fake of their own** (`test/support/fake-server.ts`, real HTTP on
+  127.0.0.1), not `tools/integrate`'s `test/fake-analyzr.ts`: a test import across packages is not
+  worth it, so `test/support/next-steps.ts` repeats its `fakeImpact`.
+
+The review round (behaviour, security, structure): of the findings, counting nits and the parts of
+findings, 16 fixed with tests, 3 in part and 2 rejected with a reason. Major (security): the guard
+could be bypassed by repeating an option (`-p --dry-run -p p`, `--name --dry-run --name K`, `--url
+--dry-run --url …`, `--base --dry-run --base 3`, `rules revoke … --reason --dry-run --reason x
+--yes`) or with the `--` that ends the options; now every occurrence and every argument is checked,
+and all five, `import -p p -- --dry-run` and `models delete … -- b --yes` exit 2 without a request.
+Fixed among the others: the owner key reaching a proxy with `no_proxy=' * '` (now exactly `*`; a
+child-process test with `' * '`, `'* '` and `corp.example`, which fails with the old code); no
+scheme check and an error text echoing the URL as given; `status` naming `analyzr seed` in the
+plugin; free text starting with `--` refused; the printed steps without `--url`; the guard's wording
+for `n`, `rev`, `seq`, `llmModel` and `name@version`; nothing enforcing that `seed` and `mcp` stay
+out of the core (now the import-graph test, which fails when `cli-main.ts` is imported from
+`mcp-config.ts`); the second case of `integrate-bundle.test.ts` dropped for a wrong reason (no
+committed spec bundle: it now builds one from the spec fixtures); a scratch measurement older than
+the last edit (measured again); gaps in the tests (`ruleStep` with the plugin's command, the help of
+every command path) and their hygiene (an unused parameter, a fake that hung on a throwing handler,
+no timeout for the child processes). In part or rejected, with reasons: the guard's exit code (its
+wording fixed, exit 2 kept, as the plan says (§5.3, R34)); the plugin's help (its description fixed,
+the `Usage: analyzr` line kept); text tied to `command === CLI_COMMAND` (kept, since `CLI_COMMAND`
+is by definition the checkout's and the container's command, which have `seed` and the repository
+next to them; the stale reference to `program.ts` in "S1" above fixed in the docs pass); porting
+`analyzr-read.mjs`'s `assertNoProxy` (it would refuse the consultant's CLI behind a proxy, and the
+owner key works only against a loopback server anyway).
+
+Tests (`apps/cli`, 317 (286 before; 288 unit, 29 CLI e2e on Testcontainers) plus 7 skipped, the live
+file): `core-program.test.ts` (new, 19: the core's commands and help, the import graph, the command
+and its `--url`, every next step and `status`'s hint naming it, the guard on 17 command lines in
+both CLIs and on `seed`, what passes, the loopback rule's hosts, the proxy variables, every plugin
+command with a remote `--url` never sending the owner key, `status`'s note, an agent token anywhere,
+the checkout unchanged), `plugin-main.test.ts` (new, 9: both entries as child processes, each
+against its own HTTP fake; the version and help, the help of all 40 command paths below the root,
+the golden Signavio bundle's dry run with the same JSON, text and request log, 61 files in batches
+of 50 and 11, an import with `--create --name` through every next step with the same 8 requests and
+the same text except the command name, `token create`, the guard, the owner key refused for
+192.0.2.1 and an agent token sent, Node's proxy support), `program.test.ts` (the help snapshot),
+`token.test.ts` (`mcpEntry: null` with and without `ANALYZR_CONTAINER`) and
+`integrate-bundle.test.ts` (a bundle of rendered specs: `analyzr-spec plan --write` and `bundle`
+from source on 5 committed spec fixtures, the keys from the paths and from the manifest alike); the
+helpers `test/support/help.ts`, `fake-server.ts` and `next-steps.ts` import no CLI source, so step 4
+can run the same cases on the bundle by swapping the entry's path.
+
+What it costs and leaves open. Every gate green (CLI 317 (286) plus 7 skipped, server 1,804, web
+663, integrate 390, contracts 178, bpmn-facts 200, eval/tools 108, relations 91, agent-sim 57,
+procedures 37, demo 27, notices 9, client 4; dependency-cruiser 150 modules, no violations; the
+eval reports unchanged; `generate` followed by `git diff --exit-code plugins/analyzr-integrate`
+clean). No new dependency, `THIRD-PARTY-NOTICES.md` unchanged; live-run neutral; the lead's run:
+every gate on the final tree, with the CLI e2e suite (29 tests on Testcontainers: the import lines
+with `analyzr` as before) and the parity tests of the plugin entry run from source; no stack, since
+neither the server nor the web changed (the bundle against a stack is D4, step 4). The readings the
+owner may overrule: HANDOFF §4 ("Taken during M6 S3c step 3"). Open:
+
+- **Nobody runs it yet**: `analyzr.mjs` comes with plugin 0.1.4 (step 4), which adds
+  `'analyzr.mjs': '../../apps/cli/src/plugin-main.ts'` to `ENTRIES` (the banner naming the entry
+  relative to the repository), `@analyzr/cli` (`workspace:0.0.0`) as a devDependency of
+  `tools/integrate`, the drift test's region pattern for a prerelease version (the root package's
+  `analyzr@0.1.0-alpha.0/package.json`; the CLI's regions come out as `@analyzr/cli@0.0.0/src/…`),
+  its stale message naming `apps/cli`, `packages/contracts` and `packages/client`, the extended
+  generate rule (HANDOFF §9, DEVELOPMENT.md; decision 30 (3)), and the plugin's notices for zod
+  4.6.5, commander 15.0.0, `@asteasolutions/zod-to-openapi` 9.1.0 and, through the planned map,
+  `@hey-api/openapi-ts` 0.99.0 for the client's runtime; the cases of `plugin-main.test.ts` then
+  run on the bundle.
+- **The skill's rewrite** (step 4): SKILL.md rewrites only lines that start with `analyzr …` (the
+  checkout's) to `<cli> --url "<analyzrUrl>" …` and passes the plugin's lines, which start with
+  `node` and the script path (with their own `--url` unless the default), on as they are, never
+  adding a second `--url`.
+- **What the guard does not catch**: a value with one dash (`--name -n`), a flag written without
+  dashes, a value missing at the very end (commander's error, exit 1); and it refuses a real value
+  without a space that starts with `--` (`--text "--siehe"`).
+- **Any new entry** must go through `runProgram` or `runCli`, or it has no guard.
+
+Left: step 4 of S3c (the integrate plugin 0.1.4), then the safeguard of decision 30 (2), then S6;
+after the owner's live runs S5b, S7 and facts v2.
 
 **S4 "Open questions".** Scope: §4.1–§4.4 without `extractor-loss` (S2); summaries only with the
 owner's OK. Does not touch: `FindingKind`, the claim inputs, MCP, stages. Done when: every source

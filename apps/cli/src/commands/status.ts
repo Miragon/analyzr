@@ -19,7 +19,7 @@ import {
 } from '../credentials.ts';
 import { ApiError, CliError } from '../errors.ts';
 import type { CliIo } from '../io.ts';
-import { pairsToJudge, pairsToJudgeText } from './import.ts';
+import { CLI_COMMAND, pairsToJudge, pairsToJudgeText } from './import.ts';
 
 export interface ProjectStatus {
   key: string;
@@ -81,7 +81,12 @@ const list = (counts: Record<string, number>) =>
     .map(([k, n]) => `${n} ${k.replaceAll('_', ' ')}`)
     .join(', ') || 'none';
 
-export function formatStatus(s: Status): string {
+/**
+ * The status as text; `command` names the CLI in the hint for an analyzr
+ * without projects ({@link CLI_COMMAND}, with `seed`; the integrate plugin's
+ * bundled CLI has none, M6 S3c).
+ */
+export function formatStatus(s: Status, command = CLI_COMMAND): string {
   const lines = [
     `analyzr ${s.health.version} at ${s.url}: ${s.health.status}, database ${s.health.db}`,
   ];
@@ -102,8 +107,13 @@ export function formatStatus(s: Status): string {
       `  findings   ${list(p.findings)}`,
     );
   }
-  if (s.projects.length === 0 && !s.note)
-    lines.push('no projects yet: analyzr seed, or analyzr import <dir> --project <key> --create');
+  if (s.projects.length === 0 && !s.note) {
+    lines.push(
+      command === CLI_COMMAND
+        ? 'no projects yet: analyzr seed, or analyzr import <dir> --project <key> --create'
+        : `no projects yet: ${command} import <dir> --project <key> --create`,
+    );
+  }
   return `${lines.join('\n')}\n`;
 }
 
@@ -111,6 +121,8 @@ export interface StatusOptions extends CredentialOptions {
   url: string;
   project?: string;
   json?: boolean;
+  /** The CLI the hint for an analyzr without projects names (M6 S3c; default {@link CLI_COMMAND}). */
+  commandName?: string;
 }
 
 /**
@@ -206,6 +218,8 @@ export async function statusCommand(io: CliIo, opts: StatusOptions): Promise<voi
     }
     if (page.nextCursor) status.note = 'showing the first 200 projects';
   }
-  io.stdout(opts.json ? `${JSON.stringify(status, null, 2)}\n` : formatStatus(status));
+  io.stdout(
+    opts.json ? `${JSON.stringify(status, null, 2)}\n` : formatStatus(status, opts.commandName),
+  );
   if (health.status !== 'ok') throw new CliError(`analyzr at ${opts.url} is not healthy`);
 }
