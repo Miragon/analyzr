@@ -143,11 +143,20 @@ describe(
       expect(help.stdout).not.toMatch(/^ {2}(seed|mcp)\b/m);
     });
 
-    it('every command below the root has the checkout’s help', async () => {
-      const paths = commandTree(buildPluginProgram(testIo().io, PLUGIN_MAIN))
-        .slice(1)
-        .map(({ path: at }) => at.split(' ').slice(1));
-      expect(paths.length).toBeGreaterThan(35);
+    // Every path's help is compared in process (core-program.test.ts); here one command per
+    // group runs as a process, which is slow on CI (two Node starts each).
+    it('a command of every group has the checkout’s help', { timeout: 120_000 }, async () => {
+      const tree = commandTree(buildPluginProgram(testIo().io, PLUGIN_MAIN)).slice(1);
+      const groups = new Set<string>();
+      const paths = tree
+        .map(({ path: at }) => at.split(' ').slice(1))
+        .filter((words) => {
+          const group = words[0] ?? '';
+          if (groups.has(group)) return false;
+          groups.add(group);
+          return true;
+        });
+      expect(paths.length).toBeGreaterThan(8);
       for (let i = 0; i < paths.length; i += 8) {
         await Promise.all(
           paths.slice(i, i + 8).map(async (words) => {

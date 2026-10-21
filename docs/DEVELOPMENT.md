@@ -5461,8 +5461,8 @@ agent's recordings ([Recordings](#simulation-agent-and-evalreplay-m2)).
   checkout sending the owner key to any host and leaving `NO_PROXY` alone),
   `unit/plugin-main.test.ts` (new, 9: `node src/plugin-main.ts` and `node src/main.ts` as child
   processes, each against its own HTTP fake on 127.0.0.1 with only `PATH`, `HOME` and the owner key
-  file in the environment, 30 s per test: `--version` and `--help`; the help of every command path
-  below the root identical; a dry run of the golden Signavio bundle with `--json` (the same stdout,
+  file in the environment, 30 s per test: `--version` and `--help`; the help of one command per group
+  identical (every path's help in process, `core-program.test.ts`); a dry run of the golden Signavio bundle with `--json` (the same stdout,
   stderr, exit code and request log: method, URL, authorization, multipart file names, the
   `manifest` part) and as text; a folder of 61 files in batches of 50 and 11 in both; `import
   --create --name` on a bundle that triggers every next step, the same 8 requests and the same text
@@ -8123,7 +8123,7 @@ name was forgotten can no longer turn into a real import.
    live-run neutral.
 2. What was checked: the parity of the two entries from source (`node src/plugin-main.ts` against
    `node src/main.ts`, each a child process against its own HTTP fake on 127.0.0.1): the version,
-   the help of every command path, a dry run of the golden Signavio bundle (the same JSON, text,
+   the help of one command per group, a dry run of the golden Signavio bundle (the same JSON, text,
    exit code and request log with multipart file names and `manifest` parts), 61 files in batches of
    50 and 11 in both, an import with `--create --name` that triggers every next step (the same 8
    requests and the same text except the command name, each step naming `node <path>` with the

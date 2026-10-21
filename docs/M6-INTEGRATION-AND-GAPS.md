@@ -5083,7 +5083,7 @@ and its `--url`, every next step and `status`'s hint naming it, the guard on 17 
 both CLIs and on `seed`, what passes, the loopback rule's hosts, the proxy variables, every plugin
 command with a remote `--url` never sending the owner key, `status`'s note, an agent token anywhere,
 the checkout unchanged), `plugin-main.test.ts` (new, 9: both entries as child processes, each
-against its own HTTP fake; the version and help, the help of all 40 command paths below the root,
+against its own HTTP fake; the version and help, the help of one command per group (all 40 paths in process),
 the golden Signavio bundle's dry run with the same JSON, text and request log, 61 files in batches
 of 50 and 11, an import with `--create --name` through every next step with the same 8 requests and
 the same text except the command name, `token create`, the guard, the owner key refused for
