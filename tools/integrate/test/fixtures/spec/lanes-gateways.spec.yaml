@@ -1,0 +1,55 @@
+# Synthetic (see README.md): every gateway kind, a back edge and three lanes whose list
+# order (Vertrieb, Einkauf, Lager) is not alphabetical.
+format: analyzr-spec/1
+source:
+  externalPath: Vertrieb/Bestellung bearbeiten
+  file: Bestellung.pdf
+derived:
+  kind: reconstructed
+  llmModel: claude-opus-5-5
+processes:
+  - source: bestellung
+    name: Bestellung bearbeiten
+    documentation: Von der eingehenden Bestellung der Beispiel GmbH bis zur Benachrichtigung.
+    lanes:
+      - { source: lane-vertrieb, name: Vertrieb }
+      - { source: lane-einkauf, name: Einkauf }
+      - { source: lane-lager, name: Lager }
+    nodes:
+      - { source: s, type: start, name: Bestellung eingegangen, lane: lane-vertrieb }
+      - { source: t-pruefen, type: task, name: Bestellung prüfen, lane: lane-vertrieb }
+      - { source: g-ok, type: gateway, kind: exclusive, name: Bestellung vollständig?, lane: lane-vertrieb }
+      - { source: t-nachfragen, type: task, name: Angaben nachfordern, lane: lane-vertrieb }
+      - { source: g-split, type: gateway, kind: parallel, lane: lane-vertrieb }
+      - { source: t-bestellen, type: task, name: Ware bestellen, lane: lane-einkauf }
+      - { source: t-reservieren, type: task, name: Lagerplatz reservieren, lane: lane-lager }
+      - { source: g-join, type: gateway, kind: parallel, lane: lane-vertrieb }
+      - { source: g-warten, type: gateway, kind: event-based, name: Lieferung?, lane: lane-einkauf }
+      - { source: ev-lieferung, type: event, direction: catch, trigger: message, name: Lieferung eingetroffen, lane: lane-einkauf }
+      - { source: ev-frist, type: event, direction: catch, trigger: timer, name: Zwei Wochen vergangen, lane: lane-einkauf }
+      - { source: g-oder, type: gateway, kind: inclusive, name: Wen benachrichtigen?, lane: lane-vertrieb }
+      - { source: t-kunde, type: task, kind: user, name: Kunde informieren, lane: lane-vertrieb }
+      - { source: t-lager, type: task, kind: manual, name: Lager informieren, lane: lane-lager }
+      - { source: g-oder-ende, type: gateway, kind: inclusive, lane: lane-vertrieb }
+      - { source: e, type: end, name: Bestellung abgeschlossen, lane: lane-vertrieb }
+      - { source: e-storno, type: end, name: Bestellung storniert, lane: lane-einkauf }
+    flows:
+      - { from: s, to: t-pruefen }
+      - { from: t-pruefen, to: g-ok }
+      - { from: g-ok, to: g-split, name: ja }
+      - { from: g-ok, to: t-nachfragen, name: nein }
+      - { from: t-nachfragen, to: t-pruefen }
+      - { from: g-split, to: t-bestellen }
+      - { from: g-split, to: t-reservieren }
+      - { from: t-bestellen, to: g-join }
+      - { from: t-reservieren, to: g-join }
+      - { from: g-join, to: g-warten }
+      - { from: g-warten, to: ev-lieferung }
+      - { from: g-warten, to: ev-frist }
+      - { from: ev-lieferung, to: g-oder }
+      - { from: ev-frist, to: e-storno }
+      - { from: g-oder, to: t-kunde }
+      - { from: g-oder, to: t-lager }
+      - { from: t-kunde, to: g-oder-ende }
+      - { from: t-lager, to: g-oder-ende }
+      - { from: g-oder-ende, to: e }

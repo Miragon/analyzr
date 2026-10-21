@@ -113,13 +113,16 @@ export interface ManifestFile {
   key: string;
   externalId?: string;
   externalPath: string;
+  /** A link into the tool (a converter's output only, M6 S3c). */
+  url?: string;
   derived: {
-    kind: 'export' | 'converted';
+    /** normalize-bpmn: `export` or `converted`; analyzr-spec (M6 S3c): `converted` or `reconstructed`. */
+    kind: 'export' | 'converted' | 'reconstructed' | 'as-told';
     converter: string | null;
-    llmModel: null;
+    llmModel: string | null;
     from: string[];
   };
-  losses?: Loss[];
+  losses?: { code: string; count: number }[];
   sha256: string;
 }
 
@@ -129,7 +132,10 @@ export interface ImportManifest {
     system: string;
     systemVersion: string | null;
     exportedAt: string | null;
-    importer: { name: 'analyzr-integrate/normalize-bpmn'; version: string };
+    importer: {
+      name: 'analyzr-integrate/normalize-bpmn' | 'analyzr-integrate/analyzr-spec';
+      version: string;
+    };
     scope?: string[];
   };
   files: ManifestFile[];

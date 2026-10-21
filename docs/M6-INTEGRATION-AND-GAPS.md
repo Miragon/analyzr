@@ -1,6 +1,6 @@
 # analyzr – Milestone M6 "Landscape integration and gap analysis"
 
-Status: in progress (2026-10-15); owner decisions 24, 25, 28 and 29 (§2, HANDOFF §4); S0 (this
+Status: in progress (2026-10-15); owner decisions 24, 25, 28, 29 and 30 (§2, HANDOFF §4); S0 (this
 concept, revised after review), S1, S3a, S3b, S4, S5a, S5c-1, S5c-2 (answering by action and model
 amendments, decision 25, §4.8), S2a (provenance, manifest, stable identity; its web parts came
 with the UI simplification's UX8, §8 "S2a as delivered"), S2b (the dry runs) with steps 1 to 5
@@ -11,11 +11,12 @@ step 3 as delivered", "S2b follow-up step 3b as delivered", "S2b follow-up step 
 and "S2b follow-up step 5 as delivered"),
 S2c-1 (the trust class and the rule tier, §8 "S2c-1 as delivered"), S2c-2 (the fast path for
 derived calls, §8 "S2c-2 as delivered"), S2c-3 (owners' rules for derived calls, §8 "S2c-3 as
-delivered") and S2c-4 („Vor der Vertrauensregel angenommen“, §8 "S2c-4 as delivered"; with it
-all of S2c) done, the „erste Anfänge“ await the owner's review, and the integrate skill's
-pre-approval awaits one live check by the owner (HANDOFF §8); next S3c, then S6; after
-the owner's live runs S5b, S7 and facts v2 · Branch:
-`feat/integration-and-gaps` ·
+delivered") and S2c-4 („Vor der Vertrauensregel angenommen“, §8 "S2c-4 as delivered"; with it all of
+S2c) and step 1 of S3c (`analyzr-spec/1` and the deterministic renderer, run from source, §8 "S3c
+step 1 as delivered") done, the „erste Anfänge“ await the owner's review, and the integrate skill's
+pre-approval awaits one live check by the owner (HANDOFF §8); next S3c steps 2–4 (the converter
+runner, the CLI core, the integrate plugin 0.1.4), then the safeguard of decision 30 (2), then S6;
+after the owner's live runs S5b, S7 and facts v2 · Branch: `feat/integration-and-gaps` ·
 Spec: [CONCEPT.md](CONCEPT.md) §1–§7 · Previous: [M4-VALUE-CHAIN.md](M4-VALUE-CHAIN.md) · Paused:
 the process network map (decision 22, issue [#2](https://github.com/Miragon/analyzr/issues/2)),
 which keeps the name M5. M6 goes ahead of it; that amends decision 22's "next milestone" (decision
@@ -71,7 +72,9 @@ the command or screen and the slice that adds it ("today" means it exists now):
 1. **Workspace.** Set up a workspace for the customer and file the export under `exports/`
    (§3.7; S3b).
 2. **Convert.** `/analyzr-integrate:integrate-landscape <export>`: a bundle and a German report
-   (S3b).
+   (S3b, for BPMN exports); S3c adds Visio, ARIS AML, PDFs and pictures in the same run, through
+   `analyzr-spec/1` and its renderer (§3.9, decision 30; the renderer since step 1, in the skill
+   from plugin 0.1.4).
 3. **Import.** Create the project and import the bundle: `analyzr import <bundle> -p <project>
    --create --name …`, or „Neues Projekt“ and „Hochladen“ with the bundle folder in the web
    (today). The preview („Vorschau“ in the web, `--dry-run` in the CLI) came with S2b; the skill
@@ -111,7 +114,7 @@ the head, so on a first import across batches a pair between two batches counts 
 (`ProjectSummary.pairsToJudge`), in „Als Nächstes“, after an import and in the CLI („5 Modelle
 warten auf den Agenten · etwa 7.300 mögliche Relationen“).
 
-## 2. Owner decisions 24 (2026-10-15), 25 (2026-10-17), 28 (2026-10-19) and 29 (2026-10-20)
+## 2. Owner decisions 24 (2026-10-15), 25 (2026-10-17), 28 (2026-10-19), 29 (2026-10-20) and 30 (2026-10-21)
 
 Decision 24 is recorded in HANDOFF §4 on 2026-10-15 in short form; HANDOFF §7 names M6 and keeps
 M5 paused, and CONCEPT §11 notes what §7 "Deferrals" says. Decision 25 is recorded in HANDOFF §4
@@ -258,6 +261,26 @@ redirect; the real import stays with the consultant. A rule over the CLI form is
 CLI's prefix differs per workspace, and `--url` could send the key elsewhere. It came with
 plugin 0.1.3 (step 4 of the follow-up, §8 "S2b follow-up step 4 as delivered").
 
+Decision 30 (2026-10-21, at the start of S3c; HANDOFF §4) answers the questions of the S3c plan,
+each with the recommended option: (1) **„Agent liest ab (Empfohlen)“**: pictures and PDFs are read
+by the session agent itself, with its own file reader only, and become `reconstructed` specs with
+`llmModel`; no vision pipeline is built and analyzr holds no LLM key (§3.7 step 2, §3.8, §9). (2)
+**„Ja, als kleiner Schritt (Empfohlen)“**: a safeguard so owners' agent rules (decision 19) never
+accept relations or placements with a `reconstructed` (from S6 also `as-told`) endpoint, as its own
+small server step after S3c and before S6, not part of S3c (§3.10 "Decision 30 (2)", §10.11). (3)
+**„Ja, immer aktuell (Empfohlen)“**: the bundled CLI `analyzr.mjs` bundles `apps/cli`, the client
+and the contracts, so every change there needs a new integrate plugin version, which the drift test
+enforces (§3.7 "Reaching analyzr"; S3c steps 3 and 4). (4) **„Alle wie empfohlen (Empfohlen)“**: A1,
+converters of interpretive formats (EPCs, plain flowcharts) declare `reconstructed` (§3.2, §3.8,
+§3.9); A2, no key and no name in the spec, keys only through `keymap.json` and `plan` (§3.9); A3,
+category id prefixes (`Activity_`, `Event_`, `Gateway_`, `Flow_`, …) built by one capped,
+collision-checked id function (§3.4 rule 2); A4, the converter runner in its own script
+`analyzr-convert.mjs` (§3.7); A5, without a checkout the skill proposes the bundled CLI, and the web
+stays in the report (§3.7 "Reaching analyzr"). The passages it changes say "(decision 30)"; HANDOFF
+§4 lists what each part amends. Open, not decided: calls from ad-hoc converters later (§10.12). Step
+1 of S3c delivered (1), A2 and A3 as far as the spec and the renderer go (§8 "S3c step 1 as
+delivered").
+
 ## 3. Part A: Integration toolkit
 
 ### 3.1 Ground rules
@@ -339,8 +362,8 @@ of its pinned key, so a bundle stays importable without manifest support.
 | `derived.kind` | Meaning |
 |---|---|
 | `export` | the tool's own BPMN 2.0, bytes unchanged |
-| `converted` | deterministic code transformed it; `converter` names a bundled converter (`name@version`) or an ad-hoc script (`adhoc:<first 12 hex of its sha256>`); ad-hoc converters emit `analyzr-spec/1`, never BPMN (§3.9) |
-| `reconstructed` | an LLM or vision model derived it from a picture, PDF or an ambiguous format (EPC semantics, plain Visio shapes); `llmModel` required |
+| `converted` | deterministic code transformed it one to one (BPMN, or shapes that are BPMN or carry process semantics one to one: the Visio BPMN stencil, AML BPMN models); `converter` names a bundled converter (`name@version`) or an ad-hoc script (`adhoc:<first 12 hex of its sha256>`); ad-hoc converters emit `analyzr-spec/1`, never BPMN (§3.9) |
+| `reconstructed` | an LLM derived it: the session agent read a picture or PDF with its own file reader and wrote the spec (no vision pipeline), or an ad-hoc converter interprets an ambiguous format (EPC semantics, plain flowcharts), then with `converter` `adhoc:…`; `llmModel` required. A converter run declares `converted` or `reconstructed` per mapping, as the consultant confirms it with the path (decision 30) |
 | `as-told` | from interviews (Part C); `from` lists opaque source ids (`src-…`), never names or excerpts |
 
 A kind `generated` (an LLM wrote the model from an SOP or a process description) is added when a
@@ -429,10 +452,16 @@ fixes a landscape's keys for good, and three rules hold from the first customer 
    manifest declared when the head came without one; the skill's part since plugin 0.1.3,
    `normalize-bpmn.mjs plan --from-analyzr`, §3.7 step 3).
 2. **Element ids come from tool ids, never regenerated.** A converter derives every id from the
-   source object's id (`<Type>_<NCName-safe source id>`, a prefix for ids starting with a digit,
-   a deterministic suffix on collisions, ≤ 255 characters, `packages/contracts/src/refs.ts`). A
-   converter that regenerates ids sends accepted relations to `changed`/`missing` on every
-   re-import and re-queues every model (decision 17).
+   source object's id, at most 255 characters (`packages/contracts/src/refs.ts`): `normalize-bpmn`
+   passes the tool's ids through and rewrites only unsafe or duplicate ones (`<Type>_<NCName-safe
+   source id>`, a prefix for ids starting with a digit, a deterministic suffix on collisions), and
+   the renderer of `analyzr-spec/1` writes `<Category>_<source id>` with one prefix per category
+   (`Activity_` for every task kind, collapsed subprocesses and calls, `Event_` for every event,
+   `Gateway_`, `Flow_`, `MessageFlow_`, …), built by one capped, collision-checked id function, so a
+   type refinement (a task that becomes a send task, an event that turns from catch to throw, later
+   a collapsed subprocess that becomes a call) keeps the id and every anchor on it (decision 30). A
+   converter that regenerates ids sends accepted relations to `changed`/`missing` on every re-import
+   and re-queues every model (decision 17).
 3. **Bytes are reproducible.** Converters write no timestamps or volatile metadata, so a
    re-export of an unchanged model is `unchanged` (content hash), not a new revision.
 
@@ -590,7 +619,8 @@ plugins/analyzr-integrate/
   reference/{signavio,aris,visio,adonis,bizagi,images}.md     # S3b, S3c
   scripts/inspect.mjs, scripts/normalize-bpmn.mjs             # S3b
   scripts/analyzr-read.mjs (read-only preview, decision 29 (2))  # 0.1.3, S2b's follow-up step 4
-  scripts/analyzr-spec.mjs (renderer, §3.9), scripts/analyzr.mjs (CLI)   # S3c
+  scripts/analyzr-spec.mjs (renderer, §3.9), scripts/analyzr.mjs (CLI)   # S3c, 0.1.4
+  scripts/analyzr-convert.mjs (converter runner, decision 30)         # S3c, 0.1.4
   scripts/transcript-prep.mjs                                 # S6
 ```
 
@@ -628,7 +658,8 @@ plugins/analyzr-integrate/
 <workspace>/
   analyzr-workspace.json              # project key and name, ANALYZR_URL, the CLI form, source systems
   exports/<YYYY-MM-DD>-<system>/      # the customer's files, untouched
-  converters/                         # ad-hoc converters (adhoc:<sha>), S3c
+  converters/                         # ad-hoc converters (adhoc:<sha>) for analyzr-convert.mjs, S3c
+  specs/<YYYY-MM-DD>-<system>/        # analyzr-spec/1 files from a converter run or the agent, S3c
   keymap.json                         # (system, externalId) → key, the key rule and scope per system
   bundles/<YYYY-MM-DD>-<system>/      # the bundles (§3.2)
   reports/<YYYY-MM-DD>-<system>.md    # the German reports
@@ -646,17 +677,24 @@ in `analyzr-workspace.json`:
 1. `ANALYZR_CLI`, if set (for example `pnpm -C ~/Code/analyzr analyzr`);
 2. else `pnpm -C <checkout> analyzr` if the consultant names a checkout; the skill passes absolute
    paths;
-3. else the web: the models through „Hochladen“ with the bundle folder (with manifest and
-   „Vorschau“ from S2), the chain through the `.vc.json` import on the chain page (both exist
-   today).
+3. else, from plugin 0.1.4 (S3c step 4), the bundled CLI (decision 30): the workspace records
+   `"cli": "plugin"`, which the skill expands to `node <absolute plugin path>/scripts/analyzr.mjs`
+   on every run (`$CLAUDE_PLUGIN_ROOT` is not set in the consultant's terminal);
+4. else, or when the consultant prefers it, the web: the models through „Hochladen“ with the bundle
+   folder (with manifest and „Vorschau“ from S2), the chain through the `.vc.json` import on the
+   chain page (both exist today); the workspace then records `"cli": null`.
 
 The report always gives the command and the web path. The skill's own reads and its preview do
 not depend on that path: since plugin 0.1.3 they go through the plugin's `analyzr-read.mjs`
 (step 5), which talks only to an analyzr on this machine (127.0.0.1, `[::1]`, `localhost`) with
 `ANALYZR_TOKEN` or the owner key file, found as the CLI finds it; the CLI's read commands and dry
-run are its fallbacks, each approved once by the consultant. In S3c the generate script also bundles
-`apps/cli` into `plugins/analyzr-integrate/scripts/analyzr.mjs` (self-contained, drift test), so
-`node "$CLAUDE_PLUGIN_ROOT/scripts/analyzr.mjs" import …` works anywhere with Node 24.
+run are its fallbacks, each approved once by the consultant. From plugin 0.1.4 (S3c step 4) the
+generate script also bundles `apps/cli` with the client and the contracts, every command but `seed`
+and `mcp`, into `plugins/analyzr-integrate/scripts/analyzr.mjs` (self-contained, drift test), so
+`node <plugin>/scripts/analyzr.mjs import …` works anywhere with Node 24 and names itself in the
+next steps it prints; it sends the owner key only to an analyzr on this machine. By decision 30 (3)
+every change of `apps/cli`, `packages/client` or `packages/contracts` then needs `generate` and a
+new integrate plugin version (the drift test enforces it); `analyzr-read.mjs` stays zod-free.
 
 **`/analyzr-integrate:integrate-landscape <export> [--workspace <dir>]`** (`disable-model-invocation:
 true`; Claude Code and Codex, since it needs a shell). The project comes from
@@ -667,13 +705,17 @@ import with `--create --name …`.
 1. **Inspect** the export with `scripts/inspect.mjs` (deterministic: file types, sizes, encodings,
    XML root elements and namespaces, zip contents) and identify the tool from markers
    (`reference/*.md`).
-2. **Choose a path:** BPMN 2.0 → `normalize-bpmn`; another machine-readable format → an
-   **ad-hoc converter** the agent writes into `<workspace>/converters/`, deterministic, one spec
-   per model, ids from source ids, emitting `analyzr-spec/1` only, which the renderer turns into
-   BPMN (S3c); no machine-readable model (PDF, picture) → a spec YAML the agent writes,
-   `reconstructed` (S3c; vision support later). In S3b only the BPMN path exists: for other
-   formats the skill reports what it found and stops. **The consultant confirms** the detected
-   tool, the format and the path.
+2. **Choose a path:** BPMN 2.0 → `normalize-bpmn`; another machine-readable format → an **ad-hoc
+   converter** the agent writes into `<workspace>/converters/`, deterministic, one spec per model,
+   ids from source ids, emitting `analyzr-spec/1` only, which the renderer turns into BPMN (S3c);
+   only the plugin's `analyzr-convert.mjs` runs it, recorded as `adhoc:<first 12 hex of its
+   sha256>`, and the run declares `converted` for a one-to-one mapping (the Visio BPMN stencil, AML
+   BPMN models) or `reconstructed` for an interpretive one (EPCs, plain flowcharts; decision 30); no
+   machine-readable model (PDF, picture) → the session agent reads it with its own file reader and
+   writes a spec YAML, `reconstructed` with `llmModel` (S3c; no vision pipeline, decision 30 (1)).
+   Until plugin 0.1.4 (S3c step 4) only the BPMN path ships: for other formats the skill reports
+   what it found and stops. **The consultant confirms** the detected tool, the format and the path,
+   for a converter also the derivation.
 3. **Keys.** On a system's first import **the consultant confirms** the key scheme before any
    bundle is written: the rule, 10 example keys and every collision; the answer goes into
    `keymap.json`. On a re-import the skill lists new, moved and absent keys from `keymap.json`
@@ -750,12 +792,12 @@ export before a converter relies on it (owner question §10.4).
 | Tool | Typical export (to verify) | Path into analyzr | Verified on analyzr's side |
 |---|---|---|---|
 | SAP Signavio Process Manager | BPMN 2.0 XML per diagram with Signavio extension elements; bulk export mechanism; how linked subprocesses and dictionary entries appear | `normalize-bpmn`, `export`/`converted` | parses as plain BPMN, `engine` null; unknown extension content becomes `parse-warning`s, never an error (`packages/bpmn-facts/src/moddle.ts`); a collapsed subprocess yields no fact of its own |
-| ARIS | AML (XML) for databases or groups, likely with a DOCTYPE; BPMN 2.0 export of BPMN diagrams; EPCs and value-added chain diagrams | AML and EPC: ad-hoc converter to a spec or `reconstructed`; value-added chain → `.vc.json` | a DOCTYPE anywhere is refused (`doctype-forbidden`), so AML never enters directly |
-| Microsoft Visio | VSDX, an OPC zip of XML parts; what the BPMN stencil stores per shape; off-page references | ad-hoc converter to a spec, or `reconstructed` for plain flowcharts | not BPMN, refused (`not-xml`/`not-bpmn`); the model view needs BPMN DI (`apps/web/src/components/bpmn-canvas.tsx` imports with bpmn-js), so a converter must produce layout |
+| ARIS | AML (XML) for databases or groups, likely with a DOCTYPE; BPMN 2.0 export of BPMN diagrams; EPCs and value-added chain diagrams | AML: an ad-hoc converter to specs, run by `analyzr-convert.mjs` (S3c), `converted` for BPMN models and `reconstructed` for EPCs (decision 30); value-added chain → `.vc.json` | a DOCTYPE anywhere is refused (`doctype-forbidden`), so AML never enters directly |
+| Microsoft Visio | VSDX, an OPC zip of XML parts; what the BPMN stencil stores per shape; off-page references | an ad-hoc converter to specs, run by `analyzr-convert.mjs` (S3c), `converted` for the BPMN stencil and `reconstructed` for plain flowcharts (decision 30) | not BPMN, refused (`not-xml`/`not-bpmn`); the model view needs BPMN DI (`apps/web/src/components/bpmn-canvas.tsx` imports with bpmn-js), so a converter must produce layout |
 | BOC ADONIS | ADOxx XML; a BPMN 2.0 export | BPMN path if available, else ad hoc | as for any BPMN |
 | Bizagi Modeler | `.bpm` package; a BPMN 2.0 export | BPMN path | as for any BPMN |
 | Camunda Modeler, Web Modeler | BPMN 2.0 with Camunda extensions | direct import (works today) | `engine` c7/c8 detected |
-| PDF, screenshots, slides | images | later: vision into a spec, `reconstructed` | |
+| PDF, screenshots, slides | images | the session agent reads them with its own file reader and writes a spec, `reconstructed` with `llmModel` (S3c; no vision pipeline, decision 30 (1)) | `inspect` classifies `pdf` and `image`; the renderer's BPMN has DI, so the model view draws it |
 
 Each `reference/<tool>.md` has the sections "Export paths", "What arrives", "Pitfalls", "Mapping
 to analyzr" and a status line ("unverified: based on public documentation" until a sandbox
@@ -769,32 +811,56 @@ code renders the BPMN with DI. The eval generator (`eval/tools/SPEC.md`,
 and must stay byte-identical (`validate.mjs` compares the corpus with a fresh generation), so it
 is not reused in place.
 
-- **`analyzr-spec/1`**: one file per model: `key`, `name`, `derived`, processes with lanes,
-  nodes (`start`, `end`, `task`, `subprocess` collapsed, `call`, `event` with `none`, `message`,
-  `signal` or `timer`), sequence flows, documentation, a `source` id per element (ids derive from
-  it, §3.4), black-box participants and message flows. No engine: the output has
-  `isExecutable="false"` and no Camunda namespace, so `engine` is null.
-- **Calls:** until the owner decides §3.10, a `calledElement` reaches analyzr only from the tool
-  itself (`export`, and `normalize-bpmn`, which passes the tool's calls through) and from specs of
-  converters bundled with the plugin (`<name>@<version>`). For specs of `adhoc:` converters and
-  for `reconstructed` and `as-told` specs, the renderer writes a collapsed subprocess named after
-  the target plus a `link-unresolved` loss, and the report lists these links for the consultant.
-  Ad-hoc converters emit specs only, so the rule applies to them; one that wrote BPMN directly
-  would bypass it, which the report's list of newly accepted calls (from S2b) shows (or, since
-  S2c-1, its calls only proposed). This limits, without changing decision 9, how often decision 9
-  accepts a call that LLM-written code produced; it is revisited with S2c and its decision-19
-  extension per converter. The renderer (S3c) writes no engine (above), so since S2c-1 a
-  `calledElement` it writes that names exactly one process becomes a proposal (tier `key`, 0.9)
-  in any case (§3.10); the rule still keeps a guessed target from becoming even that, and the
-  rules for derived calls (S2c-3) accept only „Export“, „Konvertiert“ and „Ohne Angabe“ (decision
-  28 (1)).
-- **Where:** an entry of `tools/integrate` (§3.7), bundled into
-  `plugins/analyzr-integrate/scripts/analyzr-spec.mjs`. It may start from a copy of the eval
-  layouter; one package shared with the eval generator needs a principle-7 exception and waits
-  until the renderer has proven itself.
-- **Checks:** the renderer's tests extract every rendered fixture with `@analyzr/bpmn-facts`
-  (no warnings) and import it with bpmn-js (no import warnings; a Playwright check like M4 S3's
-  import harness for chains).
+- **`analyzr-spec/1`** (decision 30): one file per model, YAML 1.2 (core schema) or JSON, checked
+  strictly (an unknown key is an error, ids are YAML strings). It carries no key and no name: keys
+  come only through `keymap.json` and `plan` (§3.4 rule 1, so the consultant's key confirmation is
+  never bypassed), and analyzr names a model after its first process. The fields: `format`; `source`
+  (`externalPath`, the tool folder and model name the key derives from; from a converter also
+  `externalId` and `url`; `file` for the report only); `derived` (`reconstructed` with `llmModel`,
+  or `as-told` with opaque `from` ids), only in a spec the agent writes, since a converter run
+  declares the derivation itself (§3.7 step 2); black-box `participants`; `processes` with `name`,
+  `documentation`, `pool`, `lanes`, `dataStores`, nodes (`start`, `end`, `task` of kind none, user,
+  manual, service, send or receive, `subprocess` collapsed, `call` with a `target`, `event` as a
+  catch or a throw with a message, signal, timer or no trigger, `gateway` exclusive, parallel,
+  inclusive or event-based) and sequence flows; `messageFlows`; `notes` for the report. Every
+  element has a `source` id, from which its BPMN id derives (§3.4 rule 2); `message` and `signal`
+  names appear only where the source names them, else the facts key on the label. No engine: the
+  output has `isExecutable="false"` and no Camunda namespace, so `engine` is null. The schema, its
+  errors and its limits as delivered: §8 "S3c step 1 as delivered".
+- **Calls:** a `calledElement` reaches analyzr only from the tool itself (`export`, and
+  `normalize-bpmn`, which passes the tool's calls through) and, later, from specs of converters
+  bundled with the plugin (`<name>@<version>`; S3c ships none). In S3c no spec yields one, whatever
+  its derivation: the schema has no field for it (`calledElement` is an unknown field,
+  `callActivity` an unknown type), the renderer no code path, and its self-check refuses a render
+  with one. A `call` becomes a collapsed subprocess named after its `target` plus a
+  `link-unresolved` loss, and the report lists these links for the consultant, who links them with
+  „Verknüpfen mit …“; with the category id prefixes such a link survives a later converter fix
+  (decision 30). Ad-hoc converters emit specs only, so the rule applies to them; one that wrote BPMN
+  directly would bypass it, which the report's list of newly accepted calls (from S2b) shows (or,
+  since S2c-1, its calls only proposed). This limits, without changing decision 9, how often
+  decision 9 accepts a call that LLM-written code produced. The rendered models have no engine, so
+  since S2c-1 a `calledElement` in them that names exactly one process would become a proposal (tier
+  `key`, 0.9) in any case (§3.10); the rule still keeps a guessed target from becoming even that,
+  and the rules for derived calls (S2c-3) accept only „Export“, „Konvertiert“ and „Ohne Angabe“
+  (decision 28 (1)). The revisit with S2c and its decision-19 extension per converter that this rule
+  promised is now an open question: calls from ad-hoc converters whose target is a model of the same
+  export, resolved by its tool id, written as proposals (§10.12).
+- **Where:** an entry of `tools/integrate` (§3.7): the sources in `tools/integrate/src/spec/` and
+  the entry `src/cli/analyzr-spec.ts` with `validate`, `render`, `plan` and `bundle`, run from
+  source since S3c step 1 and bundled into `plugins/analyzr-integrate/scripts/analyzr-spec.mjs` with
+  plugin 0.1.4 (step 4). `plan` derives the keys from each spec's `source.externalPath` as
+  `normalize-bpmn plan` does for an export, and flags `replaces-known-model` when a spec the agent
+  wrote would take a key that may belong to a tool's model, a stop in the consultant's key
+  confirmation. Its layout started from a copy of the eval layouter (`src/spec/layout.ts`); one
+  package shared with the eval generator needs a principle-7 exception and waits until the renderer
+  has proven itself.
+- **Checks:** a runtime self-check on every render re-reads the bytes with bpmn-moddle and refuses
+  the model on any warning, an unsafe, over-long or clashing id, an unresolved reference, missing
+  DI, or a `callActivity` or `calledElement`. The renderer's tests extract every rendered fixture
+  with `@analyzr/bpmn-facts` (no warnings, `engine` null) and walk it with bpmn-js's tree walker
+  under the importer's refusals (in CI); a Playwright check like M4 S3's import harness for chains
+  imports the goldens and random renders into bpmn-js (`apps/web/e2e/spec-render-import.spec.ts`,
+  not in CI).
 
 ### 3.10 Trust policy (decision 24.2)
 
@@ -898,6 +964,16 @@ the S2c plan took without asking stand: the class lives in `source.trust` and am
 store none; a converter matches exactly, version included; a dry run classifies by its own
 credential; only the caller's class counts; derived call proposals are assigned to agents like
 any rule proposal; the label `analyzr-rules/1.0.0` stays.
+
+**Decision 30 (2) (2026-10-21, HANDOFF §4).** „Ja, als kleiner Schritt“: decision 28 (1) keeps rules
+from the calls of „KI-rekonstruiert“ and „Aus Interview“ models, but an owner's agent rule (decision
+19) still accepts an agent's relation or placement proposal whatever its endpoints' derivation
+(`ruleMatches` in `apps/server/src/domain/auto-accept/evaluate.ts` reads the derivation only for the
+rule tier's derived calls), so a message name misread from a whiteboard can end as a relation
+accepted by a rule such as „Nachricht ab 0,9“. A safeguard will block a rule whenever an endpoint's
+uploaded revision declares `reconstructed` (from S6 also `as-told`), in a small server step of its
+own after S3c and before S6; S3c does not change the server. Until then the skill's report says so
+for every bundle with reconstructed models (from plugin 0.1.4).
 
 ### 3.11 `eval:descriptive`: measure the loss first
 
@@ -1868,10 +1944,10 @@ draft (after the owner's rated draft run, M4b) are later work.
 | Inventory-first import | coverage against the customer's catalog from day one, without stub models. Needs a boundary entity: with placeholders. |
 | Instruction-like content signal | foreign exports and transcripts widen the injection surface; a cheap deterministic backstop as an extractor warning and gap signal. With S4 or S7. |
 | Run size and cost estimate | claim sizes against the 100 KB and 96 KB (`CLAIM_PLACEMENT_MAX_BYTES`) budgets, documentation cut by `CLAIM_DOC_CHARS`, CONCEPT §7's cost per revision. Before the first paid customer run; S2b's follow-up gives the pair count: since its step 1 per request (`relationsTasks.pairs`, the pairs an import sets agents to judge, against the head, so on a first import across batches a pair between two batches counts in neither; shown since its step 3 in the „Vorschau“ and `analyzr import --dry-run`, whose batch notes name that gap), and since its step 3b the backlog's, the first run's size (`ProjectSummary.pairsToJudge`, the pairs the next claims of the claimable relations tasks will be assigned, in „Als Nächstes“, after an import, in `analyzr import`'s waiting line and in `analyzr status`). |
-| Reindex with judgement carry-over, then facts v2 | no reindex exists (`packages/bpmn-facts/src/version.ts` named one until M6 S1); `facts_hash` includes `FACTS_VERSION`, so any fact change re-judges every pair. Carry-over first, then one bump with descriptive facts (collapsed subprocesses, data objects, black-box participants, task-to-pool messages), systems and tool identities. Only if `eval:descriptive` shows a large loss. |
+| Reindex with judgement carry-over, then facts v2 | no reindex exists (`packages/bpmn-facts/src/version.ts` named one until M6 S1); `facts_hash` includes `FACTS_VERSION`, so any fact change re-judges every pair. Carry-over first, then one bump with descriptive facts (collapsed subprocesses, data objects, black-box participants, task-to-pool messages), systems and tool identities; it must not read the collapsed subprocesses `analyzr-spec` renders for the calls of converted or reconstructed models as call endpoints, which would undo §3.9's rule. Only if `eval:descriptive` shows a large loss. |
 | Placeholders (external parties, phantom processes) | lifts CONCEPT §11's deferral; the computed boundary signals of §4.3 come first. Owner decision. |
 | MCP `put_model` or model drafts as proposals | shell-less agents (Claude Desktop) could submit models; only after the trust decision. Owner choice between the two. |
-| Vision reconstruction | screenshots, PDFs, slides into a spec, `reconstructed`, one review per diagram. After the renderer and the trust decision. |
+| Vision pipeline | an automated pipeline from screenshots, PDFs and slides into specs, `reconstructed`, one review per diagram. Since decision 30 (1) the session agent reads pictures and PDFs itself with its own file reader and writes the `reconstructed` specs (S3c); a pipeline of its own stays later. |
 | Tool API pullers | Signavio and ARIS APIs, one-way, no prune, customer-tool credentials with the consultant, never in analyzr. When a customer needs repeated syncs. |
 | Zip import, staged imports, adapter hook, document store, identity-key rule | each when a real import shows the need. |
 | More amendment operations, typed human links | process ids (an id rewrite across the file plus re-anchoring of relations and placements, R2), task and pool names, replacing values that already resolve (a reachable call target, a pairing name, a label, the tool's documentation; §4.8 c), a collapsed subprocess turned into a call activity (§10.9), re-anchoring amendments after a converter regenerated ids, a per-amendment mark „Im Quellsystem eingetragen“ for the change list; links as human-accepted `call`, `message` or `trigger` relations where no proposal exists, instead of `manual` (§4.8 a). After S5c-2 shows how consultants use it. |
@@ -1953,7 +2029,7 @@ draft (after the owner's rated draft run, M4b) are later work.
 | S0 | this concept; decision 24 | 0.5 d |
 | S1 | import hygiene: shared file rule and key derivation, duplicate keys across batches, warnings in results, `analyzr models list\|delete\|requeue`, next-step block | 2 d |
 | S2 | a: typed provenance, manifest, key pinning, identity warnings and `external-ids`, stored warnings and `extractor-loss`, „Herkunft“ in the web; b: `importImpact` (and its follow-up), dry runs in REST, CLI and the web upload; c: the trust rule (decision 24.2, OK given), with decision 19's extension and the list „Vor der Vertrauensregel angenommen“ in four steps ("S2c" below; 1 d planned before the extension and the list were counted) | 3 + 3 + 5 d |
-| S3 | a: `eval:descriptive` and the `get_landscape` size; b: integrate v0 for BPMN exports (plugin, `tools/integrate` with `inspect` and `normalize-bpmn`, workspace, key map, report); c: renderer and spec YAML, the ad-hoc converter path, the bundled CLI | 1.5 + 3 + 3 d |
+| S3 | a: `eval:descriptive` and the `get_landscape` size; b: integrate v0 for BPMN exports (plugin, `tools/integrate` with `inspect` and `normalize-bpmn`, workspace, key map, report); c: renderer and spec YAML, the ad-hoc converter path, the bundled CLI, in four steps with the integrate plugin 0.1.4 last ("S3" below; 3 d planned in S0, about 8.5 d in the S3c plan, 2 d of them for what its design and security critiques hardened: the runner, the ids, the release mechanics) | 1.5 + 3 + 8.5 d |
 | S4 | open-questions read model, gap signals (without `extractor-loss`), tab „Offene Fragen“, model view section, export, `analyzr questions` | 5 d |
 | S5 | a: answers in the web, REST and CLI, the CSV round trip, `open_question_answer`; b: notes that make pairs non-current and queue exactly the affected work | 3 + 1.5 d |
 | S5c-1 | "Actions" (decision 25): `actions` on every item, R1 and R1b, items versioned by what they ask about, the action route (link, place, choose copy, outside; a link accepts a live typed proposal before it writes a manual relation), `competing-call` counting manual relations from calls, the outside mark and its withdrawal (migrations 0013/0014), notes without kinds, the five-column CSV, the actions with undo in the tab and the model view's section, `analyzr questions outside\|link\|place`; no BPMN writing | 4.5 d |
@@ -4105,6 +4181,41 @@ passes. Done when (S3c): rendered fixtures extract without warnings and import i
 without warnings; a spec from an `adhoc:` converter yields no `calledElement`; `node
 scripts/analyzr.mjs import` works against the scratch stack.
 
+**S3c's plan** (2026-10-21, revised after a design and a security critique; decision 30 answered its
+questions): four steps, about 8.5 d against the 3 d planned in S0, each shippable with every gate
+green and live-run neutral; the done-when above is made checkable as D1 (rendered models extract
+without warnings, `engine` null), D2 (bpmn-js imports them without warnings: (a) its tree walker
+under the importer's refusals in CI, (b) `NavigatedViewer` in a browser), D3 (no `calledElement`
+from any spec: (a) the schema, (b) the renderer, (c) the converter fixture, (d) the dry run on a
+scratch stack), D4 (the bundled CLI imports a spec bundle into a scratch stack) and D5 (the drift
+test and plugin 0.1.4's release row).
+
+1. **`analyzr-spec/1` and the deterministic renderer** (3 d; delivered 2026-10-21, "S3c step 1 as
+   delivered" below): the spec types, the YAML reader, the validator, the id function, the layout,
+   the renderer and its self-check, the spec bundle and the entry `analyzr-spec.ts` (`validate`,
+   `render`, `plan`, `bundle`), run from source; the goldens, `RENDER_OUTPUTS`, the fuzz test, D1
+   and D2 (a) in CI, the Playwright harness spec of D2 (b), `replaces-known-model`.
+2. **The converter runner `analyzr-convert.mjs`** (2.5 d, planned): `convert` runs exactly the bytes
+   whose full sha256 the consultant approved (`--sha256`, a new confirmation per converter version),
+   in a context without host objects inside a child Node under `--permission`, without file grants
+   or environment, records them as `adhoc:<12 hex>` with a write-once copy in `converters/`, and
+   declares `--derived converted|reconstructed` per mapping; the run record `analyzr-specs.json`,
+   which `bundle` checks; Visio and AML fixtures with their converters; D3 (a) to (c).
+3. **The CLI core** (1.25 d, planned): `apps/cli`'s commands in a shared core with the command name
+   it prints, the parse guard (an option value that starts with `--` is a usage error, in both
+   CLIs), the owner key sent only to loopback hosts by the bundled CLI, the parity tests from
+   source.
+4. **The integrate plugin 0.1.4** (1.75 d, planned): `analyzr-spec.mjs`, `analyzr-convert.mjs` and
+   `analyzr.mjs` (every command but `seed` and `mcp`) bundled, the copied helpers moved into shared
+   modules, SKILL.md with the converter and picture paths and the two items of S2b's follow-up step
+   5, the reference notes `images.md`, `analyzr-spec.md` and `converters.md`, the release row, and
+   the scratch-stack e2e of D3 (d) and D4.
+
+Steps 1–3 leave `plugins/analyzr-integrate/` byte-identical (`generate`, then `git diff --exit-code
+plugins/analyzr-integrate`), so 0.1.3 stays the released version and one release, 0.1.4, comes at
+the end. After S3c and before S6 comes the safeguard of decision 30 (2), a small server step of its
+own (§3.10).
+
 **S3a as delivered** (2026-10-15, branch `feat/integration-and-gaps`; every gate green, together
 with S3b): `pnpm eval:descriptive` (`eval/tools/src/descriptive.ts`, `descriptive-context.ts`,
 `descriptive-score.ts`, `descriptive-report.ts`, the transforms in
@@ -4170,7 +4281,9 @@ the four sections and the status line "unverified: based on public documentation
 `.claude-plugin/marketplace.json` (`claude plugin validate --strict` passes for both with Claude
 Code 2.1.300); the private package `tools/integrate` (`@analyzr/integrate`, imported by nothing
 in `apps/` or `packages/`; it imports only the zod-free `@analyzr/contracts/paths`, so its keys
-are `modelKeyFromPath`'s) with the sources and 145 tests. `pnpm --filter @analyzr/integrate
+are `modelKeyFromPath`'s; since S2b's follow-up step 4 also `/impact-merge`, and from plugin 0.1.4
+`analyzr.mjs` bundles the full contracts with zod, decision 30 (3)) with the sources and 145 tests.
+`pnpm --filter @analyzr/integrate
 generate` bundles each entry with rolldown 1.2.12, the version Vite 8.3.2 locks (no new package
 in the lockfile, only the importer entry; `pnpm notices` unchanged), into a self-contained,
 unminified ES module (inspect 32 KB, normalize-bpmn 228 KB) and writes the plugin's notices
@@ -4283,6 +4396,224 @@ keys. A re-export with a moved folder and the archive deleted kept `logistik/ver
 as 5 `unchanged`. These runs preceded the review round, whose fixes left the golden bundle's bytes
 unchanged; after it, „Hochladen“ in Chromium (Playwright, the folder picker) gave the same 6 keys
 and skipped the manifest.
+
+**S3c step 1 as delivered** (2026-10-21, on the branch, every gate green, with a review round's
+fixes; [DEVELOPMENT.md](DEVELOPMENT.md) "M6 S3c step 1 (2026-10-21)" and "The integrate plugin and
+`tools/integrate`"; owner decision 30, §2): `analyzr-spec/1` and the deterministic renderer. For the
+first analysis: landscapes that exist only as Visio, ARIS AML, PDFs or whiteboard pictures get one
+strict format and one renderer whose BPMN imports without a warning, draws in the model view at once
+and carries no guessed call link, so steps 2–4 can bring them into analyzr in the same first pass as
+the BPMN exports. Only `tools/integrate` changes (new modules under `src/spec/`, the entry
+`src/cli/analyzr-spec.ts`, tests and fixtures, two type-only widenings), plus a harness page and
+spec under `apps/web/e2e/`; the plugin stays 0.1.3 byte for byte after `generate`, and the server,
+contracts, client, CLI, web product code, MCP and its snapshots, the procedures, the claim inputs,
+facts, `facts_hash` and the trust rule are untouched.
+
+- **The format** (`src/spec/types.ts`, `validate.ts`, §3.9): YAML 1.2 core or JSON; an unknown key
+  is an error, a `null` optional field counts as absent, and every id-like value (`source`, `from`,
+  `to`, `lane`, `reads`, `writes`, `externalId`) must be a YAML string („quote ids: an unquoted 0012
+  or 1.10 is a number in YAML“). Top level: `format` (`analyzr-spec/1`), `source` (`externalPath`
+  required, 1–1,024 characters, `/`-separated without empty parts or control characters;
+  `externalId` 1–255 and `url` http(s) without credentials, taken as written, only in converter
+  output; `file` for the report), `derived` (required in a spec the agent writes, refused in
+  converter output: `reconstructed` with `llmModel` of 1–120 characters, or `as-told` with at most
+  100 `from` ids `[A-Za-z0-9._:-]{1,64}`), `participants`, `processes` (at least one: `source`,
+  `name`, `documentation`, `pool`, `lanes`, `dataStores`, at least one node, `flows`),
+  `messageFlows`, `notes`. Nodes: `start` (trigger none, message, signal or timer), `end` (none,
+  message, signal or terminate), `event` (`direction` catch with message, signal or timer, or throw
+  with none, message or signal), `task` (`kind` none, user, manual, service, send or receive;
+  `message` only on send and receive; `reads`, `writes`), `subprocess` (collapsed; `reads`,
+  `writes`), `call` (`target`, no `name`), `gateway` (exclusive, parallel, inclusive or
+  event-based); `message` and `signal` optional. Limits: source ids 1–200 characters and unique over
+  the spec; at most 5,000 nodes, 10,000 flows, message flows and data associations together, and
+  1,000 processes, participants, lanes and data stores together; 2 MB per file; 100 problems of a
+  kind, then one line naming the rest.
+- **The YAML reader** (`src/spec/yaml.ts`): at most 2 MB, strict UTF-8 (a byte order mark dropped),
+  `parseDocument` with `version: '1.2'`, `schema: 'core'`, `uniqueKeys`, `merge: false` and
+  `strict`, every parser error and warning fatal (a duplicate key, several documents, an unknown
+  tag, bad indentation), then a pass that refuses every tag (`!!binary`, `!!str`, `!foo`), anchor,
+  alias, `<<` key and any key that is not a plain string, and only then `toJS` with `maxAliasCount:
+  0`; problems are named `line L, column C`. Codes: `too-large`, `encoding`, `yaml`, `yaml-tag`,
+  `yaml-anchor`, `yaml-alias`, `yaml-merge`, `yaml-key` and `too-many-problems`. A spec file is read
+  by `readBounded` (`src/spec/bundle.ts`) only as a regular file, without following a link or
+  waiting on a pipe, and never beyond 2 MB plus one byte (`not-a-file` for anything but a regular
+  file). `formatSpec` writes YAML that reads back unchanged
+  (for step 2's converter output).
+- **The validator** (`validateSpec(value, {origin})`): every problem as `<path>: <message>` with a
+  code. Errors: the shape (`format`, `type`, `required`, `empty`, `refused-field` for `__proto__`,
+  `constructor` and `prototype`, `unknown-field` with a hint for `calledElement`, `id`, `key`,
+  `x`/`y`, `condition`, a top-level `name` and the fields of other node types, `value`), ids and
+  references (`source`, `duplicate-source`, `reference`, `duplicate`), triggers (`message`,
+  `signal`), flows (`duplicate-flow`, `message-flow-pool`, `message-flow-end`), the tool fields
+  (`external-id`, `url`, `hand-tool-id` in a spec the agent writes, `too-long`, `external-path`,
+  `file`), the derivation (`derived-required`, `converter-derived`, `derived-kind` with its own
+  texts for `converted` and `export`, `llm-model`, `derived-from`), the sizes (`too-many-nodes`,
+  `too-many-flows`, `too-many-parts`, `too-many-problems`), in a spec the agent writes
+  `lane-required`, `start-incoming` and `end-outgoing` (in converter output warnings, rendered as
+  given), and per folder `duplicate-model` (one tool path or tool id twice). Warnings:
+  `text-truncated` (200 characters for labels and keys, 2,000 for documentation), `note-truncated`
+  (500), `no-flow`, `no-start`, `no-end`, `empty-lane`, `no-lane`, `model-name` (the name analyzr
+  will show when the spec has several processes). An echoed value is cut at 80 characters.
+- **Ids** (`src/spec/ids.ts`, §3.4 rule 2, decision 30): `<Prefix>_<source>` for a safe source, else
+  `sanitizeId`'s form (imported unchanged); the prefixes `Process`, `Participant`, `Lane`,
+  `LaneSet`, `Event`, `Activity` (every task kind, subprocesses and calls), `Gateway`,
+  `DataStoreReference`, `Flow`, `MessageFlow`, `Message`, `Signal`, `DataInputAssociation`,
+  `DataOutputAssociation`, `Property`, and `Definitions_`/`Collaboration_` from the key; composites
+  from bodies, never raw sources (`Flow_<from>_<to>`, `LaneSet_<process>`); at most 255 characters,
+  a longer id cut and ended with `_<shortHash>` (a pinned copy of `capped`); unsafe sources or
+  message and signal names that come out alike each get the hash, a safe source never changes; a
+  final pass in a fixed order (containers, sourced, derived and named ids, DI ids last) gives a
+  clash `_<hash>`, then `_2`. Besides `<id>_di`, the `<id>_label` and `<id>_plane` of every element
+  id are taken, as bpmn-js registers labels and drill-down planes under them. `id-rewritten` counts
+  every source whose id is not `<Prefix>_<source>` and every id the final pass changed.
+- **The layout** (`src/spec/layout.ts`, ported from `eval/tools/lib/layout.mjs`): per process,
+  cycles broken by DFS in id order, longest-path layers, slots for long flows, rows per lane where
+  the item on the longest remaining path keeps the row (ties to real nodes, then the smaller id);
+  columns and rows sized to their largest shape, gaps and lane paddings grown for event, gateway and
+  flow labels; orthogonal edges bending in the column gaps, vertical exits only from a split and
+  vertical entries only into a join, back-edge loops planned per row and side on their own tracks,
+  self-loops round the free side, flow labels in the column gap after their source's column; pools
+  stacked in list order with equal width (at least 600), lanes tiled in list order, converter nodes
+  without a lane in an unlaned band at the bottom (no lane invented), data stores below the lane of
+  their first user, orthogonal data associations; message flows vertical, bending next to the source
+  pool, detouring through the corridor left of every pool's first column where they would cross a
+  shape; integer coordinates; at most 100,000 slots (`layout-too-large`).
+- **The renderer** (`src/spec/render.ts`, `check.ts`, `moddle.ts`): bpmn-moddle without extensions;
+  `exporter="analyzr-spec"` without `exporterVersion`, no timestamps or modeler attributes, every
+  process `isExecutable="false"`; nodes, flows, message flows and data stores in id order, and
+  processes, participants and lanes also written in id order while the drawing keeps their list
+  order; event definitions without expressions, `messageRef` and `signalRef` only to a named message
+  or signal; a call a collapsed `bpmn:subProcess` named after its target with `link-unresolved` 1;
+  every text through copies of bpmn-facts' `sanitizeLine` and `sanitizeBlock` plus U+FFFE, U+FFFF
+  and lone surrogates removed, cut as the validator warns. The self-check refuses a render on any
+  bpmn-moddle warning, an unsafe, over-long, duplicate or `_label`/`_plane`-clashing id, an element
+  bpmn-js draws with no DI, two or the wrong kind, a `callActivity` or a `calledElement`; a render
+  over 5 MB or 50,000 elements is refused too (`RenderError`: `self-check`, `too-large`,
+  `too-many-elements`, `layout-too-large`).
+- **The commands** (`src/cli/analyzr-spec.ts`, run from source until 0.1.4; exit 0, 1 when the work
+  fails, 2 on a usage error): `validate <spec file or folder>` (`*.spec.yaml`, `*.spec.yml`,
+  `*.spec.json` below a folder, or one file of any name, as specs the agent wrote); `render <spec>
+  <out.bpmn> [--key] [--origin hand|converter]` into a new `.bpmn` file; `plan <spec folder>
+  --workspace --system …` with `normalize-bpmn plan`'s flags, the keys from `source.externalPath`
+  (and `externalId`), the specs' tool folders and archive-like folders, and `replaces-known-model`;
+  `bundle <spec folder> --workspace --system --out …` into an empty folder, every confirmed key's
+  model at its path, a failed model listed under `failed` with exit 1 and the others written.
+  Refused: an output in the spec folder, below the `exports/` of the workspace the input or the
+  output lies in (the folder with `analyzr-workspace.json`), or inside a checkout; a folder without
+  specs (`no-specs`), with invalid specs (`invalid-specs`), with a converter run's record
+  `analyzr-specs.json` until step 2 (`run-record`), with `as-told` specs until S6, with unconfirmed
+  keys (`keys-unconfirmed`), or a non-empty `--out` (`bundle-not-empty`).
+- **The bundle**: the manifest names the importer `analyzr-integrate/analyzr-spec` 0.1.0
+  (`ANALYZR_SPEC_VERSION` in `src/spec/version.ts`), `systemVersion` null, and per file `derived`
+  `{kind: reconstructed, converter: null, llmModel, from: []}` and the losses `id-rewritten`,
+  `layout-generated` (every DI shape, pools and lanes included), `link-unresolved` and
+  `text-truncated`, summed and sorted by code; it passes the contracts' `ImportManifest`.
+  `--json-out` adds per file the calls with their targets, the notes, `textTruncated` as a sorted
+  list of `{element, field}`, the processes, messages, signals, black-box participants, nodes by
+  type and the layout's counts. `src/bundle.ts` and `src/keymap.ts` gained type-only widenings
+  (`ManifestFile.url`, `derived.kind` with `reconstructed` and `as-told`, `llmModel` a string, open
+  loss codes, the importer name, `PlanFlag` `replaces-known-model`), which change no bundled byte.
+
+Deviations from the plan, with reasons:
+
+- **`render --origin hand|converter`**, so converter output can be rendered for checks before step 2
+  exists.
+- **Processes, participants and lanes are written sorted by id too**; the drawing keeps their list
+  order. The plan's test "reorder lanes: only DI bytes change" needs it.
+- **The layout goes beyond the eval layouter** (above): vertical exits only from splits and entries
+  only into joins (a join's exit ran along its entries), the message-flow corridor (a message flow
+  ran through an unrelated start event), self-loops, orthogonal data associations (eval draws
+  diagonals), and after the review flow labels in the column gaps, loops planned per row and side,
+  and the slot limit.
+- **Limits the plan did not set**: the node, flow and part counts, notes at 500 characters, a tool
+  path without empty parts or control characters, a link taken as written, echoed input at 80
+  characters, and the file read guard. They keep the layout bounded and the declared value equal to
+  what analyzr stores.
+- **Modules the plan did not list**: `spec/moddle.ts`, `spec/guards.ts` (`assertWritable`'s message
+  names "the export", and spec folders need the `exports/` rule) and `spec/compact.ts`.
+- **`replaces-known-model` in three cases** (after the review): a key with a tool id; a key without
+  one unless the system's last written plan came from this spec folder (`plan --write` records it as
+  `lastExport`, `specs/<folder>`); a new key analyzr already has. The plan's "`known` or `moved`"
+  flagged a re-plan's own keys. The plan's `moved` case cannot occur: a spec the agent writes has no
+  tool id, so the plan matches it by path only.
+- **The `<id>_label` and `<id>_plane` rule** (after the review): bpmn-js registers a label and a
+  drill-down plane under these ids, so an element named like that lost its label or failed its plane
+  in the browser.
+- **`layout-generated` counts every DI shape**, pools and lanes included.
+- **The eval `checkDi` restatement runs in `spec-layout.test.ts`**, not in `spec-bpmnjs.test.ts`;
+  bpmn-js in vitest needed no `server.deps.inline`, only a type shim for its CommonJS and ES module
+  forms.
+- **No golden of a reference example yet**: `reference/analyzr-spec.md` comes with step 4.
+  `RENDER_OUTPUTS['0.1.0']` was replaced once, before any commit, when the review round's layout
+  fixes changed four goldens (HANDOFF §4).
+
+The review round (renderer, security, tests): 25 distinct findings, 3 of them major, 24 fixed (in
+one a sub-point rejected), 1 in part. Major and fixed: an element id ending in `_label` or `_plane`
+clashing with the ids bpmn-js derives (above); a valid spec of 5,000 nodes with long flows that ran
+out of memory in the layout (now refused in 0.2 s as `layout-too-large`; 5,000 nested back edges
+render in 3.4 s and are refused as over 5 MB); and `render` writing into a workspace's `exports/`.
+Fixed among the minor findings and nits: flow labels covering shapes; facts pins too thin (now
+with element ids,
+documentation, lane members, data store readers and writers, message and signal names and message
+flow ends); a re-plan flagging its own keys and `exists-in-analyzr` not flagged; `validate`
+quadratic in processes (20,000 processes now 68 ms instead of 80 s, the part limit); the whole file
+read before the size check; `counts.flagged` missing the new flag; messages echoing input at any
+length; the self-check's rules untested one by one; untested validator messages; the harness
+counting a label or plane entry as drawn; pool overlaps and integer coordinates unchecked; no lone
+surrogate in the fuzz; the CLI's exit paths and the walker's refusal branches untested. Rejected: a
+`moved` test for `replaces-known-model` (above). In part: the three fuzz loops stay in their files
+(the S3c plan keeps D2 (a) and the layout checks in files of their own); every fuzz spec now also
+renders shuffled. The fixer also found that problems after an invalid element were reported at the
+wrong list index; each element now keeps its index.
+
+Tests (`tools/integrate`, 332, 205 before): `spec-validate.test.ts` (every error and warning with
+its exact message per origin, the YAML guards, the sizes, the zod-free copies of the manifest's
+`externalId` and URL rules against the contracts), `spec-render.test.ts` (the 9 goldens byte for
+byte, `RENDER_OUTPUTS`, the facts per golden, determinism: twice, shuffled lists, YAML against JSON,
+reordered lanes and pools changing DI only, a renamed key changing the definitions and collaboration
+ids only, a task refined to a send task or a call and an event changing direction keeping their ids;
+the id rules, the sanitize copies against bpmn-facts, seven tampered renders each refused by its own
+self-check rule, the limits; 200 seeded random specs through D1 and D3 (b)), `spec-layout.test.ts`
+(the readability checks: no shape overlap, every shape in its pool and lane, axis-parallel edges and
+labels inside their pool, no label over a shape, pool widths, no pool overlap, integer coordinates;
+eval's DI rules; lane order and the unlaned band; on goldens and fuzz), `spec-bpmnjs.test.ts` (D2
+(a): bpmn-moddle without a warning and bpmn-js's `BpmnTreeWalker` with a handler that applies
+`BpmnImporter`'s refusals, every drawable element drawn exactly once, every id bpmn-js registers
+unique; negative cases), `spec-bundle.test.ts` (the manifest against `ImportManifest`, `as-told` and
+the run record refused, keys from `keymap.json`, the file reader (a sparse 3 GB file, a pipe and a
+link never read), two specs of one model, the folders and `replaces-known-model` in each case,
+inventory coverage, where it writes) and `cli.test.ts` (the entry's usage and exit codes,
+`validate`, `render`, `plan`, `plan --write`, `bundle` with a failed model, `plan --from-analyzr`,
+and the copies of `plan-args.ts` against `normalize-bpmn`'s); Playwright
+`apps/web/e2e/spec-render-import.spec.ts` (new: Vite serves `e2e/spec-harness`, no analyzr server;
+`NavigatedViewer.importXML` on every golden and 50 seeded random renders that
+`tools/integrate/test/spec-fuzz-write.ts` writes into a temporary folder; 0 warnings, 0 errors,
+nothing missing, counts only).
+
+What it costs and leaves open. Every gate green (integrate 332 (205), server 1,804, web 663, CLI 286
+plus 7 skipped, contracts 178, bpmn-facts 200, eval/tools 108, relations 91, agent-sim 57,
+procedures 37, demo 27, notices 9, client 4; dependency-cruiser 150 modules, no violations; the eval
+reports unchanged; `generate` followed by `git diff --exit-code plugins/analyzr-integrate` clean).
+`yaml@2.9.1` (ISC) and the devDependency `bpmn-js@18.31.0` joined `tools/integrate`: importer
+entries only in the lockfile, `THIRD-PARTY-NOTICES.md` unchanged. Live-run neutral. The harness spec
+ran in the implementing agents' run and again in the fix round's, 2 of 2 each (the goldens and 50
+random renders), and the fixer imported 400 random renders in Chromium, all clean; the lead's run:
+Playwright 113 passed and 21 skipped on a scratch stack (step 5's tests plus the harness spec's 2),
+the UI load unchanged, the demo check 152 of 152, `demo.spec.ts` 14 of 14. The readings the owner
+may overrule are in HANDOFF §4 ("Taken during M6 S3c step 1"). Open:
+
+- **The integrate skill does not use it yet**: `analyzr-spec` is not bundled before 0.1.4, so
+  consultants still get the report-and-stop for other formats.
+- **Cosmetic, not flagged by any check**: a message flow from a node can cross shapes of its own
+  pool below that node (from the eval layouter), and a task name near 200 characters overflows its
+  fixed 100 × 80 box in bpmn-js.
+- **The `model-name` warning** approximates the first process by id without collision suffixes; the
+  renderer's summary is exact.
+- **Rules on reconstructed models**: until the safeguard of decision 30 (2), an owner's agent rule
+  can accept relations and placements on models a bundle declares `reconstructed` (§3.10).
+
+Left: steps 2–4 of S3c (the converter runner, the CLI core, the integrate plugin 0.1.4), then the
+safeguard of decision 30 (2), then S6; after the owner's live runs S5b, S7 and facts v2.
 
 **S4 "Open questions".** Scope: §4.1–§4.4 without `extractor-loss` (S2); summaries only with the
 owner's OK. Does not touch: `FindingKind`, the claim inputs, MCP, stages. Done when: every source
@@ -4932,13 +5263,15 @@ linked diagrams are the owner's (decision 25.1–25.4, §10.9), not taken here.
 Bundled converters for AML, VSDX, ADOxx or Bizagi packages (until sample exports exist); MCP
 `put_model` and model drafts; stored placeholders and agent findings as entities with a
 lifecycle; assignees, due dates and notifications (decision 10, server mode R1); sync, prune and
-watch; tool API pullers; vision reconstruction; facts v2 and reindex; a non-BPMN document store;
+watch; tool API pullers; a vision pipeline; facts v2 and reindex; a non-BPMN document store;
 staged imports; project deletion and purging (§10.6); cross-project relations; a new pipeline
 stage; OKF (deferred, decision 22; when it resumes, the proposal is that `models/<key>.bpmn` holds
 the head, amended or not, with the uploaded revision named as its source, so the export shows
 what the landscape analysis rests on); a BPMN modeler in the browser (the bpmn-js Modeler, every
 element editable: rejected in decision 25.1, which chose targeted amendments, §4.8 c), and any
-write-back or sync to the source tools (decision 7).
+write-back or sync to the source tools (decision 7). Pictures and PDFs themselves are in scope: by
+decision 30 (1) the session agent reads them with its own file reader and writes `reconstructed`
+specs (S3c, §3.7 step 2); only an automated vision pipeline stays out.
 
 ## 10. Open questions for the owner
 
@@ -5059,6 +5392,26 @@ write-back or sync to the source tools (decision 7).
     read the newest row, the revision keeps its first provenance, and nothing re-queues (facts
     and `facts_hash` stay untouched). Recommendation: yes, with S2b, before the first customer
     re-export.
+11. **Rule acceptances on reconstructed models (extends decision 28 (1); raised by the S3c plan).
+    Decided 2026-10-21 as recommended (decision 30 (2), §2, §3.10), as its own small server step
+    after S3c and before S6:** an owner's agent rule (decision 19) may accept an agent's relation or
+    placement proposal on any model, also one an LLM read from a whiteboard. The question as asked:
+    „Sollen deine Regeln für Agenten-Vorschläge Relationen und Platzierungen an KI-rekonstruierten
+    (und später „Aus Interview“) Modellen nie annehmen, wie es Entscheidung 28 (1) für Aufrufe schon
+    regelt?“ Options: (a) a safeguard that blocks a rule when an endpoint's uploaded revision
+    declares `reconstructed` or `as-told`, as a small server step before the first customer picture
+    import; (b) keep it as it is, and the report says so. Recommendation: (a), after S3c and before
+    S6, which brings `as-told`; until then the report says it (from plugin 0.1.4).
+12. **Calls from ad-hoc converters, later. Open (decision 30 left it open).** §3.9 kept
+    `calledElement` out of the specs of `adhoc:` converters until the owner decided §3.10, to be
+    revisited with S2c and its decision-19 extension per converter; S2c is delivered, so a rendered
+    call would now be a 90 % proposal anyway. S3c keeps its done-when: no spec yields a
+    `calledElement`. The question: „Sollen Aufrufe aus Ad-hoc-Konvertern, deren Ziel ein Modell
+    desselben Exports ist (über dessen Werkzeug-ID aufgelöst, nicht über einen Namen), später als
+    echte Aufrufe geschrieben werden: nur als Vorschlag (90 %), gesammelt annehmbar?“
+    Recommendation: yes, as a later step once a sandbox AML or Visio export (§10.4) shows how
+    process interfaces and off-page links look; the renderer, not the converter's free text,
+    resolves the target.
 
 HANDOFF §8 "First users" is answered in part: the consultant works with the CLI and the skills
 (24.1), and answering also works in the web UI (24.3), by action since decision 25. Manifest upload and preview in the web

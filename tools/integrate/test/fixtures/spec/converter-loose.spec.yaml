@@ -1,0 +1,24 @@
+# Synthetic (see README.md): converter output drawn as the tool has it, which a spec you write
+# may not do: a start with an incoming flow, and a node without a lane in a process with lanes
+# (rendered as given, with warnings).
+format: analyzr-spec/1
+source:
+  externalId: PAGE-7
+  externalPath: Logistik/Wareneingang
+  file: Logistik.vsdx
+processes:
+  - source: wareneingang
+    name: Wareneingang
+    lanes:
+      - { source: lane-lager, name: Lager }
+      - { source: lane-qs, name: Qualitätssicherung }
+    nodes:
+      - { source: s, type: start, name: Lieferung angekommen, lane: lane-lager }
+      - { source: t-pruefen, type: task, name: Ware prüfen, lane: lane-qs }
+      - { source: t-einlagern, type: task, name: Ware einlagern }
+      - { source: e, type: end, name: Ware eingelagert, lane: lane-lager }
+    flows:
+      - { from: s, to: t-pruefen }
+      - { from: t-pruefen, to: t-einlagern }
+      - { from: t-einlagern, to: e }
+      - { from: t-pruefen, to: s, name: Nachlieferung }

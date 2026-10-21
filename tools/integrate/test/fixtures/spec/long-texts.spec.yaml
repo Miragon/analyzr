@@ -1,0 +1,34 @@
+# Synthetic (see README.md): texts over their limits (a name of 250 and documentation of over
+# 2500 characters), bidi and control characters, U+FFFE and a lone surrogate, umlauts in a
+# source id, two unsafe source ids that come out alike ("a b", "a/b"), two message names that
+# come out alike ("Auftrag (neu)", "Auftrag neu"), a flow whose own source is t1_t2 next to
+# the generated Flow_t1_t2, and a node whose source t1_di looks like Activity_t1's DI id.
+format: analyzr-spec/1
+source:
+  externalPath: Qualität/Lange Texte
+derived:
+  kind: reconstructed
+  llmModel: claude-opus-5-5
+processes:
+  - source: lang
+    name: "Lange\u202E Texte\a der Beispiel GmbH"
+    documentation: "Dieser Absatz beschreibt einen Prozess der Beispiel GmbH ausführlich. Dieser Absatz beschreibt einen Prozess der Beispiel GmbH ausführlich. Dieser Absatz beschreibt einen Prozess der Beispiel GmbH ausführlich. Dieser Absatz beschreibt einen Prozess der Beispiel GmbH ausführlich. Dieser Absatz beschreibt einen Prozess der Beispiel GmbH ausführlich. Dieser Absatz beschreibt einen Prozess der Beispiel GmbH ausführlich. Dieser Absatz beschreibt einen Prozess der Beispiel GmbH ausführlich. \u2028Dieser Absatz beschreibt einen Prozess der Beispiel GmbH ausführlich. Dieser Absatz beschreibt einen Prozess der Beispiel GmbH ausführlich. Dieser Absatz beschreibt einen Prozess der Beispiel GmbH ausführlich. Dieser Absatz beschreibt einen Prozess der Beispiel GmbH ausführlich. \t\r\nDieser Absatz beschreibt einen Prozess der Beispiel GmbH ausführlich. Dieser Absatz beschreibt einen Prozess der Beispiel GmbH ausführlich. \uFFFEDieser Absatz beschreibt einen Prozess der Beispiel GmbH ausführlich. \u2028Dieser Absatz beschreibt einen Prozess der Beispiel GmbH ausführlich. Dieser Absatz beschreibt einen Prozess der Beispiel GmbH ausführlich. Dieser Absatz beschreibt einen Prozess der Beispiel GmbH ausführlich. \uD800Dieser Absatz beschreibt einen Prozess der Beispiel GmbH ausführlich. Dieser Absatz beschreibt einen Prozess der Beispiel GmbH ausführlich. \u202EDieser Absatz beschreibt einen Prozess der Beispiel GmbH ausführlich. Dieser Absatz beschreibt einen Prozess der Beispiel GmbH ausführlich. \u2028Dieser Absatz beschreibt einen Prozess der Beispiel GmbH ausführlich. \t\r\nDieser Absatz beschreibt einen Prozess der Beispiel GmbH ausführlich. Dieser Absatz beschreibt einen Prozess der Beispiel GmbH ausführlich. Dieser Absatz beschreibt einen Prozess der Beispiel GmbH ausführlich. Dieser Absatz beschreibt einen Prozess der Beispiel GmbH ausführlich. \uFFFEDieser Absatz beschreibt einen Prozess der Beispiel GmbH ausführlich. Dieser Absatz beschreibt einen Prozess der Beispiel GmbH ausführlich. \u2028Dieser Absatz beschreibt einen Prozess der Beispiel GmbH ausführlich. Dieser Absatz beschreibt einen Prozess der Beispiel GmbH ausführlich. Dieser Absatz beschreibt einen Prozess der Beispiel GmbH ausführlich. Dieser Absatz beschreibt einen Prozess der Beispiel GmbH ausführlich. Dieser Absatz beschreibt einen Prozess der Beispiel GmbH ausführlich. \t\r\nDieser Absatz beschreibt einen Prozess der Beispiel GmbH ausführlich. \uD800Dieser Absatz beschreibt einen Prozess der Beispiel GmbH ausführlich. \u2028"
+    nodes:
+      - { source: s, type: start, name: "Start\0" }
+      - { source: t1, type: task, name: "Sehr langer Name einer Aufgabe der Beispiel GmbH Sehr langer Name einer Aufgabe der Beispiel GmbH Sehr langer Name einer Aufgabe der Beispiel GmbH Sehr langer Name einer Aufgabe der Beispiel GmbH Sehr langer Name einer Aufgabe der Beispiel GmbH Sehr " }
+      - { source: t2, type: task, kind: send, message: "Auftrag (neu)", name: "Auftrag senden <>&\"'" }
+      - { source: t3, type: task, kind: send, message: "Auftrag neu", name: "Auftrag erneut\u0085senden" }
+      - { source: prüfen, type: task, name: Prüfen mit Umlaut im Quell-Id }
+      - { source: "a b", type: task, name: Kollision eins }
+      - { source: "a/b", type: task, name: Kollision zwei }
+      - { source: t1_di, type: task, name: Sieht aus wie eine DI-Id }
+      - { source: e, type: end, name: "Ende\uFFFE" }
+    flows:
+      - { from: s, to: t1 }
+      - { from: t1, to: t2 }
+      - { from: t2, to: t3, source: t1_t2 }
+      - { from: t3, to: prüfen }
+      - { from: prüfen, to: "a b" }
+      - { from: "a b", to: "a/b" }
+      - { from: "a/b", to: t1_di }
+      - { from: t1_di, to: e }

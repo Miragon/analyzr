@@ -1,0 +1,18 @@
+# Synthetic (see README.md): the smallest spec, a start, a task and an end.
+format: analyzr-spec/1
+source:
+  externalPath: Service/Anfrage beantworten
+  file: Whiteboard Anfrage.jpg
+derived:
+  kind: reconstructed
+  llmModel: claude-opus-5-5
+processes:
+  - source: p
+    name: Anfrage beantworten
+    nodes:
+      - { source: start, type: start, name: Anfrage eingegangen }
+      - { source: beantworten, type: task, name: Anfrage beantworten }
+      - { source: ende, type: end, name: Anfrage beantwortet }
+    flows:
+      - { from: start, to: beantworten }
+      - { from: beantworten, to: ende }

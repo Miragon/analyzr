@@ -1,0 +1,317 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Definitions_beispiel_lanes_gateways" targetNamespace="http://bpmn.io/schema/bpmn" exporter="analyzr-spec">
+  <bpmn:collaboration id="Collaboration_beispiel_lanes_gateways">
+    <bpmn:participant id="Participant_bestellung" name="Bestellung bearbeiten" processRef="Process_bestellung" />
+  </bpmn:collaboration>
+  <bpmn:process id="Process_bestellung" name="Bestellung bearbeiten" isExecutable="false">
+    <bpmn:documentation>Von der eingehenden Bestellung der Beispiel GmbH bis zur Benachrichtigung.</bpmn:documentation>
+    <bpmn:laneSet id="LaneSet_bestellung">
+      <bpmn:lane id="Lane_lane-einkauf" name="Einkauf">
+        <bpmn:flowNodeRef>Activity_t-bestellen</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Event_e-storno</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Event_ev-frist</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Event_ev-lieferung</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Gateway_g-warten</bpmn:flowNodeRef>
+      </bpmn:lane>
+      <bpmn:lane id="Lane_lane-lager" name="Lager">
+        <bpmn:flowNodeRef>Activity_t-lager</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Activity_t-reservieren</bpmn:flowNodeRef>
+      </bpmn:lane>
+      <bpmn:lane id="Lane_lane-vertrieb" name="Vertrieb">
+        <bpmn:flowNodeRef>Activity_t-kunde</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Activity_t-nachfragen</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Activity_t-pruefen</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Event_e</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Event_s</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Gateway_g-join</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Gateway_g-oder</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Gateway_g-oder-ende</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Gateway_g-ok</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Gateway_g-split</bpmn:flowNodeRef>
+      </bpmn:lane>
+    </bpmn:laneSet>
+    <bpmn:task id="Activity_t-bestellen" name="Ware bestellen">
+      <bpmn:incoming>Flow_g-split_t-bestellen</bpmn:incoming>
+      <bpmn:outgoing>Flow_t-bestellen_g-join</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:userTask id="Activity_t-kunde" name="Kunde informieren">
+      <bpmn:incoming>Flow_g-oder_t-kunde</bpmn:incoming>
+      <bpmn:outgoing>Flow_t-kunde_g-oder-ende</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:manualTask id="Activity_t-lager" name="Lager informieren">
+      <bpmn:incoming>Flow_g-oder_t-lager</bpmn:incoming>
+      <bpmn:outgoing>Flow_t-lager_g-oder-ende</bpmn:outgoing>
+    </bpmn:manualTask>
+    <bpmn:task id="Activity_t-nachfragen" name="Angaben nachfordern">
+      <bpmn:incoming>Flow_g-ok_t-nachfragen</bpmn:incoming>
+      <bpmn:outgoing>Flow_t-nachfragen_t-pruefen</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:task id="Activity_t-pruefen" name="Bestellung prüfen">
+      <bpmn:incoming>Flow_s_t-pruefen</bpmn:incoming>
+      <bpmn:incoming>Flow_t-nachfragen_t-pruefen</bpmn:incoming>
+      <bpmn:outgoing>Flow_t-pruefen_g-ok</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:task id="Activity_t-reservieren" name="Lagerplatz reservieren">
+      <bpmn:incoming>Flow_g-split_t-reservieren</bpmn:incoming>
+      <bpmn:outgoing>Flow_t-reservieren_g-join</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:endEvent id="Event_e" name="Bestellung abgeschlossen">
+      <bpmn:incoming>Flow_g-oder-ende_e</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:endEvent id="Event_e-storno" name="Bestellung storniert">
+      <bpmn:incoming>Flow_ev-frist_e-storno</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:intermediateCatchEvent id="Event_ev-frist" name="Zwei Wochen vergangen">
+      <bpmn:incoming>Flow_g-warten_ev-frist</bpmn:incoming>
+      <bpmn:outgoing>Flow_ev-frist_e-storno</bpmn:outgoing>
+      <bpmn:timerEventDefinition />
+    </bpmn:intermediateCatchEvent>
+    <bpmn:intermediateCatchEvent id="Event_ev-lieferung" name="Lieferung eingetroffen">
+      <bpmn:incoming>Flow_g-warten_ev-lieferung</bpmn:incoming>
+      <bpmn:outgoing>Flow_ev-lieferung_g-oder</bpmn:outgoing>
+      <bpmn:messageEventDefinition />
+    </bpmn:intermediateCatchEvent>
+    <bpmn:startEvent id="Event_s" name="Bestellung eingegangen">
+      <bpmn:outgoing>Flow_s_t-pruefen</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:parallelGateway id="Gateway_g-join">
+      <bpmn:incoming>Flow_t-bestellen_g-join</bpmn:incoming>
+      <bpmn:incoming>Flow_t-reservieren_g-join</bpmn:incoming>
+      <bpmn:outgoing>Flow_g-join_g-warten</bpmn:outgoing>
+    </bpmn:parallelGateway>
+    <bpmn:inclusiveGateway id="Gateway_g-oder" name="Wen benachrichtigen?">
+      <bpmn:incoming>Flow_ev-lieferung_g-oder</bpmn:incoming>
+      <bpmn:outgoing>Flow_g-oder_t-kunde</bpmn:outgoing>
+      <bpmn:outgoing>Flow_g-oder_t-lager</bpmn:outgoing>
+    </bpmn:inclusiveGateway>
+    <bpmn:inclusiveGateway id="Gateway_g-oder-ende">
+      <bpmn:incoming>Flow_t-kunde_g-oder-ende</bpmn:incoming>
+      <bpmn:incoming>Flow_t-lager_g-oder-ende</bpmn:incoming>
+      <bpmn:outgoing>Flow_g-oder-ende_e</bpmn:outgoing>
+    </bpmn:inclusiveGateway>
+    <bpmn:exclusiveGateway id="Gateway_g-ok" name="Bestellung vollständig?">
+      <bpmn:incoming>Flow_t-pruefen_g-ok</bpmn:incoming>
+      <bpmn:outgoing>Flow_g-ok_g-split</bpmn:outgoing>
+      <bpmn:outgoing>Flow_g-ok_t-nachfragen</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:parallelGateway id="Gateway_g-split">
+      <bpmn:incoming>Flow_g-ok_g-split</bpmn:incoming>
+      <bpmn:outgoing>Flow_g-split_t-bestellen</bpmn:outgoing>
+      <bpmn:outgoing>Flow_g-split_t-reservieren</bpmn:outgoing>
+    </bpmn:parallelGateway>
+    <bpmn:eventBasedGateway id="Gateway_g-warten" name="Lieferung?">
+      <bpmn:incoming>Flow_g-join_g-warten</bpmn:incoming>
+      <bpmn:outgoing>Flow_g-warten_ev-frist</bpmn:outgoing>
+      <bpmn:outgoing>Flow_g-warten_ev-lieferung</bpmn:outgoing>
+    </bpmn:eventBasedGateway>
+    <bpmn:sequenceFlow id="Flow_ev-frist_e-storno" sourceRef="Event_ev-frist" targetRef="Event_e-storno" />
+    <bpmn:sequenceFlow id="Flow_ev-lieferung_g-oder" sourceRef="Event_ev-lieferung" targetRef="Gateway_g-oder" />
+    <bpmn:sequenceFlow id="Flow_g-join_g-warten" sourceRef="Gateway_g-join" targetRef="Gateway_g-warten" />
+    <bpmn:sequenceFlow id="Flow_g-oder-ende_e" sourceRef="Gateway_g-oder-ende" targetRef="Event_e" />
+    <bpmn:sequenceFlow id="Flow_g-oder_t-kunde" sourceRef="Gateway_g-oder" targetRef="Activity_t-kunde" />
+    <bpmn:sequenceFlow id="Flow_g-oder_t-lager" sourceRef="Gateway_g-oder" targetRef="Activity_t-lager" />
+    <bpmn:sequenceFlow id="Flow_g-ok_g-split" name="ja" sourceRef="Gateway_g-ok" targetRef="Gateway_g-split" />
+    <bpmn:sequenceFlow id="Flow_g-ok_t-nachfragen" name="nein" sourceRef="Gateway_g-ok" targetRef="Activity_t-nachfragen" />
+    <bpmn:sequenceFlow id="Flow_g-split_t-bestellen" sourceRef="Gateway_g-split" targetRef="Activity_t-bestellen" />
+    <bpmn:sequenceFlow id="Flow_g-split_t-reservieren" sourceRef="Gateway_g-split" targetRef="Activity_t-reservieren" />
+    <bpmn:sequenceFlow id="Flow_g-warten_ev-frist" sourceRef="Gateway_g-warten" targetRef="Event_ev-frist" />
+    <bpmn:sequenceFlow id="Flow_g-warten_ev-lieferung" sourceRef="Gateway_g-warten" targetRef="Event_ev-lieferung" />
+    <bpmn:sequenceFlow id="Flow_s_t-pruefen" sourceRef="Event_s" targetRef="Activity_t-pruefen" />
+    <bpmn:sequenceFlow id="Flow_t-bestellen_g-join" sourceRef="Activity_t-bestellen" targetRef="Gateway_g-join" />
+    <bpmn:sequenceFlow id="Flow_t-kunde_g-oder-ende" sourceRef="Activity_t-kunde" targetRef="Gateway_g-oder-ende" />
+    <bpmn:sequenceFlow id="Flow_t-lager_g-oder-ende" sourceRef="Activity_t-lager" targetRef="Gateway_g-oder-ende" />
+    <bpmn:sequenceFlow id="Flow_t-nachfragen_t-pruefen" sourceRef="Activity_t-nachfragen" targetRef="Activity_t-pruefen" />
+    <bpmn:sequenceFlow id="Flow_t-pruefen_g-ok" sourceRef="Activity_t-pruefen" targetRef="Gateway_g-ok" />
+    <bpmn:sequenceFlow id="Flow_t-reservieren_g-join" sourceRef="Activity_t-reservieren" targetRef="Gateway_g-join" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="Collaboration_beispiel_lanes_gateways">
+      <bpmndi:BPMNShape id="Participant_bestellung_di" bpmnElement="Participant_bestellung" isHorizontal="true">
+        <dc:Bounds x="150" y="80" width="1578" height="770" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_lane-einkauf_di" bpmnElement="Lane_lane-einkauf" isHorizontal="true">
+        <dc:Bounds x="180" y="380" width="1548" height="300" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_lane-lager_di" bpmnElement="Lane_lane-lager" isHorizontal="true">
+        <dc:Bounds x="180" y="680" width="1548" height="170" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_lane-vertrieb_di" bpmnElement="Lane_lane-vertrieb" isHorizontal="true">
+        <dc:Bounds x="180" y="80" width="1548" height="300" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_t-bestellen_di" bpmnElement="Activity_t-bestellen">
+        <dc:Bounds x="786" y="420" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_t-kunde_di" bpmnElement="Activity_t-kunde">
+        <dc:Bounds x="1372" y="120" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_t-lager_di" bpmnElement="Activity_t-lager">
+        <dc:Bounds x="1372" y="720" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_t-nachfragen_di" bpmnElement="Activity_t-nachfragen">
+        <dc:Bounds x="626" y="250" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_t-pruefen_di" bpmnElement="Activity_t-pruefen">
+        <dc:Bounds x="356" y="120" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_t-reservieren_di" bpmnElement="Activity_t-reservieren">
+        <dc:Bounds x="786" y="720" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_e_di" bpmnElement="Event_e">
+        <dc:Bounds x="1642" y="142" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1621" y="185" width="78" height="28" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_e-storno_di" bpmnElement="Event_e-storno">
+        <dc:Bounds x="1269" y="572" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1257" y="615" width="60" height="28" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_ev-frist_di" bpmnElement="Event_ev-frist">
+        <dc:Bounds x="1166" y="572" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1151" y="615" width="66" height="28" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_ev-lieferung_di" bpmnElement="Event_ev-lieferung">
+        <dc:Bounds x="1166" y="442" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1148" y="485" width="72" height="28" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_s_di" bpmnElement="Event_s">
+        <dc:Bounds x="260" y="142" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="245" y="185" width="66" height="28" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gateway_g-join_di" bpmnElement="Gateway_g-join">
+        <dc:Bounds x="946" y="135" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gateway_g-oder_di" bpmnElement="Gateway_g-oder">
+        <dc:Bounds x="1262" y="135" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1242" y="86" width="90" height="42" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gateway_g-oder-ende_di" bpmnElement="Gateway_g-oder-ende">
+        <dc:Bounds x="1532" y="135" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gateway_g-ok_di" bpmnElement="Gateway_g-ok">
+        <dc:Bounds x="516" y="135" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="505" y="100" width="72" height="28" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gateway_g-split_di" bpmnElement="Gateway_g-split">
+        <dc:Bounds x="651" y="135" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gateway_g-warten_di" bpmnElement="Gateway_g-warten">
+        <dc:Bounds x="1056" y="435" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1051" y="414" width="60" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_ev-frist_e-storno_di" bpmnElement="Flow_ev-frist_e-storno">
+        <di:waypoint x="1202" y="590" />
+        <di:waypoint x="1269" y="590" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ev-lieferung_g-oder_di" bpmnElement="Flow_ev-lieferung_g-oder">
+        <di:waypoint x="1202" y="460" />
+        <di:waypoint x="1232" y="460" />
+        <di:waypoint x="1232" y="160" />
+        <di:waypoint x="1262" y="160" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_g-join_g-warten_di" bpmnElement="Flow_g-join_g-warten">
+        <di:waypoint x="996" y="160" />
+        <di:waypoint x="1026" y="160" />
+        <di:waypoint x="1026" y="460" />
+        <di:waypoint x="1056" y="460" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_g-oder-ende_e_di" bpmnElement="Flow_g-oder-ende_e">
+        <di:waypoint x="1582" y="160" />
+        <di:waypoint x="1642" y="160" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_g-oder_t-kunde_di" bpmnElement="Flow_g-oder_t-kunde">
+        <di:waypoint x="1312" y="160" />
+        <di:waypoint x="1372" y="160" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_g-oder_t-lager_di" bpmnElement="Flow_g-oder_t-lager">
+        <di:waypoint x="1312" y="160" />
+        <di:waypoint x="1342" y="160" />
+        <di:waypoint x="1342" y="760" />
+        <di:waypoint x="1372" y="760" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_g-ok_g-split_di" bpmnElement="Flow_g-ok_g-split">
+        <di:waypoint x="566" y="160" />
+        <di:waypoint x="651" y="160" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="590" y="142" width="12" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_g-ok_t-nachfragen_di" bpmnElement="Flow_g-ok_t-nachfragen">
+        <di:waypoint x="541" y="185" />
+        <di:waypoint x="541" y="290" />
+        <di:waypoint x="626" y="290" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="584" y="272" width="24" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_g-split_t-bestellen_di" bpmnElement="Flow_g-split_t-bestellen">
+        <di:waypoint x="701" y="160" />
+        <di:waypoint x="756" y="160" />
+        <di:waypoint x="756" y="460" />
+        <di:waypoint x="786" y="460" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_g-split_t-reservieren_di" bpmnElement="Flow_g-split_t-reservieren">
+        <di:waypoint x="701" y="160" />
+        <di:waypoint x="756" y="160" />
+        <di:waypoint x="756" y="760" />
+        <di:waypoint x="786" y="760" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_g-warten_ev-frist_di" bpmnElement="Flow_g-warten_ev-frist">
+        <di:waypoint x="1081" y="485" />
+        <di:waypoint x="1081" y="590" />
+        <di:waypoint x="1166" y="590" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_g-warten_ev-lieferung_di" bpmnElement="Flow_g-warten_ev-lieferung">
+        <di:waypoint x="1106" y="460" />
+        <di:waypoint x="1166" y="460" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_s_t-pruefen_di" bpmnElement="Flow_s_t-pruefen">
+        <di:waypoint x="296" y="160" />
+        <di:waypoint x="356" y="160" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_t-bestellen_g-join_di" bpmnElement="Flow_t-bestellen_g-join">
+        <di:waypoint x="886" y="460" />
+        <di:waypoint x="971" y="460" />
+        <di:waypoint x="971" y="185" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_t-kunde_g-oder-ende_di" bpmnElement="Flow_t-kunde_g-oder-ende">
+        <di:waypoint x="1472" y="160" />
+        <di:waypoint x="1532" y="160" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_t-lager_g-oder-ende_di" bpmnElement="Flow_t-lager_g-oder-ende">
+        <di:waypoint x="1472" y="760" />
+        <di:waypoint x="1557" y="760" />
+        <di:waypoint x="1557" y="185" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_t-nachfragen_t-pruefen_di" bpmnElement="Flow_t-nachfragen_t-pruefen">
+        <di:waypoint x="676" y="330" />
+        <di:waypoint x="676" y="355" />
+        <di:waypoint x="406" y="355" />
+        <di:waypoint x="406" y="200" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_t-pruefen_g-ok_di" bpmnElement="Flow_t-pruefen_g-ok">
+        <di:waypoint x="456" y="160" />
+        <di:waypoint x="516" y="160" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_t-reservieren_g-join_di" bpmnElement="Flow_t-reservieren_g-join">
+        <di:waypoint x="886" y="760" />
+        <di:waypoint x="971" y="760" />
+        <di:waypoint x="971" y="185" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

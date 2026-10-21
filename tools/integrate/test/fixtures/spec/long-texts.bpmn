@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Definitions_beispiel_long_texts" targetNamespace="http://bpmn.io/schema/bpmn" exporter="analyzr-spec">
+  <bpmn:process id="Process_lang" name="Lange Texte der Beispiel GmbH" isExecutable="false">
+    <bpmn:documentation>Dieser Absatz beschreibt einen Prozess der Beispiel GmbH ausführlich. Dieser Absatz beschreibt einen Prozess der Beispiel GmbH ausführlich. Dieser Absatz beschreibt einen Prozess der Beispiel GmbH ausführlich. Dieser Absatz beschreibt einen Prozess der Beispiel GmbH ausführlich. Dieser Absatz beschreibt einen Prozess der Beispiel GmbH ausführlich. Dieser Absatz beschreibt einen Prozess der Beispiel GmbH ausführlich. Dieser Absatz beschreibt einen Prozess der Beispiel GmbH ausführlich. Dieser Absatz beschreibt einen Prozess der Beispiel GmbH ausführlich. Dieser Absatz beschreibt einen Prozess der Beispiel GmbH ausführlich. Dieser Absatz beschreibt einen Prozess der Beispiel GmbH ausführlich. Dieser Absatz beschreibt einen Prozess der Beispiel GmbH ausführlich.
+Dieser Absatz beschreibt einen Prozess der Beispiel GmbH ausführlich. Dieser Absatz beschreibt einen Prozess der Beispiel GmbH ausführlich. Dieser Absatz beschreibt einen Prozess der Beispiel GmbH ausführlich. Dieser Absatz beschreibt einen Prozess der Beispiel GmbH ausführlich. Dieser Absatz beschreibt einen Prozess der Beispiel GmbH ausführlich. Dieser Absatz beschreibt einen Prozess der Beispiel GmbH ausführlich. Dieser Absatz beschreibt einen Prozess der Beispiel GmbH ausführlich. Dieser Absatz beschreibt einen Prozess der Beispiel GmbH ausführlich. Dieser Absatz beschreibt einen Prozess der Beispiel GmbH ausführlich. Dieser Absatz beschreibt einen Prozess der Beispiel GmbH ausführlich. Dieser Absatz beschreibt einen Prozess der Beispiel GmbH ausführlich.
+Dieser Absatz beschreibt einen Prozess der Beispiel GmbH ausführlich. Dieser Absatz beschreibt einen Prozess der Beispiel GmbH ausführlich. Dieser Absatz beschreibt einen Prozess der Beispiel GmbH ausführlich. Dieser Absatz beschreibt einen Prozess der Beispiel GmbH ausführlich. Dieser Absatz beschreibt einen Prozess der Beispiel GmbH ausführlich. Dieser Absatz beschreibt einen Prozess der Beispiel GmbH ausführlich. Dieser Absatz beschreibt einen Prozess d</bpmn:documentation>
+    <bpmn:task id="Activity_a_b_c14cddc0" name="Kollision zwei">
+      <bpmn:incoming>Flow_a_b_c8687a08_a_b_c14cddc0</bpmn:incoming>
+      <bpmn:outgoing>Flow_a_b_c14cddc0_t1_di</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:task id="Activity_a_b_c8687a08" name="Kollision eins">
+      <bpmn:incoming>Flow_pruefen_a_b_c8687a08</bpmn:incoming>
+      <bpmn:outgoing>Flow_a_b_c8687a08_a_b_c14cddc0</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:task id="Activity_pruefen" name="Prüfen mit Umlaut im Quell-Id">
+      <bpmn:incoming>Flow_t3_pruefen</bpmn:incoming>
+      <bpmn:outgoing>Flow_pruefen_a_b_c8687a08</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:task id="Activity_t1" name="Sehr langer Name einer Aufgabe der Beispiel GmbH Sehr langer Name einer Aufgabe der Beispiel GmbH Sehr langer Name einer Aufgabe der Beispiel GmbH Sehr langer Name einer Aufgabe der Beispiel GmbH Sehr">
+      <bpmn:incoming>Flow_s_t1</bpmn:incoming>
+      <bpmn:outgoing>Flow_t1_t2_e31a0fa7</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:task id="Activity_t1_di" name="Sieht aus wie eine DI-Id">
+      <bpmn:incoming>Flow_a_b_c14cddc0_t1_di</bpmn:incoming>
+      <bpmn:outgoing>Flow_t1_di_e</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:sendTask id="Activity_t2" name="Auftrag senden &#60;&#62;&#38;&#34;&#39;" messageRef="Message_Auftrag_neu_b9885a1e">
+      <bpmn:incoming>Flow_t1_t2_e31a0fa7</bpmn:incoming>
+      <bpmn:outgoing>Flow_t1_t2</bpmn:outgoing>
+    </bpmn:sendTask>
+    <bpmn:sendTask id="Activity_t3" name="Auftrag erneutsenden" messageRef="Message_Auftrag_neu_d6a17337">
+      <bpmn:incoming>Flow_t1_t2</bpmn:incoming>
+      <bpmn:outgoing>Flow_t3_pruefen</bpmn:outgoing>
+    </bpmn:sendTask>
+    <bpmn:endEvent id="Event_e" name="Ende">
+      <bpmn:incoming>Flow_t1_di_e</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:startEvent id="Event_s" name="Start">
+      <bpmn:outgoing>Flow_s_t1</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:sequenceFlow id="Flow_a_b_c14cddc0_t1_di" sourceRef="Activity_a_b_c14cddc0" targetRef="Activity_t1_di" />
+    <bpmn:sequenceFlow id="Flow_a_b_c8687a08_a_b_c14cddc0" sourceRef="Activity_a_b_c8687a08" targetRef="Activity_a_b_c14cddc0" />
+    <bpmn:sequenceFlow id="Flow_pruefen_a_b_c8687a08" sourceRef="Activity_pruefen" targetRef="Activity_a_b_c8687a08" />
+    <bpmn:sequenceFlow id="Flow_s_t1" sourceRef="Event_s" targetRef="Activity_t1" />
+    <bpmn:sequenceFlow id="Flow_t1_di_e" sourceRef="Activity_t1_di" targetRef="Event_e" />
+    <bpmn:sequenceFlow id="Flow_t1_t2" sourceRef="Activity_t2" targetRef="Activity_t3" />
+    <bpmn:sequenceFlow id="Flow_t1_t2_e31a0fa7" sourceRef="Activity_t1" targetRef="Activity_t2" />
+    <bpmn:sequenceFlow id="Flow_t3_pruefen" sourceRef="Activity_t3" targetRef="Activity_pruefen" />
+  </bpmn:process>
+  <bpmn:message id="Message_Auftrag_neu_b9885a1e" name="Auftrag (neu)" />
+  <bpmn:message id="Message_Auftrag_neu_d6a17337" name="Auftrag neu" />
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="Process_lang">
+      <bpmndi:BPMNShape id="Activity_a_b_c14cddc0_di" bpmnElement="Activity_a_b_c14cddc0">
+        <dc:Bounds x="1096" y="120" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_a_b_c8687a08_di" bpmnElement="Activity_a_b_c8687a08">
+        <dc:Bounds x="936" y="120" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_pruefen_di" bpmnElement="Activity_pruefen">
+        <dc:Bounds x="776" y="120" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_t1_di_2dec7beb" bpmnElement="Activity_t1">
+        <dc:Bounds x="296" y="120" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_t1_di_di" bpmnElement="Activity_t1_di">
+        <dc:Bounds x="1256" y="120" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_t2_di" bpmnElement="Activity_t2">
+        <dc:Bounds x="456" y="120" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_t3_di" bpmnElement="Activity_t3">
+        <dc:Bounds x="616" y="120" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_e_di" bpmnElement="Event_e">
+        <dc:Bounds x="1416" y="142" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1422" y="185" width="24" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_s_di" bpmnElement="Event_s">
+        <dc:Bounds x="200" y="142" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="203" y="185" width="30" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_a_b_c14cddc0_t1_di_di" bpmnElement="Flow_a_b_c14cddc0_t1_di">
+        <di:waypoint x="1196" y="160" />
+        <di:waypoint x="1256" y="160" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_a_b_c8687a08_a_b_c14cddc0_di" bpmnElement="Flow_a_b_c8687a08_a_b_c14cddc0">
+        <di:waypoint x="1036" y="160" />
+        <di:waypoint x="1096" y="160" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_pruefen_a_b_c8687a08_di" bpmnElement="Flow_pruefen_a_b_c8687a08">
+        <di:waypoint x="876" y="160" />
+        <di:waypoint x="936" y="160" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_s_t1_di" bpmnElement="Flow_s_t1">
+        <di:waypoint x="236" y="160" />
+        <di:waypoint x="296" y="160" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_t1_di_e_di" bpmnElement="Flow_t1_di_e">
+        <di:waypoint x="1356" y="160" />
+        <di:waypoint x="1416" y="160" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_t1_t2_di" bpmnElement="Flow_t1_t2">
+        <di:waypoint x="556" y="160" />
+        <di:waypoint x="616" y="160" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_t1_t2_e31a0fa7_di" bpmnElement="Flow_t1_t2_e31a0fa7">
+        <di:waypoint x="396" y="160" />
+        <di:waypoint x="456" y="160" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_t3_pruefen_di" bpmnElement="Flow_t3_pruefen">
+        <di:waypoint x="716" y="160" />
+        <di:waypoint x="776" y="160" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

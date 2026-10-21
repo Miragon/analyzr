@@ -1,0 +1,23 @@
+# Synthetic (see README.md): a send task, a receive task and a message catch event without a
+# message name: their facts key on their labels.
+format: analyzr-spec/1
+source:
+  externalPath: Service/Rückmeldung einholen
+  file: Notizen Rückmeldung.png
+derived:
+  kind: reconstructed
+  llmModel: claude-opus-5-5
+processes:
+  - source: rueckmeldung
+    name: Rückmeldung einholen
+    nodes:
+      - { source: s, type: start, trigger: timer, name: Wochenbeginn }
+      - { source: t-erinnern, type: task, kind: send, name: Erinnerung senden }
+      - { source: ev-antwort, type: event, direction: catch, trigger: message, name: Antwort erhalten }
+      - { source: t-annehmen, type: task, kind: receive, name: Rückmeldung entgegennehmen }
+      - { source: e, type: end, name: Rückmeldung erfasst }
+    flows:
+      - { from: s, to: t-erinnern }
+      - { from: t-erinnern, to: ev-antwort }
+      - { from: ev-antwort, to: t-annehmen }
+      - { from: t-annehmen, to: e }

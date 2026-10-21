@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Definitions_beispiel_converter_loose" targetNamespace="http://bpmn.io/schema/bpmn" exporter="analyzr-spec">
+  <bpmn:collaboration id="Collaboration_beispiel_converter_loose">
+    <bpmn:participant id="Participant_wareneingang" name="Wareneingang" processRef="Process_wareneingang" />
+  </bpmn:collaboration>
+  <bpmn:process id="Process_wareneingang" name="Wareneingang" isExecutable="false">
+    <bpmn:laneSet id="LaneSet_wareneingang">
+      <bpmn:lane id="Lane_lane-lager" name="Lager">
+        <bpmn:flowNodeRef>Event_e</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Event_s</bpmn:flowNodeRef>
+      </bpmn:lane>
+      <bpmn:lane id="Lane_lane-qs" name="Qualitätssicherung">
+        <bpmn:flowNodeRef>Activity_t-pruefen</bpmn:flowNodeRef>
+      </bpmn:lane>
+    </bpmn:laneSet>
+    <bpmn:task id="Activity_t-einlagern" name="Ware einlagern">
+      <bpmn:incoming>Flow_t-pruefen_t-einlagern</bpmn:incoming>
+      <bpmn:outgoing>Flow_t-einlagern_e</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:task id="Activity_t-pruefen" name="Ware prüfen">
+      <bpmn:incoming>Flow_s_t-pruefen</bpmn:incoming>
+      <bpmn:outgoing>Flow_t-pruefen_s</bpmn:outgoing>
+      <bpmn:outgoing>Flow_t-pruefen_t-einlagern</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:endEvent id="Event_e" name="Ware eingelagert">
+      <bpmn:incoming>Flow_t-einlagern_e</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:startEvent id="Event_s" name="Lieferung angekommen">
+      <bpmn:incoming>Flow_t-pruefen_s</bpmn:incoming>
+      <bpmn:outgoing>Flow_s_t-pruefen</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:sequenceFlow id="Flow_s_t-pruefen" sourceRef="Event_s" targetRef="Activity_t-pruefen" />
+    <bpmn:sequenceFlow id="Flow_t-einlagern_e" sourceRef="Activity_t-einlagern" targetRef="Event_e" />
+    <bpmn:sequenceFlow id="Flow_t-pruefen_s" name="Nachlieferung" sourceRef="Activity_t-pruefen" targetRef="Event_s" />
+    <bpmn:sequenceFlow id="Flow_t-pruefen_t-einlagern" sourceRef="Activity_t-pruefen" targetRef="Activity_t-einlagern" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="Collaboration_beispiel_converter_loose">
+      <bpmndi:BPMNShape id="Participant_wareneingang_di" bpmnElement="Participant_wareneingang" isHorizontal="true">
+        <dc:Bounds x="150" y="80" width="642" height="510" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_lane-lager_di" bpmnElement="Lane_lane-lager" isHorizontal="true">
+        <dc:Bounds x="180" y="80" width="612" height="170" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_lane-qs_di" bpmnElement="Lane_lane-qs" isHorizontal="true">
+        <dc:Bounds x="180" y="250" width="612" height="170" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_t-einlagern_di" bpmnElement="Activity_t-einlagern">
+        <dc:Bounds x="546" y="460" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_t-pruefen_di" bpmnElement="Activity_t-pruefen">
+        <dc:Bounds x="386" y="290" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_e_di" bpmnElement="Event_e">
+        <dc:Bounds x="706" y="142" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="691" y="185" width="66" height="28" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_s_di" bpmnElement="Event_s">
+        <dc:Bounds x="260" y="142" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="248" y="185" width="60" height="28" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_s_t-pruefen_di" bpmnElement="Flow_s_t-pruefen">
+        <di:waypoint x="296" y="160" />
+        <di:waypoint x="341" y="160" />
+        <di:waypoint x="341" y="330" />
+        <di:waypoint x="386" y="330" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_t-einlagern_e_di" bpmnElement="Flow_t-einlagern_e">
+        <di:waypoint x="646" y="500" />
+        <di:waypoint x="676" y="500" />
+        <di:waypoint x="676" y="160" />
+        <di:waypoint x="706" y="160" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_t-pruefen_s_di" bpmnElement="Flow_t-pruefen_s">
+        <di:waypoint x="436" y="370" />
+        <di:waypoint x="436" y="395" />
+        <di:waypoint x="278" y="395" />
+        <di:waypoint x="278" y="178" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="302" y="377" width="78" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_t-pruefen_t-einlagern_di" bpmnElement="Flow_t-pruefen_t-einlagern">
+        <di:waypoint x="486" y="330" />
+        <di:waypoint x="516" y="330" />
+        <di:waypoint x="516" y="500" />
+        <di:waypoint x="546" y="500" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

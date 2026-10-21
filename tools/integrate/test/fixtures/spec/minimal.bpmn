@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Definitions_beispiel_minimal" targetNamespace="http://bpmn.io/schema/bpmn" exporter="analyzr-spec">
+  <bpmn:process id="Process_p" name="Anfrage beantworten" isExecutable="false">
+    <bpmn:task id="Activity_beantworten" name="Anfrage beantworten">
+      <bpmn:incoming>Flow_start_beantworten</bpmn:incoming>
+      <bpmn:outgoing>Flow_beantworten_ende</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:endEvent id="Event_ende" name="Anfrage beantwortet">
+      <bpmn:incoming>Flow_beantworten_ende</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:startEvent id="Event_start" name="Anfrage eingegangen">
+      <bpmn:outgoing>Flow_start_beantworten</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:sequenceFlow id="Flow_beantworten_ende" sourceRef="Activity_beantworten" targetRef="Event_ende" />
+    <bpmn:sequenceFlow id="Flow_start_beantworten" sourceRef="Event_start" targetRef="Activity_beantworten" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="Process_p">
+      <bpmndi:BPMNShape id="Activity_beantworten_di" bpmnElement="Activity_beantworten">
+        <dc:Bounds x="296" y="120" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_ende_di" bpmnElement="Event_ende">
+        <dc:Bounds x="456" y="142" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="441" y="185" width="66" height="28" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_start_di" bpmnElement="Event_start">
+        <dc:Bounds x="200" y="142" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="185" y="185" width="66" height="28" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_beantworten_ende_di" bpmnElement="Flow_beantworten_ende">
+        <di:waypoint x="396" y="160" />
+        <di:waypoint x="456" y="160" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_start_beantworten_di" bpmnElement="Flow_start_beantworten">
+        <di:waypoint x="236" y="160" />
+        <di:waypoint x="296" y="160" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

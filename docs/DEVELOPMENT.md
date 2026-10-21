@@ -43,7 +43,9 @@ rows of owner decision 29 (1),
 [step 2](#m6-s2b-follow-up-step-2-2026-10-20), [step 3](#m6-s2b-follow-up-step-3-2026-10-20),
 [step 3b](#m6-s2b-follow-up-step-3b-2026-10-20),
 [step 4](#m6-s2b-follow-up-step-4-2026-10-20) and
-[step 5](#m6-s2b-follow-up-step-5-2026-10-20)) are in. The public read-only demo of
+[step 5](#m6-s2b-follow-up-step-5-2026-10-20)) and step 1 of S3c (`analyzr-spec/1` and its
+deterministic renderer, run from source until the integrate plugin 0.1.4,
+[M6 S3c step 1](#m6-s3c-step-1-2026-10-21)) are in. The public read-only demo of
 owner decision 20 runs at https://analyzr-demo.fly.dev after the first deploy
 ([Demo deployment (Fly.io)](#demo-deployment-flyio)).
 
@@ -67,7 +69,7 @@ end to end](#verified-end-to-end) lists exactly what was run and what was not.
 | `apps/server`: full CONCEPT §2 schema, domain use cases with `policy.require`, ingest/import/delete as one transaction (facts, rule tier, assertions, endpoint state, analysis tasks, events) with the real `@analyzr/bpmn-facts` and `@analyzr/relations`, every REST route of the contracts, local mode (Host/Origin guard, owner session cookie, owner key for the CLI, agent tokens), MCP `/mcp` with the eight read tools, the built web UI at `/` | working; importing `nordwind-handel` and `stadtwerke-auental` reproduces the rule relations and findings of `eval:candidates` exactly (integration test); MCP contract test with the SDK client |
 | `packages/procedures`: the procedures `analyzr-relations@0.2.0` (`relations.md`, status `released`, M3; judge each pair once) and `analyzr-placements@0.1.0` (`placements.md`, `released`, `kind: placement`, M4 S5), the loader for MCP `get_procedure`, the wrappers for the MCP prompts `work_pipeline` and `place_processes` and the Claude Code skills (`renderPipelineWrapper`, `renderAdHocWrapper`, `renderSkill`, `pnpm --filter @analyzr/procedures generate`), the `draft_value_chain` prompt text (`prompts/`) ([below](#the-relations-procedure-m3), [placements](#the-placement-pipeline-and-analyzr-placements-m4-s5)) | working; unit tests (frontmatter, wrappers, the guard against skill expansion), the drift test of the generated skill and plugin version, a sha256 guard that keeps a released version's skill from changing, and a server test that keeps the procedure's limits, invalid reasons (relations and no-links), tool names and tool arguments in line with the contracts and the MCP tools; three LLM dev runs of `0.1.0` on `nordwind-handel` (Sonnet 5.5: precision 100 %, recall 78.6 %, 0 must_not_link; [M3](#m3-2026-10-08)) |
 | `plugins/analyzr`: Claude Code plugin `analyzr` (0.3.0, its own version since S5) with the generated skills `/analyzr:relations [project] [max-tasks]` and `/analyzr:placements [project] [max-tasks]` and no MCP server; `.claude-plugin/marketplace.json`: the repository as marketplace `analyzr` (`claude plugin install analyzr@analyzr`) | working; `claude plugin validate --strict` passes for both manifests (Claude Code 2.1.295 for 0.3.0); drift tests and the per-release sha256 table in `@analyzr/procedures`; not yet run with a model |
-| `plugins/analyzr-integrate` and `tools/integrate` (M6 S3b, [below](#the-integrate-plugin-and-toolsintegrate-m6-s3b)): the second Claude Code plugin (0.1.3; 0.1.1 and 0.1.2 changed only texts: the skill in M6 S2a, the skill and the Signavio note in S2c-2; 0.1.3 in S2b's follow-up step 4: the read-only `analyzr-read.mjs`, pre-approved next to `inspect.mjs`, with which the skill previews an import itself, `plan --from-analyzr` rebuilding a lost key map, the report's „Vorschau“ with the agent work, `exporterVersion` declared tidied) with `/analyzr-integrate:integrate-landscape` for BPMN 2.0 exports, the reference notes per tool and the bundled scripts `inspect.mjs`, `normalize-bpmn.mjs` and `analyzr-read.mjs`; their sources and tests in `@analyzr/integrate` | working; 205 tests (normalized outputs extracted with `@analyzr/bpmn-facts`, keys and the rebuild from analyzr, bundle, inventory, the scripts as the plugin runs them, `analyzr-read` against a fake analyzr with its refusals, the drift test, the release table), the CLI and web tests on the golden bundle, the CLI e2e running the bundled `analyzr-read.mjs` against a real server ([M6 S2b follow-up step 4](#m6-s2b-follow-up-step-4-2026-10-20)), `claude plugin validate --strict` (Claude Code 2.1.300; for 0.1.2 and 0.1.3 Claude Code 2.1.303, [M6 S2c-2](#m6-s2c-2-2026-10-20)); followed by hand by the implementing agent and imported into a scratch stack with the checkout CLI and „Hochladen“; not yet invoked as a skill in a Claude Code or Codex session, its guard setup and the pre-approval of `analyzr-read.mjs` not tried live ([HANDOFF.md](HANDOFF.md) §8) |
+| `plugins/analyzr-integrate` and `tools/integrate` (M6 S3b, [below](#the-integrate-plugin-and-toolsintegrate-m6-s3b)): the second Claude Code plugin (0.1.3; 0.1.1 and 0.1.2 changed only texts: the skill in M6 S2a, the skill and the Signavio note in S2c-2; 0.1.3 in S2b's follow-up step 4: the read-only `analyzr-read.mjs`, pre-approved next to `inspect.mjs`, with which the skill previews an import itself, `plan --from-analyzr` rebuilding a lost key map, the report's „Vorschau“ with the agent work, `exporterVersion` declared tidied) with `/analyzr-integrate:integrate-landscape` for BPMN 2.0 exports, the reference notes per tool and the bundled scripts `inspect.mjs`, `normalize-bpmn.mjs` and `analyzr-read.mjs`; their sources and tests in `@analyzr/integrate`; since M6 S3c step 1 also the sources of `analyzr-spec` (`analyzr-spec/1`, its validator and the deterministic renderer, [M6 S3c step 1](#m6-s3c-step-1-2026-10-21)), run from source until 0.1.4 bundles it | working; 332 tests (normalized outputs extracted with `@analyzr/bpmn-facts`, keys and the rebuild from analyzr, bundle, inventory, the scripts as the plugin runs them, `analyzr-read` against a fake analyzr with its refusals, the drift test, the release table; since M6 S3c step 1 the spec validator, the renderer on 9 golden specs and 200 seeded random ones with their facts extracted, bpmn-js's tree walker with the importer's refusals and the layout checks), the Playwright harness `e2e/spec-render-import.spec.ts` (renders in bpmn-js, no server, not in CI), the CLI and web tests on the golden bundle, the CLI e2e running the bundled `analyzr-read.mjs` against a real server ([M6 S2b follow-up step 4](#m6-s2b-follow-up-step-4-2026-10-20)), `claude plugin validate --strict` (Claude Code 2.1.300; for 0.1.2 and 0.1.3 Claude Code 2.1.303, [M6 S2c-2](#m6-s2c-2-2026-10-20)); followed by hand by the implementing agent and imported into a scratch stack with the checkout CLI and „Hochladen“; not yet invoked as a skill in a Claude Code or Codex session, its guard setup and the pre-approval of `analyzr-read.mjs` not tried live ([HANDOFF.md](HANDOFF.md) §8) |
 | `examples/agents` (M3, placements since M4 S5): reference setups for Claude Code (interactive, headless `run-headless.sh [--skill placements]`), Claude Desktop (both bridge entries, German start prompts for relations, placements and drafting a chain) and Codex; documentation, not workspace packages, not in the image; no Agent SDK setup for now (owner decision 16, [HANDOFF.md](HANDOFF.md) §4) | checked without a model ([M3](#m3-2026-10-08)): shellcheck and dry runs of `run-headless.sh` against fakes (incl. failed batches, a reused log directory and a trailing slash in `ANALYZR_URL`), the Codex TOML parses; no setup has run a model yet |
 | M2 backend: analysis pipeline (claim/submit/release, lease, long-poll), claim input (with the M3 additions: message-flow ends, partner and process documentation, findings, and `judged`/`skip`), submissions, ad-hoc proposals, review (accept/reject/hold/correct, bulk, notes, timeline), model engine, relation provenance, answered findings hidden ([below](#analysis-pipeline-and-review-m2)); judge each pair once (`analyzr-relations@0.2.0`: the basis of agent judgements, the assignment at the claim, stored no-links, `Relation.noLinks`, `uncovered`; [below](#judge-each-pair-once)) | working over REST and MCP; real-Postgres integration tests incl. concurrent claims, lease expiry, cancellation, decision memory across re-uploads, the claim-input size and additions on both corpus landscapes, judge each pair once (`judge-once.test.ts`); MCP contract test with the SDK client; reviewed in the web UI ([Review in the web UI](#review-in-the-web-ui-m2)); end to end against the Docker stack with the simulation agent (HTTP and the bridge in the container; before 0.2.0) and in the browser (`e2e/pipeline.spec.ts`: review, re-upload, `suppressed` vs. `reopened`) |
 | `apps/cli`: `analyzr seed` (M3: `--project`, `--token-name`; M4 S4: `--value-chains`), `import` (M6 S1: the shared file rule, keys derived before sending, skipped plain XML, extractor warnings, the waiting tasks and the next agent step), `models list/requeue/delete` (M6 S1; since S5c-2 `models amend|pull`), `questions` (M6 S4; since S5a `questions [list]` and `questions answer`; since S5c-1 `questions outside|link|place` and notes without kinds; since S5c-2 `questions amend`; since UX2a `questions --group` and the groups in its summary line), `amendments list|export|withdraw` (M6 S5c-2), the amendments in `import`'s output (M6 S5c-2), `import` reading the manifest `analyzr-import.json` (pinned keys, provenance, import warnings with `next:` lines) and `models external-ids` (M6 S2a), `import`'s `next:` line with the web link for the unique calls of derived models and its agent-token notice (M6 S2c-2), `rules add --derived` and, with the owner key, `import`'s dry-run line and `next:` step for owners' rules for derived calls (M6 S2c-3), `rules pre-trust` and the system line's count of acceptances from before the trust rule (M6 S2c-4), `token create/list/revoke`, `status`, `health`, and `analyzr mcp` (stdio bridge for Claude Desktop) | working; unit tests, an e2e test against a real server, and a live check against the running Docker stack |
@@ -707,7 +709,8 @@ docker/           compose.yaml (project analyzr), Dockerfile; the read-only demo
 tools/notices/    @analyzr/notices: writes THIRD-PARTY-NOTICES.md from `pnpm licenses list --prod --json` + bundled build tools (pnpm notices)
 tools/integrate/  @analyzr/integrate (M6 S3b): sources and tests of the integrate plugin's scripts (src/cli/{inspect,normalize-bpmn,analyzr-read}.ts;
                   analyzr-read since M6 S2b follow-up step 4), scripts/generate.ts bundles them into plugins/analyzr-integrate/scripts;
-                  test/fixtures: a synthetic export, a golden bundle
+                  since M6 S3c step 1 src/spec/ and src/cli/analyzr-spec.ts (analyzr-spec/1 and its renderer, run from source until 0.1.4);
+                  test/fixtures: a synthetic export, a golden bundle, the golden specs (fixtures/spec/)
 docs/             CONCEPT.md, HANDOFF.md, M1-SKELETON.md, M2-PIPELINE-REVIEW.md, M3-RELATIONS-PROCEDURE.md, M3-LIVE-RUNS.md,
                   M4-VALUE-CHAIN.md, M6-INTEGRATION-AND-GAPS.md, this file, adr/ (ADR-0001), screenshots/
 ```
@@ -726,11 +729,11 @@ gives the server's `open-questions.test.ts` eval:descriptive's model variants, t
 included); `integrate` (`tools/integrate`, M6 S3b) depends on
 the zod-free `@analyzr/contracts/paths`, since M6 S2b's follow-up step 4 also on the zod-free
 `@analyzr/contracts/impact-merge` (the dry run's merge of its batches, which `analyzr-read.mjs`
-shares with the CLI and the web), and on bpmn-moddle with the Camunda extensions, on
-`bpmn-facts` for its tests only, and nothing imports it: its scripts reach consultants bundled
-into `plugins/analyzr-integrate` (the drift test keeps zod and every other third-party module
-out of `analyzr-read.mjs`). Workspace dependencies use
-`workspace:0.0.0`. The value chain packages (M4) come from npm at exactly 0.3.0:
+shares with the CLI and the web), and on bpmn-moddle with the Camunda extensions, since M6 S3c step
+1 on `yaml` (the spec reader), on `bpmn-facts` and, since S3c step 1, `bpmn-js` for its tests only,
+and nothing imports it: its scripts reach consultants bundled into `plugins/analyzr-integrate` (the
+drift test keeps zod and every other third-party module out of `analyzr-read.mjs`). Workspace
+dependencies use `workspace:0.0.0`. The value chain packages (M4) come from npm at exactly 0.3.0:
 `@miragon/value-chain-schema-model` in `server` (DOM-free), `web` and `eval-tools` (for
 `eval/value-chains/validate-value-chains.mjs`, which lives outside any package and resolves its
 dependencies from `eval/tools`), `@miragon/value-chain-renderer` in `web` only (it needs a DOM;
@@ -767,13 +770,14 @@ Node cannot load it).
 | `pnpm --filter @analyzr/web e2e value-chain.spec` | Playwright value chain flow (M4 S3) against a running analyzr: its own projects `vc-<time>` (nordwind-handel with its golden chain), `vc-empty-<time>` and `vc-sketch-<time>`, an agent token, placements over REST, then the page in the browser incl. the CSS check |
 | `ANALYZR_E2E_URL=http://127.0.0.1:<port> pnpm --filter @analyzr/web e2e ui-load` | the UI load guard (UX-SIMPLIFICATION.md §7) against an agent-owned stack: `nordwind-handel` seeded with its chain and worked by the simulation agent, `signavio-beispiel` from the CLI's bundle import and an empty project (made here when the stack lacks them; an existing one is used as it is, so on a stack seeded with `analyzr seed`, whose `nordwind-handel` has neither the chain nor the agent's work, set `ANALYZR_UI_LOAD_NORDWIND=<another key>` and the guard makes that project; `ANALYZR_UI_LOAD_SIGNAVIO`, `…_EMPTY` and `…_HOLDS` name the others), at 1440x900 and 390x844; the slices' load budgets, tasks, consistency of every count, no ids in visible text; `ANALYZR_UI_LOAD_REPORT=<file>` writes every screen's measurements |
 | `pnpm --filter @analyzr/web e2e value-chain-import` | the renderer's import check in Chromium on a Vite-served harness page (no analyzr server): the golden dev chain and synthetic chains import without warnings with the layouter's waypoints, analyzr's ids never repeat; `ANALYZR_E2E_VC_EXTRA=<path>` checks another chain (counts only) |
+| `pnpm --filter @analyzr/web e2e spec-render-import` | M6 S3c step 1: what `analyzr-spec` renders, imported into bpmn-js's `NavigatedViewer` in Chromium on a Vite-served harness page (no analyzr server): every golden of `tools/integrate/test/fixtures/spec/` and 50 seeded random renders without a warning or an error, every drawable element drawn (counts only; no option for other folders) |
 | `ANALYZR_SCREENSHOTS_DIR=$PWD/docs/screenshots pnpm --filter @analyzr/web e2e screenshots` | retakes the M1 screenshots from a running, seeded analyzr; with `… e2e review` the `m2-*.png`, with `… e2e value-chain.spec` the `m4-01` … `m4-08`, with `… e2e value-chain-draft value-chain-agent` the `m4-12` … `m4-14` |
 | `docker compose -p analyzr-demo -f docker/compose.demo.yaml up -d --build --wait` | the read-only demo image with its seed on http://127.0.0.1:7480 ([Demo deployment](#demo-deployment-flyio)) |
 | `pnpm --filter @analyzr/demo check --url <demo> [--wait <s>] [--json]` | checks a running demo from outside: health, both landscapes as a viewer with agent proposals, questions, no-links and placements, every write route 403 `demo-readonly`, MCP 404, credentials 401; exit 1 on a failure. Writes nothing to a server that is not a read-only demo (only `GET /health`, then the failure „not a read-only demo“) |
 | `ANALYZR_E2E_URL=http://127.0.0.1:7480 pnpm --filter @analyzr/web e2e demo` | Playwright walk through the demo's read views; fails on any write request, API error or write action shown (skips on a non-demo server) |
 | `pnpm --filter @analyzr/client generate` | regenerates `packages/client` after a contracts change |
 | `pnpm --filter @analyzr/procedures generate` | writes one skill per released pipeline procedure (`plugins/analyzr/skills/relations/SKILL.md` from `relations.md`, `plugins/analyzr/skills/placements/SKILL.md` from `placements.md`) and `PLUGIN_VERSION` into `plugins/analyzr/.claude-plugin/plugin.json`; run it after every change of a procedure or a wrapper and commit the result ([Conventions](#conventions)) |
-| `pnpm --filter @analyzr/integrate generate` | bundles `tools/integrate/src/cli/{inspect,normalize-bpmn}.ts` with rolldown into the self-contained `plugins/analyzr-integrate/scripts/{inspect,normalize-bpmn}.mjs` and writes the plugin's `THIRD-PARTY-NOTICES.md`; run it after every change of `tools/integrate/src` or of a bundled dependency and commit the result (the drift test fails until they match), and move the plugin version ([below](#the-integrate-plugin-and-toolsintegrate-m6-s3b)) |
+| `pnpm --filter @analyzr/integrate generate` | bundles `tools/integrate/src/cli/{inspect,normalize-bpmn,analyzr-read}.ts` with rolldown into the self-contained `plugins/analyzr-integrate/scripts/{inspect,normalize-bpmn,analyzr-read}.mjs` and writes the plugin's `THIRD-PARTY-NOTICES.md`; run it after every change of `tools/integrate/src` or of a bundled dependency and commit the result (the drift test fails until they match), and move the plugin version ([below](#the-integrate-plugin-and-toolsintegrate-m6-s3b)); `src/cli/analyzr-spec.ts` and `src/spec/` (M6 S3c step 1) are in no entry until plugin 0.1.4, so a change there leaves the plugin unchanged (run it from source: `node tools/integrate/src/cli/analyzr-spec.ts`) |
 | `pnpm --filter @analyzr/server db:generate` | writes the next migration after a schema change |
 
 ### Server configuration
@@ -2246,6 +2250,79 @@ existing `reports/` next to `analyzr-workspace.json`, never inside the bundle or
 (`assertOutputFile` in `src/guards.ts`); the file is opened with `O_NOFOLLOW`, and no folder is
 created. `preview` takes only a folder with `analyzr-import.json` at its root, so a pre-approved
 run never sends an arbitrary folder. The server's dry run writes nothing and takes no lock.
+
+**`analyzr-spec`** (M6 S3c step 1, [M6-INTEGRATION-AND-GAPS.md](M6-INTEGRATION-AND-GAPS.md) §3.9 and
+§8 "S3c step 1 as delivered", owner decision 30, [below](#m6-s3c-step-1-2026-10-21); `src/spec/`,
+the entry `src/cli/analyzr-spec.ts`) validates `analyzr-spec/1` files, renders them as BPMN 2.0 with
+DI, plans their keys and writes their bundles; it runs no foreign code. It is in no bundle before
+plugin 0.1.4 (S3c step 4), which also teaches the skill the converter and picture paths, so until
+then it runs from source (Node 24, no network) and consultants do not reach it. Exit codes and the
+short JSON on stdout as for the other scripts:
+
+```
+S=tools/integrate/src/cli/analyzr-spec.ts
+node $S validate "$WS/specs/2026-10-14-images"
+node $S render "$WS/specs/2026-10-14-images/reklamation.spec.yaml" "$WS/reports/reklamation.bpmn"
+node $S plan "$WS/specs/2026-10-14-images" --workspace "$WS" --system images --whole-system --write
+node $S bundle "$WS/specs/2026-10-14-images" --workspace "$WS" --system images \
+  --out "$WS/bundles/2026-10-14-images" --exported-at 2026-10-14
+```
+
+| Command | What it does |
+|---|---|
+| `validate <spec file or folder>` | checks `*.spec.yaml`, `*.spec.yml` and `*.spec.json` below a folder (also one file of any name) as specs the agent wrote: every error and warning as `<spec file>: <path>: <message>`, a tool path or tool id twice in a folder as `duplicate-model`; writes nothing; exit 1 on an error, never on a warning |
+| `render <spec> <out.bpmn> [--key <model key>] [--origin hand\|converter]` | one spec into a new `.bpmn` file, for checks: `--key` sets the definitions id (default `spec`), `--origin converter` checks the spec as converter output (no `derived`; loose positions are warnings) |
+| `plan <spec folder> --workspace <dir> --system <s> …` | the model keys against `keymap.json` from each spec's `source.externalPath` (and `externalId`), exactly as `normalize-bpmn plan` plans an export, with the same flags (`--strip`, `--prefix`, `--scope`, `--whole-system`, `--exclude`, `--no-exclude`, `--existing`, `--from-analyzr`, `--reset`, `--write`, `--json-out`), plus the specs' tool folders and archive-like folders and the flag `replaces-known-model`: a spec the agent wrote takes a key the map holds with a tool id, one without unless this spec folder wrote the system's last plan (`plan --write` records it as `lastExport`, `specs/<folder>`), or a new key analyzr already has (`--existing`); the skill stops there |
+| `bundle <spec folder> --workspace <dir> --system <s> --out <dir> [--exported-at <date>] [--inventory <file>] [--json-out <file>]` | the bundle in an empty folder: every spec rendered at its confirmed key's path, `analyzr-import.json` (importer `analyzr-integrate/analyzr-spec`, `derived` `reconstructed` with the spec's `llmModel`, the losses `id-rewritten`, `layout-generated`, `link-unresolved`, `text-truncated`) and, with `--inventory`, `inventory.json`; refuses invalid specs, unconfirmed keys, `as-told` specs (until S6) and a folder with a converter run's record `analyzr-specs.json` (until S3c step 2); exit 1 with `failed` entries (the bundle holds every other model) |
+
+No output goes into the spec folder, below the `exports/` of the workspace (the folder with
+`analyzr-workspace.json`) the input or the output lies in, or into an analyzr checkout
+(`src/spec/guards.ts`). A spec file is read only as a regular file of at most 2 MB, without
+following a link or waiting on a pipe.
+
+**The format** (`src/spec/types.ts`, `validate.ts`; every field, error and limit in M6 §8 "S3c step
+1 as delivered"): one model per file, YAML 1.2 core or JSON, strict (an unknown key is an error, ids
+are YAML strings), read by `src/spec/yaml.ts` with every parser warning fatal and no tag, anchor,
+alias, merge key or non-string key. A spec has no key and no name (keys come from `keymap.json`
+through `plan`, decision 30): `format`, `source` (`externalPath`; `externalId` and `url` only from a
+converter), `derived` (only in a spec the agent writes: `reconstructed` with `llmModel`, or
+`as-told`), `participants`, `processes` with lanes, data stores, nodes (`start`, `end`, `event`,
+`task`, `subprocess`, `call` with a `target`, `gateway`) and flows, `messageFlows`, `notes`. A
+`calledElement` key and the type `callActivity` are refused with a hint.
+
+**The renderer** (`src/spec/render.ts`, `layout.ts`, `ids.ts`, `check.ts`, `moddle.ts`) writes
+through bpmn-moddle without extensions: `exporter="analyzr-spec"` without a version, every process
+`isExecutable="false"`, no engine; ids `<Category>_<source id>` (`Activity_`, `Event_`, `Gateway_`,
+`Flow_`, …) from one capped, collision-checked id function, which also keeps every id clear of
+another's `_di`, `_label` and `_plane`; elements in id order, pools and lanes drawn in list order,
+so shuffling nodes, flows, message flows, data stores, reads or writes changes no byte and
+reordering lanes or pools moves only the DI; a call as a collapsed subprocess named after its target
+with `link-unresolved`, never a `calledElement`; every text sanitized as `@analyzr/bpmn-facts` does
+it (pinned copies in `src/spec/text.ts`) and cut at 200 or 2,000 characters. The layout is the eval
+layouter's (`eval/tools/lib/layout.mjs`), ported and extended. A self-check (`check.ts`) reads every
+render back and refuses a model with a bpmn-moddle warning, a bad id, missing DI or a call activity,
+as it refuses one over 5 MB, 50,000 elements or 100,000 layout slots; the full fact extraction runs
+in the tests only, since bundling `@analyzr/bpmn-facts` would pull in zod.
+
+**Releases and goldens.** `ANALYZR_SPEC_VERSION` (0.1.0, `src/spec/version.ts`, named in the
+manifest's importer, never in the model bytes) moves whenever the bytes rendered from the same spec
+change: `RENDER_OUTPUTS` in `test/spec-render.test.ts` pins a sha256 over the golden renders per
+version (its failing test prints the new one), as `CONVERTER_OUTPUTS` pins `normalize-bpmn`; an
+optional field or enum value may join `analyzr-spec/1` only when every existing render stays
+byte-identical. The goldens `test/fixtures/spec/<name>.spec.yaml` and `<name>.bpmn` (9, synthetic,
+an invented „Beispiel GmbH“, never from a customer, `eval/corpus` or the holdout; their `README.md`
+says what each covers) are rewritten with `ANALYZR_UPDATE_GOLDEN=1 pnpm --filter @analyzr/integrate
+test`. `src/spec/plan-args.ts` and the copies in `ids.ts` and `text.ts` stay apart from the modules
+the shipped bundles include until 0.1.4, each pinned against its original by a test.
+
+**In a browser.** CI checks bpmn-js only through its tree walker (`test/spec-bpmnjs.test.ts`). The
+import itself runs in Playwright: `pnpm --filter @analyzr/web e2e spec-render-import`
+(`apps/web/e2e/spec-render-import.spec.ts`, 2 tests, no analyzr server) writes 50 seeded random
+renders into a temporary folder with `tools/integrate/test/spec-fuzz-write.ts`, serves
+`apps/web/e2e/spec-harness` with Vite and imports every golden and every random render with
+`NavigatedViewer`: 0 warnings, 0 errors, every participant, lane, flow node, data store, flow, data
+association and message flow drawn, counts only. It takes no other folder, so customer renders never
+pass through the checkout's test output.
 
 ### Open questions (M6 S4)
 
@@ -4120,6 +4197,15 @@ agent's recordings ([Recordings](#simulation-agent-and-evalreplay-m2)).
   again in a new session. `ANALYZR_E2E_VC_EXTRA=<path>` checks another chain with counts-only output
   (the owner's way to run the holdout chain, which S3 never reads); a relative path resolves against
   the directory pnpm was started in (`INIT_CWD`, `e2e/user-path.ts`), not `apps/web`.
+- `apps/web/e2e/spec-render-import.spec.ts` (Playwright, M6 S3c step 1, no analyzr server; D2 (b) of
+  M6 §8 "S3"): writes 50 seeded random renders of `analyzr-spec` into a temporary folder
+  (`tools/integrate/test/spec-fuzz-write.ts`), starts Vite's dev server on `e2e/spec-harness`
+  (bpmn-js's `NavigatedViewer` with its CSS, as the model view loads it) on a free port inside the
+  spec, and checks in Chromium that every golden render of `tools/integrate/test/fixtures/spec/` and
+  every random render imports with 0 warnings and 0 errors and that the element registry holds every
+  participant, lane, flow node, data store, sequence flow, data association and message flow, a
+  label's or plane's entry not counted as the element (2 tests, counts only; it takes no other
+  folder).
 - `apps/web/e2e/value-chain.spec.ts` (Playwright, M4 S3, a running server as for review): creates
   `vc-<time>` from `eval/corpus/nordwind-handel` with an agent token and `vc-empty-<time>`. The
   empty state with the CLI command, then a chain drawn in the browser and saved as r1 (nothing
@@ -5101,6 +5187,41 @@ agent's recordings ([Recordings](#simulation-agent-and-evalreplay-m2)).
   with moved folders: „Vorschau: 6 unverändert“, „Danach: Ort im Quellsystem für 6 Modelle
   aktualisiert“, „Importieren“, „Kein Modell importiert · 6 unverändert“, `external-ids` and
   „Herkunft“ with the moved folder and the first export's „Quelle“).
+- M6 S3c step 1 "`analyzr-spec/1` and the deterministic renderer": `tools/integrate/test` (332
+  tests, 205 before) `spec-validate.test.ts` (new: every error and warning with its exact message,
+  per origin; ids as strings; D3 (a): `calledElement`, `callActivity` and a call's `name` refused;
+  the limits, also 20,000 processes refused in milliseconds; the YAML reader refusing anchors,
+  aliases, merge keys, tags, duplicate keys, several documents and odd keys, reading UTF-8 of at
+  most 2 MB and JSON, `formatSpec` read back unchanged; the zod-free `externalId` and URL rules
+  against the contracts' `ImportManifest`), `spec-render.test.ts` (new: the 9 goldens byte for byte
+  and `RENDER_OUTPUTS`; per golden the facts `extractFacts` gives, with element ids, documentation,
+  lane members, data store readers and writers, message and signal names and message flow ends, the
+  participant names and the model name; determinism: twice, YAML against JSON, shuffled nodes,
+  flows, message flows and data stores, reordered lanes and pools moving only DI, another key
+  changing only the definitions and collaboration ids, a task refined to a send task or a call and
+  an event changing direction keeping their ids; the id function's prefixes, the 255 cap, uniqueness
+  and the `_label`/`_plane` rule; the copies of `capped`, `uniqueId`, `sanitizeLine` and
+  `sanitizeBlock` against their originals; seven tampered renders, each refused by its own
+  self-check rule; the slot, size and element limits; 200 seeded random specs, also shuffled,
+  through D1 (no extractor warning, `engine` null, `isExecutable="false"`, no engine namespace) and
+  D3 (b) on the parsed tree), `spec-layout.test.ts` (new: the readability checks on goldens and
+  fuzz: no two shapes overlapping, every shape inside its pool and lane, axis-parallel edges with at
+  least two waypoints, sequence flows, data associations and their labels inside their pool, no
+  label over a shape, no pool over another, pool widths, integer coordinates everywhere; eval's DI
+  rules restated; lane order and the unlaned band), `spec-bpmnjs.test.ts` (new: D2 (a) on goldens
+  and 200 random specs, bpmn-moddle without a warning and bpmn-js's `BpmnTreeWalker` with a handler
+  applying `BpmnImporter`'s refusals, every drawable element drawn exactly once and every id bpmn-js
+  registers unique; a removed shape, a shape on a connection, an edge on a node, an unspecified
+  `sourceRef` and an unknown DI refused), `spec-bundle.test.ts` (new: the manifest against the
+  contracts' `ImportManifest`, losses summed, `as-told`, the run record, unconfirmed keys and a
+  non-empty `--out` refused, two specs of one model, the folders and `replaces-known-model` in each
+  of its cases and on a re-plan of its own keys, inventory coverage, the spec file reader with a
+  sparse 3 GB file, a pipe and a link, the output guards) and `cli.test.ts` (the `analyzr-spec`
+  entry from source: usage and exit codes, `validate` on a folder, a file of any name and a missing
+  path, `render` refused into a checkout or `exports/`, `plan`, `plan --write`, `plan
+  --from-analyzr`, `bundle` with exit 1 for a failed model, `plan` exit 1 on invalid specs;
+  `spec/plan-args.ts` against `normalize-bpmn`'s helpers); Playwright
+  `e2e/spec-render-import.spec.ts` (new, above).
 
 ## CI
 
@@ -5141,8 +5262,8 @@ action), deploys with `--remote-only --ha=false` and the run as seed id, and run
 check` against the public URL. It does not wait for CI; the build-time seed, the blue-green
 health check and the check gate it. Since `main` is the default branch, a `workflow_run` trigger
 on "CI" could gate it as well; that is optional and not used. Setup, reset and troubleshooting:
-[Demo deployment](#demo-deployment-flyio). The Playwright tests (also the value chain import harness and CSS check) are not
-in CI; the bundle guard of the web (`apps/web/test/bundle.test.ts`) runs with `pnpm test`. `examples/agents` is outside the workspace:
+[Demo deployment](#demo-deployment-flyio). The Playwright tests (also the value chain import harness and CSS check, and
+since M6 S3c step 1 the spec render harness) are not in CI; the bundle guard of the web (`apps/web/test/bundle.test.ts`) runs with `pnpm test`. `examples/agents` is outside the workspace:
 CI only runs Prettier over its JSON files; `run-headless.sh` is not shellchecked, and no setup
 runs against a model. `eval:live` needs a live project and is not in CI either.
 
@@ -7500,3 +7621,100 @@ of an identity-only re-export in a live session (plugin 0.1.3 reports „keine �
 und Befunden.“ there and hands over the import command, which records the places;
 [HANDOFF.md](HANDOFF.md) §4), other browsers than Chromium, a real phone, a screen reader, the
 measurements on a container or CI host (a developer Mac only), CI (no e2e job).
+
+### M6 S3c step 1 (2026-10-21)
+
+Same machine; step 1 of M6 S3c (`analyzr-spec/1` and the deterministic renderer,
+[M6-INTEGRATION-AND-GAPS.md](M6-INTEGRATION-AND-GAPS.md) §3.9 and §8 "S3" and "S3c step 1 as
+delivered", owner decision 30, [The integrate plugin and
+`tools/integrate`](#the-integrate-plugin-and-toolsintegrate-m6-s3b) "`analyzr-spec`") on
+`feat/integration-and-gaps` on top of S2b's follow-up step 5. A strict format for one model per
+file, `analyzr-spec/1` (YAML 1.2 core or JSON, no key and no name, a `source` id per element,
+message and signal names only where the source names them), its validator, and a renderer that turns
+it into BPMN 2.0 with DI and without an engine: ids `<Category>_<source id>` from one capped,
+collision-checked id function, the eval layouter's algorithm made independent of the order of nodes,
+flows and data stores (pools and lanes in list order), calls
+as collapsed subprocesses with `link-unresolved` and never a `calledElement`, and a self-check on
+every render; with `plan` (keys from the tool path, the flag `replaces-known-model`) and `bundle`
+(an `analyzr-import/1` bundle declaring `reconstructed`), in `tools/integrate/src/spec/` and the
+entry `src/cli/analyzr-spec.ts`, run from source until plugin 0.1.4. Built by an implementing agent,
+reviewed adversarially (renderer, security, tests); of the review round's 25 distinct findings (3
+major) 24 fixed, one of them with a sub-point rejected, and 1 in part, and the fixer found one bug
+more. Fixed among them: an element id equal to another element's id plus `_label` or `_plane`, the
+ids bpmn-js gives that element's label or drill-down plane, so the browser lost a label or failed a
+plane (now reserved by the id function, refused by the self-check, recorded by the CI walker and
+counted by the harness); a valid spec of 5,000 nodes with long flows that ran out of memory in the
+layout (now at most 100,000 slots, `layout-too-large` in 0.2 s, the model listed as failed and the
+others bundled); `render` writing into a workspace's `exports/` (every output now refused below the
+`exports/` of the input's and the output's workspace, and `render` needs a new `.bpmn` file); flow
+labels on shapes; nested loops leaving their pool; `validate` quadratic in processes (20,000
+processes in 68 ms instead of 80 s, and a limit of 1,000 parts); the whole file read before its size
+was checked (now a regular file only, at most 2 MB plus one byte read); a re-plan flagging its own
+keys and `exists-in-analyzr` not flagged by `replaces-known-model`; `counts.flagged` without the new
+flag; messages echoing input at any length; facts pins without ids and contents; the self-check
+rules and the walker's refusals untested one by one. Rejected: a `moved` case for
+`replaces-known-model`, which a spec without a tool id cannot reach. In part: the three fuzz loops
+stay in their test files. The fixer's own find: after an element that failed validation, later
+problems named the wrong list index. The readings taken on the open points are in
+[HANDOFF.md](HANDOFF.md) §4 ("Taken during M6 S3c step 1"). For the first analysis: landscapes that
+exist only as Visio, ARIS AML, PDFs or whiteboard pictures get one strict format and one renderer
+whose BPMN extracts without a warning, imports into bpmn-js without a warning, draws in the model
+view at once and carries no guessed call link, so steps 2–4 can bring them into analyzr in the same
+first pass as the BPMN exports.
+
+1. Gates, from the fix round's run: every gate green (`pnpm format:check`, `pnpm -r typecheck`,
+   `pnpm -r lint` with dependency-cruiser, 150 modules, no violations, `pnpm -r test` with
+   Testcontainers: integrate 332 (205 before), server 1,804, web 663, CLI 286 plus 7 skipped (the
+   live project), contracts 178, bpmn-facts 200, relations 91, agent-sim 57, procedures 37, demo 27,
+   notices 9, client 4, eval/tools 108; `pnpm eval:candidates`, `pnpm eval:replay`, `pnpm
+   eval:placements`, `pnpm eval:descriptive`); `git diff --exit-code eval/reports` clean; `pnpm
+   --filter @analyzr/integrate generate` followed by `git diff --exit-code
+   plugins/analyzr-integrate` clean, so plugin 0.1.3 is byte-identical (the new modules are in no
+   entry, and the type-only widenings of `src/bundle.ts` and `src/keymap.ts` leave no byte in a
+   bundle). `yaml@2.9.1` (ISC, already in the workspace) is a new dependency of `tools/integrate`
+   and `bpmn-js@18.31.0` (the bpmn.io license, already in `apps/web`) a new devDependency: importer
+   entries only in the lockfile, and `pnpm notices` left `THIRD-PARTY-NOTICES.md` unchanged. No
+   server, contract, client, CLI, web product, MCP, procedure, migration, facts or trust-rule
+   change; the pipeline plugin and the recordings are untouched, so it is live-run neutral. The
+   Testcontainers left no container behind.
+2. What was checked, on the 9 synthetic goldens and 200 seeded random specs (1–4 processes, 1–40
+   nodes, sources of 1–200 characters, sources like generated ids, `x_label` and `x_plane`, message
+   names that come out alike, texts from a hostile alphabet with control characters, U+2028, U+FFFE,
+   U+D800 and U+DFFF): D1, `extractFacts` with `warnings: []` and `engine: null`, every process
+   `isExecutable="false"`, no Camunda, Zeebe or modeler namespace and no `exporterVersion`, and per
+   golden the facts pinned with their element ids and contents; D2 (a), bpmn-moddle without a
+   warning and bpmn-js's `BpmnTreeWalker` with a handler applying `BpmnImporter`'s refusals (an
+   unknown DI, a parent or connection end not yet drawn, an end not specified, a missing
+   `attachedToRef`, a shape on a connection, an edge on a node), every drawable element drawn
+   exactly once and every id bpmn-js registers unique, with negative cases; D3 (a), `calledElement`
+   an unknown field with a hint, `callActivity` an unknown type, `name` on a call refused; D3 (b),
+   no `callActivity` element and no `calledElement` attribute in any parsed tree, which the runtime
+   self-check also refuses; eval's DI rules and the readability checks; determinism: the same bytes
+   twice, from YAML and JSON and with shuffled nodes, flows, message flows, data stores, reads and
+   writes, reordered lanes and pools moving only DI, another key changing only the definitions and
+   collaboration ids, refined node types keeping their ids; `RENDER_OUTPUTS['0.1.0']` =
+   `f3ad4d7f248abb5145bb9d12f075dc459fcb6f5ae214dc817217862164477c20` (replaced once before any
+   commit, after the review round's layout fixes changed four goldens; HANDOFF §4); the plugin
+   byte-identical after `generate`. The renders were also looked at in bpmn-js on screenshots, which
+   is where a join's exit along its entries and a message flow through an unrelated start event were
+   found.
+3. The e2e run: the Playwright harness spec `apps/web/e2e/spec-render-import.spec.ts` (D2 (b); no
+   analyzr server, so no stack was built) ran once in the implementing agents' run, `pnpm --filter
+   @analyzr/web e2e spec-render-import`: 2 of 2 passed (9 goldens, 50 random renders); the fix round
+   ran it again with `--output` in the scratchpad, 2 of 2, after the stricter count of what is
+   drawn, and imported 400 random renders in Chromium, all clean; `apps/web/test-results/` was
+   removed. The lead's run on the final tree, on the scratch stacks `analyzr-s3c1` (ports 7690 and
+   55690, `analyzr seed`) and `analyzr-s3c1-demo` (port 7691): the full Playwright suite 113 passed
+   and 21 skipped, step 5's tests plus the harness spec's 2
+   (`ANALYZR_UI_LOAD_NORDWIND=nordwind-s3c1`; the chain page's CSS check passed), the UI load
+   numbers equal to step 4's on every screen, the demo check 152 of 152, `demo.spec.ts` 14 of 14;
+   the stacks, their volumes and images are removed. `analyzr-local` is not rebuilt: neither the
+   server nor the web product code changed.
+
+Not checked: the spec path in a Claude Code or Codex session (the skill does not use `analyzr-spec`
+before plugin 0.1.4, and no LLM call was made), a picture read into a spec by an agent, a rendered
+bundle imported into a running analyzr (the scratch-stack run of D3 (d) and D4 belongs to step 4), a
+real or sandbox Visio or ARIS export (M6 §10.4), other browsers than Chromium, CI (no e2e job). Seen
+and not fixed (cosmetic, flagged by no check): a message flow from a node can cross shapes of its
+own pool below that node, and a task name of nearly 200 characters overflows its fixed 100 × 80 box
+in bpmn-js.

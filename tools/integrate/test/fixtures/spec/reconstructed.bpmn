@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Definitions_beispiel_reconstructed" targetNamespace="http://bpmn.io/schema/bpmn" exporter="analyzr-spec">
+  <bpmn:process id="Process_p" name="Reklamationsbearbeitung" isExecutable="false">
+    <bpmn:sendTask id="Activity_ablehnen" name="Ablehnung senden">
+      <bpmn:incoming>Flow_berechtigt_ablehnen</bpmn:incoming>
+      <bpmn:outgoing>Flow_ablehnen_ende</bpmn:outgoing>
+    </bpmn:sendTask>
+    <bpmn:subProcess id="Activity_gutschrift" name="Gutschrift erstellen">
+      <bpmn:incoming>Flow_berechtigt_gutschrift</bpmn:incoming>
+      <bpmn:outgoing>Flow_gutschrift_ende</bpmn:outgoing>
+    </bpmn:subProcess>
+    <bpmn:task id="Activity_pruefen" name="Reklamation prüfen">
+      <bpmn:incoming>Flow_start_pruefen</bpmn:incoming>
+      <bpmn:outgoing>Flow_pruefen_berechtigt</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:endEvent id="Event_ende" name="Reklamation erledigt">
+      <bpmn:incoming>Flow_ablehnen_ende</bpmn:incoming>
+      <bpmn:incoming>Flow_gutschrift_ende</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:startEvent id="Event_start" name="Reklamation eingegangen">
+      <bpmn:outgoing>Flow_start_pruefen</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:exclusiveGateway id="Gateway_berechtigt" name="Berechtigt?">
+      <bpmn:incoming>Flow_pruefen_berechtigt</bpmn:incoming>
+      <bpmn:outgoing>Flow_berechtigt_ablehnen</bpmn:outgoing>
+      <bpmn:outgoing>Flow_berechtigt_gutschrift</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:sequenceFlow id="Flow_ablehnen_ende" sourceRef="Activity_ablehnen" targetRef="Event_ende" />
+    <bpmn:sequenceFlow id="Flow_berechtigt_ablehnen" name="nein" sourceRef="Gateway_berechtigt" targetRef="Activity_ablehnen" />
+    <bpmn:sequenceFlow id="Flow_berechtigt_gutschrift" name="ja" sourceRef="Gateway_berechtigt" targetRef="Activity_gutschrift" />
+    <bpmn:sequenceFlow id="Flow_gutschrift_ende" sourceRef="Activity_gutschrift" targetRef="Event_ende" />
+    <bpmn:sequenceFlow id="Flow_pruefen_berechtigt" sourceRef="Activity_pruefen" targetRef="Gateway_berechtigt" />
+    <bpmn:sequenceFlow id="Flow_start_pruefen" sourceRef="Event_start" targetRef="Activity_pruefen" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="Process_p">
+      <bpmndi:BPMNShape id="Activity_ablehnen_di" bpmnElement="Activity_ablehnen">
+        <dc:Bounds x="566" y="120" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_gutschrift_di" bpmnElement="Activity_gutschrift" isExpanded="false">
+        <dc:Bounds x="566" y="250" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_pruefen_di" bpmnElement="Activity_pruefen">
+        <dc:Bounds x="296" y="120" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_ende_di" bpmnElement="Event_ende">
+        <dc:Bounds x="726" y="142" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="711" y="185" width="66" height="28" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_start_di" bpmnElement="Event_start">
+        <dc:Bounds x="200" y="142" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="185" y="185" width="66" height="28" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gateway_berechtigt_di" bpmnElement="Gateway_berechtigt">
+        <dc:Bounds x="456" y="135" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="448" y="114" width="66" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_ablehnen_ende_di" bpmnElement="Flow_ablehnen_ende">
+        <di:waypoint x="666" y="160" />
+        <di:waypoint x="726" y="160" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_berechtigt_ablehnen_di" bpmnElement="Flow_berechtigt_ablehnen">
+        <di:waypoint x="506" y="160" />
+        <di:waypoint x="566" y="160" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="524" y="142" width="24" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_berechtigt_gutschrift_di" bpmnElement="Flow_berechtigt_gutschrift">
+        <di:waypoint x="481" y="185" />
+        <di:waypoint x="481" y="290" />
+        <di:waypoint x="566" y="290" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="530" y="272" width="12" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_gutschrift_ende_di" bpmnElement="Flow_gutschrift_ende">
+        <di:waypoint x="666" y="290" />
+        <di:waypoint x="696" y="290" />
+        <di:waypoint x="696" y="160" />
+        <di:waypoint x="726" y="160" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_pruefen_berechtigt_di" bpmnElement="Flow_pruefen_berechtigt">
+        <di:waypoint x="396" y="160" />
+        <di:waypoint x="456" y="160" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_start_pruefen_di" bpmnElement="Flow_start_pruefen">
+        <di:waypoint x="236" y="160" />
+        <di:waypoint x="296" y="160" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

@@ -18,10 +18,12 @@
     "@analyzr/contracts": "workspace:0.0.0",
     "bpmn-moddle": "10.3.1",
     "camunda-bpmn-moddle": "8.0.2",
+    "yaml": "2.9.1",
     "zeebe-bpmn-moddle": "2.0.0"
   },
   "devDependencies": {
     "@analyzr/bpmn-facts": "workspace:0.0.0",
+    "bpmn-js": "18.31.0",
     "rolldown": "1.2.12"
   }
 }

@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Definitions_beispiel_unnamed_messages" targetNamespace="http://bpmn.io/schema/bpmn" exporter="analyzr-spec">
+  <bpmn:process id="Process_rueckmeldung" name="Rückmeldung einholen" isExecutable="false">
+    <bpmn:receiveTask id="Activity_t-annehmen" name="Rückmeldung entgegennehmen">
+      <bpmn:incoming>Flow_ev-antwort_t-annehmen</bpmn:incoming>
+      <bpmn:outgoing>Flow_t-annehmen_e</bpmn:outgoing>
+    </bpmn:receiveTask>
+    <bpmn:sendTask id="Activity_t-erinnern" name="Erinnerung senden">
+      <bpmn:incoming>Flow_s_t-erinnern</bpmn:incoming>
+      <bpmn:outgoing>Flow_t-erinnern_ev-antwort</bpmn:outgoing>
+    </bpmn:sendTask>
+    <bpmn:endEvent id="Event_e" name="Rückmeldung erfasst">
+      <bpmn:incoming>Flow_t-annehmen_e</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:intermediateCatchEvent id="Event_ev-antwort" name="Antwort erhalten">
+      <bpmn:incoming>Flow_t-erinnern_ev-antwort</bpmn:incoming>
+      <bpmn:outgoing>Flow_ev-antwort_t-annehmen</bpmn:outgoing>
+      <bpmn:messageEventDefinition />
+    </bpmn:intermediateCatchEvent>
+    <bpmn:startEvent id="Event_s" name="Wochenbeginn">
+      <bpmn:outgoing>Flow_s_t-erinnern</bpmn:outgoing>
+      <bpmn:timerEventDefinition />
+    </bpmn:startEvent>
+    <bpmn:sequenceFlow id="Flow_ev-antwort_t-annehmen" sourceRef="Event_ev-antwort" targetRef="Activity_t-annehmen" />
+    <bpmn:sequenceFlow id="Flow_s_t-erinnern" sourceRef="Event_s" targetRef="Activity_t-erinnern" />
+    <bpmn:sequenceFlow id="Flow_t-annehmen_e" sourceRef="Activity_t-annehmen" targetRef="Event_e" />
+    <bpmn:sequenceFlow id="Flow_t-erinnern_ev-antwort" sourceRef="Activity_t-erinnern" targetRef="Event_ev-antwort" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="Process_rueckmeldung">
+      <bpmndi:BPMNShape id="Activity_t-annehmen_di" bpmnElement="Activity_t-annehmen">
+        <dc:Bounds x="552" y="120" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_t-erinnern_di" bpmnElement="Activity_t-erinnern">
+        <dc:Bounds x="296" y="120" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_e_di" bpmnElement="Event_e">
+        <dc:Bounds x="712" y="142" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="697" y="185" width="66" height="28" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_ev-antwort_di" bpmnElement="Event_ev-antwort">
+        <dc:Bounds x="456" y="142" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="450" y="185" width="48" height="28" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_s_di" bpmnElement="Event_s">
+        <dc:Bounds x="200" y="142" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="182" y="185" width="72" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_ev-antwort_t-annehmen_di" bpmnElement="Flow_ev-antwort_t-annehmen">
+        <di:waypoint x="492" y="160" />
+        <di:waypoint x="552" y="160" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_s_t-erinnern_di" bpmnElement="Flow_s_t-erinnern">
+        <di:waypoint x="236" y="160" />
+        <di:waypoint x="296" y="160" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_t-annehmen_e_di" bpmnElement="Flow_t-annehmen_e">
+        <di:waypoint x="652" y="160" />
+        <di:waypoint x="712" y="160" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_t-erinnern_ev-antwort_di" bpmnElement="Flow_t-erinnern_ev-antwort">
+        <di:waypoint x="396" y="160" />
+        <di:waypoint x="456" y="160" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

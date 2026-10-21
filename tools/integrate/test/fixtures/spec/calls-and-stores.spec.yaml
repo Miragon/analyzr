@@ -1,0 +1,34 @@
+# Synthetic (see README.md): two calls (drawn as collapsed subprocesses), a collapsed
+# subprocess, a data store read and written, signal throw and catch, a timer catch and a
+# terminate end.
+format: analyzr-spec/1
+source:
+  externalPath: Finanzen/Monatsabschluss
+  file: Monatsabschluss.pdf
+derived:
+  kind: reconstructed
+  llmModel: claude-opus-5-5
+processes:
+  - source: abschluss
+    name: Monatsabschluss
+    dataStores:
+      - { source: ds-erp, name: ERP-System }
+    nodes:
+      - { source: s, type: start, trigger: signal, signal: Monatsabschluss, name: Monatsabschluss gestartet }
+      - { source: c-rechnungen, type: call, target: Rechnungen prüfen }
+      - { source: sp-belege, type: subprocess, name: Belege sammeln, reads: [ds-erp] }
+      - { source: t-buchen, type: task, kind: service, name: Buchungen übertragen, reads: [ds-erp], writes: [ds-erp] }
+      - { source: c-bericht, type: call, target: Berichtswesen, documentation: Erstellt den Monatsbericht. }
+      - { source: ev-warten, type: event, direction: catch, trigger: timer, name: Drei Tage warten }
+      - { source: ev-melden, type: event, direction: throw, trigger: signal, signal: Monatsabschluss beendet, name: Abschluss melden }
+      - { source: ev-freigabe, type: event, direction: catch, trigger: signal, name: Freigabe erteilt }
+      - { source: e, type: end, trigger: terminate, name: Abschluss fertig }
+    flows:
+      - { from: s, to: c-rechnungen }
+      - { from: c-rechnungen, to: sp-belege }
+      - { from: sp-belege, to: t-buchen }
+      - { from: t-buchen, to: c-bericht }
+      - { from: c-bericht, to: ev-warten }
+      - { from: ev-warten, to: ev-melden }
+      - { from: ev-melden, to: ev-freigabe }
+      - { from: ev-freigabe, to: e }

@@ -1,0 +1,180 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Definitions_beispiel_collaboration" targetNamespace="http://bpmn.io/schema/bpmn" exporter="analyzr-spec">
+  <bpmn:collaboration id="Collaboration_beispiel_collaboration">
+    <bpmn:participant id="Participant_p-versand" name="Versand" processRef="Process_p-versand" />
+    <bpmn:participant id="Participant_p-vertrieb" name="Vertrieb" processRef="Process_p-vertrieb" />
+    <bpmn:participant id="Participant_pool-kunde" name="Kunde" />
+    <bpmn:messageFlow id="MessageFlow_pool-kunde_s1" name="Anfrage" sourceRef="Participant_pool-kunde" targetRef="Event_s1" />
+    <bpmn:messageFlow id="MessageFlow_pool-kunde_t3" name="Auftrag" sourceRef="Participant_pool-kunde" targetRef="Activity_t3" />
+    <bpmn:messageFlow id="MessageFlow_t2_pool-kunde" name="Angebot" sourceRef="Activity_t2" targetRef="Participant_pool-kunde" />
+    <bpmn:messageFlow id="MessageFlow_t4_v-s" sourceRef="Activity_t4" targetRef="Event_v-s" />
+    <bpmn:messageFlow id="MessageFlow_v-e_pool-kunde" name="Versandbestätigung" sourceRef="Event_v-e" targetRef="Participant_pool-kunde" />
+  </bpmn:collaboration>
+  <bpmn:process id="Process_p-versand" name="Versand" isExecutable="false">
+    <bpmn:task id="Activity_v-t" name="Ware versenden">
+      <bpmn:incoming>Flow_v-s_v-t</bpmn:incoming>
+      <bpmn:outgoing>Flow_v-t_v-e</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:endEvent id="Event_v-e" name="Ware versandt">
+      <bpmn:incoming>Flow_v-t_v-e</bpmn:incoming>
+      <bpmn:messageEventDefinition messageRef="Message_Versandbestaetigung" />
+    </bpmn:endEvent>
+    <bpmn:startEvent id="Event_v-s" name="Versandauftrag erhalten">
+      <bpmn:outgoing>Flow_v-s_v-t</bpmn:outgoing>
+      <bpmn:messageEventDefinition messageRef="Message_Versandauftrag" />
+    </bpmn:startEvent>
+    <bpmn:sequenceFlow id="Flow_v-s_v-t" sourceRef="Event_v-s" targetRef="Activity_v-t" />
+    <bpmn:sequenceFlow id="Flow_v-t_v-e" sourceRef="Activity_v-t" targetRef="Event_v-e" />
+  </bpmn:process>
+  <bpmn:process id="Process_p-vertrieb" name="Angebotserstellung" isExecutable="false">
+    <bpmn:task id="Activity_t1" name="Angebot erstellen">
+      <bpmn:incoming>Flow_s1_t1</bpmn:incoming>
+      <bpmn:outgoing>Flow_t1_t2</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:sendTask id="Activity_t2" name="Angebot senden" messageRef="Message_Angebot">
+      <bpmn:incoming>Flow_t1_t2</bpmn:incoming>
+      <bpmn:outgoing>Flow_t2_t3</bpmn:outgoing>
+    </bpmn:sendTask>
+    <bpmn:receiveTask id="Activity_t3" name="Auftrag empfangen" messageRef="Message_Auftrag">
+      <bpmn:incoming>Flow_t2_t3</bpmn:incoming>
+      <bpmn:outgoing>Flow_t3_t4</bpmn:outgoing>
+    </bpmn:receiveTask>
+    <bpmn:sendTask id="Activity_t4" name="Auftrag an Versand übergeben" messageRef="Message_Versandauftrag">
+      <bpmn:incoming>Flow_t3_t4</bpmn:incoming>
+      <bpmn:outgoing>Flow_t4_e1</bpmn:outgoing>
+    </bpmn:sendTask>
+    <bpmn:endEvent id="Event_e1" name="Auftrag angenommen">
+      <bpmn:incoming>Flow_t4_e1</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:startEvent id="Event_s1" name="Anfrage eingegangen">
+      <bpmn:outgoing>Flow_s1_t1</bpmn:outgoing>
+      <bpmn:messageEventDefinition messageRef="Message_Kundenanfrage" />
+    </bpmn:startEvent>
+    <bpmn:sequenceFlow id="Flow_s1_t1" sourceRef="Event_s1" targetRef="Activity_t1" />
+    <bpmn:sequenceFlow id="Flow_t1_t2" sourceRef="Activity_t1" targetRef="Activity_t2" />
+    <bpmn:sequenceFlow id="Flow_t2_t3" sourceRef="Activity_t2" targetRef="Activity_t3" />
+    <bpmn:sequenceFlow id="Flow_t3_t4" sourceRef="Activity_t3" targetRef="Activity_t4" />
+    <bpmn:sequenceFlow id="Flow_t4_e1" sourceRef="Activity_t4" targetRef="Event_e1" />
+  </bpmn:process>
+  <bpmn:message id="Message_Angebot" name="Angebot" />
+  <bpmn:message id="Message_Auftrag" name="Auftrag" />
+  <bpmn:message id="Message_Kundenanfrage" name="Kundenanfrage" />
+  <bpmn:message id="Message_Versandauftrag" name="Versandauftrag" />
+  <bpmn:message id="Message_Versandbestaetigung" name="Versandbestätigung" />
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="Collaboration_beispiel_collaboration">
+      <bpmndi:BPMNShape id="Participant_p-versand_di" bpmnElement="Participant_p-versand" isHorizontal="true">
+        <dc:Bounds x="150" y="310" width="902" height="170" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Participant_p-vertrieb_di" bpmnElement="Participant_p-vertrieb" isHorizontal="true">
+        <dc:Bounds x="150" y="80" width="902" height="170" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Participant_pool-kunde_di" bpmnElement="Participant_pool-kunde" isHorizontal="true">
+        <dc:Bounds x="150" y="556" width="902" height="60" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_t1_di" bpmnElement="Activity_t1">
+        <dc:Bounds x="326" y="120" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_t2_di" bpmnElement="Activity_t2">
+        <dc:Bounds x="486" y="120" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_t3_di" bpmnElement="Activity_t3">
+        <dc:Bounds x="646" y="120" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_t4_di" bpmnElement="Activity_t4">
+        <dc:Bounds x="806" y="120" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_v-t_di" bpmnElement="Activity_v-t">
+        <dc:Bounds x="326" y="350" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_e1_di" bpmnElement="Event_e1">
+        <dc:Bounds x="966" y="142" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="954" y="185" width="60" height="28" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_s1_di" bpmnElement="Event_s1">
+        <dc:Bounds x="230" y="142" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="215" y="185" width="66" height="28" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_v-e_di" bpmnElement="Event_v-e">
+        <dc:Bounds x="486" y="372" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="465" y="415" width="78" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_v-s_di" bpmnElement="Event_v-s">
+        <dc:Bounds x="230" y="372" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="206" y="415" width="84" height="28" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_s1_t1_di" bpmnElement="Flow_s1_t1">
+        <di:waypoint x="266" y="160" />
+        <di:waypoint x="326" y="160" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_t1_t2_di" bpmnElement="Flow_t1_t2">
+        <di:waypoint x="426" y="160" />
+        <di:waypoint x="486" y="160" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_t2_t3_di" bpmnElement="Flow_t2_t3">
+        <di:waypoint x="586" y="160" />
+        <di:waypoint x="646" y="160" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_t3_t4_di" bpmnElement="Flow_t3_t4">
+        <di:waypoint x="746" y="160" />
+        <di:waypoint x="806" y="160" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_t4_e1_di" bpmnElement="Flow_t4_e1">
+        <di:waypoint x="906" y="160" />
+        <di:waypoint x="966" y="160" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_v-s_v-t_di" bpmnElement="Flow_v-s_v-t">
+        <di:waypoint x="266" y="390" />
+        <di:waypoint x="326" y="390" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_v-t_v-e_di" bpmnElement="Flow_v-t_v-e">
+        <di:waypoint x="426" y="390" />
+        <di:waypoint x="486" y="390" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="MessageFlow_pool-kunde_s1_di" bpmnElement="MessageFlow_pool-kunde_s1">
+        <di:waypoint x="214" y="556" />
+        <di:waypoint x="214" y="258" />
+        <di:waypoint x="248" y="258" />
+        <di:waypoint x="248" y="178" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="219" y="495" width="42" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="MessageFlow_pool-kunde_t3_di" bpmnElement="MessageFlow_pool-kunde_t3">
+        <di:waypoint x="696" y="556" />
+        <di:waypoint x="696" y="200" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="701" y="505" width="42" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="MessageFlow_t2_pool-kunde_di" bpmnElement="MessageFlow_t2_pool-kunde">
+        <di:waypoint x="536" y="200" />
+        <di:waypoint x="536" y="556" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="541" y="257" width="42" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="MessageFlow_t4_v-s_di" bpmnElement="MessageFlow_t4_v-s">
+        <di:waypoint x="856" y="200" />
+        <di:waypoint x="856" y="285" />
+        <di:waypoint x="248" y="285" />
+        <di:waypoint x="248" y="372" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="MessageFlow_v-e_pool-kunde_di" bpmnElement="MessageFlow_v-e_pool-kunde">
+        <di:waypoint x="504" y="408" />
+        <di:waypoint x="504" y="556" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="509" y="486" width="90" height="28" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

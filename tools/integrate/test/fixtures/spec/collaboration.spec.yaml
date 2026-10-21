@@ -1,0 +1,43 @@
+# Synthetic (see README.md): converter output (no derived; a tool id and a link) with two
+# processes, a black-box pool, message flows, send and receive tasks with named messages and
+# a message start.
+format: analyzr-spec/1
+source:
+  externalId: 4f1c2a7e-0000-4000-8000-000000000001
+  externalPath: Vertrieb/Angebot und Auftrag
+  url: https://modeler.beispiel.example/models/4f1c2a7e
+  file: Vertrieb.vsdx
+participants:
+  - { source: pool-kunde, name: Kunde }
+processes:
+  - source: p-vertrieb
+    name: Angebotserstellung
+    pool: Vertrieb
+    nodes:
+      - { source: s1, type: start, trigger: message, message: Kundenanfrage, name: Anfrage eingegangen }
+      - { source: t1, type: task, name: Angebot erstellen }
+      - { source: t2, type: task, kind: send, message: Angebot, name: Angebot senden }
+      - { source: t3, type: task, kind: receive, message: Auftrag, name: Auftrag empfangen }
+      - { source: t4, type: task, kind: send, message: Versandauftrag, name: Auftrag an Versand übergeben }
+      - { source: e1, type: end, name: Auftrag angenommen }
+    flows:
+      - { from: s1, to: t1 }
+      - { from: t1, to: t2 }
+      - { from: t2, to: t3 }
+      - { from: t3, to: t4 }
+      - { from: t4, to: e1 }
+  - source: p-versand
+    name: Versand
+    nodes:
+      - { source: v-s, type: start, trigger: message, message: Versandauftrag, name: Versandauftrag erhalten }
+      - { source: v-t, type: task, name: Ware versenden }
+      - { source: v-e, type: end, trigger: message, message: Versandbestätigung, name: Ware versandt }
+    flows:
+      - { from: v-s, to: v-t }
+      - { from: v-t, to: v-e }
+messageFlows:
+  - { from: pool-kunde, to: s1, name: Anfrage }
+  - { from: t2, to: pool-kunde, name: Angebot }
+  - { from: pool-kunde, to: t3, name: Auftrag }
+  - { from: t4, to: v-s }
+  - { from: v-e, to: pool-kunde, name: Versandbestätigung }

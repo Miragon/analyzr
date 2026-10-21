@@ -71,7 +71,12 @@ export type PlanStatus = 'known' | 'moved' | 'new';
  * - `outside-scope`: the file lies outside the folders the partial export
  *   declares;
  * - `exists-in-analyzr`: a new key analyzr already has (`--existing`): the
- *   import would revise that model.
+ *   import would revise that model;
+ * - `replaces-known-model` (`analyzr-spec plan` only, M6 S3c): a spec the
+ *   agent wrote takes a key of a model that may not come from a picture (one
+ *   with a tool id, one without unless this spec folder wrote the system's
+ *   last plan, or a key analyzr already has), so its bundle could replace a
+ *   tool's model.
  */
 export type PlanFlag =
   | 'no-key'
@@ -79,7 +84,8 @@ export type PlanFlag =
   | 'generic-external-id'
   | 'renamed'
   | 'outside-scope'
-  | 'exists-in-analyzr';
+  | 'exists-in-analyzr'
+  | 'replaces-known-model';
 
 export interface PlannedFile {
   path: string;

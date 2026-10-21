@@ -1,6 +1,6 @@
 // The script entries (src/cli/*.ts), run as the plugin runs them: exit codes and JSON output.
 import { execFile } from 'node:child_process';
-import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
 
@@ -27,7 +27,10 @@ interface Result {
   stderr: string;
 }
 
-async function cli(entry: 'inspect' | 'normalize-bpmn', args: readonly string[]): Promise<Result> {
+async function cli(
+  entry: 'inspect' | 'normalize-bpmn' | 'analyzr-spec',
+  args: readonly string[],
+): Promise<Result> {
   try {
     const { stdout, stderr } = await execFileAsync(
       process.execPath,
@@ -506,4 +509,388 @@ describe('output size for a landscape of 200 models', () => {
     ) as { files: unknown[] };
     expect(details.files).toHaveLength(200);
   }, 120_000);
+});
+
+describe('analyzr-spec (M6 S3c, run from source until the plugin ships it)', () => {
+  const SPECS = path.join(PACKAGE_ROOT, 'test/fixtures/spec');
+
+  /** A workspace with a spec folder holding copies of the given fixtures. */
+  async function workspace(names: readonly string[]): Promise<{ ws: string; specs: string }> {
+    const ws = await tempDir();
+    await writeFile(path.join(ws, 'analyzr-workspace.json'), '{}\n');
+    const specs = path.join(ws, 'specs', '2026-10-14-images');
+    await mkdir(specs, { recursive: true });
+    for (const name of names) {
+      await writeFile(
+        path.join(specs, `${name}.spec.yaml`),
+        await readFile(path.join(SPECS, `${name}.spec.yaml`)),
+      );
+    }
+    return { ws, specs };
+  }
+
+  it('prints its usage and exits 2 on usage errors', async () => {
+    expect(await cli('analyzr-spec', ['--help'])).toMatchObject({
+      code: 0,
+      stdout: matching(/^Usage:[\s\S]*analyzr-integrate analyzr-spec 0\.1\.0\n$/),
+    });
+    for (const [args, message] of [
+      [[], /a command is required/],
+      [['convert'], /unknown command convert/],
+      [['validate'], /validate expects one <spec file or folder>/],
+      [['render', 'a.spec.yaml'], /render expects <spec file> <out.bpmn>/],
+      [['render', 'a', 'b', '--key', 'Kein Schlüssel'], /--key "Kein Schlüssel" is no model key/],
+      [['render', 'a', 'b', '--origin', 'export'], /--origin is hand or converter/],
+      [['plan', 'specs', '--system', 'images'], /--workspace is required/],
+      [
+        ['plan', 'specs', '--workspace', 'w', '--system', 's', '--scope', 'a', '--whole-system'],
+        /exclude each other/,
+      ],
+      [['bundle', 'specs', '--workspace', 'w', '--system', 's'], /--out is required/],
+      [['validate', 'x', '--nope'], /Unknown option/],
+    ] as const) {
+      expect(await cli('analyzr-spec', args), args.join(' ')).toMatchObject({
+        code: 2,
+        stderr: matching(message),
+      });
+    }
+  });
+
+  it('validate: every problem as a line, exit 1 for errors', async () => {
+    const folder = await cli('analyzr-spec', ['validate', SPECS]);
+    expect(folder.code).toBe(1);
+    const result = JSON.parse(folder.stdout) as {
+      specs: number;
+      valid: number;
+      errors: { count: number; items: string[] };
+      warnings: { count: number; items: string[] };
+    };
+    expect(result).toMatchObject({ specs: 9, valid: 7 });
+    expect(result.errors.items).toEqual([
+      'collaboration.spec.yaml: source.externalId: a spec you write has no tool id or link: a picture shows none',
+      'collaboration.spec.yaml: source.url: a spec you write has no tool id or link: a picture shows none',
+      'collaboration.spec.yaml: derived: required in a spec you write: reconstructed (from a picture or PDF, with llmModel)',
+      'converter-loose.spec.yaml: source.externalId: a spec you write has no tool id or link: a picture shows none',
+      'converter-loose.spec.yaml: derived: required in a spec you write: reconstructed (from a picture or PDF, with llmModel)',
+      'converter-loose.spec.yaml: processes[0].nodes[2].lane: required, since the process has lanes',
+      'converter-loose.spec.yaml: processes[0].flows[3]: flows into start "s"; a start has no incoming flow',
+    ]);
+    expect(result.warnings.items).toContain(
+      'long-texts.spec.yaml: processes[0].nodes[1].name: cut to 200 characters (loss text-truncated)',
+    );
+    expect(
+      await cli('analyzr-spec', ['validate', path.join(SPECS, 'reconstructed.spec.yaml')]),
+    ).toMatchObject({ code: 0 });
+    // one file of any name is read as a spec; a missing path is an error, not a usage error
+    const dir = await tempDir();
+    await writeFile(
+      path.join(dir, 'whiteboard.yaml'),
+      await readFile(path.join(SPECS, 'reconstructed.spec.yaml')),
+    );
+    const single = await cli('analyzr-spec', ['validate', path.join(dir, 'whiteboard.yaml')]);
+    expect(single.code).toBe(0);
+    expect(JSON.parse(single.stdout)).toMatchObject({ specs: 1, valid: 1 });
+    expect(await cli('analyzr-spec', ['validate', path.join(dir, 'fehlt')])).toMatchObject({
+      code: 1,
+      stderr: matching(/fehlt does not exist/),
+    });
+  });
+
+  it('render: one spec into a new file, as the golden', async () => {
+    const out = path.join(await tempDir(), 'out.bpmn');
+    const first = await cli('analyzr-spec', [
+      'render',
+      path.join(SPECS, 'collaboration.spec.yaml'),
+      out,
+      '--key',
+      'beispiel/collaboration',
+      '--origin',
+      'converter',
+    ]);
+    expect(first.code).toBe(0);
+    expect(JSON.parse(first.stdout)).toMatchObject({
+      output: out,
+      warnings: 1,
+      losses: [{ code: 'layout-generated', count: 12 }],
+      summary: { modelName: 'Versand' },
+    });
+    expect(await readFile(out, 'utf8')).toBe(
+      await readFile(path.join(SPECS, 'collaboration.bpmn'), 'utf8'),
+    );
+    expect(
+      await cli('analyzr-spec', [
+        'render',
+        path.join(SPECS, 'collaboration.spec.yaml'),
+        out,
+        '--origin',
+        'converter',
+      ]),
+    ).toMatchObject({ code: 1, stderr: matching(/exists; render into a new file/) });
+    // as a spec you wrote, converter output is invalid: nothing is written
+    const second = out.replace(/\.bpmn$/, '-2.bpmn');
+    const invalid = await cli('analyzr-spec', [
+      'render',
+      path.join(SPECS, 'collaboration.spec.yaml'),
+      second,
+    ]);
+    expect(invalid.code).toBe(1);
+    expect(JSON.parse(invalid.stdout)).toMatchObject({ valid: 0, errors: { count: 3 } });
+    await expect(readFile(second)).rejects.toThrow();
+  });
+
+  it('render: never below the workspace’s exports/, into the spec’s folder or a checkout', async () => {
+    const { ws, specs } = await workspace(['reconstructed']);
+    const spec = path.join(specs, 'reconstructed.spec.yaml');
+    // a render below exports/ would be bundled by normalize-bpmn as the tool's own export
+    for (const output of [
+      path.join(ws, 'exports', '2026-10-14-signavio', 'Reklamation.bpmn'),
+      path.join(specs, 'reklamation.bpmn'),
+      path.join(PACKAGE_ROOT, 'reklamation.bpmn'),
+    ]) {
+      expect(await cli('analyzr-spec', ['render', spec, output]), output).toMatchObject({
+        code: 1,
+        stderr: matching(
+          /stay untouched; write into the workspace|lies inside the spec folder|lies inside the analyzr checkout/,
+        ),
+      });
+      await expect(readFile(output), output).rejects.toThrow();
+    }
+    // the output's own workspace counts, too
+    const elsewhere = path.join(await tempDir(), 'r.spec.yaml');
+    await writeFile(elsewhere, await readFile(spec));
+    expect(
+      await cli('analyzr-spec', [
+        'render',
+        elsewhere,
+        path.join(ws, 'exports', 'e1', 'Reklamation.bpmn'),
+      ]),
+    ).toMatchObject({ code: 1, stderr: matching(/the customer's exports stay untouched/) });
+    expect(
+      await cli('analyzr-spec', ['render', spec, path.join(ws, 'reports', 'zz.spec.json')]),
+    ).toMatchObject({ code: 2, stderr: matching(/<out\.bpmn> names a new \.bpmn file/) });
+    const fine = path.join(ws, 'reports', 'reklamation.bpmn');
+    await mkdir(path.dirname(fine), { recursive: true });
+    expect(await cli('analyzr-spec', ['render', spec, fine])).toMatchObject({ code: 0 });
+  });
+
+  it('plan, plan --write and bundle a spec folder, never writing into it', async () => {
+    const { ws, specs } = await workspace(['minimal', 'reconstructed']);
+    const common = [specs, '--workspace', ws, '--system', 'images'];
+    const dry = await cli('analyzr-spec', [
+      'plan',
+      ...common,
+      '--prefix',
+      'bilder',
+      '--whole-system',
+    ]);
+    expect(dry.code).toBe(0);
+    expect(JSON.parse(dry.stdout)).toMatchObject({
+      system: 'images',
+      counts: { models: 2, new: 2 },
+      examples: [
+        { path: 'Service/Anfrage beantworten.bpmn', key: 'bilder/service/anfrage-beantworten' },
+        { path: 'Service/Reklamation.bpmn', key: 'bilder/service/reklamation' },
+      ],
+      folders: { count: 1, items: [{ folder: 'Service', models: 2 }] },
+      written: null,
+    });
+    await expect(readFile(path.join(ws, 'keymap.json'))).rejects.toThrow();
+    const details = path.join(ws, 'reports', '2026-10-14-images.plan.json');
+    const written = await cli('analyzr-spec', [
+      'plan',
+      ...common,
+      '--prefix',
+      'bilder',
+      '--whole-system',
+      '--write',
+      '--json-out',
+      details,
+    ]);
+    expect(written.code).toBe(0);
+    expect(JSON.parse(await readFile(details, 'utf8'))).toMatchObject({
+      specs: [
+        { spec: 'minimal.spec.yaml', key: 'bilder/service/anfrage-beantworten', status: 'new' },
+        { spec: 'reconstructed.spec.yaml', key: 'bilder/service/reklamation', status: 'new' },
+      ],
+    });
+    const keymap = JSON.parse(await readFile(path.join(ws, 'keymap.json'), 'utf8')) as {
+      systems: Record<string, { lastExport: string }>;
+    };
+    expect(keymap.systems['images']?.lastExport).toBe('specs/2026-10-14-images');
+
+    expect(
+      await cli('analyzr-spec', ['bundle', ...common, '--out', path.join(specs, 'bundle')]),
+    ).toMatchObject({
+      code: 1,
+      stderr: matching(/lies inside the spec folder/),
+    });
+    const out = path.join(ws, 'bundles', '2026-10-14-images');
+    const bundle = await cli('analyzr-spec', [
+      'bundle',
+      ...common,
+      '--out',
+      out,
+      '--exported-at',
+      '2026-10-14',
+    ]);
+    expect(bundle.code).toBe(0);
+    expect(JSON.parse(bundle.stdout)).toMatchObject({
+      counts: { models: 2, reconstructed: 2, failed: 0 },
+      losses: { 'layout-generated': expect.any(Number) as unknown, 'link-unresolved': 1 },
+      calls: {
+        count: 1,
+        items: [
+          { key: 'bilder/service/reklamation', node: 'gutschrift', target: 'Gutschrift erstellen' },
+        ],
+      },
+      manifest: path.join(out, 'analyzr-import.json'),
+    });
+    expect((await readdir(out, { recursive: true })).sort()).toEqual([
+      'analyzr-import.json',
+      'bilder',
+      'bilder/service',
+      'bilder/service/anfrage-beantworten.bpmn',
+      'bilder/service/reklamation.bpmn',
+    ]);
+    // a second plan knows both models, which this folder's own plan wrote: nothing to stop
+    // for; the spec folder holds only the specs
+    expect(JSON.parse((await cli('analyzr-spec', ['plan', ...common])).stdout)).toMatchObject({
+      counts: { known: 2, new: 0, flagged: 0 },
+      replacesKnownModel: 0,
+    });
+    expect((await readdir(specs)).sort()).toEqual(['minimal.spec.yaml', 'reconstructed.spec.yaml']);
+  });
+
+  it('exits 1 for a folder with invalid specs, and for a bundle with a model it could not render', async () => {
+    const { ws, specs } = await workspace(['minimal', 'collaboration']);
+    const common = [specs, '--workspace', ws, '--system', 'images'];
+    expect(await cli('analyzr-spec', ['plan', ...common])).toMatchObject({
+      code: 1,
+      stderr: matching(/1 of 2 specs have errors \(collaboration\.spec\.yaml: source\.externalId/),
+    });
+    await rm(path.join(specs, 'collaboration.spec.yaml'));
+    // a chain with a flow from its start to every node: too many slots for the layout
+    const n = 460;
+    const nodes = Array.from({ length: n }, (_, i) => ({ source: `n${i}`, type: 'task' }));
+    await writeFile(
+      path.join(specs, 'faecher.spec.json'),
+      JSON.stringify({
+        format: 'analyzr-spec/1',
+        source: { externalPath: 'Service/Faecher' },
+        derived: { kind: 'reconstructed', llmModel: 'claude-opus-5-5' },
+        processes: [
+          {
+            source: 'p',
+            nodes,
+            flows: [
+              ...nodes.slice(1).map((_, i) => ({ from: `n${i}`, to: `n${i + 1}` })),
+              ...nodes.slice(2).map((x) => ({ from: 'n0', to: x.source })),
+            ],
+          },
+        ],
+      }),
+    );
+    expect(await cli('analyzr-spec', ['plan', ...common, '--write'])).toMatchObject({ code: 0 });
+    const bundle = await cli('analyzr-spec', [
+      'bundle',
+      ...common,
+      '--out',
+      path.join(ws, 'bundles', '2026-10-14-images'),
+    ]);
+    expect(bundle.code).toBe(1);
+    expect(JSON.parse(bundle.stdout)).toMatchObject({
+      counts: { models: 1, failed: 1 },
+      failed: {
+        count: 1,
+        items: [
+          {
+            spec: 'faecher.spec.json',
+            key: 'service/faecher',
+            code: 'layout-too-large',
+          },
+        ],
+      },
+    });
+  });
+
+  it('plan --from-analyzr: keys analyzr already has, and the specs that would replace them', async () => {
+    const { ws, specs } = await workspace(['minimal', 'reconstructed']);
+    const identities = path.join(ws, 'reports', 'images.external-ids.json');
+    const models = path.join(ws, 'reports', 'images.models.json');
+    await mkdir(path.dirname(identities), { recursive: true });
+    await writeFile(
+      identities,
+      JSON.stringify({
+        items: [
+          {
+            key: 'service/reklamation',
+            system: 'images',
+            externalId: null,
+            externalPath: 'Service/Reklamation',
+          },
+        ],
+      }),
+    );
+    await writeFile(models, JSON.stringify([{ key: 'service/reklamation', id: 'mdl_01' }]));
+    const plan = await cli('analyzr-spec', [
+      'plan',
+      specs,
+      '--workspace',
+      ws,
+      '--system',
+      'images',
+      '--from-analyzr',
+      identities,
+      '--existing',
+      models,
+    ]);
+    expect(plan.code).toBe(0);
+    expect(JSON.parse(plan.stdout)).toMatchObject({
+      rebuilt: { restored: true, entries: 1 },
+      counts: { models: 2, known: 1, new: 1 },
+      // on a later import every new file needs a look, too
+      attention: {
+        count: 2,
+        items: [
+          { key: 'service/anfrage-beantworten', status: 'new' },
+          { key: 'service/reklamation', status: 'known', flags: ['replaces-known-model'] },
+        ],
+      },
+      replacesKnownModel: 1,
+      written: null,
+    });
+    await expect(readFile(path.join(ws, 'keymap.json'))).rejects.toThrow();
+  });
+
+  it('keeps its copies of normalize-bpmn’s plan helpers equal to the originals', async () => {
+    const original = await readFile(path.join(PACKAGE_ROOT, 'src/cli/normalize-bpmn.ts'), 'utf8');
+    const copy = await readFile(path.join(PACKAGE_ROOT, 'src/spec/plan-args.ts'), 'utf8');
+    /** A top-level declaration's text from its name to the end of its body, `export ` dropped. */
+    const declaration = (code: string, name: string): string => {
+      const m = new RegExp(`^(?:export )?(?:async )?(function|const) ${name}\\b`, 'm').exec(code);
+      if (m === null) return '';
+      const rest = code.slice(m.index);
+      const end = m[1] === 'function' ? rest.indexOf('\n}\n') + 2 : rest.indexOf(';\n') + 1;
+      return rest
+        .slice(0, end)
+        .replace(/^export /, '')
+        .replace(/\s+/g, ' ')
+        .replace(/\( /g, '(') // prettier wraps the exported copy's longer lines
+        .replace(/,? \)/g, ')')
+        .trim();
+    };
+    for (const name of [
+      'KEYMAP_FILE',
+      'readKeymap',
+      'readJson',
+      'isObject',
+      'existingKeysOf',
+      'isNullableString',
+      'identitiesOf',
+      'writeDetails',
+    ]) {
+      expect(declaration(copy, name), name).not.toBe('');
+      expect(declaration(copy, name), name).toBe(declaration(original, name));
+    }
+  });
 });

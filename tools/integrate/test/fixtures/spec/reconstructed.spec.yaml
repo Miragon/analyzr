@@ -1,0 +1,28 @@
+# Synthetic (see README.md): the picture example of the S3c plan (section 2.5).
+format: analyzr-spec/1
+source:
+  externalPath: Service/Reklamation
+  file: Whiteboard Reklamation.jpg
+derived:
+  kind: reconstructed
+  llmModel: claude-opus-5-5
+processes:
+  - source: p
+    name: Reklamationsbearbeitung
+    nodes:
+      - { source: start, type: start, name: Reklamation eingegangen }
+      - { source: pruefen, type: task, name: Reklamation prüfen }
+      - { source: berechtigt, type: gateway, kind: exclusive, name: Berechtigt? }
+      - { source: gutschrift, type: call, target: Gutschrift erstellen }
+      - { source: ablehnen, type: task, kind: send, name: Ablehnung senden,
+          note: "Pfeil zur Ablehnung nur schwach zu sehen" }
+      - { source: ende, type: end, name: Reklamation erledigt }
+    flows:
+      - { from: start, to: pruefen }
+      - { from: pruefen, to: berechtigt }
+      - { from: berechtigt, to: gutschrift, name: ja }
+      - { from: berechtigt, to: ablehnen, name: nein }
+      - { from: gutschrift, to: ende }
+      - { from: ablehnen, to: ende }
+notes:
+  - "Rechts unten ein durchgestrichener Kasten „Rückruf“: nicht übernommen."

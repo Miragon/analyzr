@@ -1,0 +1,18 @@
+# Synthetic (see README.md): a process as told in interviews (opaque source ids, no names).
+# The validator accepts it, so S6 reuses analyzr-spec/1; bundle refuses it until then.
+format: analyzr-spec/1
+source:
+  externalPath: Personal/Urlaubsantrag
+derived:
+  kind: as-told
+  from: [src-001, src-002]
+processes:
+  - source: urlaub
+    name: Urlaubsantrag
+    nodes:
+      - { source: s, type: start, name: Antrag gestellt }
+      - { source: t-genehmigen, type: task, kind: user, name: Antrag genehmigen }
+      - { source: e, type: end, name: Antrag entschieden }
+    flows:
+      - { from: s, to: t-genehmigen }
+      - { from: t-genehmigen, to: e }
