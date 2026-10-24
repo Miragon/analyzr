@@ -94,7 +94,7 @@ not only what is modelled, and these steps are realistic wrong answers
 ## value-chain.vc.json
 
 The document format of the
-[value-chain-modeler](https://github.com/Miragon/value-chain-modeler) packages
+[value chain modeler](https://github.com/Miragon/modeler-suite/tree/main/modelers/value-chain) packages
 (`@miragon/value-chain-schema-model`, `schemaVersion` 1; MIT): `meta.name`,
 `elements` (`step` with optional `color`, `orgUnit`) and `connections`
 (`sequence`, `hierarchy`, `assignment` from org unit to step) with waypoints.

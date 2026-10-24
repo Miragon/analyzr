@@ -121,7 +121,8 @@ and code are in English.
     follow a guide.
 14. **Value chain** (the owner's meaning of "Prozesslandkarte") via the npm packages
     `@miragon/value-chain-schema-model` and `@miragon/value-chain-renderer`, pinned at **0.3.0**
-    (released 2026-10-08 from `Miragon/value-chain-modeler`, MIT; deps zod 4.6.5 and diagram-js
+    (released 2026-10-08 from `Miragon/value-chain-modeler`, since 2026-10-24
+    `modelers/value-chain` in `Miragon/modeler-suite`, MIT; deps zod 4.6.5 and diagram-js
     15.28.0 match analyzr exactly). Do not copy the modeler into analyzr. 0.2.0 was decided first; 0.3.0
     followed the same day as a pure version sync (neither package's source changed between 0.1.0
     and 0.3.0), so the owner left the choice to the agent, which pinned the newest (2026-10-08).
@@ -808,5 +809,6 @@ Git/bpmiq.yml import, MCP App widget.
   against real PostgreSQL, eval gates, docker build) plus adversarial reviews; keep that standard.
 - **Commits** end with the attribution line the owner asks for; nothing lands on `main` without
   the owner's explicit OK (decision 12).
-- **`Miragon/value-chain-modeler`** is a separate product (VS Code extension, web app). Consume it
-  from npm; changes to it go through its own repo.
+- **The value chain modeler** (`modelers/value-chain` in `Miragon/modeler-suite`, until 2026-10-24
+  `Miragon/value-chain-modeler`) is a separate product (VS Code extension, web app). Consume it
+  from npm; changes to it go through `Miragon/modeler-suite`.

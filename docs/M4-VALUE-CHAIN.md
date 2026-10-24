@@ -1,6 +1,6 @@
 # analyzr – Milestone M4 "Value chain"
 
-Status: proposed (2026-10-08, revised after review); the owner accepted the defaults of §11 (2026-10-09); S0 done (2026-10-08, `@miragon/value-chain-*` 0.3.0), S1 done (2026-10-09, storage and placement lifecycle), S2 done (2026-10-09, REST, MCP, CLI, rule proposals, findings, `baseline-prefix/1`), S3 done (2026-10-09, the chain page in the web UI), S4 done (2026-10-09, `eval:placements`, `analyzr seed --value-chains`, German rule-tier texts; with it **M4a is done**; `eval:placements` green in CI since the push of S4), S5 done (2026-10-09, the `placement` pipeline kind with judge each process once, `analyzr-placements@0.1.0`, the prompts `place_processes` and `draft_value_chain`, Import on the chain page, the simulation agent's placement policy, recordings scored by `eval:replay`, the placement live gate; M4b's code is done, its owner actions are open: §9 "M4b done criteria status"), S6 open (blocked on the R1 OKF export) · Branch: `main` · Spec: [CONCEPT.md](CONCEPT.md) §2, §3, §5–§7 · Previous: [M2-PIPELINE-REVIEW.md](M2-PIPELINE-REVIEW.md) · Golden data: [eval/value-chains](../eval/value-chains/README.md) · Modeler: `Miragon/value-chain-modeler` (MIT)
+Status: proposed (2026-10-08, revised after review); the owner accepted the defaults of §11 (2026-10-09); S0 done (2026-10-08, `@miragon/value-chain-*` 0.3.0), S1 done (2026-10-09, storage and placement lifecycle), S2 done (2026-10-09, REST, MCP, CLI, rule proposals, findings, `baseline-prefix/1`), S3 done (2026-10-09, the chain page in the web UI), S4 done (2026-10-09, `eval:placements`, `analyzr seed --value-chains`, German rule-tier texts; with it **M4a is done**; `eval:placements` green in CI since the push of S4), S5 done (2026-10-09, the `placement` pipeline kind with judge each process once, `analyzr-placements@0.1.0`, the prompts `place_processes` and `draft_value_chain`, Import on the chain page, the simulation agent's placement policy, recordings scored by `eval:replay`, the placement live gate; M4b's code is done, its owner actions are open: §9 "M4b done criteria status"), S6 open (blocked on the R1 OKF export) · Branch: `main` · Spec: [CONCEPT.md](CONCEPT.md) §2, §3, §5–§7 · Previous: [M2-PIPELINE-REVIEW.md](M2-PIPELINE-REVIEW.md) · Golden data: [eval/value-chains](../eval/value-chains/README.md) · Modeler: `modelers/value-chain` in `Miragon/modeler-suite` (MIT)
 
 M4 puts the classic process landscape map ("Prozesslandkarte") on top of the processes: one
 value chain per project (Wertschöpfungskette, ARIS value-added chain diagram), edited in the
@@ -1530,8 +1530,8 @@ steps; ARIS (AML) import; dismissing findings; changes to the modeler itself.
 
 ## 12. Upstream asks
 
-Filed as issues on `Miragon/value-chain-modeler` after the release; nothing here needs to change
-the release in flight.
+Filed as issues on `Miragon/modeler-suite` (label `modeler: value-chain`) after the release; nothing
+here needs to change the release in flight.
 
 1. A stylesheet without `diagram-js.css` (e.g. `assets/value-chain-only.css`, the consumer
    imports `diagram-js.css` itself); lower priority since the published packages inline the
