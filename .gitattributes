@@ -1,0 +1,2 @@
+# The open questions CSV fixture keeps the server export's CRLF bytes (tests compare them).
+tools/integrate/test/fixtures/interview/*.csv -text
