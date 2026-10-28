@@ -18,7 +18,11 @@
  * 28 (1)) a relation rule may instead accept the rule tier's proposals of
  * unique calls from derived models (`proposedBy: 'rule'`), narrowed by the
  * declared derived kind and, for `converted`, the converter; no rule ever
- * accepts a call of a revision uploaded with an agent token.
+ * accepts a call of a revision uploaded with an agent token. Since owner
+ * decision 30 (2) no auto-accept rule accepts anything on a model whose
+ * uploaded revision declares `reconstructed` or `as-told`
+ * (`reconstructed-endpoint`, {@link UNSEEN_DERIVATIONS}); the system rule of
+ * decision 9 still reads only the caller's trust class.
  */
 import { z } from 'zod';
 
@@ -35,6 +39,7 @@ import { Ref } from '../refs.ts';
 import { EndpointState, RULES_PROCEDURE, RelationStatus, Tier } from '../relations.ts';
 import { orNull, plainName, plainText } from '../zod-utils.ts';
 import { Timestamp } from './common.ts';
+import type { DerivedKind } from './import-manifest.ts';
 import { DERIVED_CALL_CONFIDENCE } from './models.ts';
 
 /** What an auto-accept rule accepts: agent proposals of relations or of placements. */
@@ -94,6 +99,28 @@ export const AutoAcceptDerivedKind = z.enum(['export', 'converted', 'none']).met
 });
 export type AutoAcceptDerivedKind = z.infer<typeof AutoAcceptDerivedKind>;
 
+/**
+ * The declared derivations no auto-accept rule accepts anything on (owner
+ * decision 30 (2), block reason `reconstructed-endpoint`): an LLM read the
+ * model from a picture or a PDF (`reconstructed`), or it was drawn from
+ * interviews (`as-told`); no person has seen it in a modelling tool. With
+ * {@link AutoAcceptDerivedKind} (`none` aside) every {@link DerivedKind}.
+ * Shared by the server's safeguard and the CLI's rule suggestion; the web
+ * keeps a copy (a parity test).
+ */
+export const UNSEEN_DERIVATIONS = [
+  'reconstructed',
+  'as-told',
+] as const satisfies readonly DerivedKind[];
+
+/**
+ * Whether `kind`, a declared `derived.kind` or a trust reason (`TrustReason`
+ * names these two kinds alike), is one of {@link UNSEEN_DERIVATIONS}.
+ */
+export function isUnseenDerivation(kind: string | null | undefined): boolean {
+  return kind != null && (UNSEEN_DERIVATIONS as readonly string[]).includes(kind);
+}
+
 /** The lowest minimum confidence a rule may name (also a database check). */
 export const MIN_AUTO_ACCEPT_CONFIDENCE = 0.5;
 export const MAX_AUTO_ACCEPT_NAME_CHARS = 100;
@@ -121,6 +148,11 @@ export const AUTO_ACCEPT_CURVE = [0.5, 0.6, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95, 1] 
  *   (a rule for derived calls: derived kind and converter);
  * - `agent-upload`: the calling model was uploaded with an agent token; no
  *   rule accepts its calls (owner decision 28 (1));
+ * - `reconstructed-endpoint`: an endpoint's model (either end of a relation,
+ *   a placement's process) declares `reconstructed` or `as-told` in its
+ *   uploaded revision (an amended head: its `source.upstream`'s,
+ *   {@link UNSEEN_DERIVATIONS}); no auto-accept rule accepts anything on it
+ *   (owner decision 30 (2));
  * - `amendment-conflict`: the call element's call target set in analyzr no
  *   longer applies („Ergänzung nicht mehr anwendbar“ is open);
  * - `stale-proposal`: a pipeline proposal whose basis is no longer current;
@@ -143,6 +175,7 @@ export const AUTO_ACCEPT_BLOCK_REASONS = [
   'not-agent',
   'no-matching-rule',
   'agent-upload',
+  'reconstructed-endpoint',
   'amendment-conflict',
   'stale-proposal',
   'not-open',
@@ -530,7 +563,8 @@ export type AutoAcceptCurvePoint = z.infer<typeof AutoAcceptCurvePoint>;
  * rule dialog's „Herkunft“ and „Konverter“: the caller's declared kind (and
  * converter for `converted`) as its current head declares it. `open`: open
  * proposals a rule naming this source would accept now; `blocked`: open
- * ones a safeguard blocks (an agent upload among them); `accepted`,
+ * ones a safeguard blocks (an agent upload or a reconstructed callee among
+ * them); `accepted`,
  * `rejected`: such calls a human accepted or rejected so far (the first
  * human decision after the rule tier's first proposal; a rejection that
  * links another target included).

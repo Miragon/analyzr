@@ -696,6 +696,22 @@ describe('analyzr rules apply and revoke', () => {
     expect(api.seen).toHaveLength(2);
   });
 
+  it('names the safeguard that keeps reconstructed models from rules (owner decision 30 (2))', async () => {
+    const api = fakeApi({
+      [`POST ${BASE}/auto-accept-rules/${RULE_ID}/apply`]: () =>
+        json({
+          ...applyResult(true, 1),
+          blocked: [
+            { reason: 'agent-upload', count: 2 },
+            { reason: 'reconstructed-endpoint', count: 3 },
+          ],
+        }),
+    });
+    const t = testIo(env(), api.fetch);
+    expect(await runCli(['rules', 'apply', RULE_ID, '-p', 'p', '--dry-run'], t.io)).toBe(0);
+    expect(t.out()).toContain('  blocked by a safeguard: agent-upload 2, reconstructed-endpoint 3');
+  });
+
   it('--yes applies with the revision and the dry run count', async () => {
     let real: unknown;
     const api = applyApi(2, (body) => {

@@ -8,6 +8,7 @@ import { BulkAcceptDialog } from '../src/components/review/bulk-accept-dialog';
 import { nameUsage } from '../src/lib/generic-names';
 import { MAX_BULK_DECISIONS } from '../src/lib/limits';
 import { bulkRows, type BulkPreselect } from '../src/lib/review';
+import { getToasts } from '../src/lib/toast';
 import { buildRefIndex, resolverOf } from '../src/lib/refs';
 import { autoAcceptRule, fact, model, noLink, provenance, relation } from './support/fixtures';
 import { findToast, json, renderWithRouter, stubApi, type Call } from './support/render';
@@ -249,6 +250,49 @@ describe('BulkAcceptDialog („Gleicher Name“, UX5)', () => {
     });
     await user.click(within(toast!).getByTestId('toast-action'));
     await waitFor(() => expect(router.state.location.href).toBe('/projects/demo/rules?new=key'));
+  });
+
+  it('offers no rule when every accepted pair has an end in a reconstructed or as-told model (decision 30 (2))', async () => {
+    const declared = (key: string, derived: 'reconstructed' | 'as-told') =>
+      model({ key, source: { system: 'images', derived, exportedAt: null } });
+    const answer = (items: ReturnType<typeof model>[]) =>
+      stubApi({
+        [`POST ${PATH}`]: (c) =>
+          json({
+            items: (c.body as BulkDecisionBody).items.map((i) => ({
+              ...pairs.find((p) => p.id === i.id),
+              status: 'accepted',
+              version: i.version + 1,
+            })),
+          }),
+        'GET /api/v1/projects/demo/models': () => json({ items, nextCursor: null }),
+      });
+    // the toast this accept shows (earlier tests' toasts may still be in the store)
+    const acceptWith = async (items: ReturnType<typeof model>[]) => {
+      const sent = answer(items);
+      const user = userEvent.setup();
+      const view = await renderWithRouter(<Harness canOwn />);
+      await screen.findByRole('dialog');
+      await waitFor(() => expect(sent.some((c) => c.path.endsWith('/models'))).toBe(true));
+      const before = getToasts().at(-1)?.id ?? 0;
+      await user.click(screen.getByTestId('bulk-confirm'));
+      const shown = await waitFor(() => {
+        const latest = getToasts().at(-1);
+        if (!latest || latest.id <= before) throw new Error('no new toast');
+        return latest;
+      });
+      view.unmount();
+      return shown;
+    };
+    // both chosen pairs end in `finanzen/debitoren`
+    const none = await acceptWith([declared('finanzen/debitoren', 'reconstructed')]);
+    expect(none.title).toBe('2 Relationen angenommen');
+    expect(none.description).toBe('Grundlage „Gleicher Name“.');
+    expect(none.action).toBeUndefined();
+    // one of them outside such models: the rule is offered as before
+    const offered = await acceptWith([declared('lager/versand', 'as-told')]);
+    expect(offered.description).toBe('Gleicher Name ab 100 % künftig automatisch annehmen?');
+    expect(offered.action?.label).toBe('Annahmeregel anlegen');
   });
 
   it('keeps the dialog open with a clear message when the list changed (409)', async () => {

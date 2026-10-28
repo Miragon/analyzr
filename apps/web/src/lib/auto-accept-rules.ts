@@ -135,6 +135,7 @@ export const AUTO_ACCEPT_BLOCK_LABELS: Record<AutoAcceptBlockReason, string> = {
   'not-agent': 'Kein Agentenvorschlag',
   'no-matching-rule': 'Erfüllt die Regel nicht',
   'agent-upload': 'Über ein Agenten-Token hochgeladen',
+  'reconstructed-endpoint': 'Modell KI-rekonstruiert oder aus Interview',
   'amendment-conflict': 'Ergänzung nicht mehr anwendbar',
   'stale-proposal': 'Vorschlag beruht auf einem veralteten Stand',
   'not-open': 'Nicht mehr offen',

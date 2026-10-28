@@ -804,6 +804,7 @@ describe('analyzr import', () => {
     const proposal = (n: number, extra: Record<string, unknown> = {}) => ({
       id: `rel_${n}`,
       from: `a#Call_${n}`,
+      to: `b#P_${n}`,
       type: 'call',
       status: 'proposed',
       tier: 'key',
@@ -1035,7 +1036,8 @@ describe('analyzr import', () => {
         'f.bpmn': { kind: 'reconstructed', llmModel: 'm' },
       });
       /** Waiting calls from these callers (model keys). */
-      const from = (...keys: string[]) => keys.map((k, i) => ({ from: `${k}#Call_${i}` }));
+      const from = (...keys: string[]) =>
+        keys.map((k, i) => ({ from: `${k}#Call_${i}`, to: 'other/callee#Process_A' }));
       // counted per waiting call: the converted callers' 2 calls over the export caller's 1;
       // the agent uploads' 3 calls and a caller outside this import count for nothing
       const waiting = from('a', 'b', 'c', 'd', 'd', 'e', 'other/model');
@@ -1064,6 +1066,13 @@ describe('analyzr import', () => {
       });
       // only agent uploads, reconstructed files or a conversion without converter: nothing to name
       expect(ruleSource({ files: files.slice(3, 6) }, manifest, from('d', 'e', 'f'))).toBeNull();
+      // a call into a file this import declares reconstructed counts for nothing (decision 30 (2))
+      const into = (to: string, ...keys: string[]) =>
+        keys.map((k, i) => ({ from: `${k}#Call_${i}`, to }));
+      expect(
+        ruleSource({ files }, manifest, [...into('f#Process_F', 'b', 'b'), ...from('a')]),
+      ).toEqual({ derivedKind: 'export', converter: null });
+      expect(ruleSource({ files }, manifest, into('f#Process_F', 'a', 'b'))).toBeNull();
       expect(
         ruleSource(
           { files: [derived(['converted'])('b.bpmn')] },

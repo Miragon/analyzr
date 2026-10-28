@@ -265,21 +265,61 @@ export interface DerivedCallSource {
 }
 
 /**
+ * Declared derivations no auto-accept rule accepts anything on (owner
+ * decision 30 (2)): the contracts' `UNSEEN_DERIVATIONS`, copied so the web
+ * stays zod-free (a parity test keeps them equal).
+ */
+export const UNSEEN_DERIVATIONS: readonly string[] = ['reconstructed', 'as-told'];
+
+/**
+ * The keys of the models whose uploaded revision declares `reconstructed`
+ * or `as-told` (`Model.source.derived`; an amended head: its upstream's):
+ * no auto-accept rule accepts a relation with an end in one of them (owner
+ * decision 30 (2), `reconstructed-endpoint`).
+ */
+export function unseenModelKeys(
+  models: readonly Pick<Model, 'key' | 'source'>[],
+): ReadonlySet<string> {
+  return new Set(
+    models.filter((m) => UNSEEN_DERIVATIONS.includes(m.source?.derived ?? '')).map((m) => m.key),
+  );
+}
+
+/**
+ * Whether an auto-accept rule could accept one of `relations` at all by
+ * their ends: one has neither end in a model {@link unseenModelKeys} names.
+ * True while the models are not loaded (`models` empty).
+ */
+export function someOutsideUnseenModels(
+  relations: readonly Pick<Relation, 'from' | 'to'>[],
+  models: readonly Pick<Model, 'key' | 'source'>[],
+): boolean {
+  const unseen = unseenModelKeys(models);
+  return relations.some(
+    (r) => !unseen.has(splitRef(r.from).modelKey) && !unseen.has(splitRef(r.to).modelKey),
+  );
+}
+
+/**
  * The source most of these calls' callers declare that a rule for derived
  * calls can name (M6 S2c-3), by the caller models' `Model.trust`: `export`,
  * `converted` with its converter, or `none` (no kind declared). A caller
  * uploaded with an agent token counts for nothing (no rule accepts its
  * calls), nor a reconstructed or as-told one or a conversion without
- * converter; ties go to the first call. `null` when no call is left: then
+ * converter, nor a call into a callee declared reconstructed or as-told
+ * ({@link unseenModelKeys}, owner decision 30 (2): no auto-accept rule
+ * accepts it); ties go to the first call. `null` when no call is left: then
  * no rule could accept them, and nothing is offered.
  */
 export function derivedCallSource(
-  calls: readonly Pick<Relation, 'from'>[],
-  models: readonly Pick<Model, 'key' | 'trust'>[],
+  calls: readonly Pick<Relation, 'from' | 'to'>[],
+  models: readonly Pick<Model, 'key' | 'trust' | 'source'>[],
 ): DerivedCallSource | null {
   const byKey = new Map(models.map((m) => [m.key, m.trust]));
+  const unseen = unseenModelKeys(models);
   const counted = new Map<string, { source: DerivedCallSource; n: number }>();
   for (const call of calls) {
+    if (unseen.has(splitRef(call.to).modelKey)) continue;
     const trust = byKey.get(splitRef(call.from).modelKey);
     if (!trust || trust.class !== 'derived' || trust.reasons.includes('agent-upload')) continue;
     const kind = trust.derivedKind ?? 'none';

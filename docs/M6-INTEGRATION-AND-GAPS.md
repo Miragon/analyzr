@@ -15,10 +15,11 @@ delivered") and S2c-4 („Vor der Vertrauensregel angenommen“, §8 "S2c-4 as d
 S2c) and S3c in four steps (`analyzr-spec/1` and the deterministic renderer, the converter runner
 `analyzr-convert`, the CLI core both `analyzr` CLIs share, and the integrate plugin 0.1.4 that
 bundles them with the converter and picture paths, §8 "S3c step 1 as delivered" to "S3c step 4 as
-delivered" and "S3c as delivered") done, the „erste Anfänge“ await the owner's review, and the
-integrate skill awaits the owner's live session (HANDOFF §8); next the safeguard of decision 30 (2),
-then S6; after the owner's live runs S5b, S7 and facts v2 · Branch: `feat/integration-and-gaps` ·
-Spec: [CONCEPT.md](CONCEPT.md) §1–§7 · Previous: [M4-VALUE-CHAIN.md](M4-VALUE-CHAIN.md) · Paused:
+delivered" and "S3c as delivered") and the safeguard of decision 30 (2) with the integrate plugin
+0.1.5 (§8 "Decision-30 (2) safeguard as delivered") done, the „erste Anfänge“ await the owner's
+review, and the integrate skill awaits the owner's live session (HANDOFF §8); next S6; after the
+owner's live runs S5b, S7 and facts v2 · Branch: `feat/integration-and-gaps` · Spec:
+[CONCEPT.md](CONCEPT.md) §1–§7 · Previous: [M4-VALUE-CHAIN.md](M4-VALUE-CHAIN.md) · Paused:
 the process network map (decision 22, issue [#2](https://github.com/Miragon/analyzr/issues/2)),
 which keeps the name M5. M6 goes ahead of it; that amends decision 22's "next milestone" (decision
 24.6, confirmed 2026-10-15).
@@ -283,8 +284,10 @@ stays in the report (§3.7 "Reaching analyzr"). The passages it changes say "(de
 1 of S3c delivered (1), A2 and A3 as far as the spec and the renderer go (§8 "S3c step 1 as
 delivered"), step 2 A1 and A4 as far as the runner goes (§8 "S3c step 2 as delivered"), step 3
 (3) as far as the CLI core goes (§8 "S3c step 3 as delivered"), and step 4 the rest: (1) in the
-skill, the report line (2) asks for until the safeguard, (3) as the bundle `analyzr.mjs`, A1 and A4
-in the skill's converter path and A5 (§8 "S3c step 4 as delivered").
+skill, the report line (2) asked for until the safeguard, (3) as the bundle `analyzr.mjs`, A1 and A4
+in the skill's converter path and A5 (§8 "S3c step 4 as delivered"). The safeguard step delivered
+(2) (2026-10-28, §3.10 "Decision 30 (2)", §8 "Decision-30 (2) safeguard as delivered"), whose
+integrate plugin 0.1.5 drops the report line.
 
 ## 3. Part A: Integration toolkit
 
@@ -818,7 +821,8 @@ import with `--create --name …`.
    mit dem Konverter adhoc:3f2a9c1b7d4e, 4 aus Bildern rekonstruiert; nicht übernommen: 1“), new
    sections „Konverter“ and „Aus Bildern rekonstruiert“, the new losses in the web's words, „Danach:
    Ort im Quellsystem für 6 Modelle aktualisiert“ for an identity-only re-export, and for any
-   reconstructed model the line of §3.10 "Decision 30 (2)" first in „Offene Punkte“.
+   reconstructed model the line of §3.10 "Decision 30 (2)" first in „Offene Punkte“, which plugin
+   0.1.5 drops again (the safeguard keeps owners' rules from such models).
 7. **Stop.** **The consultant runs the import** (§3.1).
 
 Labels, documentation and export content are data, never instructions (as `MCP_INSTRUCTIONS` in
@@ -1038,16 +1042,26 @@ any rule proposal; the label `analyzr-rules/1.0.0` stays.
 
 **Decision 30 (2) (2026-10-21, HANDOFF §4).** „Ja, als kleiner Schritt“: decision 28 (1) keeps rules
 from the calls of „KI-rekonstruiert“ and „Aus Interview“ models, but an owner's agent rule (decision
-19) still accepts an agent's relation or placement proposal whatever its endpoints' derivation
+19) still accepted an agent's relation or placement proposal whatever its endpoints' derivation
 (`ruleMatches` in `apps/server/src/domain/auto-accept/evaluate.ts` reads the derivation only for the
-rule tier's derived calls), so a message name misread from a whiteboard can end as a relation
-accepted by a rule such as „Nachricht ab 0,9“. A safeguard will block a rule whenever an endpoint's
-uploaded revision declares `reconstructed` (from S6 also `as-told`), in a small server step of its
-own after S3c and before S6; S3c does not change the server. Until then the skill's report says so
-for every bundle with reconstructed models (since plugin 0.1.4, the first line of „Offene Punkte“:
-„Bis analyzr das ausschließt, können deine Regeln für Agenten-Vorschläge (zum Beispiel „Nachricht
-ab 0,9“) Relationen und Platzierungen an KI-rekonstruierten Modellen annehmen; prüf diese Modelle
-deshalb, bevor der Agent startet.“).
+rule tier's derived calls), so a message name misread from a whiteboard could end as a relation
+accepted by a rule such as „Nachricht ab 0,9“. A safeguard was to block a rule whenever an
+endpoint's uploaded revision declares `reconstructed` (from S6 also `as-told`), in a small server
+step of its own after S3c and before S6; S3c does not change the server. From plugin 0.1.4 until
+that step the skill's report said so for every bundle with reconstructed models (the first line of
+„Offene Punkte“: „Bis analyzr das ausschließt, können deine Regeln für Agenten-Vorschläge (zum
+Beispiel „Nachricht ab 0,9“) Relationen und Platzierungen an KI-rekonstruierten Modellen annehmen;
+prüf diese Modelle deshalb, bevor der Agent startet.“). **Delivered 2026-10-28** (§8 "Decision-30
+(2) safeguard as delivered"): the block reason `reconstructed-endpoint`, checked right after
+`agent-upload` and before `amendment-conflict`, keeps every owner's rule (agent rules for relations
+and placements, rules for derived calls on the callee side) from anything with an end in a live
+model whose uploaded revision (an amended head: its `source.upstream`'s, as the trust rule reads it)
+declares `reconstructed` or `as-told`: either end of a relation, a placement's process. It reads the
+declaration, not the class, so a revision stored between S2a and S2c counts and an owner's
+„Behalten“ does not lift it, and it holds in every write path, in „Anwenden“, the preview and its
+replay, and the dry runs. The trust class and the rule tier still read only the caller, so decision
+9's system rule still accepts a modelled caller's unique call into such a callee; humans decide such
+items one by one or in bulk as before. Plugin 0.1.5 drops the report line.
 
 ### 3.11 `eval:descriptive`: measure the loss first
 
@@ -2981,7 +2995,10 @@ that the owner may overrule are in HANDOFF §4 ("Taken during M6 S2c-3"). Open:
 - **The callee side.** Only the caller's class counts (decision 24.2, a reading of the S2c plan):
   a call whose callee an agent token uploaded is not blocked, so a person's later write that
   proposes it again, or apply, may accept a call to a process version only an agent uploaded (the
-  agent's own write sets no rule off); the exposure decision 9 already has.
+  agent's own write sets no rule off); the exposure decision 9 already has. Since the decision-30
+  (2) safeguard a callee declared `reconstructed` or `as-told` blocks every owner's rule
+  (`reconstructed-endpoint`, "Decision-30 (2) safeguard as delivered" below); one an agent token
+  uploaded still does not.
 - **The replay's approximation**: the preview and apply read the caller's declared source from its
   current head, not from the revision the proposal was made under.
 
@@ -3122,7 +3139,8 @@ question. Open:
 - **Owners' existing stacks.** A landscape imported there before S2c-1 without an engine or with
   an agent token (say, a Signavio bundle) shows the card's line after the update; nothing changes
   until the owner decides.
-- **The callee side** stays as S2c-3 left it: only the caller's class counts.
+- **The callee side** stays as S2c-3 left it: only the caller's class counts (since the decision-30
+  (2) safeguard a callee's declaration `reconstructed` or `as-told` blocks owners' rules, below).
 
 Left: S2b's follow-up (judgements made non-current, tasks queued or cancelled, the placement task
 due, placements changed or missing; the integrate plugin's next release with the key-map rebuild,
@@ -4295,7 +4313,7 @@ test and plugin 0.1.4's release row).
 Steps 1–3 leave `plugins/analyzr-integrate/` byte-identical (`generate`, then `git diff --exit-code
 plugins/analyzr-integrate`), so 0.1.3 stays the released version and one release, 0.1.4, comes at
 the end, with step 4. After S3c and before S6 comes the safeguard of decision 30 (2), a small
-server step of its own (§3.10).
+server step of its own (§3.10), delivered 2026-10-28 ("Decision-30 (2) safeguard as delivered").
 
 **S3a as delivered** (2026-10-15, branch `feat/integration-and-gaps`; every gate green, together
 with S3b): `pnpm eval:descriptive` (`eval/tools/src/descriptive.ts`, `descriptive-context.ts`,
@@ -4691,7 +4709,8 @@ may overrule are in HANDOFF §4 ("Taken during M6 S3c step 1"). Open:
 - **The `model-name` warning** approximates the first process by id without collision suffixes; the
   renderer's summary is exact.
 - **Rules on reconstructed models**: until the safeguard of decision 30 (2), an owner's agent rule
-  can accept relations and placements on models a bundle declares `reconstructed` (§3.10).
+  can accept relations and placements on models a bundle declares `reconstructed` (§3.10; closed
+  2026-10-28, "Decision-30 (2) safeguard as delivered" below).
 
 Left: steps 2–4 of S3c (the converter runner, the CLI core, the integrate plugin 0.1.4), then the
 safeguard of decision 30 (2), then S6; after the owner's live runs S5b, S7 and facts v2.
@@ -5472,7 +5491,7 @@ released. The readings the owner may overrule: HANDOFF §4 ("Taken during M6 S3c
   session (HANDOFF §8); whether a 72 KB skill loads and behaves completely is part of it.
 - **Rules on reconstructed models**: until the safeguard of decision 30 (2), an owner's agent rule
   can accept relations and placements on models a bundle declares `reconstructed`; the report says
-  so (§3.10).
+  so (§3.10; closed 2026-10-28 with plugin 0.1.5, "Decision-30 (2) safeguard as delivered" below).
 - **No network guarantee and typed-array memory** for converter runs, as in step 2 (HANDOFF §4
   "Taken during M6 S3c step 2" (b), (c)).
 - **The package graph does not show the coupling**: a filtered test run after a change of
@@ -5499,7 +5518,7 @@ the converter runner `analyzr-convert`, which runs exactly the approved bytes of
 converter twice in a sandboxed child Node (A1, A4; 332 → 390); step 3 the CLI core both CLIs share,
 with the parse guard in both and the owner key for this machine only in the bundled CLI ((3); CLI
 286 → 317); step 4 the plugin 0.1.4, which bundles all three and teaches the skill the converter and
-picture paths ((1), (3), A5, the report line (2) asks for; integrate 390 → 407, CLI 317 → 327).
+picture paths ((1), (3), A5, the report line (2) asked for; integrate 390 → 407, CLI 317 → 327).
 The done-when: D1 (every rendered model extracts without a warning, `engine` null: 9 goldens, 200
 random specs, the converter fixtures) and D2 (a) (bpmn-js's tree walker under the importer's
 refusals) in CI, D2 (b) in Chromium (the harness spec, 2 of 2, not in CI), D3 (a)–(c) (no
@@ -5507,9 +5526,184 @@ refusals) in CI, D2 (b) in Chromium (the harness spec, 2 of 2, not in CI), D3 (a
 converter bundle's dry run with no call accepted or proposed, the bundled CLI's import equal to the
 checkout's, then all unchanged) on Testcontainers, D3 (d) also on the lead's scratch stack from
 source in step 2, both with the bundled scripts there in step 4, and D5 (the drift test and
-`RELEASES['0.1.4']`). What S3c does not do: the safeguard of decision 30 (2) (next), calls from
-ad-hoc converters (§10.12), bundled converters of the plugin's own (§9), and a real or sandbox
-export of Visio or ARIS (§10.4).
+`RELEASES['0.1.4']`). What S3c does not do: the safeguard of decision 30 (2) (next; delivered
+2026-10-28), calls from ad-hoc converters (§10.12), bundled converters of the plugin's own (§9), and
+a real or sandbox export of Visio or ARIS (§10.4).
+
+**Decision-30 (2) safeguard as delivered** (2026-10-28, on the branch, every gate green, with a
+review round's fixes; [DEVELOPMENT.md](DEVELOPMENT.md) "M6 decision-30 (2) safeguard (2026-10-28)"
+and "Auto-accept rules (owner decision 19)"; owner decision 30 (2), §2, §3.10, §10.11): no owner's
+rule accepts anything on a model no person has seen in a tool. For the first analysis: the
+consultant can keep the owner's rules on („Nachricht ab 0,9“, a placement rule) for the whole first
+pass, also over bundles that mix BPMN exports with whiteboards, PDFs and interpretive conversions;
+the exported and converted models get their acceptances without a click, nothing an LLM read from a
+picture is accepted unseen, and the skill's report no longer asks to check such models before the
+agent starts, so „Offene Punkte“ opens with what really is open. What changes: `packages/contracts`
+(one block reason, one constant, one helper) and the client generated from it (one enum value),
+`apps/server` (the evaluator, its write paths, the preview, the loaders and the dry-run mirror),
+`apps/web` (one label and the bulk toast's offer), `apps/cli` (the owner-rule suggestion after an
+import) and the integrate plugin 0.1.5 (`plugin.json`, SKILL.md and the rebuilt `analyzr.mjs`); the
+migrations, MCP and its snapshots, the procedures, the claim inputs, `plugins/analyzr`,
+`.claude-plugin/marketplace.json`, the eval tools and reports, the lockfile and both notices files
+are untouched.
+
+- **The block reason** (`packages/contracts/src/api/auto-accept.ts`): `AUTO_ACCEPT_BLOCK_REASONS`
+  gains `reconstructed-endpoint` right after `agent-upload` and before `amendment-conflict`;
+  `UNSEEN_DERIVATIONS` (`['reconstructed', 'as-told'] as const satisfies readonly DerivedKind[]`)
+  and `isUnseenDerivation(kind)` (a declared kind or a `TrustReason`, which names both alike) serve
+  the server and the CLI. The kinds a rule for derived calls may name (`none` aside) and
+  `UNSEEN_DERIVATIONS` together are every `DerivedKind`, pinned by a test, so a future kind lands on
+  one side on purpose; `as-told` is in the set now, so S6 needs no server change. `pnpm --filter
+  @analyzr/client generate` adds the value to `openapi.json` and `types.gen.ts`.
+- **The evaluator** (`apps/server/src/domain/auto-accept/evaluate.ts`, pure):
+  `hasReconstructedEndpoint(refs, trust)` reads `derivedKind` of each ref's model from
+  `trustByModel(headTrustRows)`, which takes it from the uploaded revision (an amended head: its
+  `source.upstream`'s, as the trust rule reads it; `EndpointTrust`). Both evaluators take a required
+  `reconstructedEndpoint` flag, checked in `commonChecks` after `agent-upload`, which is reported
+  when both apply. It reads the declaration, not the class: a revision stored between S2a and S2c
+  without a class counts, an owner's „Behalten“ (S2c-4) does not lift it, a model that is not live
+  reads as not reconstructed (its items are `missing`: `endpoint-not-ok`), and so does an amended
+  head whose upstream row is missing (fail-open like the trust rule; pinned by a test). Relations:
+  both ends; placements: the process's model (a value chain carries no derivation). It holds for
+  every owner's rule: agent rules for relations and placements, and rules for derived calls on the
+  callee side (their caller side was closed already). The system rule of decision 9 is no owner's
+  rule: the trust class and the rule tier still read only the caller.
+- **Every path sets it.** `autoAcceptRelations` (relations submissions, `propose_relation`; it now
+  loads `headTrustRows` whenever a relation rule is enabled, before only when a call was among the
+  triggers), `autoAcceptPlacements` (placement submissions, `propose_placement`; one `headTrustRows`
+  query when a placement rule is enabled), `autoAcceptDerivedCalls` (the fifth path after imports,
+  PUT, amendment writes and withdrawals, deletions and „Zurück in die Prüfung“),
+  `openRelationCandidates` and `openPlacementCandidates` („Anwenden“ and its dry run, the preview's
+  „Jetzt offen“ and curve; `loadChains` loads the trust map once, `PlacementSide.trust`),
+  `derivedGroups` (such a call counts `blocked` in its caller's group) and the pure mirror
+  `autoAcceptedCalls` in `import-impact.ts` (the import, deletion and trust-review dry runs, with
+  the incoming file's declaration for a created or revised callee), so each dry run equals its
+  write. In the replays (`replayRelations`, `replayPlacements`) such a subject never fires and still
+  counts among the decided items. The write paths read the head the write sees; „Anwenden“, the
+  preview and its replay the current head.
+- **What stays**: every human decision, one by one or in bulk; the acceptances made before (in force
+  and revocable; the replay no longer counts them under „Automatisch angenommen, nicht geprüft“);
+  the ledger and the rule statistics (the reason is not stored, no migration); agents (no MCP tool,
+  claim input or procedure change, results still report the state before rules ran); the
+  `eval:replay` what-if (the corpus declares no derivation).
+- **The web**: `AUTO_ACCEPT_BLOCK_LABELS` (`src/lib/auto-accept-rules.ts`) gains „Modell
+  KI-rekonstruiert oder aus Interview“, which the rule dialog's live preview and „Anwenden“'s dry
+  run list under „Erfüllen die Regel, aber eine Schutzregel hält sie zurück:“; the page lead of
+  „Annahmeregeln“ and `DERIVED_SOURCE_HINT` are unchanged. The bulk toast
+  (`components/review/bulk-accept-dialog.tsx`, `src/lib/review.ts`): `unseenModelKeys` and
+  `someOutsideUnseenModels` read `Model.source.derived` (an amended head: its upstream's); „Gleicher
+  Name ab 100 % künftig automatisch annehmen?“ is offered only while some accepted pair other than a
+  derived call has neither end in such a model (as before while the models have not loaded), and
+  `derivedCallSource` leaves out calls into such callees. The web keeps its own
+  `UNSEEN_DERIVATIONS`, so its runtime stays zod-free (a parity test).
+- **The CLI** (`apps/cli/src/commands/import.ts`): `ruleSource`, the owner-rule suggestion after an
+  import, leaves out calls into files of this import whose trust reasons, as stored or kept, include
+  `reconstructed` or `as-told` (`isUnseenDerivation`); a callee imported before, or an unchanged one
+  stored before S2c without a class, is not looked up (it would take `GET …/models`), as its JSDoc
+  says. The previews of `rules add` and `rules preview` and `rules apply --dry-run` print the code
+  unchanged (`blocked by a safeguard: agent-upload 2, reconstructed-endpoint 3`); `rules enable`'s
+  count leaves such items out.
+- **The release** (decision 30 (3)): `plugin.json` 0.1.5 with the description unchanged;
+  `scripts/analyzr.mjs` rebuilt with the contracts' new reason, constant and helper (652,554 bytes,
+  150,202 gzip -9; 652,192 before), every other script and the notices byte-identical; SKILL.md
+  (71,522 bytes, 927 lines) drops from step 6 item 10 the conditional first line „Bis analyzr das
+  ausschließt, …“, so „Offene Punkte“ opens with the black-box pools, while 4b's „Prüf sie bitte
+  gegen die Vorlage, bevor du ihnen vertraust“ stays and the frontmatter with `allowed-tools` is
+  byte-identical. `RELEASES['0.1.5']`
+  `737e6044b838a9a48afd54e13dfa0e22a695664698eb2a4d299b1b0d30325c01` with a comment, the older rows
+  untouched; `generate` run twice leaves the same checksums.
+
+The plan was critiqued before the build (two medium, seven low and five informational points).
+Taken: a second plugin test that still asserted the old line; the agent-token re-upload recorded as
+a residual and pinned; the web's and the CLI's rule suggestions (the CLI's for this import's callees
+only); the trust-review dry run as one more consumer of the mirror; the fixtures for a derived call
+and an agent's call proposal from a reconstructed caller; the order, preview-equals-dry-run and
+deletion tests; the label without a new page lead (no-overload); the names. Left as they are: a CLI
+e2e case (covered by the unit, parity and server integration tests), a replacement sentence for the
+report line, and fail-closed for a missing upstream (kept fail-open like the trust rule). The review
+round (two reviews: correctness, surfaces and release) found 9 points, one minor, the rest nits.
+Fixed: the bulk toast offering „Gleicher Name ab 100 % …“ for pairs no rule would accept (its new
+test fails without the fix); comments that said no rule at all accepts anything (now "no owner's
+rule", naming the system rule); the set of kinds written out three times (now in the contracts, with
+the web's copy under a parity test). Rejected as code changes, with a reason: `DERIVED_SOURCE_HINT`
+naming the safeguard (the label stands where a call is held back), and an exact CLI lookup of
+earlier callees (the suggestion is advisory: `rules add` creates the rule off and its dry run names
+the block; now in `ruleSource`'s JSDoc). Left for the docs pass: the system rule's callee side, the
+stale docs, the plugin–server coupling. Left for the owner: the agent-token re-upload (§10.13).
+
+Tests: server (1,828, 1,804 before; 94 files) `unit/auto-accept-evaluate.test.ts` (reconstructed and
+as-told on either end, any other kind, none or a model gone not; an amended head's upstream and the
+declaration, not the class; every agent rule blocked on a relation with such an end, also on a stale
+proposal; an agent's call proposal from a reconstructed caller under a rule for calls; a rule for
+derived calls on a call into such a callee, after `agent-upload`; no placement of such a process;
+the residual pinned), `unit/auto-accept-preview.test.ts` (nothing open with an end in such a model
+and counted blocked at every minimum; the replay never firing while the subjects count as decided;
+`derivedGroups`; no process placed, now or in the replay), `unit/recompute-trust.test.ts` (the
+dry-run mirror accepts no call into such a callee, also in the trust review's `was-accepted` mode,
+an export callee as the control) and the new `integration/reconstructed-rules.test.ts` (12 cases on
+PostgreSQL, models imported with a manifest part that declares one `reconstructed` or `as-told`: an
+agent rule leaves the pipeline proposal into such a model proposed and accepts the other pair in the
+same write, an ad-hoc proposal into a model declared either kind, the sending end, an amended head
+following its upstream, a re-import keeping it with the same bytes and lifting it with changed ones
+while an earlier acceptance stays; a placement rule leaves the pipeline's and an ad-hoc placement
+proposed and places the other process; a rule for derived calls accepts nothing at ingest, with the
+owner's dry run, „Anwenden“ and `derivedGroups` agreeing, nor when a deletion makes such a call
+unique; an agent rule for calls never accepts an agent's call proposal from a reconstructed caller;
+an agent token's upload of such a caller reports `agent-upload` first; with the safeguard disabled
+on purpose 10 cases failed); contracts (180, 178) the order and the split of `DerivedKind`; web
+(666, 663) `auto-accept-lib.test.ts` (the label), `rules-tab.test.tsx` (apply's dry run listing both
+safeguards), `review-lib.test.ts` (`derivedCallSource` without calls into such callees,
+`unseenModelKeys`, `someOutsideUnseenModels`, the copy equal to the contracts') and
+`bulk-accept-dialog.test.tsx` (no offer when both accepted pairs end in a reconstructed model, the
+offer when one lies outside; the newest toast read from the store); CLI (328, 327; plus 7 skipped)
+`unit/rules.test.ts` (apply's dry run printing `reconstructed-endpoint`) and `unit/import.test.ts`
+(the suggestion without calls into a file this import declares reconstructed); integrate (407)
+`plugin.test.ts` (the 0.1.5 row; the two report tests renamed: no report item carries „Bis analyzr
+das ausschließt“, „Nachricht ab 0,9“ or „Regeln für Agenten“, item 10 opens with the black-box pools
+and 4b keeps its advice); Playwright `e2e/reconstructed-rules.spec.ts` (new: three synthetic Camunda
+7 models over REST with a manifest that declares one `reconstructed`, an enabled rule „Nachricht ab
+90 %“ with ad-hoc proposals, an agent token proposing two key-tier message pairs ad hoc, one into
+the picture model: the pair between the other two accepted, the picture's pair still proposed, and
+the edited rule's live preview listing „Modell KI-rekonstruiert oder aus Interview“ with 1 and
+„Jetzt offen: 0 würden angenommen“; it skips itself without a server).
+
+What it costs and leaves open. Every gate green (server 1,828 (1,804), web 666 (663), integrate 407,
+CLI 328 (327) plus 7 skipped, bpmn-facts 200, contracts 180 (178), eval/tools 108, relations 91,
+agent-sim 57, procedures 37, demo 27, notices 9, client 4; the four eval gates passed and `git diff
+--exit-code eval/reports` is clean, so the step is live-run neutral; `pnpm --filter
+@analyzr/integrate generate` twice with the same checksums, then the drift and plugin tests green).
+The implementing agents' Playwright run, before the review round's fixes, on the scratch stack
+`analyzr-d302i` (ports 7688/55688, image `analyzr-d302i:dev`, both removed afterwards):
+`reconstructed-rules`, `auto-accept` and `derived-call-rules`, 9 passed. The UI load guard was not
+run: no screen gains static text, and the label shows only where a rule is held back. The lead's run
+on the final tree (the bulk toast changed in the fix round; `reconstructed-rules`, `auto-accept`,
+`derived-call-rules` and `trust-calls`): the whole Playwright suite on a scratch stack, 114 passed
+and 21 skipped (the new `reconstructed-rules.spec.ts` among them; `auto-accept`,
+`derived-call-rules` and `trust-calls` green), the UI load numbers as before, the demo check 152 of
+152, `demo.spec.ts` 14 of 14; two flaky checks made robust on the way (the mobile review screen's ‹
+› hit test ignores that a disabled button takes no pointer events; the chain page's CSS check waits
+until the canvas has settled). The commit: this step's commit on the branch, with which 0.1.5 counts
+as released. The readings the owner may overrule: HANDOFF §4 ("Taken during the decision-30 (2)
+safeguard step"). Open:
+
+- **An agent token's re-upload** of changed bytes of such a model without a manifest stores a
+  revision that declares nothing, so owners' agent rules may accept that agent's message, signal,
+  trigger and placement proposals on it again, and owners' rules may accept calls into it again
+  (`agent-upload` blocks only its own calls); no regression, pinned by a unit test, the owner's
+  question in §10.13 (HANDOFF §8).
+- **The callee side of the system rule**: decision 9's rule tier still accepts a modelled caller's
+  unique call into a reconstructed callee at ingest (only the caller's class counts; rare, since
+  such a model's process ids come from the renderer's id function, A3), and a callee an agent token
+  uploaded blocks no owner's rule (S2c-3).
+- **The CLI's suggestion** does not see callees imported earlier or unchanged files stored before
+  S2c without a class; the rule it names starts off, and its dry run names the block.
+- **A manifest-less upload** of a spec bundle's BPMN files declares nothing and is not blocked; the
+  skill always imports the bundle folder with its `analyzr-import.json`.
+- **Plugin and server move together**: plugin 0.1.5 assumes an analyzr with this step (the skill
+  checks no server version), so `analyzr-local` needs a rebuild before the owner's live session
+  (HANDOFF §8), which is still open for 0.1.5 as it was for 0.1.4.
+
+Left: S6; after the owner's live runs S5b, S7 and facts v2.
 
 **S4 "Open questions".** Scope: §4.1–§4.4 without `extractor-loss` (S2); summaries only with the
 owner's OK. Does not touch: `FindingKind`, the claim inputs, MCP, stages. Done when: every source
@@ -6290,7 +6484,7 @@ specs (S3c, §3.7 step 2); only an automated vision pipeline stays out.
     re-export.
 11. **Rule acceptances on reconstructed models (extends decision 28 (1); raised by the S3c plan).
     Decided 2026-10-21 as recommended (decision 30 (2), §2, §3.10), as its own small server step
-    after S3c and before S6:** an owner's agent rule (decision 19) may accept an agent's relation or
+    after S3c and before S6:** an owner's agent rule (decision 19) accepted an agent's relation or
     placement proposal on any model, also one an LLM read from a whiteboard. The question as asked:
     „Sollen deine Regeln für Agenten-Vorschläge Relationen und Platzierungen an KI-rekonstruierten
     (und später „Aus Interview“) Modellen nie annehmen, wie es Entscheidung 28 (1) für Aufrufe schon
@@ -6299,6 +6493,9 @@ specs (S3c, §3.7 step 2); only an automated vision pipeline stays out.
     import; (b) keep it as it is, and the report says so. Recommendation: (a), after S3c and before
     S6, which brings `as-told`; until then the report says it (since plugin 0.1.4, the first line
     of „Offene Punkte“ for every bundle with reconstructed models, §8 "S3c step 4 as delivered").
+    **Delivered 2026-10-28** (§8 "Decision-30 (2) safeguard as delivered"): the safeguard
+    `reconstructed-endpoint` for every owner's rule, with `as-told` already, and plugin 0.1.5 drops
+    the report line; the open residual is §10.13.
 12. **Calls from ad-hoc converters, later. Open (decision 30 left it open).** §3.9 kept
     `calledElement` out of the specs of `adhoc:` converters until the owner decided §3.10, to be
     revisited with S2c and its decision-19 extension per converter; S2c is delivered, so a rendered
@@ -6309,6 +6506,23 @@ specs (S3c, §3.7 step 2); only an automated vision pipeline stays out.
     Recommendation: yes, as a later step once a sandbox AML or Visio export (§10.4) shows how
     process interfaces and off-page links look; the renderer, not the converter's free text,
     resolves the target.
+13. **An agent token's re-upload of a reconstructed model (raised by the decision-30 (2) step's
+    review). Open.** The safeguard of decision 30 (2) reads only the declaration of a model's
+    uploaded revision. A principal with an agent token and `analyzr:write` that uploads changed
+    bytes of a reconstructed or as-told model without a manifest (PUT or import) stores a revision
+    that declares nothing, so from then on owners' agent rules may accept that agent's message,
+    signal, trigger and placement proposals on the model again, and owners' rules may accept calls
+    into it again (an agent's call proposal, or a derived caller's call under a rule for derived
+    calls); only its own calls stay blocked, by `agent-upload` (decision 28 (1), `call` relations
+    only). No regression (before the step nothing blocked them); pinned in
+    `apps/server/test/unit/auto-accept-evaluate.test.ts` ("pins a residual"), so a change is
+    deliberate. A person's re-export with changed bytes and no declaration lifts the safeguard on
+    purpose. Options: (a) an agent token's upload without a declaration keeps the `derived` kind of
+    the model's previous uploaded revision; (b) `agent-upload` blocks owners' rules (agent rules and
+    rules for derived calls) on every relation and placement with an end in a model whose uploaded
+    revision an agent token uploaded, not only on its calls (extends decision 28 (1), and then
+    covers models an agent token uploaded from the start); (c) keep it as built. Until the owner
+    decides: (c).
 
 HANDOFF §8 "First users" is answered in part: the consultant works with the CLI and the skills
 (24.1), and answering also works in the web UI (24.3), by action since decision 25. Manifest upload and preview in the web

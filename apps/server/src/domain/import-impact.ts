@@ -44,6 +44,7 @@ import {
   competesWithCall,
   derivedCallView,
   evaluateRelationAutoAccept,
+  hasReconstructedEndpoint,
   type AutoAcceptRuleRev,
 } from './auto-accept/evaluate.ts';
 import { currentPairs, judgementShift, pairsToJudge, type JudgementBasis } from './judgements.ts';
@@ -114,9 +115,10 @@ export function relationsAfter(
  * the write (M6 S2c-3): the rule tier's proposals the plan records, each
  * evaluated as `autoAcceptDerivedCalls` evaluates it after the recompute
  * (natural key order, the relations as the plan leaves them, an acceptance
- * taking its call element), with `byRule` over all of them and how many of
- * them are among `proposed` (the natural keys `callsProposed` counts).
- * Marks each accepted call in `after` ({@link relationsAfter}).
+ * taking its call element; never one into a callee declared `reconstructed`
+ * or `as-told`, owner decision 30 (2)), with `byRule` over all of them and
+ * how many of them are among `proposed` (the natural keys `callsProposed`
+ * counts). Marks each accepted call in `after` ({@link relationsAfter}).
  */
 function autoAcceptedCalls(
   input: RecomputeInput,
@@ -167,6 +169,8 @@ function autoAcceptedCalls(
       },
       liveNoLinks: auto.liveNoLinks.get(key) ?? 0,
       competingCall: [...after.values()].some((r) => competesWithCall(relation, r)),
+      // The incoming file's declaration for a created or revised callee (`incomingTrust`).
+      reconstructedEndpoint: hasReconstructedEndpoint([target.fromRef, target.toRef], input.trust),
       rules: auto.rules,
     });
     if (!verdict.accept) continue;

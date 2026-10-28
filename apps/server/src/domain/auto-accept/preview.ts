@@ -23,9 +23,12 @@
  * (for every rule: no rule accepts a call of an agent token's upload) and
  * amendment conflict from the caller's current head, not from the
  * revision the proposal was made under (an approximation: a caller
- * re-imported with another declaration since replays as it is now). The
- * outcome is the first human decision that no
- * rule recorded; without one, an item counts as corrected when a human
+ * re-imported with another declaration since replays as it is now). In the
+ * same way, for every rule, a subject with an endpoint in a model whose
+ * current head declares `reconstructed` or `as-told` never fires (owner
+ * decision 30 (2), `reconstructed-endpoint`); it still counts among the
+ * decided items. The outcome is the first human decision that no rule
+ * recorded; without one, an item counts as corrected when a human
  * accepted a competitor of it (another target of its call element, another
  * step of its process); acceptances an auto-accept rule recorded and nobody
  * reviewed are no ground truth and are counted apart.
@@ -63,6 +66,7 @@ import {
   derivedCallView,
   evaluatePlacementAutoAccept,
   evaluateRelationAutoAccept,
+  hasReconstructedEndpoint,
   isDerivedCallProposal,
   ruleMatches,
   triggerOf,
@@ -70,6 +74,7 @@ import {
   type AutoAcceptVerdict,
   type CallerTrust,
   type DerivedCallView,
+  type EndpointTrust,
   type HistoryView,
   type TriggerView,
 } from './evaluate.ts';
@@ -142,7 +147,9 @@ export interface RelationSide {
   procedure: DeclaredProcedure;
   /**
    * Every live model's trust by key (M6 S2c-3, `trust.ts` `trustByModel`):
-   * what a rule for derived calls reads of a caller, from its current head.
+   * what a rule for derived calls reads of a caller, and every rule of an
+   * endpoint's declared derivation (owner decision 30 (2)), from its current
+   * head.
    */
   trust: ReadonlyMap<string, CallerTrust>;
 }
@@ -163,6 +170,12 @@ export interface PlacementSide {
   processDigests: ReadonlyMap<string, string>;
   /** The procedure placement claims name. */
   procedure: DeclaredProcedure;
+  /**
+   * Every live model's declared derivation by key (`trust.ts`
+   * `trustByModel`, from its current head): no owner's rule places a process
+   * of a `reconstructed` or `as-told` model (owner decision 30 (2)).
+   */
+  trust: ReadonlyMap<string, EndpointTrust>;
 }
 
 /** An open proposal a rule accepts now, with the proposal that meets it. */
@@ -279,6 +292,10 @@ export function openRelationCandidates(
       competingCall: (callsFrom.get(relation.fromRef) ?? []).some((r) =>
         competesWithCall(relation, r),
       ),
+      reconstructedEndpoint: hasReconstructedEndpoint(
+        [relation.fromRef, relation.toRef],
+        side.trust,
+      ),
       rules: [rule],
     });
     if (verdict.accept) accept.push({ relation, trigger: picked.trigger, rule: verdict.rule });
@@ -339,6 +356,7 @@ export function openPlacementCandidates(
             current: row.inputHash === side.hashOf(placement.processRef),
           }
         : null,
+      reconstructedEndpoint: hasReconstructedEndpoint([placement.processRef], side.trust),
       rules: [rule],
     });
     if (verdict.accept) accept.push({ placement, trigger: picked.trigger, rule: verdict.rule });
@@ -534,6 +552,8 @@ function replayRelations(
     // The caller as its current head declares it (the documented approximation).
     const derived = derivedCallView(relation.fromRef, side.trust);
     const view = viewFor(rule, relation, derived);
+    // Likewise the ends' declared derivation (owner decision 30 (2)).
+    const unseen = hasReconstructedEndpoint([relation.fromRef, relation.toRef], side.trust);
     const candidates: Candidate[] = [];
     for (const p of history) {
       if (p.seq >= firstHuman) break;
@@ -548,6 +568,8 @@ function replayRelations(
       }
       // No rule accepts a call an agent token's upload makes (decision 28 (1)).
       if (relation.type === 'call' && derived?.agentUpload) continue;
+      // Nor anything on a reconstructed or as-told model (decision 30 (2)).
+      if (unseen) continue;
       if (rule.proposedBy === 'rule' && derived?.amendmentConflict) continue;
       const prefix = upTo(history, p.seq);
       if (recomputeStatus(prefix).status !== 'proposed') continue;
@@ -634,6 +656,11 @@ function replayPlacements(side: PlacementSide, rule: AutoAcceptRuleRev): Replaye
   // 1. Per process, the proposals that pass the subject's and the process's own checks.
   const candidatesOf = new Map<string, Candidate[]>();
   for (const [processRef, process] of byProcess) {
+    // A process of a reconstructed or as-told model (its current head) never fires (30 (2)).
+    if (hasReconstructedEndpoint([processRef], side.trust)) {
+      candidatesOf.set(processRef, []);
+      continue;
+    }
     const firstHuman = Math.min(
       ...process.map(
         (q) => (histories.get(q.id) ?? []).find((a) => a.sourceKind === 'human')?.seq ?? Infinity,
@@ -721,7 +748,8 @@ const KIND_ORDER: Readonly<Record<AutoAcceptDerivedKind, number>> = {
  * `AutoAcceptPreview.derivedGroups`), whatever the criteria: per source a
  * rule can name (export, converted per converter, none; the caller as its
  * current head declares it), the open proposals a rule naming it would
- * accept now and those a safeguard blocks, and such calls a human decided
+ * accept now and those a safeguard blocks (a callee declared
+ * `reconstructed` or `as-told` among them), and such calls a human decided
  * so far (the first unmarked human decision after the rule tier's first
  * proposal: accepted, or rejected and corrected).
  */
@@ -770,6 +798,10 @@ export function derivedGroups(side: RelationSide): AutoAcceptDerivedGroup[] {
         liveNoLinks: noLinks.get(naturalKey(relation.type, relation.fromRef, relation.toRef)) ?? 0,
         competingCall: (callsFrom.get(relation.fromRef) ?? []).some((r) =>
           competesWithCall(relation, r),
+        ),
+        reconstructedEndpoint: hasReconstructedEndpoint(
+          [relation.fromRef, relation.toRef],
+          side.trust,
         ),
         rules: [rule],
       });

@@ -8,7 +8,8 @@
  * dry run names the derived calls an owner's rule for derived calls would
  * accept in the write (M6 S2c-3), only the proposals the write records; a
  * trust review's dry run counts `ofProposed` among the calls accepted
- * before (M6 S2c-4). Such an acceptance settles its pair for the relations
+ * before (M6 S2c-4); never one into a callee declared `reconstructed` or
+ * `as-told` (owner decision 30 (2)). Such an acceptance settles its pair for the relations
  * tasks and makes both ends due for placement (S2b follow-up).
  */
 import { extractFacts } from '@analyzr/bpmn-facts';
@@ -471,6 +472,37 @@ describe('the dry run’s acceptances by an owner’s rule for derived calls (M6
           .autoAcceptedCalls?.count,
       ).toBe(0);
     }
+  });
+
+  it('accepts no call into a callee declared reconstructed or as-told (owner decision 30 (2))', async () => {
+    const facts = await landscape(true);
+    const m = memory();
+    const auto = { rules: [rule()], liveNoLinks: none };
+    const callee = (derivedKind: ModelTrust['derivedKind']) =>
+      trustOfModels(facts, {
+        [AUFTRAG_KEY]: { trust: NO_ENGINE, derivedKind: 'export' },
+        [RECHNUNG_KEY]: {
+          trust: { class: 'derived', reasons: ['reconstructed'] },
+          derivedKind,
+        },
+      });
+    for (const kind of ['reconstructed', 'as-told'] as const) {
+      const impact = relationImpact(m.input(facts, callee(kind)), [], auto);
+      expect(impact.callsProposed.count, kind).toBe(1);
+      expect(impact.autoAcceptedCalls, kind).toEqual({
+        count: 0,
+        items: [],
+        ofProposed: 0,
+        byRule: [],
+      });
+      // „Zurück in die Prüfung“'s dry run (M6 S2c-4) reads the same mirror.
+      const reviewed = relationImpact(m.input(facts, callee(kind)), [], auto, 'was-accepted');
+      expect(reviewed.autoAcceptedCalls?.count, kind).toBe(0);
+    }
+    // The control: the same call into an export callee.
+    expect(
+      relationImpact(m.input(facts, callee('export')), [], auto).autoAcceptedCalls?.count,
+    ).toBe(1);
   });
 
   it('counts a proposal the rule tier asserts again apart from callsProposed (ofProposed)', async () => {

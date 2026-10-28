@@ -12,6 +12,11 @@
  * model's deletion by a human, {@link autoAcceptDerivedCalls} evaluates the
  * rule tier's proposals of unique calls from derived models that recompute
  * recorded against the owner's enabled rules for derived calls.
+ *
+ * In every path no owner's rule accepts anything with an endpoint in a model
+ * whose uploaded revision declares `reconstructed` or `as-told` (owner
+ * decision 30 (2), `reconstructed-endpoint`), read from the head the write
+ * sees; the system rule (decision 9) is not among them.
  */
 import type {
   AutoAcceptKind,
@@ -46,6 +51,7 @@ import {
   derivedCallView,
   evaluatePlacementAutoAccept,
   evaluateRelationAutoAccept,
+  hasReconstructedEndpoint,
   isDerivedCallProposal,
   triggerOf,
   type AutoAcceptRuleRev,
@@ -168,8 +174,10 @@ const byNaturalKey = (a: RelationRecord, b: RelationRecord): number =>
  * uploaded with an agent token is never accepted (`agent-upload`), and a
  * write by an agent token accepts nothing (decision 28 (1)'s spirit: the
  * rule trusts a source a human imports; an agent's upload of a callee or
- * its deletion of a duplicate must not decide which call is accepted). A
- * proposal the rule tier asserts again on a relation it already proposed
+ * its deletion of a duplicate must not decide which call is accepted). Nor
+ * is a call into a callee declared `reconstructed` or `as-told`
+ * (`reconstructed-endpoint`, owner decision 30 (2); such a caller's calls
+ * match no rule anyway). A proposal the rule tier asserts again on a relation it already proposed
  * (an endpoint's fingerprint or the reasons changed) is a new proposal, as
  * an agent's re-proposal after a model change is for agent rules.
  *
@@ -229,6 +237,7 @@ export async function autoAcceptDerivedCalls(
       trigger: triggerOf(a, live, derivedCallView(relation.fromRef, trust)),
       liveNoLinks: noLinks.get(key) ?? 0,
       competingCall: [...ctx.relations.values()].some((r) => competesWithCall(relation, r)),
+      reconstructedEndpoint: hasReconstructedEndpoint([relation.fromRef, relation.toRef], trust),
       rules,
     });
     if (!verdict.accept) continue;
@@ -244,8 +253,10 @@ export async function autoAcceptDerivedCalls(
  * Evaluates the relation proposals this write recorded against the
  * project's enabled relation rules and records the acceptances, in natural
  * key order (deterministic events). A call whose caller an agent token
- * uploaded is never accepted (`agent-upload`, owner decision 28 (1)): one
- * more query, only when a call is among the triggers and a rule is enabled.
+ * uploaded is never accepted (`agent-upload`, owner decision 28 (1)), nor a
+ * relation with an end in a model declared `reconstructed` or `as-told`
+ * (`reconstructed-endpoint`, owner decision 30 (2)): one more query, only
+ * when a rule is enabled.
  *
  * @param opts.procedure the procedure relations claims name (a pipeline proposal's currency)
  * @param opts.heads the head `facts_hash` per model key, if loaded
@@ -264,9 +275,7 @@ export async function autoAcceptRelations(
   const rules = await enabledRules(ctx.tx, ctx.projectId, 'relation');
   if (rules.length === 0) return [];
   const heads = opts.heads ?? (await ctx.tx.revisions.headHashes(ctx.projectId));
-  const trust = agentTriggers.some((t) => t.relation.type === 'call')
-    ? trustByModel(await ctx.tx.revisions.headTrustRows(ctx.projectId))
-    : new Map<string, never>();
+  const trust = trustByModel(await ctx.tx.revisions.headTrustRows(ctx.projectId));
   const pairs = agentTriggers.map((t) => ({
     type: t.relation.type as 'call' | 'message' | 'signal' | 'trigger',
     from: t.relation.fromRef,
@@ -321,6 +330,7 @@ export async function autoAcceptRelations(
       trigger: triggerOf(a, current, null, agentUploadedCaller(relation, trust)),
       liveNoLinks: noLinks.get(key) ?? 0,
       competingCall: relation.type === 'call' && (await competing(relation)),
+      reconstructedEndpoint: hasReconstructedEndpoint([relation.fromRef, relation.toRef], trust),
       rules,
     });
     if (!verdict.accept) continue;
@@ -357,7 +367,10 @@ export interface PlacementAutoAcceptInputs {
  * Evaluates the placement proposals this write recorded against the
  * project's enabled placement rules and records the acceptances, in natural
  * key order. The context must hold every placement of the chain with its
- * history (the safeguards look at the whole process).
+ * history (the safeguards look at the whole process). A process in a model
+ * declared `reconstructed` or `as-told` is never accepted
+ * (`reconstructed-endpoint`, owner decision 30 (2)): one more query, only
+ * when a rule is enabled.
  *
  * @returns the placements accepted
  */
@@ -370,6 +383,7 @@ export async function autoAcceptPlacements(
   if (agentTriggers.length === 0) return [];
   const rules = await enabledRules(ctx.tx, ctx.projectId, 'placement');
   if (rules.length === 0) return [];
+  const trust = trustByModel(await ctx.tx.revisions.headTrustRows(ctx.projectId));
   const accepted: PlacementRecord[] = [];
   const ordered = [...agentTriggers].sort(
     (a, b) =>
@@ -410,6 +424,7 @@ export async function autoAcceptPlacements(
             current: prior.inputHash === inputs.hashOf(placement.processRef),
           }
         : null,
+      reconstructedEndpoint: hasReconstructedEndpoint([placement.processRef], trust),
       rules,
     });
     if (!verdict.accept) continue;

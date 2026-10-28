@@ -408,6 +408,10 @@ describe('rules for derived calls (M6 S2c-3)', () => {
     expect(openOfSource(groups, 'converted', 'b@1')).toBe(3);
     expect(openOfSource(groups, 'none')).toBe(0);
     expect(AUTO_ACCEPT_BLOCK_LABELS['agent-upload']).toBe('Über ein Agenten-Token hochgeladen');
+    // owner decision 30 (2), in the words of the model chips („KI-rekonstruiert“, „Aus Interview“)
+    expect(AUTO_ACCEPT_BLOCK_LABELS['reconstructed-endpoint']).toBe(
+      'Modell KI-rekonstruiert oder aus Interview',
+    );
     expect(AUTO_ACCEPT_BLOCK_LABELS['amendment-conflict']).toBe('Ergänzung nicht mehr anwendbar');
     expect(historyText(autoAcceptPreview().history, true)).toBe(
       'Bisher: 15 von 40 entschiedenen Aufrufen aus abgeleiteten Modellen hätte die Regel angenommen – davon 14 angenommen, 1 abgelehnt, 0 korrigiert (Trefferquote 93,3 %)',

@@ -214,7 +214,8 @@ async function loadRelations(
       noLinks: await tx.noLinks.listHistory(projectId),
       heads: await tx.revisions.headHashes(projectId),
       procedure,
-      // What a rule for derived calls reads of a caller (M6 S2c-3), from its current head.
+      // What a rule for derived calls reads of a caller (M6 S2c-3) and every rule of an
+      // endpoint's declared derivation (owner decision 30 (2)), from its current head.
       trust: trustByModel(await tx.revisions.headTrustRows(projectId)),
     },
   };
@@ -233,8 +234,11 @@ async function loadChains(
   procedure: DeclaredProcedure,
 ): Promise<LoadedChain[]> {
   const out: LoadedChain[] = [];
-  for (const chain of await tx.valueChains.list(projectId)) {
-    if (chain.headRevisionId === null) continue;
+  const chains = (await tx.valueChains.list(projectId)).filter((c) => c.headRevisionId !== null);
+  if (chains.length === 0) return out;
+  // Every model's declared derivation, from its current head (owner decision 30 (2)).
+  const trust = trustByModel(await tx.revisions.headTrustRows(projectId));
+  for (const chain of chains) {
     const state = await loadChainState(tx, chain);
     const inputs = await loadPipelineInputs(tx, state, procedure);
     out.push({
@@ -251,6 +255,7 @@ async function loadChains(
         chainDigest: inputs.hashContext.chainDigest,
         processDigests: inputs.hashContext.processDigests,
         procedure,
+        trust,
       },
     });
   }

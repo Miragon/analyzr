@@ -1071,5 +1071,16 @@ test('CSS check: the chain page is unchanged after the review screen', async ({ 
   await expect(canvas(page)).toHaveAttribute('data-imported', 'true');
   await page.mouse.move(0, 0);
   expect(await probeChain(page)).toEqual(before);
-  expect(await canvas(page).screenshot({ animations: 'disabled' })).toEqual(shotBefore);
+  // Until the canvas has settled after the way back (on a loaded machine a first shot can catch it
+  // mid-render); a style the review screen left behind keeps it different. Compared as a boolean:
+  // a byte-by-byte diff of two PNGs takes minutes to print.
+  await expect
+    .poll(
+      async () => (await canvas(page).screenshot({ animations: 'disabled' })).equals(shotBefore),
+      {
+        message: 'the chain canvas looks as before the review screen',
+        timeout: 15_000,
+      },
+    )
+    .toBe(true);
 });

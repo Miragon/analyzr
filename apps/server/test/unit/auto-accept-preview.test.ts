@@ -513,6 +513,7 @@ function placementSide(
     chainDigest: 'chain',
     processDigests: new Map(items.map((i) => [i.process, 'proc'])),
     procedure: PPROC,
+    trust: new Map(),
     ...extra,
   };
 }
@@ -913,6 +914,160 @@ describe('rules for derived calls (M6 S2c-3)', () => {
       tier: 'key',
       confidence: 0.9,
     });
+  });
+});
+
+describe('models no person has seen in a tool (owner decision 30 (2))', () => {
+  const RULES = 'prn_0000000000000000000000RULE' as PrincipalId;
+  const declared = (derivedKind: 'export' | 'reconstructed' | 'as-told' | null) => ({
+    trust: derivedKind === null ? null : { class: 'derived', reasons: ['no-engine'] },
+    derivedKind,
+    converter: null,
+    conflictedCalls: new Set<string>(),
+  });
+  /** `a` an export, `b` a plain Camunda model, `r` read from a picture, `t` drawn from interviews. */
+  const trust = new Map([
+    ['a', declared('export')],
+    ['b', declared(null)],
+    ['r', declared('reconstructed')],
+    ['t', declared('as-told')],
+  ]);
+
+  it('opens nothing with an end in such a model and counts it blocked, at every minimum', () => {
+    // Ad-hoc proposals (always current), so only the declaration tells them apart.
+    const adHoc = (id: string, confidence = 0.95) =>
+      ra(id, AGENT, 'proposal', { submissionId: null, confidence });
+    const rels = [
+      { id: 'm1', from: 'a#E1', to: 'b#S1', history: [adHoc('m1')] },
+      { id: 'm2', from: 'r#E2', to: 'b#S2', history: [adHoc('m2')] },
+      { id: 'm3', from: 'a#E3', to: 'r#S3', history: [adHoc('m3')] },
+      { id: 'm4', from: 't#E4', to: 'b#S4', history: [adHoc('m4', 0.85)] },
+    ];
+    const adHocRule = (minConfidence: number) => rule({ minConfidence, includeAdHoc: true });
+    const side = relationSide(rels, [], trust);
+    const open = openRelationCandidates(side, adHocRule(0.9));
+    expect(open.accept.map((o) => o.relation.id)).toEqual(['m1']);
+    expect(Object.fromEntries(open.blocked)).toEqual({ 'reconstructed-endpoint': 2 });
+    const low = openRelationCandidates(side, adHocRule(0.8));
+    expect(low.accept.map((o) => o.relation.id)).toEqual(['m1']);
+    expect(Object.fromEntries(low.blocked)).toEqual({ 'reconstructed-endpoint': 3 });
+    // Without the declaration all four meet the rule at 0.8.
+    expect(openRelationCandidates(relationSide(rels), adHocRule(0.8)).accept).toHaveLength(4);
+    // A stale pipeline proposal on such a model reports the declaration first.
+    const stale = relationSide(
+      [{ id: 'm6', from: 'r#E6', to: 'b#S6', history: [ra('m6', AGENT, 'proposal')] }],
+      [],
+      trust,
+    );
+    expect(Object.fromEntries(openRelationCandidates(stale, rule()).blocked)).toEqual({
+      'reconstructed-endpoint': 1,
+    });
+  });
+
+  it('never fires in the replay, and the subjects still count as decided', () => {
+    const decided = (id: string, from: string, to: string) => ({
+      id,
+      from,
+      to,
+      history: [ra(id, AGENT, 'proposal'), ra(id, OWNER, 'decision')],
+    });
+    const rels = [
+      decided('m1', 'a#E1', 'b#S1'),
+      decided('m2', 'r#E2', 'b#S2'),
+      decided('m3', 'b#E3', 't#S3'),
+    ];
+    const replay = replayHistory(
+      { kind: 'relation', relations: relationSide(rels, [], trust) },
+      rule(),
+    );
+    expect(replay.history).toMatchObject({ decided: 3, wouldAccept: 1, accepted: 1 });
+    expect(replay.curve.find((c) => c.minConfidence === 0.9)).toMatchObject({ wouldAccept: 1 });
+    // An acceptance a rule made on such a model before is no longer counted as unreviewed.
+    const auto = {
+      id: 'm5',
+      from: 'r#E5',
+      to: 'b#S5',
+      history: [
+        ra('m5', AGENT, 'proposal'),
+        ra('m5', OWNER, 'decision', { autoAcceptRuleId: RULE_ID, autoAcceptRuleRevision: 1 }),
+      ],
+    };
+    expect(
+      replayHistory({ kind: 'relation', relations: relationSide([auto], [], trust) }, rule())
+        .history,
+    ).toMatchObject({ wouldAccept: 0, autoUnreviewed: 0 });
+    expect(
+      replayHistory({ kind: 'relation', relations: relationSide([auto]) }, rule()).history,
+    ).toMatchObject({ autoUnreviewed: 1 });
+  });
+
+  it('blocks a rule for derived calls on a call into such a callee (derivedGroups too)', () => {
+    const rp = (relationId: string) =>
+      ra(relationId, RULES, 'proposal', {
+        sourceKind: 'rule',
+        confidence: 0.9,
+        rationale: 'Vertrauensregel: Der Aufruf nennt genau einen Prozess …',
+        submissionId: null,
+        declared: null,
+        fromHash: null,
+        toHash: null,
+        handle: 'analyzr-rules',
+      });
+    const derivedRule = rule({
+      proposedBy: 'rule',
+      relationType: 'call',
+      minConfidence: 0.9,
+      derivedKind: 'export',
+    });
+    const side = relationSide(
+      [
+        { id: 'c1', type: 'call', from: 'a#C1', to: 'b#P1', history: [rp('c1')] },
+        { id: 'c2', type: 'call', from: 'a#C2', to: 'r#P2', history: [rp('c2')] },
+        {
+          id: 'c3',
+          type: 'call',
+          from: 'a#C3',
+          to: 'r#P3',
+          history: [rp('c3'), ra('c3', OWNER, 'decision')],
+        },
+      ],
+      [],
+      trust,
+    );
+    const open = openRelationCandidates(side, derivedRule);
+    expect(open.accept.map((o) => o.relation.id)).toEqual(['c1']);
+    expect(Object.fromEntries(open.blocked)).toEqual({ 'reconstructed-endpoint': 1 });
+    expect(replayHistory({ kind: 'relation', relations: side }, derivedRule).history).toMatchObject(
+      { decided: 1, wouldAccept: 0 },
+    );
+    expect(derivedGroups(side)).toEqual([
+      { derivedKind: 'export', converter: null, open: 1, blocked: 1, accepted: 1, rejected: 0 },
+    ]);
+  });
+
+  it('places no process of such a model, now or in the replay', () => {
+    const placementRule = rule({ kind: 'placement', tier: 'lexical' });
+    const items = [
+      { id: 'p1', step: 'step-a', process: 'a#P1', history: [pa('p1', AGENT, 'proposal')] },
+      { id: 'p2', step: 'step-a', process: 'r#P2', history: [pa('p2', AGENT, 'proposal')] },
+      { id: 'p3', step: '@outside', process: 't#P3', history: [pa('p3', AGENT, 'proposal')] },
+    ];
+    const open = openPlacementCandidates(placementSide(items, { trust }), placementRule);
+    expect(open.accept.map((o) => o.placement.id)).toEqual(['p1']);
+    expect(Object.fromEntries(open.blocked)).toEqual({ 'reconstructed-endpoint': 2 });
+    const decided = items.map((i) => ({
+      ...i,
+      history: [...i.history, pa(i.id, OWNER, 'decision')],
+    }));
+    const replay = replayHistory(
+      { kind: 'placement', placements: [placementSide(decided, { trust })] },
+      placementRule,
+    );
+    expect(replay.history).toMatchObject({ decided: 3, wouldAccept: 1, accepted: 1 });
+    expect(
+      replayHistory({ kind: 'placement', placements: [placementSide(decided)] }, placementRule)
+        .history,
+    ).toMatchObject({ decided: 3, wouldAccept: 2 });
   });
 });
 

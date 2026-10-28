@@ -51,6 +51,12 @@ const RELEASES: Readonly<Record<string, string>> = {
   // rebuilt (plan-args moved; its model bytes and NORMALIZE_BPMN_VERSION unchanged);
   // allowed-tools unchanged.
   '0.1.4': 'c5d396e863ca18b7137330575ff83227fb6d0f045280336b2725f844f1c65eb2',
+  // Owner decision 30 (2): the server's safeguard reconstructed-endpoint; the bundled CLI
+  // analyzr.mjs carries the contracts' new block reason (rules preview and apply's dry run print
+  // it) and its owner-rule suggestion after an import skips calls into reconstructed or as-told
+  // files; the report drops the line „Bis analyzr das ausschließt, …“ from „Offene Punkte“;
+  // allowed-tools unchanged.
+  '0.1.5': '737e6044b838a9a48afd54e13dfa0e22a695664698eb2a4d299b1b0d30325c01',
 };
 
 async function pluginFiles(): Promise<string[]> {
@@ -415,13 +421,12 @@ describe('the skill integrate-landscape', () => {
     );
   });
 
-  it('tells the consultant what the reconstructed models are and what rules can do with them', async () => {
+  it('tells the consultant what the reconstructed models are', async () => {
     const { body } = await skill();
     const flat = body.replace(/\s+/g, ' ');
     for (const text of [
       'Weil ich dabei EPK-Elemente als BPMN deute, kennzeichnet analyzr sie als „KI-rekonstruiert“.',
       'Prüf sie bitte gegen die Vorlage, bevor du ihnen vertraust',
-      'können deine Regeln für Agenten-Vorschläge (zum Beispiel „Nachricht ab 0,9“) Relationen und Platzierungen an KI-rekonstruierten Modellen annehmen',
       'Dieses Bündel enthält Dateien, die „analyzr-spec“ so nicht zeichnet: analyzr würde sie als modelliert einstufen oder Aufrufziele darin finden. Ich empfehle keinen Import.',
       'Den Befehl führst du selbst aus (im Terminal oder mit `! <Befehl>`).',
       '„Übernommen: 6 Modelle unverändert, 3 konvertiert (normalize-bpmn), 7 aus Visio mit dem Konverter adhoc:3f2a9c1b7d4e, 4 aus Bildern rekonstruiert; nicht übernommen: 1“',
@@ -432,7 +437,7 @@ describe('the skill integrate-landscape', () => {
     expect(flat).not.toContain('aus dem Renderer');
   });
 
-  it('says what agent rules can do with reconstructed models in every report that has one', async () => {
+  it('no report warns about agent rules on reconstructed models any more (decision 30 (2) delivered)', async () => {
     const { body } = await skill();
     const report = sections(body).get('Step 6: Report') ?? '';
     // the report's numbered items (1., 4a., 10., …) → text
@@ -457,14 +462,22 @@ describe('the skill integrate-landscape', () => {
       '10',
       '11',
     ]);
-    const rule =
-      'Bis analyzr das ausschließt, können deine Regeln für Agenten-Vorschläge (zum Beispiel „Nachricht ab 0,9“) Relationen und Platzierungen an KI-rekonstruierten Modellen annehmen';
-    // in „Offene Punkte“, which every report has, for pictures and converters alike (decision
-    // 30 (2)); not only in the pictures' section 4b
-    expect(items.get('10')).toContain(
-      `with any \`reconstructed\` model (a bundle's \`counts.reconstructed\` above 0, from pictures or a converter), first: „${rule}`,
+    // analyzr keeps every owner rule from reconstructed and as-told models (decision 30 (2),
+    // `reconstructed-endpoint`), so „Offene Punkte“ opens with what is open
+    expect(items.get('10')).toMatch(
+      /^10\. \*\*„Offene Punkte“:\*\* black-box pools \(„Externer Partner oder fehlendes Modell\?“\)/,
     );
-    for (const [at, text] of items) if (at !== '10') expect(text, at).not.toContain(rule);
+    for (const [at, text] of items) {
+      for (const gone of [
+        'Bis analyzr das ausschließt',
+        'Nachricht ab 0,9',
+        'Regeln für Agenten',
+      ]) {
+        expect(text, at).not.toContain(gone);
+      }
+    }
+    // the checking advice for picture models stays (4b)
+    expect(items.get('4b')).toContain('Prüf sie bitte gegen die Vorlage, bevor du ihnen vertraust');
   });
 
   it('leaves a picture out by its own spec, never by an exclusion that hits the tool’s model', async () => {

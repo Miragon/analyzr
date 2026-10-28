@@ -8,7 +8,10 @@
  * narrowing by derived kind and exact converter, and the order of
  * `agent-upload` and `amendment-conflict`; no rule, an agent rule neither,
  * accepts a call whose caller an agent token uploaded (owner decision 28
- * (1)). Synthetic data only.
+ * (1)); no rule accepts anything on a model declared `reconstructed` or
+ * `as-told` (owner decision 30 (2), `reconstructed-endpoint`): either end of
+ * a relation, a placement's process, read from the uploaded revision's
+ * declaration (an amended head's upstream). Synthetic data only.
  */
 import type { AutoAcceptRuleId, PrincipalId } from '@analyzr/contracts';
 import { describe, expect, it } from 'vitest';
@@ -18,14 +21,18 @@ import {
   derivedCallView,
   evaluatePlacementAutoAccept,
   evaluateRelationAutoAccept,
+  hasReconstructedEndpoint,
   isDerivedCallProposal,
   matchRule,
   type AutoAcceptRuleRev,
   type DerivedCallView,
+  type EndpointTrust,
   type HistoryView,
   type PlacementSubjectView,
   type TriggerView,
 } from '../../src/domain/auto-accept/evaluate.ts';
+import type { HeadTrustRow } from '../../src/domain/ports.ts';
+import { trustByModel } from '../../src/domain/trust.ts';
 
 const OWNER = 'prn_00000000000000000000OWNER' as PrincipalId;
 const AGENT = 'prn_000000000000000000000AGENT' as PrincipalId;
@@ -114,6 +121,7 @@ function relation(
     trigger: trigger(),
     liveNoLinks: 0,
     competingCall: false,
+    reconstructedEndpoint: false,
     rules: [rule()],
     ...extra,
   });
@@ -312,11 +320,40 @@ describe('placement safeguards', () => {
       processPlacements: [{ placement: own, history: [lexical(AGENT)] }],
       trigger: trigger({ tier: 'lexical' }),
       priorVerdict: null,
+      reconstructedEndpoint: false,
       rules: [placementRule],
       ...extra,
     });
     return v.accept ? 'accept' : v.reason;
   }
+
+  it('never places a process of a reconstructed or as-told model (owner decision 30 (2))', () => {
+    expect(placement({ reconstructedEndpoint: true })).toBe('reconstructed-endpoint');
+    // before the subject's state and the process-level safeguards
+    const outside = { ...own, elementId: '@outside' };
+    expect(
+      placement({
+        reconstructedEndpoint: true,
+        placement: outside,
+        processPlacements: [{ placement: outside, history: [] }],
+      }),
+    ).toBe('reconstructed-endpoint');
+    expect(placement({ reconstructedEndpoint: true, stepLive: false })).toBe(
+      'reconstructed-endpoint',
+    );
+    expect(
+      placement({
+        reconstructedEndpoint: true,
+        processPlacements: [
+          { placement: own, history: [lexical(AGENT)] },
+          { placement: other({ status: 'accepted' }), history: [] },
+        ],
+      }),
+    ).toBe('reconstructed-endpoint');
+    expect(placement({ reconstructedEndpoint: true, trigger: trigger({ tier: 'semantic' }) })).toBe(
+      'no-matching-rule',
+    );
+  });
 
   it('accepts a lone agent proposal on a live step', () => {
     expect(placement()).toBe('accept');
@@ -660,5 +697,216 @@ describe('rules for derived calls (M6 S2c-3)', () => {
     expect(derivedCallView('m/y#Call_A', trust)).toBeNull();
     expect(derivedCallView('c/z#Call_A', trust)).toBeNull();
     expect(derivedCallView('gone/z#Call_A', trust)).toBeNull();
+  });
+});
+
+describe('models no person has seen in a tool (owner decision 30 (2))', () => {
+  const call = { ...proposed, type: 'call' } as const;
+  const known = (derivedKind: EndpointTrust['derivedKind']): EndpointTrust => ({ derivedKind });
+  const trust = new Map<string, EndpointTrust>([
+    ['bild/tafel', known('reconstructed')],
+    ['interview/einkauf', known('as-told')],
+    ['export/auftrag', known('export')],
+    ['konvertiert/visio', known('converted')],
+    ['camunda/rechnung', known(null)],
+  ]);
+
+  it('reads reconstructed and as-told on either end; any other kind, none, or a model gone, not', () => {
+    for (const key of ['bild/tafel', 'interview/einkauf']) {
+      expect(hasReconstructedEndpoint([`${key}#Event_A`], trust), key).toBe(true);
+      expect(hasReconstructedEndpoint([`export/auftrag#Event_A`, `${key}#Start_B`], trust)).toBe(
+        true,
+      );
+      expect(hasReconstructedEndpoint([`${key}#Event_A`, `export/auftrag#Start_B`], trust)).toBe(
+        true,
+      );
+    }
+    for (const key of [
+      'export/auftrag',
+      'konvertiert/visio',
+      'camunda/rechnung',
+      'weg/geloescht',
+    ]) {
+      expect(hasReconstructedEndpoint([`${key}#Event_A`, 'camunda/rechnung#B'], trust), key).toBe(
+        false,
+      );
+    }
+    expect(hasReconstructedEndpoint([], trust)).toBe(false);
+  });
+
+  it('follows an amended head’s upstream and reads the declaration, not the class', () => {
+    const row = (key: string, over: Partial<HeadTrustRow>): HeadTrustRow => ({
+      key,
+      modelId: 'mdl_01J9Z3N4X5Q6R7S8T9V0W1X2A1',
+      name: null,
+      head: { kind: 'import', uploader: 'human' },
+      upstream: null,
+      revisionId: 'rev_01J9Z3N4X5Q6R7S8T9V0W1X2A1',
+      rev: 1,
+      engine: 'c7',
+      uploaderPrincipalKind: 'user',
+      review: null,
+      ...over,
+    });
+    const amended: HeadTrustRow['head'] = {
+      kind: 'amendment',
+      uploader: 'human',
+      upstream: { revisionId: `rev_${'0'.repeat(26)}`, rev: 1, contentHash: 'a'.repeat(64) },
+      amendments: [],
+    };
+    const map = trustByModel([
+      // an amendment on a picture model: the upstream's declaration counts
+      row('bild/ergaenzt', {
+        head: amended,
+        upstream: {
+          kind: 'import',
+          uploader: 'human',
+          derived: { kind: 'reconstructed', llmModel: 'claude-x' },
+          trust: { class: 'derived', reasons: ['reconstructed'] },
+        },
+      }),
+      // stored between S2a and S2c: a declaration without a class, reviewed „Behalten“
+      row('bild/alt', {
+        head: { kind: 'import', uploader: 'human', derived: { kind: 'reconstructed' } },
+        review: 'modelled',
+      }),
+      // an amended head whose upstream row is missing: nothing declared (as for the trust rule)
+      row('weg/upstream', { head: amended, upstream: null }),
+      // the amended head's own source never declares anything
+      row('export/ergaenzt', {
+        head: amended,
+        upstream: { kind: 'import', uploader: 'human', derived: { kind: 'export' } },
+      }),
+    ]);
+    expect(map.get('bild/alt')?.trust).toEqual({ class: 'modelled', reasons: [] });
+    expect(hasReconstructedEndpoint(['bild/ergaenzt#Task_A'], map)).toBe(true);
+    expect(hasReconstructedEndpoint(['bild/alt#Task_A'], map)).toBe(true);
+    expect(hasReconstructedEndpoint(['weg/upstream#Task_A'], map)).toBe(false);
+    expect(hasReconstructedEndpoint(['export/ergaenzt#Task_A'], map)).toBe(false);
+  });
+
+  it('blocks every agent rule on a relation with such an end, also a stale proposal', () => {
+    expect(reason(relation({ reconstructedEndpoint: true }))).toBe('reconstructed-endpoint');
+    expect(
+      reason(relation({ reconstructedEndpoint: true, rules: [rule({ relationType: 'message' })] })),
+    ).toBe('reconstructed-endpoint');
+    // after the rule match, before the subject's own state and the relation safeguards
+    expect(
+      reason(relation({ reconstructedEndpoint: true, trigger: trigger({ tier: 'semantic' }) })),
+    ).toBe('no-matching-rule');
+    expect(
+      reason(relation({ reconstructedEndpoint: true, trigger: trigger({ current: false }) })),
+    ).toBe('reconstructed-endpoint');
+    expect(
+      reason(
+        relation({
+          reconstructedEndpoint: true,
+          relation: { ...proposed, status: 'held', endpointState: 'missing' },
+        }),
+      ),
+    ).toBe('reconstructed-endpoint');
+    expect(
+      reason(
+        relation({
+          reconstructedEndpoint: true,
+          history: [h(AGENT, 'proposal', { question: '?' }), h(OWNER, 'note')],
+          liveNoLinks: 1,
+        }),
+      ),
+    ).toBe('reconstructed-endpoint');
+  });
+
+  it('blocks an agent’s call proposal from a reconstructed caller under a rule for calls', () => {
+    // The rule tier only proposes such a caller's unique call, so an agent's proposal of it
+    // meets an agent rule; only this safeguard holds it back.
+    const agentCall = (reconstructedEndpoint: boolean) =>
+      reason(
+        relation({
+          relation: call,
+          history: [h(RULES, 'proposal', { confidence: 0.9 }), h(AGENT, 'proposal')],
+          rules: [rule({ relationType: 'call', minConfidence: 0.9 })],
+          reconstructedEndpoint,
+        }),
+      );
+    expect(agentCall(false)).toBe('accept');
+    expect(agentCall(true)).toBe('reconstructed-endpoint');
+  });
+
+  it('blocks a rule for derived calls on a call into such a callee, after agent-upload', () => {
+    const derivedRule = rule({
+      proposedBy: 'rule',
+      relationType: 'call',
+      minConfidence: 0.9,
+      derivedKind: 'export',
+    });
+    const derivedCall = (
+      reconstructedEndpoint: boolean,
+      view: Partial<DerivedCallView> = {},
+      extra: Partial<TriggerView> = {},
+    ) =>
+      reason(
+        relation({
+          relation: call,
+          history: [h(RULES, 'proposal', { confidence: 0.9 })],
+          trigger: trigger({
+            principalId: RULES,
+            sourceKind: 'rule',
+            confidence: 0.9,
+            llmModel: null,
+            pipeline: false,
+            derivedCall: { ...EXPORT, ...view },
+            ...extra,
+          }),
+          rules: [derivedRule],
+          reconstructedEndpoint,
+        }),
+      );
+    // an export caller's call into an export callee (the control) and into a reconstructed one
+    expect(derivedCall(false)).toBe('accept');
+    expect(derivedCall(true)).toBe('reconstructed-endpoint');
+    // the order: agent-upload, reconstructed-endpoint, amendment-conflict, stale-proposal
+    expect(derivedCall(true, { agentUpload: true, amendmentConflict: true })).toBe('agent-upload');
+    expect(derivedCall(true, { amendmentConflict: true }, { current: false })).toBe(
+      'reconstructed-endpoint',
+    );
+    expect(derivedCall(false, { amendmentConflict: true }, { current: false })).toBe(
+      'amendment-conflict',
+    );
+    // an agent token's upload of a reconstructed caller reports agent-upload first
+    expect(
+      reason(
+        relation({
+          relation: call,
+          trigger: trigger({ agentUploadedCaller: true }),
+          reconstructedEndpoint: true,
+        }),
+      ),
+    ).toBe('agent-upload');
+  });
+
+  it('pins a residual: an agent token’s upload without a declaration lifts it', () => {
+    // The new uploaded revision of a model read from a picture declares nothing: the safeguard
+    // reads the declaration only, so agent rules apply to its messages again (calls stay
+    // blocked by agent-upload). Closing this needs the owner (carry the declaration over an
+    // agent upload, or extend agent-upload beyond calls).
+    const map = trustByModel([
+      {
+        key: 'bild/tafel',
+        modelId: 'mdl_01J9Z3N4X5Q6R7S8T9V0W1X2A1',
+        name: null,
+        head: {
+          kind: 'import',
+          uploader: 'agent',
+          trust: { class: 'derived', reasons: ['no-engine', 'agent-upload'] },
+        },
+        upstream: null,
+        revisionId: 'rev_01J9Z3N4X5Q6R7S8T9V0W1X2A1',
+        rev: 2,
+        engine: null,
+        uploaderPrincipalKind: 'service',
+        review: null,
+      },
+    ]);
+    expect(hasReconstructedEndpoint(['bild/tafel#Event_A'], map)).toBe(false);
   });
 });

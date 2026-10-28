@@ -24,9 +24,20 @@
  * {@link TriggerView.agentUploadedCaller}): otherwise an agent could upload
  * a model and have its own proposal of the model's calls accepted without
  * any person seeing them.
+ *
+ * No owner's rule accepts anything on a model an LLM read or that was drawn
+ * from interviews (owner decision 30 (2), `reconstructed-endpoint`,
+ * {@link hasReconstructedEndpoint}): a relation with either end, a placement
+ * of a process, in a model whose uploaded revision declares `reconstructed`
+ * or `as-told`. It reads the declaration, not the trust class, and holds for
+ * every owner's rule, so a rule for derived calls neither accepts a call into
+ * such a callee. Humans still decide such items one by one or in bulk. The
+ * system rule (decision 9, `trust.ts` `applyTrust`) is no owner's rule and
+ * still reads only the caller's class.
  */
 import {
   DERIVED_CALL_CONFIDENCE,
+  isUnseenDerivation,
   parseRef,
   type AssertionKind,
   type AutoAcceptBlockReason,
@@ -165,6 +176,27 @@ export function agentUploadedCaller(
   );
 }
 
+/** What {@link hasReconstructedEndpoint} reads of a live model (`trust.ts` `ModelTrust`). */
+export type EndpointTrust = Pick<CallerTrust, 'derivedKind'>;
+
+/**
+ * Whether one of `refs` lies in a live model whose uploaded revision (an
+ * amended head: its `source.upstream`'s, as `trustByModel` reads it)
+ * declares `reconstructed` or `as-told` (owner decision 30 (2), the
+ * contracts' `UNSEEN_DERIVATIONS`). It reads the declaration, not the class, so
+ * a revision stored before S2c counts too and an owner's review of it does
+ * not lift it. A model that is not live reads as not reconstructed (its
+ * subjects are `missing`: `endpoint-not-ok`), as does an amended head whose
+ * upstream row is missing (as for the trust rule). The write paths read the
+ * head the write sees; "apply", the preview and its replay the current head.
+ */
+export function hasReconstructedEndpoint(
+  refs: readonly string[],
+  trust: ReadonlyMap<string, EndpointTrust>,
+): boolean {
+  return refs.some((ref) => isUnseenDerivation(trust.get(parseRef(ref).modelKey)?.derivedKind));
+}
+
 /** The proposal a rule is evaluated against. */
 export interface TriggerView {
   id: string;
@@ -279,6 +311,7 @@ function commonChecks(
   rules: readonly AutoAcceptRuleRev[],
   subject: RuleSubject,
   state: { status: RelationStatus; endpointState: EndpointState },
+  reconstructedEndpoint: boolean,
 ): AutoAcceptVerdict {
   if (!isTriggerProposal(trigger)) return blocked('not-agent');
   const rule = matchRule(rules, trigger, subject);
@@ -288,6 +321,8 @@ function commonChecks(
   if (trigger.agentUploadedCaller || trigger.derivedCall?.agentUpload) {
     return blocked('agent-upload');
   }
+  // Owner decision 30 (2): no owner's rule accepts anything on a reconstructed or as-told model.
+  if (reconstructedEndpoint) return blocked('reconstructed-endpoint');
   if (trigger.derivedCall?.amendmentConflict) return blocked('amendment-conflict');
   if (!trigger.current) return blocked('stale-proposal');
   if (state.status !== 'proposed') return blocked('not-open');
@@ -331,7 +366,8 @@ function liveAgentProposals<T extends HistoryView>(history: readonly T[]): T[] {
 }
 
 /**
- * Whether a rule accepts an agent's relation proposal. Safeguards after the
+ * Whether a rule accepts an agent's relation proposal. The common safeguards
+ * include `reconstructed-endpoint` for either end; safeguards after the
  * common ones: `competing-call` (another proposed, held or accepted call
  * leaves the same call element, or an accepted or held manual relation to
  * another target, M6 S5c-1: a call has one target), `human-involved`
@@ -350,6 +386,11 @@ export function evaluateRelationAutoAccept(src: {
    * element, or an accepted or held manual relation to another target.
    */
   competingCall: boolean;
+  /**
+   * Either end lies in a model declared `reconstructed` or `as-told`
+   * ({@link hasReconstructedEndpoint}, owner decision 30 (2)).
+   */
+  reconstructedEndpoint: boolean;
   rules: readonly AutoAcceptRuleRev[];
 }): AutoAcceptVerdict {
   const verdict = commonChecks(
@@ -357,6 +398,7 @@ export function evaluateRelationAutoAccept(src: {
     src.rules,
     { kind: 'relation', relationType: src.relation.type },
     src.relation,
+    src.reconstructedEndpoint,
   );
   if (!verdict.accept) return verdict;
   if (src.relation.type === 'call' && src.competingCall) return blocked('competing-call');
@@ -376,8 +418,10 @@ export interface PlacementSubjectView {
 }
 
 /**
- * Whether a rule accepts an agent's placement proposal. Safeguards after the
- * common ones, at the level of the process (all its placements on the
+ * Whether a rule accepts an agent's placement proposal. The common
+ * safeguards include `reconstructed-endpoint` for the process's model (a
+ * value chain carries no derivation); safeguards after the common ones, at
+ * the level of the process (all its placements on the
  * chain): `outside` (never `@outside`), `step-removed`, `has-home-step` (any
  * placement of the process is accepted or held, on any generation: owner
  * decision 18), `competing-step` (a live proposal of any principal, the rule
@@ -398,9 +442,20 @@ export function evaluatePlacementAutoAccept(src: {
   trigger: TriggerView;
   /** The process's `placement_input` row before this write; `current`: its hash is the current one. */
   priorVerdict: { principalId: PrincipalId; outcome: string; current: boolean } | null;
+  /**
+   * The process's model is declared `reconstructed` or `as-told`
+   * ({@link hasReconstructedEndpoint}, owner decision 30 (2)).
+   */
+  reconstructedEndpoint: boolean;
   rules: readonly AutoAcceptRuleRev[];
 }): AutoAcceptVerdict {
-  const verdict = commonChecks(src.trigger, src.rules, { kind: 'placement' }, src.placement);
+  const verdict = commonChecks(
+    src.trigger,
+    src.rules,
+    { kind: 'placement' },
+    src.placement,
+    src.reconstructedEndpoint,
+  );
   if (!verdict.accept) return verdict;
   const { placement } = src;
   if (placement.elementId === OUTSIDE) return blocked('outside');

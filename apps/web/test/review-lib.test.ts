@@ -1,3 +1,4 @@
+import { UNSEEN_DERIVATIONS as CONTRACT_UNSEEN_DERIVATIONS } from '@analyzr/contracts';
 import { describe, expect, it } from 'vitest';
 
 import { ApiError } from '../src/lib/api';
@@ -29,7 +30,10 @@ import {
   isReviewItem,
   proposalsByTier,
   reviewQueue,
+  someOutsideUnseenModels,
   stageCounts,
+  UNSEEN_DERIVATIONS,
+  unseenModelKeys,
 } from '../src/lib/review';
 import { assertion, fact, model, noLink, provenance, relation } from './support/fixtures';
 
@@ -532,7 +536,7 @@ describe('unique calls from derived models (M6 S2c)', () => {
         trust: { class: 'modelled', reasons: [], derivedKind: null, converter: null },
       }),
     ];
-    const from = (...keys: string[]) => keys.map((k) => ({ from: `${k}#Call` }));
+    const from = (...keys: string[]) => keys.map((k) => ({ from: `${k}#Call`, to: 'g#P' }));
     expect(derivedCallSource(from('a', 'b', 'b'), models)).toEqual({
       derivedKind: 'converted',
       converter: 'x@1',
@@ -548,6 +552,47 @@ describe('unique calls from derived models (M6 S2c)', () => {
       derivedKind: 'export',
       converter: null,
     });
+    // calls into a callee declared reconstructed or as told: no rule accepts them (decision 30 (2))
+    const callees = [
+      ...models,
+      model({ key: 'r', source: { system: 'images', derived: 'reconstructed', exportedAt: null } }),
+      model({ key: 't', source: { system: 'interview', derived: 'as-told', exportedAt: null } }),
+    ];
+    const into = (to: string, ...keys: string[]) => keys.map((k) => ({ from: `${k}#Call`, to }));
+    expect(derivedCallSource([...into('r#P', 'b', 'b'), ...into('g#P', 'a')], callees)).toEqual({
+      derivedKind: 'export',
+      converter: null,
+    });
+    expect(derivedCallSource([...into('r#P', 'a'), ...into('t#P', 'b')], callees)).toBeNull();
+  });
+
+  it('names the models no auto-accept rule accepts anything on, as the contracts do (decision 30 (2))', () => {
+    expect(UNSEEN_DERIVATIONS).toEqual([...CONTRACT_UNSEEN_DERIVATIONS]);
+    const source = (derived: 'export' | 'converted' | 'reconstructed' | 'as-told' | null) => ({
+      system: 'signavio',
+      derived,
+      exportedAt: null,
+    });
+    const models = [
+      model({ key: 'bild', source: source('reconstructed') }),
+      model({ key: 'interview', source: source('as-told') }),
+      model({ key: 'export', source: source('export') }),
+      model({ key: 'konvertiert', source: source('converted') }),
+      model({ key: 'ohne', source: source(null) }),
+      model({ key: 'hochgeladen', source: null }),
+    ];
+    expect([...unseenModelKeys(models)]).toEqual(['bild', 'interview']);
+    const pair = (from: string, to: string) => ({ from: `${from}#A`, to: `${to}#B` });
+    // either end counts
+    expect(
+      someOutsideUnseenModels([pair('bild', 'export'), pair('ohne', 'interview')], models),
+    ).toBe(false);
+    expect(
+      someOutsideUnseenModels([pair('bild', 'export'), pair('konvertiert', 'hochgeladen')], models),
+    ).toBe(true);
+    expect(someOutsideUnseenModels([], models)).toBe(false);
+    // models not loaded yet: offered as before
+    expect(someOutsideUnseenModels([pair('bild', 'export')], [])).toBe(true);
   });
 });
 

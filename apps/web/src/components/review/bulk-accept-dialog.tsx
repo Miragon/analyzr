@@ -30,6 +30,7 @@ import {
   isDerivedCall,
   ruleNamesSource,
   sideName,
+  someOutsideUnseenModels,
   type BulkPreselect,
   type BulkRow,
   type Conflict,
@@ -56,7 +57,9 @@ import { PlainText } from './plain-text';
  * request carries ids, versions, the tier and the count, so a list that
  * changed meanwhile fails as a whole (409). After the accept, an owner is
  * offered the rule that would have accepted them („Gleicher Name ab 100 %
- * künftig automatisch annehmen?“); after accepting only such calls, a rule
+ * künftig automatisch annehmen?“), unless each of them has an end in a
+ * model declared reconstructed or as-told (owner decision 30 (2):
+ * `someOutsideUnseenModels`); after accepting only such calls, a rule
  * for derived calls of the source most of their callers declare
  * („Eindeutige Aufrufe aus abgeleiteten Modellen künftig automatisch
  * annehmen?“, M6 S2c-3, `derivedCallSource`), and nothing when no rule could
@@ -181,7 +184,8 @@ function BulkList({
 }) {
   const navigate = useNavigate();
   // The callers' declared sources and the rules, for the rule the toast offers after derived
-  // calls (M6 S2c-3; none when one already names the source).
+  // calls (M6 S2c-3; none when one already names the source), and the models declared
+  // reconstructed or as-told, on which no rule accepts anything (owner decision 30 (2)).
   const queryClient = useQueryClient();
   useQuery({ ...modelsQuery(project), enabled: canOwn });
   useQuery({ ...autoAcceptRulesQuery(project), enabled: canOwn });
@@ -216,7 +220,6 @@ function BulkList({
     // Only unique calls from derived models: no agent rule would have accepted them (M6 S2c);
     // a rule for derived calls of their source would (M6 S2c-3), unless none can be named.
     const onlyCalls = chosen.every(isDerivedCall);
-    const offer = canOwn && !onlyCalls;
     bulk.mutate(
       {
         verdict: 'accept',
@@ -226,14 +229,18 @@ function BulkList({
       },
       {
         onSuccess: (result) => {
-          // The callers' `Model.trust` as loaded now (the review page has the models).
-          const found =
-            canOwn && onlyCalls
-              ? derivedCallSource(
-                  chosen,
-                  queryClient.getQueryData(modelsQuery(project).queryKey) ?? [],
-                )
-              : null;
+          // The models' `trust` and `source` as loaded now (the review page has the models).
+          const models = queryClient.getQueryData(modelsQuery(project).queryKey) ?? [];
+          const found = canOwn && onlyCalls ? derivedCallSource(chosen, models) : null;
+          // The „Gleicher Name“ rule, unless every other pair has an end in a reconstructed or
+          // as-told model: no auto-accept rule accepts those (owner decision 30 (2)).
+          const offer =
+            canOwn &&
+            !onlyCalls &&
+            someOutsideUnseenModels(
+              chosen.filter((r) => !isDerivedCall(r)),
+              models,
+            );
           const rules = queryClient.getQueryData(autoAcceptRulesQuery(project).queryKey)?.items;
           const source = found && !ruleNamesSource(rules ?? [], found) ? found : null;
           toast({

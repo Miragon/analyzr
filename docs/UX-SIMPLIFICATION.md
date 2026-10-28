@@ -2435,6 +2435,30 @@ owner (HANDOFF §4 "Taken during the M6 S2b follow-up step 5"): „Importieren�
 headline without the places, „Herkunft“'s system in the value, and the `provenance-kept` text, which
 names no rule. Not verified: a real phone, a screen reader.
 
+**M6 decision-30 (2) safeguard's texts as delivered** (2026-10-28, on the branch, every gate green;
+M6 §8 "Decision-30 (2) safeguard as delivered", DEVELOPMENT.md "M6 decision-30 (2) safeguard"). No
+owner's rule accepts anything on a model declared „KI-rekonstruiert“ or „Aus Interview“ any more.
+That reaches the screens as one more blocked reason, shown only where a rule is held back, and one
+toast offer fewer; no new control, no new static text (the page lead of „Annahmeregeln“ and the
+derived-call hint stay as they are, HANDOFF §4 "Taken during the decision-30 (2) safeguard step"
+(d)). So the owner's rules can stay on for the whole first pass, and the review still lists such
+models' proposals for a person to decide. The label is in `src/lib/auto-accept-rules.ts`, the
+toast's offer in `src/components/review/bulk-accept-dialog.tsx` (its rule in `src/lib/review.ts`).
+
+- **„Annahmeregeln“, the rule dialog's live preview and „Anwenden“'s dry run** (§3.11): the blocked
+  reason „Modell KI-rekonstruiert oder aus Interview“ under „Erfüllen die Regel, aber eine
+  Schutzregel hält sie zurück:“, beside „Über ein Agenten-Token hochgeladen“ and „Ergänzung nicht
+  mehr anwendbar“; the words match the model chips „KI-rekonstruiert“ and „Aus Interview“.
+- **The bulk accept's toast** (§3.6 item 5): „Gleicher Name ab 100 % künftig automatisch annehmen?“
+  with „Annahmeregel anlegen“ is left out when every accepted pair has an end in such a model (no
+  rule could accept them); the toast then says „Grundlage „Gleicher Name“.“ as for editors. After
+  accepting only derived calls, a call into such a callee no longer counts for the source the toast
+  offers; with none left the toast keeps „Eindeutige Aufrufe aus abgeleiteten Modellen.“
+
+The UI load guard was not run: no screen gains static text, and the label appears only when a rule
+is held back. The Playwright run on the final tree: 114 passed and 21 skipped, the UI load numbers
+as before. Not verified: a real phone, a screen reader.
+
 ## 8. Keep as is
 
 From the audits' keep lists, merged:

@@ -1375,6 +1375,33 @@ describe('ApplyDialog and RevokeDialog', () => {
     ]);
   });
 
+  it('apply: names the models no person has seen among the safeguards (owner decision 30 (2))', async () => {
+    stubApi({
+      [`POST ${BASE}/auto-accept-rules/${RULE_ID}/apply`]: () =>
+        json({
+          ...applyResult(true, 0),
+          blocked: [
+            { reason: 'agent-upload', count: 1 },
+            { reason: 'reconstructed-endpoint', count: 2 },
+          ],
+        }),
+    });
+    renderWithQuery(
+      <ApplyDialog
+        project="demo"
+        rule={autoAcceptRule({ id: RULE_ID, enabled: true })}
+        open
+        onOpenChange={() => undefined}
+      />,
+    );
+    const dialog = screen.getByTestId('apply-dialog');
+    const reasons = await within(dialog).findByTestId('blocked-reasons');
+    expect([...reasons.querySelectorAll('li')].map((li) => li.textContent)).toEqual([
+      'Über ein Agenten-Token hochgeladen1',
+      'Modell KI-rekonstruiert oder aus Interview2',
+    ]);
+  });
+
   it('apply: names the elements, lists every item (scrolling) and counts the name flags', async () => {
     const many = [
       itemOf(ANTWORT, 1),

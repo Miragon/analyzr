@@ -9792,6 +9792,10 @@ const AutoAcceptDerivedKind = _enum([
 	id: "AutoAcceptDerivedKind",
 	description: "The declared derivation a rule for derived calls names: export, converted or none (no kind declared)."
 });
+const UNSEEN_DERIVATIONS = ["reconstructed", "as-told"];
+function isUnseenDerivation(kind) {
+	return kind != null && UNSEEN_DERIVATIONS.includes(kind);
+}
 const MIN_AUTO_ACCEPT_CONFIDENCE = .5;
 const MAX_AUTO_ACCEPT_IDS = 1e3;
 const AutoAcceptBlockedCount = object({
@@ -9799,6 +9803,7 @@ const AutoAcceptBlockedCount = object({
 		"not-agent",
 		"no-matching-rule",
 		"agent-upload",
+		"reconstructed-endpoint",
 		"amendment-conflict",
 		"stale-proposal",
 		"not-open",
@@ -16384,8 +16389,10 @@ async function waitingCalls(api, project) {
 }
 function ruleSource(summary, manifest, waiting) {
 	const byKey = new Map();
+	const unseen = new Set();
 	for (const f of summary.files) {
 		if (f.modelKey === null) continue;
+		if (f.trust?.reasons.some(isUnseenDerivation)) unseen.add(f.modelKey);
 		if (f.trust?.class !== "derived" || f.trust.reasons.includes("agent-upload")) continue;
 		const declared = manifest?.byPath.get(f.path)?.derived;
 		const kind = declared?.kind ?? "none";
@@ -16397,9 +16404,11 @@ function ruleSource(summary, manifest, waiting) {
 			converter
 		});
 	}
+	const modelOf = (ref) => ref.slice(0, ref.indexOf("#"));
 	const counted = new Map();
 	for (const c of waiting) {
-		const source = byKey.get(c.from.slice(0, c.from.indexOf("#")));
+		if (unseen.has(modelOf(c.to))) continue;
+		const source = byKey.get(modelOf(c.from));
 		if (!source) continue;
 		const key = `${source.derivedKind}\u0000${source.converter ?? ""}`;
 		const entry = counted.get(key) ?? {

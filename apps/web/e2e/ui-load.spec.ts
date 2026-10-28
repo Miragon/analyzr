@@ -1764,9 +1764,17 @@ test('UX5 mobile: the review screen view-first, the way back and ‹ › on top,
     for (const testId of ['review-back', 'review-previous', 'review-next']) {
       const box = await page.getByTestId(testId).boundingBox();
       expect(box, `${testId} is on screen`).not.toBeNull();
+      // A disabled button takes no pointer events (‹ on the first, › on the last proposal of the
+      // queue, which depends on the ids the seed drew): what counts is that nothing covers it.
       const hit = await page.evaluate(
-        ([x, y, wanted]) =>
-          document.elementFromPoint(x, y)?.closest(`[data-testid="${wanted}"]`) !== null,
+        ([x, y, wanted]) => {
+          const button = document.querySelector<HTMLElement>(`[data-testid="${wanted}"]`);
+          const before = button?.style.pointerEvents ?? '';
+          if (button) button.style.pointerEvents = 'auto';
+          const top = document.elementFromPoint(x, y)?.closest(`[data-testid="${wanted}"]`);
+          if (button) button.style.pointerEvents = before;
+          return top !== null && top !== undefined;
+        },
         [box!.x + box!.width / 2, box!.y + box!.height / 2, testId] as const,
       );
       expect(hit, `${testId} answers elementFromPoint`).toBe(true);

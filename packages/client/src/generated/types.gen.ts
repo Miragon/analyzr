@@ -3697,6 +3697,7 @@ export type AutoAcceptBlockReason =
   | 'not-agent'
   | 'no-matching-rule'
   | 'agent-upload'
+  | 'reconstructed-endpoint'
   | 'amendment-conflict'
   | 'stale-proposal'
   | 'not-open'

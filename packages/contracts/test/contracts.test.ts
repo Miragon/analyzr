@@ -94,6 +94,13 @@ import {
   MAX_RESULT_WARNING_COUNT,
   DERIVED_CALLER_MATCH,
   isBulkDerivedCall,
+  AUTO_ACCEPT_BLOCK_REASONS,
+  AutoAcceptBlockedCount,
+  AutoAcceptDerivedKind,
+  DerivedKind,
+  TrustReason,
+  UNSEEN_DERIVATIONS,
+  isUnseenDerivation,
 } from '../src/index.ts';
 
 describe('refs', () => {
@@ -1456,5 +1463,35 @@ describe('isBulkDerivedCall (M6 S2c-2: the numbers behind â€žGesammelt annehmenâ
     expect(isBulkDerivedCall({ ...open, tier: 'semantic' })).toBe(false);
     expect(isBulkDerivedCall({ ...open, type: 'message' })).toBe(false);
     expect(isBulkDerivedCall({ ...open, attrs: { match: 'duplicate-process-id' } })).toBe(false);
+  });
+});
+
+describe('auto-accept block reasons (owner decision 30 (2))', () => {
+  it('checks reconstructed-endpoint right after agent-upload', () => {
+    expect(AUTO_ACCEPT_BLOCK_REASONS.slice(1, 5)).toEqual([
+      'no-matching-rule',
+      'agent-upload',
+      'reconstructed-endpoint',
+      'amendment-conflict',
+    ]);
+    expect(
+      AutoAcceptBlockedCount.safeParse({ reason: 'reconstructed-endpoint', count: 2 }).success,
+    ).toBe(true);
+  });
+
+  it('keeps every declared kind either nameable by a rule for derived calls or unseen', () => {
+    expect(UNSEEN_DERIVATIONS).toEqual(['reconstructed', 'as-told']);
+    // a new kind (S6 and later) has to be placed on one side on purpose
+    expect(
+      [...AutoAcceptDerivedKind.options.filter((k) => k !== 'none'), ...UNSEEN_DERIVATIONS].sort(),
+    ).toEqual([...DerivedKind.options].sort());
+    // the trust rule names these kinds alike as reasons
+    for (const kind of UNSEEN_DERIVATIONS) expect(TrustReason.options).toContain(kind);
+    expect(isUnseenDerivation('reconstructed')).toBe(true);
+    expect(isUnseenDerivation('as-told')).toBe(true);
+    for (const kind of ['export', 'converted', 'none', 'no-engine', 'agent-upload', '', null]) {
+      expect(isUnseenDerivation(kind), String(kind)).toBe(false);
+    }
+    expect(isUnseenDerivation(undefined)).toBe(false);
   });
 });

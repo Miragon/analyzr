@@ -19,6 +19,7 @@ import {
   OUTSIDE_STEP,
   bpmnSuffixOf,
   isBulkDerivedCall,
+  isUnseenDerivation,
   modelKeyFromPath,
   reviewPath,
   tidyDeclared,
@@ -852,17 +853,27 @@ export interface DerivedSource {
  * the bundle's manifest: `export`, `converted` with its converter, or
  * `none` (no kind declared). Files an agent token uploaded (no rule accepts
  * their calls), reconstructed and as-told files and a conversion without
- * converter count for nothing; ties go to the first call. `null` without
- * such a call.
+ * converter count for nothing, nor a call into a file of this import that
+ * analyzr keeps as reconstructed or as-told (its trust reasons; owner
+ * decision 30 (2): no auto-accept rule accepts it). Only this import's files
+ * count as callees, by their trust class: a callee imported before, or an
+ * unchanged one stored before S2c without a class, is not looked up (it
+ * would take `GET …/models`), so the step may name a rule that accepts none
+ * of those calls; `rules apply`'s dry run and `rules enable`'s count name
+ * `reconstructed-endpoint`. Ties go to the first call. `null` without such a
+ * call.
  */
 export function ruleSource(
   summary: Pick<ImportSummary, 'files'>,
   manifest: Pick<LoadedManifest, 'byPath'> | null,
-  waiting: readonly Pick<Relation, 'from'>[],
+  waiting: readonly Pick<Relation, 'from' | 'to'>[],
 ): DerivedSource | null {
   const byKey = new Map<string, DerivedSource>();
+  const unseen = new Set<string>();
   for (const f of summary.files) {
     if (f.modelKey === null) continue;
+    // As analyzr stored or kept it (an unchanged file keeps its class).
+    if (f.trust?.reasons.some(isUnseenDerivation)) unseen.add(f.modelKey);
     if (f.trust?.class !== 'derived' || f.trust.reasons.includes('agent-upload')) continue;
     const declared = manifest?.byPath.get(f.path)?.derived;
     const kind = declared?.kind ?? 'none';
@@ -871,9 +882,11 @@ export function ruleSource(
     if (kind === 'converted' && converter === null) continue;
     byKey.set(f.modelKey, { derivedKind: kind, converter });
   }
+  const modelOf = (ref: string) => ref.slice(0, ref.indexOf('#'));
   const counted = new Map<string, { source: DerivedSource; n: number }>();
   for (const c of waiting) {
-    const source = byKey.get(c.from.slice(0, c.from.indexOf('#')));
+    if (unseen.has(modelOf(c.to))) continue;
+    const source = byKey.get(modelOf(c.from));
     if (!source) continue;
     const key = `${source.derivedKind}\u0000${source.converter ?? ''}`;
     const entry = counted.get(key) ?? { source, n: 0 };
