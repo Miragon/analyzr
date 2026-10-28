@@ -1,6 +1,6 @@
 # analyzr – Milestone M6 "Landscape integration and gap analysis"
 
-Status: in progress (2026-10-15); owner decisions 24, 25, 28, 29 and 30 (§2, HANDOFF §4); S0 (this
+Status: in progress (2026-10-15); owner decisions 24, 25 and 28–31 (§2, HANDOFF §4); S0 (this
 concept, revised after review), S1, S3a, S3b, S4, S5a, S5c-1, S5c-2 (answering by action and model
 amendments, decision 25, §4.8), S2a (provenance, manifest, stable identity; its web parts came
 with the UI simplification's UX8, §8 "S2a as delivered"), S2b (the dry runs) with steps 1 to 5
@@ -16,8 +16,11 @@ S2c) and S3c in four steps (`analyzr-spec/1` and the deterministic renderer, the
 `analyzr-convert`, the CLI core both `analyzr` CLIs share, and the integrate plugin 0.1.4 that
 bundles them with the converter and picture paths, §8 "S3c step 1 as delivered" to "S3c step 4 as
 delivered" and "S3c as delivered") and the safeguard of decision 30 (2) with the integrate plugin
-0.1.5 (§8 "Decision-30 (2) safeguard as delivered") done, the „erste Anfänge“ await the owner's
-review, and the integrate skill awaits the owner's live session (HANDOFF §8); next S6; after the
+0.1.5 (§8 "Decision-30 (2) safeguard as delivered") and S6 steps 1–2 (the skill text generator
+and the interview guide `/analyzr-integrate:interview-guide` with the integrate plugin 0.1.6, §8
+"S6 steps 1–2 as delivered") done, the „erste Anfänge“ await the owner's review, and the integrate
+skill awaits the owner's live session (HANDOFF §8); next S6 step 3 (the transcript pre-processor,
+once the owner's sample transcripts are in, decision 31 (4)), then steps 4 and 5; after the
 owner's live runs S5b, S7 and facts v2 · Branch: `feat/integration-and-gaps` · Spec:
 [CONCEPT.md](CONCEPT.md) §1–§7 · Previous: [M4-VALUE-CHAIN.md](M4-VALUE-CHAIN.md) · Paused:
 the process network map (decision 22, issue [#2](https://github.com/Miragon/analyzr/issues/2)),
@@ -116,7 +119,7 @@ the head, so on a first import across batches a pair between two batches counts 
 (`ProjectSummary.pairsToJudge`), in „Als Nächstes“, after an import and in the CLI („5 Modelle
 warten auf den Agenten · etwa 7.300 mögliche Relationen“).
 
-## 2. Owner decisions 24 (2026-10-15), 25 (2026-10-17), 28 (2026-10-19), 29 (2026-10-20) and 30 (2026-10-21)
+## 2. Owner decisions 24 (2026-10-15), 25 (2026-10-17), 28 (2026-10-19), 29 (2026-10-20), 30 (2026-10-21) and 31 (2026-10-28)
 
 Decision 24 is recorded in HANDOFF §4 on 2026-10-15 in short form; HANDOFF §7 names M6 and keeps
 M5 paused, and CONCEPT §11 notes what §7 "Deferrals" says. Decision 25 is recorded in HANDOFF §4
@@ -288,6 +291,20 @@ skill, the report line (2) asked for until the safeguard, (3) as the bundle `ana
 in the skill's converter path and A5 (§8 "S3c step 4 as delivered"). The safeguard step delivered
 (2) (2026-10-28, §3.10 "Decision 30 (2)", §8 "Decision-30 (2) safeguard as delivered"), whose
 integrate plugin 0.1.5 drops the report line.
+
+Decision 31 (2026-10-28, at the start of S6; HANDOFF §4) answers the questions of the S6 plan: (1)
+**„Eigene Schlüssel (Empfohlen)“**: as-told drafts get keys of their own (`interview/…`), and the
+consultant deletes a draft after the tool's model is imported; it amends §5 item 4's "the as-told
+draft becomes revision 1 of that model" (amendment A1 of the S6 plan). (2) **„Immer „du““**:
+interview guides address the customer's interviewees always with „du“, with no per-workspace
+switch (the plan had recommended „Sie“ with a switch); it answers §10.3. (3) **„Neutrale
+Checkliste (Empfohlen)“**: the guide's consent part is the neutral checklist (recording or notes;
+evaluation with an AI assistant with names replaced; the result in analyzr without names), plus the
+skill asking before the agent reads a transcript, which belongs to step 4's interview-facts. (4)
+**„Ja, Testgespräche (Empfohlen)“**: the owner supplies short sample transcripts (Teams, Zoom,
+Webex if possible; VTT and text; invented names) before step 3's formats are finalized (§10.4). S6
+step 2 delivered (2) and (3) as far as the guide goes (§8 "S6 steps 1–2 as delivered"); (1) comes
+with steps 4 and 5.
 
 ## 3. Part A: Integration toolkit
 
@@ -481,9 +498,10 @@ The import result and the dry run carry two warnings; the import proceeds:
 - `external-id-changed`: the key's identity (since S2b's follow-up step 5 its newest identity row;
   in S2a its head revision) carries a different `(system, externalId)` than
   the incoming file, both present (two systems export the same folder and name, and the second
-  would silently revise the first). An as-told draft has no `externalId`, so the real model that
-  replaces it does not trigger it. The skill stops on it and asks; when a second system joins, its
-  key-scheme confirmation proposes a prefix (for example `aris/…`).
+  would silently revise the first). An as-told draft has a key of its own (`interview/…`, decision
+  31 (1)) and no `externalId`; the tool's model that comes later gets its own key, so this check
+  never compares the two. The skill stops on it and asks; when a second system joins, its key-scheme
+  confirmation proposes a prefix (for example `aris/…`).
 
 ### 3.5 Server dry run: one pure `importImpact`
 
@@ -624,14 +642,17 @@ next to the sha-pinned pipeline plugin `plugins/analyzr` (0.3.0), which does not
 plugins/analyzr-integrate/
   .claude-plugin/plugin.json                                  # name analyzr-integrate, own version
   skills/integrate-landscape/SKILL.md                         # S3b
-  skills/interview-guide/…, skills/interview-facts/…          # S6
+  skills/interview-guide/SKILL.md                             # S6 step 2, 0.1.6
+  skills/interview-facts/…                                    # S6 step 4
   reference/{signavio,aris,visio,adonis,bizagi,images}.md     # S3b, S3c (images.md 0.1.4)
   reference/{analyzr-spec,converters}.md                      # S3c, 0.1.4
+  reference/interviews.md                                     # S6 step 2, 0.1.6
   scripts/inspect.mjs, scripts/normalize-bpmn.mjs             # S3b
   scripts/analyzr-read.mjs (read-only preview, decision 29 (2))  # 0.1.3, S2b's follow-up step 4
   scripts/analyzr-spec.mjs (renderer, §3.9), scripts/analyzr.mjs (CLI)   # S3c, 0.1.4
   scripts/analyzr-convert.mjs (converter runner, decision 30)         # S3c, 0.1.4
-  scripts/transcript-prep.mjs                                 # S6
+  scripts/analyzr-interview.mjs (the interview guide)         # S6 step 2, 0.1.6
+  scripts/transcript-prep.mjs                                 # S6 step 4
 ```
 
 - **Script sources.** One private workspace package `tools/integrate` (`@analyzr/integrate`,
@@ -655,7 +676,10 @@ plugins/analyzr-integrate/
   would touch the released skills) into the plugin and into German start prompts
   `examples/agents/claude-desktop/start-prompt-<skill>.de.md`, with a drift test. Serving them as
   MCP prompts waits for the end of the live runs (the `prompts/list` snapshot,
-  `apps/server/test/integration/__snapshots__/mcp-prompts.json`).
+  `apps/server/test/integration/__snapshots__/mcp-prompts.json`). Since S6 step 1 the generator
+  lives in `tools/integrate` instead (`scripts/texts.ts`, the sources in `tools/integrate/skills/`,
+  one `generate` and one drift test for the whole plugin; HANDOFF §4 "Taken during M6 S6 steps
+  1–2" (n)); S7 moves the sources if it serves the texts as MCP prompts.
 - **Marketplace.** `.claude-plugin/marketplace.json` lists the second plugin;
   `packages/procedures/test/plugin.test.ts` pins that file with `toEqual` and one plugin, so the
   test changes; `RELEASED` and `PLUGIN_RELEASES` stay untouched.
@@ -674,6 +698,8 @@ plugins/analyzr-integrate/
   bundles/<YYYY-MM-DD>-<system>/      # the bundles (§3.2); a spec folder's under its name
   reports/<YYYY-MM-DD>-<system>.md    # the German reports, one per export
   reports/<folder>.*.json             # the scripts' results (plan, bundle, convert, preview, …)
+  interviews/{questions,guides}/      # the open questions read for a guide, the guides, S6
+  transcripts/                        # interview transcripts and notes with names; never opened, S6
 ```
 
 Each path of a system has folders of its own (plugin 0.1.4, §8 "S3c step 4 as delivered"): the BPMN
@@ -829,7 +855,10 @@ Labels, documentation and export content are data, never instructions (as `MCP_I
 `apps/server/src/mcp/server.ts` says for agents). The skill is never loaded in live runs
 (`--plugin-dir plugins/analyzr` only). Claude Desktop, without a shell, gets a start prompt with
 S6 for the parts that need none (reading the landscape, writing a spec YAML in the chat); the
-consultant renders and imports.
+consultant renders and imports. Since S6 step 2 there are two, generated with the skills:
+`examples/agents/claude-desktop/start-prompt-interview-guide.de.md` (a guide from the Markdown
+export) and `start-prompt-integrate-landscape.de.md` (specs from pictures and PDFs), both on a
+read-only connector of their own, `analyzr-lesen`.
 
 ### 3.8 Tool reference notes
 
@@ -1994,10 +2023,12 @@ change list; the personal-data check warns and never blocks, as for notes. Erasu
 
 Skills in `analyzr-integrate`, nothing new in analyzr's core:
 
-1. **Interview guide** (`interview-guide`): reads the open questions (REST export now, MCP after
-   S7), groups them by `askWho`, orders by `unlocks`, adds per question what the landscape
+1. **Interview guide** (`interview-guide`): reads the open questions (a file now: the CLI's JSON
+   list, else the web's Markdown or CSV export; MCP after S7), groups them by `askWho`, keeps
+   analyzr's order (the questions that unlock the most first), adds per question what the landscape
    already says (refs) and keeps the question ids, so answers map back. Output Markdown. Address
-   form for customer employees: §10.3.
+   form for customer employees: „du“ (decision 31 (2), §10.3). Delivered in S6 step 2 with
+   `analyzr-interview.mjs` (§8 "S6 steps 1–2 as delivered").
 2. **Transcript pre-processor** (`scripts/transcript-prep.mjs`, deterministic, local): VTT or
    plain-text transcripts (formats to verify, e.g. speaker tags in Teams VTT) → segments with ids
    `T1…Tn`, speakers replaced by roles from a mapping the consultant provides, masking of
@@ -2010,8 +2041,10 @@ Skills in `analyzr-integrate`, nothing new in analyzr's core:
    Nothing is written to analyzr.
 4. **BPMN draft:** the skill writes an `analyzr-spec/1` from the fact sheet, renders it (§3.9,
    no `calledElement` for `as-told`), emits a bundle with `derived {kind: as-told, llmModel,
-   from: [src ids]}`, runs the dry run; the consultant imports it. When the real model arrives
-   later, its manifest pins the same key, so the as-told draft becomes revision 1 of that model.
+   from: [src ids]}`, runs the dry run; the consultant imports it. The draft has a key of its own
+   (`interview/…`). When the real model arrives later, it gets its own key too, and the consultant
+   deletes the draft after the tool's model is imported (decision 31 (1); it replaced "its
+   manifest pins the same key, so the as-told draft becomes revision 1 of that model").
 
 Transcripts and excerpts never enter analyzr, the repository or the eval corpus; analyzr sees
 opaque source ids only, and the fields analyzr adds itself aim to hold no transcript text or
@@ -2122,7 +2155,7 @@ draft (after the owner's rated draft run, M4b) are later work.
 | S5 | a: answers in the web, REST and CLI, the CSV round trip, `open_question_answer`; b: notes that make pairs non-current and queue exactly the affected work | 3 + 1.5 d |
 | S5c-1 | "Actions" (decision 25): `actions` on every item, R1 and R1b, items versioned by what they ask about, the action route (link, place, choose copy, outside; a link accepts a live typed proposal before it writes a manual relation), `competing-call` counting manual relations from calls, the outside mark and its withdrawal (migrations 0013/0014), notes without kinds, the five-column CSV, the actions with undo in the tab and the model view's section, `analyzr questions outside\|link\|place`; no BPMN writing | 4.5 d |
 | S5c-2 | "Model amendments" (decision 25): `applyAmendments` and `readAmendable` in `@analyzr/bpmn-facts`, `model_amendment` (migrations 0015/0016), uploaded and amended revisions with the plan on the head, re-application at import with `amendment-conflict` and the concurrency token, withdrawal, the cost in the dry run, the amendments in the import and PUT results, the change list and downloads, the routes, the form at the question with „Sammeln“ and the model view's „Ergänzen“, `analyzr models amend\|pull` and `analyzr amendments` | 8 d |
-| S6 | interview skills: guide, transcript pre-processor, fact sheet, as-told drafts; the skill text generator and start prompts | 3 d |
+| S6 | interview skills: guide, transcript pre-processor, fact sheet, as-told drafts; the skill text generator and start prompts, in five steps with the integrate plugin 0.1.6, 0.1.7 and 0.1.8 ("S6's plan" below; 3 d planned in S0, about 8 d in the S6 plan, which counts what S0 did not: the pre-processor's privacy tests, the read lock, the checks on what reaches analyzr, three guide inputs, the generator and the releases) | 8 d |
 | S7 | after the live runs: `analyzr-relations@0.3.0` + `analyzr-placements@0.2.0`, claim input additions, MCP `list_open_questions` and prompts, personal-data guard, `nordwind-gaps`, one live-gate round | 6 d + the owner's live runs |
 
 **Order.** S0 → S1 → S3b, with S3a in parallel: these are the „erste Anfänge“ of decision 24.1
@@ -6293,6 +6326,224 @@ German start prompts (§3.7). Does not touch: analyzr's core. Done when: a synth
 with valid citations and an as-told bundle whose dry run passes; the drift test covers the
 generated texts.
 
+**S6's plan** (2026-10-28, revised after a design and a privacy critique; decision 31 answered its
+questions, §2): five steps, about 8 d against the 3 d planned in S0, each shippable with every gate
+green and live-run neutral; the done-when above is made checkable as D1 (the guide: golden guides
+from the three inputs, every selected id exactly once in the input's order, groups chosen by slug,
+and the same on the seeded `nordwind-handel` project's real `questions list --format json` in the
+CLI e2e), D2 (the prepared transcripts: no fixture name, e-mail address, phone number, IBAN, street
+address or long number in any output, ids that keep when a name is added), D3 (the fact sheet:
+every citation resolves to a segment of a prepared transcript, the answers CSV reads back and its
+CLI dry run records every row), D4 (the as-told bundle: planned with `--scope-specs` to
+`interview/…`, bundled with `derived as-told` and its `from`, its preview passing on
+Testcontainers), D5 (the drift test over the generated texts and bundles, `RELEASES` rows 0.1.6 to
+0.1.8, the marketplace pin), D6 (no change outside the toolkit but that pin, the MCP snapshots
+unchanged) and D7 (the privacy guards: no network, environment or clock in the new scripts, only
+`transcript-prep.mjs` opening anything below `transcripts/`, read-only MCP tools only).
+
+1. **The skill text generator** (0.5 d; delivered 2026-10-28, "S6 steps 1–2 as delivered" below):
+   `tools/integrate/scripts/texts.ts`, called by `build()`, so `generate` writes the texts and the
+   drift test compares them; integrate-landscape's source moved byte for byte, so 0.1.5 stays.
+2. **The interview guide** (2 d; delivered 2026-10-28, plugin **0.1.6**, below): the readers of the
+   CLI's JSON and the web's Markdown and CSV, `analyzr-interview.mjs` (`groups`, `guide`), the
+   shared strict YAML reader, the skill `interview-guide`, the `transcripts/` rule in both skills,
+   `reference/interviews.md`, the guide and picture start prompts and the Desktop README.
+3. **The transcript pre-processor** (2 d; waits for the owner's sample transcripts, decision 31
+   (4)): WebVTT from Teams, Zoom and Webex, plain text and the consultant's own notes, speakers
+   replaced by roles from the role file, masking of listed names, address titles, e-mail
+   addresses, phone numbers, IBANs, addresses and long numbers, segments `T1…Tn` whose ids never
+   move with the name lists, the read lock's check and a name scan of agent-written files; from
+   source, not bundled yet, so 0.1.6 stays.
+4. **Fact sheet and drafts** (2.5 d; plugin **0.1.7**): the agent-written fact sheet, every
+   statement citing `src:<sourceId>#T<n>` and checked by a script, one sheet per interview for its
+   interviewee and the answers by question id as a CSV for „Antworten aus CSV übernehmen“; as-told
+   specs planned with `--scope-specs` and bundled behind checks (prepared and scanned sources, no
+   contact data, mask tokens or verbatim excerpts); the skill `interview-facts`, which asks before
+   the agent reads a transcript (decision 31 (3)), with its start prompt; `transcript-prep.mjs`
+   bundled; the CLI e2e of D3 and D4; the marketplace description and its pin.
+5. **integrate-landscape and interviews** (1 d; plugin **0.1.8**): a tool's later model that
+   matches a draft is named, so the consultant deletes the draft (decision 31 (1)); `inspect`
+   reports a transcript in an export as such, by its path only; their texts. Not needed for the
+   done-when, so it can wait.
+
+**S6 steps 1–2 as delivered** (2026-10-28, on the branch, every gate green, with a review round's
+fixes; [DEVELOPMENT.md](DEVELOPMENT.md) "M6 S6 steps 1–2 (2026-10-28)" and "The integrate plugin
+and `tools/integrate`"; owner decision 31 (2), (3), §2): the skill text generator and the interview
+guide, released as the integrate plugin 0.1.6. For the first analysis: the open questions analyzr
+finds turn into a ready interview guide per contact group in one step, the questions that unlock
+the most first, each with what the landscape already says, and every answer maps back by its
+question id. What changes: `tools/integrate` (the generator and the skill sources, the guide's
+modules and entry, the shared YAML reader, the bundle entries, fixtures and tests), the plugin
+(`analyzr-interview.mjs`, the skill `interview-guide`, `reference/interviews.md`,
+integrate-landscape's regenerated `SKILL.md`, the rebuilt `analyzr-spec.mjs` and
+`analyzr-convert.mjs`, the notices and `plugin.json`), `examples/agents/claude-desktop` (two
+generated start prompts and the README) and one e2e block in `apps/cli/test`; the server, contracts,
+client, web, MCP and its snapshots, the procedures, the migrations, the claim inputs,
+`apps/cli/src`, `plugins/analyzr`, `.claude-plugin/marketplace.json`, `packages/procedures`, the
+eval tools and reports, the lockfile and the root `THIRD-PARTY-NOTICES.md` are untouched.
+- **The generator** (step 1; `tools/integrate/scripts/texts.ts`, `renderTexts(repoRoot)`, called by
+  `build()` in `scripts/bundle.ts`): one source per skill in `tools/integrate/skills/<skill>/`,
+  `skill.src.md` (frontmatter and English body) for the plugin's `skills/<skill>/SKILL.md` and,
+  optionally, `start-prompt.de.src.md` for
+  `examples/agents/claude-desktop/start-prompt-<skill>.de.md`; five fragments in `skills/_shared/`
+  (`transcripts-rule`, `interview-ground-rules`, `mcp-read-tools`, `connector.de`, `rules.de`),
+  each with the texts it must appear in (`REQUIRED_FRAGMENTS`). A line `{{> _shared/<name>}}`
+  includes a fragment (one level deep, with the line's indentation), `{{text:<id>}}` inserts a
+  German constant of `src/interview/texts.ts` or the guide's skeleton from the guide's own renderer,
+  and a start prompt keeps only `{{PROJEKT}}` and `{{MODELL_ID}}`; an unknown fragment, constant
+  or placeholder, a fragment nobody includes or one that includes another, a `{{` left in a
+  `SKILL.md`, a CR line ending and a stray file in a skill folder are errors. No date, LF, one
+  trailing newline. Step 1 moved integrate-landscape's `SKILL.md` into its source unchanged (both
+  sha256 `c03a46e9…412b`, `git diff --exit-code plugins/analyzr-integrate` empty), so the generator
+  changed no plugin byte; the drift test compares the four texts with a fresh render and names the
+  source of a stale one. It lives in `tools/integrate`, not in `packages/procedures` as §3.7
+  planned (HANDOFF §4 "Taken during M6 S6 steps 1–2" (n)).
+- **`analyzr-interview.mjs`** (step 2; the modules
+  `src/interview/{questions,server-rules,notes,guide,texts}.ts`, the entry
+  `src/cli/analyzr-interview.ts`, `ANALYZR_INTERVIEW_VERSION` 0.1.0): `groups <questions
+  file> --workspace <dir> [--include-agent]` prints the input, the file, how many questions a guide
+  would ask, the groups (`slug`, `label`, `count`), `leftOut` (`informational`, `answered`,
+  `technical`, `agent`, `proposal`) and the warnings; `guide … --group <slug>… [--date] [--max <n>]
+  [--include-agent] [--notes <file>] [--out <file.md>] [--replace]` writes the guide and its record
+  `<name>.guide.json` (`analyzr-guide/1`: the project, the date, `address` `du`, the input, the
+  questions file with its sha256, the groups, per question its number, id, kind, text, reason,
+  subject, contact, group, models, `unlocks`, the primary and every action and the latest note) and
+  prints `written`, `guide`, `record`, `questions`, `of`, `groups`, `ids`, `notes`, `errors` and
+  `warnings`. The inputs, from `<workspace>/interviews/questions/<YYYY-MM-DD>.questions.<ext>`: the
+  CLI's list (`questions list -p <project> --state open --group ask --group agent --format json -o
+  …`), the web's Markdown export (the server's `escapeMarkdown` reversed, hard breaks included; a
+  file without ids refused, an export without questions read as none) and its CSV (the contracts'
+  zod-free `parseOpenQuestionsCsv`; the older header „Ansprechpartner-Hinweis“ too). The groups
+  follow the server's `askWhoGroup` (step owners, else lanes), in the order of their first
+  question, „Ohne Ansprechpartner“ last; a slug is the whole label by the server's file-name rule
+  (`organisationseinheit-lager`), unique with `-2`; the input's order is never re-sorted, also
+  across the chosen groups, and `--max` cuts it (`group-cut`, `group-empty`). A guide asks the
+  group `ask` and, with `--include-agent`, `agent` (also from the exports, by the kind „Frage eines
+  Agenten“), never informational items, outside marks, the chain's proposals or the consultant's
+  own work (`extractor-loss`, `unjudged`, `amendment-conflict`). The other warnings:
+  `order-unexpected`, `kind-unknown`, `personal-data` (in analyzr's own texts of a question: its
+  `F<n>`, id and field, never the value) and `address-form`. Exit 2 on a usage error, 1 otherwise,
+  every message naming the item and the field, never the file's content: a questions file outside
+  `interviews/questions/`, a link, over 20 MB, not UTF-8 or of another extension; `interviews/` or
+  its folders a link or no folder; a workspace without `analyzr-workspace.json` or inside a
+  checkout; JSON that does not parse, is no list, has a bad field or an id twice; a Markdown item
+  without its id; a CSV without its `id`, `Frage` or contact column, a row without an id or an
+  unclosed quote; `--group` given a label (exit 2) or an unknown slug (exit 1, with the file's
+  slugs) or groups with nothing to ask; a bad `--date`; `--out` outside `interviews/guides/`, no
+  new `.md` or a link (also with `--replace`); an existing guide without `--replace`. The bundle:
+  261,385 bytes (62,557 gzip -9), the Node built-ins crypto, fs, fs/promises, module, path and
+  util, `yaml` and rolldown's helpers; its own regions hold no `fetch(`, `WebSocket`,
+  `EventSource`, `XMLHttpRequest`, `process.env`, `Date.now`, `new Date()` without an argument or
+  `performance.now`, and no path naming `transcripts`.
+- **The guide** (`renderGuide`; German, „du“ to the interviewee, decision 31 (2)): the title
+  „Interviewleitfaden: <Gruppe>“ and a line with the project, the questions file's date and the
+  count „in der Reihenfolge von „Offene Fragen“ (die mit der größten Wirkung zuerst)“; „Vor dem
+  Gespräch“ with the boxes „Einverständnis eingeholt: Aufzeichnung oder Mitschrift, Auswertung mit
+  einem KI-Assistenten (Namen vorher ersetzt), Ergebnis in analyzr ohne Namen“ and
+  „Gesprächspartner nur mit ihrer Rolle notiert, ohne Namen“, then what holds without a consent
+  (decision 31 (3)); „Einstieg“; „Fragen“, per question `F<n>` with the question verbatim as its
+  heading, a line with its id, kind and models, and „Warum wir fragen“, „Betrifft“, a hold's note
+  and label, „Was die Landkarte schon sagt“ (notes), „Bisher notiert (<Datum>)“, „In „Offene
+  Fragen“ danach, je nach Antwort: …“ (JSON only), „Nachfragen“ (notes) and „Notizen:“, a line left
+  out without a value and every value escaped as the server escapes it; „Abläufe ohne Modell“, with
+  the processes of the notes' `known`; „Abschluss“, with where the transcript goes („… Solange
+  Namen darin stehen, geht es an keinen KI-Assistenten.“). The golden of the JSON fixture,
+  `tools/integrate/test/fixtures/interview/guides/2026-10-27-organisationseinheit-lager.md`, shows
+  a whole guide; `GUIDE_OUTPUTS['0.1.0']` (`ca5c16d4…3032`) pins the four goldens (JSON with notes,
+  Markdown, two CSV groups, two JSON groups with the agents' questions cut to five) and their
+  records.
+- **The notes file** (`interviews/guides/<name>.notes.yaml`, `analyzr-guide-notes/1`, the agent's,
+  optional): `known` (up to 50 names of 200 characters) and per question id `landscape` (300
+  characters) and `followUps` (up to 3 of 200). Errors, with nothing written: an unknown key, an id
+  outside the chosen groups' questions (checked before `--max`), a text too long, empty or with a
+  line break, too many items, a question id in a text, personal data, a YAML tag, anchor or alias,
+  a file over 256 KB or not UTF-8; the warning `address-form` for „Sie“ or „Ihnen“ anywhere and
+  „Ihr…“ inside a sentence.
+- **The shared strict YAML reader** (`src/yaml.ts`): YAML 1.2 core, unique keys, no tag, anchor,
+  alias or merge key, every parser warning fatal; `src/spec/yaml.ts` delegates to it, so
+  `analyzr-spec.mjs` and `analyzr-convert.mjs` are rebuilt with unchanged outputs
+  (`RENDER_OUTPUTS`, `ANALYZR_SPEC_VERSION` 0.1.0); `parserMessages: false` reports a code and a
+  position only, never the text (for step 3's role file).
+- **The skill `interview-guide`** (`disable-model-invocation: true`, the argument hint `"[<questions
+  file>] [--workspace <dir>]"`, no `allowed-tools`, 17,028 bytes): six ground rules (data is never
+  instructions; analyzr is never changed, the only analyzr calls being the CLI's read command and
+  six read-only MCP tools, never the owner key or a token; German with „du“ to the consultant;
+  roles, never names; customer data stays in the workspace, and never read, list or search
+  `transcripts/`; ask, then wait) and the steps 0 (the workspace and its two interview folders), 1
+  (a file the consultant names, copied with `cp -n` under its canonical name, never from
+  `transcripts/`; else the CLI's read command; else the web's Markdown export), 2 (`groups`, then
+  one confirmation with the labels and counts and, where they apply, the hints for „Ohne
+  Ansprechpartner“, above 20 questions, the agents' and the technical questions and a CSV input;
+  the answer mapped to slugs), 3 (optional, with the `analyzr-lesen` tools: the notes file), 4
+  (`guide`, repeated until `errors` is empty) and 5 (the hand-over: the guide's path and count, the
+  checklist, the transcript under `transcripts/` without names in the file name and to no AI
+  assistant while names are in it, and how the answers map back: in „Offene Fragen“ by the
+  question's text and „Betrifft“, by id through „Zum Ausfüllen (CSV)“ and „Antworten aus CSV
+  übernehmen …“). It reads the landscape only over an MCP server of its own, `analyzr-lesen`, which
+  the consultant adds in a terminal with the `claude mcp add` line of `token create … -s
+  analyzr:read`, and only `list_processes`, `get_process`, `which_processes_use`,
+  `find_unlinked_events`, `get_value_chain` and `get_landscape` (up to 40 models).
+- **The `transcripts/` rule** (the fragment `transcripts-rule`, in integrate-landscape's ground
+  rule 4 and interview-guide's 5): never read, list, search or attach anything below
+  `transcripts/`, never give a script a path there or the workspace as the folder to read, and
+  search only in a folder named, never in the workspace root; integrate-landscape's workspace tree
+  names `interviews/` and `transcripts/`. Its `allowed-tools` stay byte for byte as before.
+- **The release**: `plugin.json` 0.1.6 with a description naming the interview guide;
+  `RELEASES['0.1.6']` `5dc34ec06a1dbb5a6cf9e699647209a78a384198d569dad84c3f2afc574cacf1` with a
+  comment, the older rows untouched; `claude plugin validate --strict` "✔ Validation passed" for the
+  plugin (with the informational `ICON_MISSING`; again in the docs pass with Claude Code 2.1.312,
+  and so did `claude plugin validate --strict .` for the marketplace). Sizes in bytes:
+  `analyzr-spec.mjs` 497,587 (496,944 before), `analyzr-convert.mjs` 336,685 (335,915), the notices
+  18,585 (still 13 packages; `yaml` and rolldown's helpers also in `analyzr-interview.mjs`),
+  integrate-landscape's `SKILL.md` 72,383, the plugin 20 files and 2,221,360 bytes.
+- **The Desktop start prompts** (generated, outside the plugin's hash):
+  `start-prompt-interview-guide.de.md` (a guide from the attached Markdown export in the guide's
+  structure, its skeleton from `guideSkeleton()`) and `start-prompt-integrate-landscape.de.md`
+  (`analyzr-spec/1` specs from attached pictures and PDFs, with a complete example a test validates
+  and renders); both begin „Nutze nur den Connector `analyzr-lesen`.“ and name only
+  `list_processes`, `get_process` and `which_processes_use`; the Desktop README's section
+  "Interviews and pictures" sets up the read-only connector.
+- **Tests**: integrate 480 (407 before; 24 files): the new `interview-questions.test.ts`,
+  `interview-guide.test.ts`, `texts.test.ts` and `yaml.test.ts`, and `drift.test.ts` and
+  `plugin.test.ts` extended (DEVELOPMENT.md "Tests"); CLI 330 (328) plus 7 skipped: the new e2e
+  block runs the bundled `analyzr-interview.mjs` on a freshly seeded `nordwind-handel` project's
+  real CLI JSON and the server's real Markdown and CSV exports (the same groups from JSON and
+  Markdown, the guide of the largest group but „Ohne Ansprechpartner“ from the JSON and the Markdown
+  (equal, every id once, in analyzr's order) and of the CSV's first group (every id once, all from
+  the list), two groups in the list's order, a label refused; D1).
+
+What it costs and leaves open. Every gate green (integrate 480 (407), CLI 330 (328) plus 7 skipped,
+server 1,828, web 666, bpmn-facts 200, contracts 180, eval/tools 108, relations 91, agent-sim 57,
+procedures 37, demo 27, notices 9, client 4; the four eval gates passed and `git diff --exit-code
+eval/reports` is clean, so the step is live-run neutral; `pnpm notices` left the root file
+unchanged; `pnpm --filter @analyzr/integrate generate` twice with identical bytes, then the drift,
+plugin, texts, interview and YAML tests green). No new dependency; the MCP snapshots unchanged; no
+Docker beyond the tests' Testcontainers. A review round (guide, security, generator) gave 35
+findings: 31 fixed with tests, 3 in part (among them „Ohne Ansprechpartner“, not split by folder,
+and transcripts before the read lock), 1 rejected (a cosmetic line length). The lead's run:
+Every gate on the final tree, the CLI e2e suite on Testcontainers with the guide from the server's
+own export (330 CLI tests plus 7 skipped), `generate` twice with identical bytes, `claude plugin
+validate --strict` passed; no stack, since neither the server nor the web changed. The commit: this
+step's commit on the branch, with which 0.1.6 counts as released. The readings the owner may
+overrule: HANDOFF §4 ("Taken during M6 S6 steps 1–2"). Open:
+
+- **No live session**: no LLM call was made, so the skill in a Claude Code session (its prompts
+  before each command, the `analyzr-lesen` server added under its own name, which read tools ask)
+  and the two prompts in Claude Desktop (nothing checks a chat's ids) are untried; the live session
+  of HANDOFF §8 takes the interview skills with 0.1.7.
+- **Transcripts before the read lock**: until step 4 only the skills' texts keep an agent out of
+  `transcripts/` (HANDOFF §4 "Taken during M6 S6 steps 1–2" (c)).
+- **The consent part's additions** to decision 31 (3)'s checklist (the same readings, (b)).
+- **A CSV input groups differently**: its contact cell joins step owners and lanes, so its groups
+  differ from the JSON's and the Markdown's (the skill says so in confirmation 1).
+- **Outside `docs/`**: `examples/agents/claude-code/README.md` and `examples/agents/codex/README.md`
+  do not name the interview guide (nor `analyzr-lesen`), and the marketplace description still
+  names only the BPMN path (step 4).
+- **The sample transcripts** (decision 31 (4)) before step 3's formats are finalized.
+
+Left: S6 step 3 once the sample transcripts are in, then steps 4 and 5; after the owner's live runs
+S5b, S7 and facts v2.
+
 **S7 "Gap release"** (after the live runs). Scope: §4.6, §4.7. Done when: `nordwind-gaps` is
 scored by `eval:replay` for the sim agent; the owner's live gate passes for both procedures
 with the new gap thresholds; `RELEASED`, `PLUGIN_RELEASES`, the plugin and the MCP snapshots are
@@ -6386,12 +6637,17 @@ specs (S3c, §3.7 step 2); only an automated vision pipeline stays out.
    model view reverses the resolution of [M3-RELATIONS-PROCEDURE.md](M3-RELATIONS-PROCEDURE.md)
    question 1 (2026-10-08: summaries stay REST-only). They are where agents report gaps today.
    Recommendation: show them, read-only.
-3. **Address form in customer-facing interview guides.** Agent-facing and UI texts use „du“
+3. **Address form in customer-facing interview guides. Decided 2026-10-28: always „du“ (decision 31 (2)).** Agent-facing and UI texts use „du“
    (AGENTS.md); questions put to customer employees probably need „Sie“. Recommendation: „Sie“ by
    default in guides meant for customers, „du“ for everything analyzr and the skills say to you.
+   Decision 31 (2) (§2) goes against this recommendation and the S6 plan's („Sie“ by default,
+   switchable): the guides address the customer's interviewees with „du“, with no per-workspace
+   switch; delivered in S6 step 2 (§8 "S6 steps 1–2 as delivered").
 4. **Sample exports.** Can Miragon get trial or sandbox instances (or anonymized exports) of
    ARIS, SAP Signavio, ADONIS, Bizagi and Visio, so the reference notes of §3.8 stop being
-   unverified? Customer exports never enter the repository.
+   unverified? Customer exports never enter the repository. For transcripts it is answered by
+   decision 31 (4) (§2): the owner supplies short test conversations from Teams, Zoom and, if
+   possible, Webex, as VTT and text with invented names, before S6 step 3's formats are finalized.
 5. **S5b: answers that re-queue.** S5b widens the relations judgement basis by the pair's last
    human note and lets notes queue relations and placement tasks; that amends CONCEPT §2, §3 and
    §11 and the M3 and M4 S5 records (§4.5 "Recorded rules"). It also relies on notes blocking

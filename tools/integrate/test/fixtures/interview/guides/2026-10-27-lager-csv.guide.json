@@ -1,0 +1,79 @@
+{
+  "format": "analyzr-guide/1",
+  "project": {
+    "key": "nordwind-handel",
+    "name": "Nordwind Handel GmbH"
+  },
+  "date": "2026-10-27",
+  "address": "du",
+  "input": "csv",
+  "questionsFile": "interviews/questions/2026-10-27.questions.csv",
+  "sha256": "6bfd2a88239b555bee9c91198d6424f98ad1d2ecfd46ed121a14118586e060e6",
+  "guide": "interviews/guides/2026-10-27-lager-csv.md",
+  "notes": null,
+  "groups": [
+    {
+      "slug": "lager-kommissionierung",
+      "label": "Lager, Kommissionierung"
+    },
+    {
+      "slug": "ohne-ansprechpartner",
+      "label": "Ohne Ansprechpartner"
+    }
+  ],
+  "total": 3,
+  "max": null,
+  "questions": [
+    {
+      "n": 1,
+      "id": "q-8b1d0e2f4a6c9375",
+      "kind": "held",
+      "kindLabel": "Vorgemerkt",
+      "text": "Gilt die Übergabe an den Versand auch für Expressaufträge?\nUnd wer gibt sie frei?",
+      "detail": null,
+      "subjectLabel": "„Kommissionierung“ → „Versand vorbereiten“",
+      "contact": "Lager, Kommissionierung",
+      "group": "lager-kommissionierung",
+      "modelKeys": [],
+      "unlocks": null,
+      "primaryAction": null,
+      "actions": [],
+      "latestNote": {
+        "text": "Express läuft über die Packstation 2.\nFreigabe durch die Schichtleitung.",
+        "date": null
+      }
+    },
+    {
+      "n": 2,
+      "id": "q-9d3b6f1a8e2c7054",
+      "kind": "call-target-unknown",
+      "kindLabel": "Aufrufziel unbekannt",
+      "text": "Welchen Prozess ruft „Nachschub anfordern“ auf? Der Aufruf nennt kein Ziel, das ein Modell der Landschaft definiert.",
+      "detail": null,
+      "subjectLabel": "„Nachschub anfordern“",
+      "contact": "Lager, Kommissionierung",
+      "group": "lager-kommissionierung",
+      "modelKeys": [],
+      "unlocks": null,
+      "primaryAction": null,
+      "actions": [],
+      "latestNote": null
+    },
+    {
+      "n": 3,
+      "id": "q-6e0a2c4b8d1f5379",
+      "kind": "isolated-process",
+      "kindLabel": "Prozess ohne Verbindung",
+      "text": "Mit welchen Prozessen hängt „Garantiefall prüfen“ zusammen? Der Prozess hat keine Beziehung, keinen Kandidaten und keinen Nachrichtenfluss zu einem anderen Prozess.",
+      "detail": null,
+      "subjectLabel": "„Garantiefall prüfen“",
+      "contact": "",
+      "group": "ohne-ansprechpartner",
+      "modelKeys": [],
+      "unlocks": null,
+      "primaryAction": null,
+      "actions": [],
+      "latestNote": null
+    }
+  ]
+}

@@ -1,0 +1,39 @@
+﻿"id";"Art";"Frage";"Ansprechpartner";"Antwort"
+"q-3f2a9c41d07be815";"Pool ohne Prozess";"Externer Partner oder fehlendes Modell? Nachrichten: „Lieferavis“. Der Pool hat im Modell keinen Prozess: ein externer Partner, oder ein Prozess, dessen Modell fehlt. Nachrichtenflüsse: „Lieferavis“ an „Ware angekündigt“.
+
+Betrifft: Pool in „Nordwind Handel – Wareneingang“";"Lager, Wareneingang";"Laut Lagerleitung kommt das Avis über das Speditionsportal."
+"q-8b1d0e2f4a6c9375";"Vorgemerkt";"Gilt die Übergabe an den Versand auch für Expressaufträge?
+Und wer gibt sie frei?
+
+Betrifft: „Kommissionierung“ → „Versand vorbereiten“";"Lager, Kommissionierung";"Express läuft über die Packstation 2.
+Freigabe durch die Schichtleitung."
+"q-c47e2a9b05d1f863";"Einordnung unsicher";"Auf welchen Schritt der Wertschöpfungskette gehört „Bestandsüberwachung“? Laut Agent: Die Bestandsüberwachung passt zu „Lager“ und zu „Controlling“; das Modell sagt nicht, wer sie verantwortet.
+
+Betrifft: „Bestandsüberwachung“ in „Nordwind Handel – Lager“";"Lagerleitung";""
+"q-2c8e4a6f0b3d9175";"Partner der Nachricht fehlt";"Wer empfängt, was „Versand_Auftrag*Eil“ sendet? Kein anderer Prozess der Landschaft empfängt die Nachricht „Versand_Auftrag*Eil“, und kein Nachrichtenfluss führt zu einem Partner.
+
+Betrifft: „Versand_Auftrag*Eil“";"Disposition, Versand";""
+"q-1e5f7a3c9d2b4086";"Prozess ohne Dokumentation";"Was leistet „Wareneingang“? Der Prozess hat im Modell keine Dokumentation.
+
+Betrifft: „Wareneingang“";"Lager, Wareneingang, Qualitätsprüfung";""
+"q-5a9c3e7b1f0d2846";"Frage eines Agenten";"Ist „Bestand prüfen“ derselbe Ablauf wie „Bestandsüberwachung“?
+
+Betrifft: „Bestand prüfen“ → „Bestandsüberwachung“";"Lager, Kommissionierung";""
+"q-9d3b6f1a8e2c7054";"Aufrufziel unbekannt";"Welchen Prozess ruft „Nachschub anfordern“ auf? Der Aufruf nennt kein Ziel, das ein Modell der Landschaft definiert.
+
+Betrifft: „Nachschub anfordern“";"Lager, Kommissionierung";""
+"q-7f1a3c5e9b2d4608";"Ziel wird erst beim Ausführen bestimmt";"Welche Prozesse ruft „Spediteur beauftragen“ auf? Das Ziel wird erst beim Ausführen bestimmt (${spediteurProzess}).
+
+Betrifft: „Spediteur beauftragen“";"Disposition, Versand";""
+"q-6e0a2c4b8d1f5379";"Prozess ohne Verbindung";"Mit welchen Prozessen hängt „Garantiefall prüfen“ zusammen? Der Prozess hat keine Beziehung, keinen Kandidaten und keinen Nachrichtenfluss zu einem anderen Prozess.
+
+Betrifft: „Garantiefall prüfen“";"";""
+"q-e3a5c7f9b1d0284a";"Elemente beim Import verloren";"Welche Elemente von „Packstation“ (lager/packstation) sind beim Import verloren gegangen? analyzr hat 2 Elemente übersprungen: doppelte ID „Task_Packen“; ein Element ohne ID (bpmn:sequenceFlow). Was dort modelliert ist, fehlt der Analyse. Korrigiere das Modell im Quellsystem (oder lass den Export mit normalize-bpmn normalisieren) und importiere es erneut.
+
+Betrifft: „Packstation“ (lager/packstation)";"Lager, Versand, Packstation";""
+"q-0d2f4b6a8c3e1597";"Start oder Ende ohne Namen";"Wie heißen Start und Ende von „Garantiefall prüfen“? Ein Start- und ein Endereignis haben keinen Namen.
+
+Betrifft: „Garantiefall prüfen“";"Lager";""
+"q-b2d4f6a8c0e1357a";"Prozess ohne Schritt";"Auf welchen Schritt der Wertschöpfungskette gehört „Inventur“? Der Prozess ist noch auf keinem Schritt platziert.
+
+Betrifft: „Inventur“ in „Nordwind Handel – Inventur“";"Lagerleitung";""

@@ -49,7 +49,9 @@ parse guard, and the integrate plugin 0.1.4 that bundles them with the converter
 [M6 S3c step 1](#m6-s3c-step-1-2026-10-21), [step 2](#m6-s3c-step-2-2026-10-21),
 [step 3](#m6-s3c-step-3-2026-10-21) and [step 4](#m6-s3c-step-4-2026-10-21)) and the safeguard of
 owner decision 30 (2) with the integrate plugin 0.1.5 (no owner's rule on reconstructed or as-told
-models, [M6 decision-30 (2) safeguard](#m6-decision-30-2-safeguard-2026-10-28)) are in. The public
+models, [M6 decision-30 (2) safeguard](#m6-decision-30-2-safeguard-2026-10-28)) and S6 steps 1–2
+(the skill text generator and the interview guide `/analyzr-integrate:interview-guide` with the
+integrate plugin 0.1.6, [M6 S6 steps 1–2](#m6-s6-steps-12-2026-10-28)) are in. The public
 read-only demo of owner decision 20 runs at https://analyzr-demo.fly.dev after the first deploy
 ([Demo deployment (Fly.io)](#demo-deployment-flyio)).
 
@@ -73,8 +75,8 @@ end to end](#verified-end-to-end) lists exactly what was run and what was not.
 | `apps/server`: full CONCEPT §2 schema, domain use cases with `policy.require`, ingest/import/delete as one transaction (facts, rule tier, assertions, endpoint state, analysis tasks, events) with the real `@analyzr/bpmn-facts` and `@analyzr/relations`, every REST route of the contracts, local mode (Host/Origin guard, owner session cookie, owner key for the CLI, agent tokens), MCP `/mcp` with the eight read tools, the built web UI at `/` | working; importing `nordwind-handel` and `stadtwerke-auental` reproduces the rule relations and findings of `eval:candidates` exactly (integration test); MCP contract test with the SDK client |
 | `packages/procedures`: the procedures `analyzr-relations@0.2.0` (`relations.md`, status `released`, M3; judge each pair once) and `analyzr-placements@0.1.0` (`placements.md`, `released`, `kind: placement`, M4 S5), the loader for MCP `get_procedure`, the wrappers for the MCP prompts `work_pipeline` and `place_processes` and the Claude Code skills (`renderPipelineWrapper`, `renderAdHocWrapper`, `renderSkill`, `pnpm --filter @analyzr/procedures generate`), the `draft_value_chain` prompt text (`prompts/`) ([below](#the-relations-procedure-m3), [placements](#the-placement-pipeline-and-analyzr-placements-m4-s5)) | working; unit tests (frontmatter, wrappers, the guard against skill expansion), the drift test of the generated skill and plugin version, a sha256 guard that keeps a released version's skill from changing, and a server test that keeps the procedure's limits, invalid reasons (relations and no-links), tool names and tool arguments in line with the contracts and the MCP tools; three LLM dev runs of `0.1.0` on `nordwind-handel` (Sonnet 5.5: precision 100 %, recall 78.6 %, 0 must_not_link; [M3](#m3-2026-10-08)) |
 | `plugins/analyzr`: Claude Code plugin `analyzr` (0.3.0, its own version since S5) with the generated skills `/analyzr:relations [project] [max-tasks]` and `/analyzr:placements [project] [max-tasks]` and no MCP server; `.claude-plugin/marketplace.json`: the repository as marketplace `analyzr` (`claude plugin install analyzr@analyzr`) | working; `claude plugin validate --strict` passes for both manifests (Claude Code 2.1.295 for 0.3.0); drift tests and the per-release sha256 table in `@analyzr/procedures`; not yet run with a model |
-| `plugins/analyzr-integrate` and `tools/integrate` (M6 S3b, [below](#the-integrate-plugin-and-toolsintegrate-m6-s3b)): the second Claude Code plugin (0.1.5; 0.1.1 and 0.1.2 changed only texts: the skill in M6 S2a, the skill and the Signavio note in S2c-2; 0.1.3 in S2b's follow-up step 4: the read-only `analyzr-read.mjs`, pre-approved next to `inspect.mjs`, with which the skill previews an import itself, `plan --from-analyzr` rebuilding a lost key map, the report's „Vorschau“ with the agent work, `exporterVersion` declared tidied; 0.1.4 in M6 S3c step 4: the bundled `analyzr-spec.mjs`, `analyzr-convert.mjs` and `analyzr.mjs`, the skill's converter path with confirmation 4 per converter version and its picture path, the bundled CLI without a checkout, the report counted per path with the identity line and the web's labels, [M6 S3c step 4](#m6-s3c-step-4-2026-10-21); 0.1.5 in the decision-30 (2) safeguard step: the bundled `analyzr.mjs` with the new block reason and the narrowed rule suggestion, the report without „Bis analyzr das ausschließt, …“, [M6 decision-30 (2) safeguard](#m6-decision-30-2-safeguard-2026-10-28)) with `/analyzr-integrate:integrate-landscape` for BPMN 2.0 exports and, since 0.1.4, Visio, ARIS AML and other machine-readable formats through an ad-hoc converter and pictures and PDFs read by the agent, the reference notes per tool (since 0.1.4 also `images.md`, `analyzr-spec.md` and `converters.md`) and the bundled scripts `inspect.mjs`, `normalize-bpmn.mjs`, `analyzr-read.mjs` and, since 0.1.4, `analyzr-spec.mjs`, `analyzr-convert.mjs` and `analyzr.mjs` (analyzr's CLI without `seed` and `mcp`, bundled from `apps/cli`); their sources and tests in `@analyzr/integrate`; since M6 S3c step 1 also the sources of `analyzr-spec` (`analyzr-spec/1`, its validator and the deterministic renderer, [M6 S3c step 1](#m6-s3c-step-1-2026-10-21)) and since step 2 of the converter runner `analyzr-convert` (an agent's converter, approved by its sha256, run twice in a sandboxed child Node into specs and a run record, [M6 S3c step 2](#m6-s3c-step-2-2026-10-21)), bundled since 0.1.4 | working; 407 tests (normalized outputs extracted with `@analyzr/bpmn-facts`, keys and the rebuild from analyzr, bundle, inventory, the scripts as the plugin runs them, `analyzr-read` against a fake analyzr with its refusals, the drift test, the release table; since M6 S3c step 1 the spec validator, the renderer on 9 golden specs and 200 seeded random ones with their facts extracted, bpmn-js's tree walker with the importer's refusals and the layout checks; since step 2 the converter runner's escapes, limits, zip guards and run record on synthetic Visio and AML exports with example converters; since step 4 every bundle run from a copy away from `node_modules`, the skill's command lines and texts against the web's, and the reference notes' examples), the Playwright harness `e2e/spec-render-import.spec.ts` (renders in bpmn-js, no server, not in CI), the CLI and web tests on the golden bundle, the CLI e2e running the bundled `analyzr-read.mjs` against a real server ([M6 S2b follow-up step 4](#m6-s2b-follow-up-step-4-2026-10-20)) and since M6 S3c step 4 the bundled `analyzr-convert.mjs`, `analyzr-spec.mjs` and `analyzr.mjs` too, `claude plugin validate --strict` (Claude Code 2.1.300; for 0.1.2 and 0.1.3 Claude Code 2.1.303, [M6 S2c-2](#m6-s2c-2-2026-10-20); for 0.1.4 Claude Code 2.1.306; not yet run for 0.1.5); followed by hand by the implementing agent and imported into a scratch stack with the checkout CLI and „Hochladen“; not yet invoked as a skill in a Claude Code or Codex session, its guard setup, the pre-approval of `analyzr-read.mjs` and the converter and picture paths not tried live ([HANDOFF.md](HANDOFF.md) §8) |
-| `examples/agents` (M3, placements since M4 S5): reference setups for Claude Code (interactive, headless `run-headless.sh [--skill placements]`), Claude Desktop (both bridge entries, German start prompts for relations, placements and drafting a chain) and Codex; documentation, not workspace packages, not in the image; no Agent SDK setup for now (owner decision 16, [HANDOFF.md](HANDOFF.md) §4) | checked without a model ([M3](#m3-2026-10-08)): shellcheck and dry runs of `run-headless.sh` against fakes (incl. failed batches, a reused log directory and a trailing slash in `ANALYZR_URL`), the Codex TOML parses; no setup has run a model yet |
+| `plugins/analyzr-integrate` and `tools/integrate` (M6 S3b, [below](#the-integrate-plugin-and-toolsintegrate-m6-s3b)): the second Claude Code plugin (0.1.6; 0.1.1 and 0.1.2 changed only texts: the skill in M6 S2a, the skill and the Signavio note in S2c-2; 0.1.3 in S2b's follow-up step 4: the read-only `analyzr-read.mjs`, pre-approved next to `inspect.mjs`, with which the skill previews an import itself, `plan --from-analyzr` rebuilding a lost key map, the report's „Vorschau“ with the agent work, `exporterVersion` declared tidied; 0.1.4 in M6 S3c step 4: the bundled `analyzr-spec.mjs`, `analyzr-convert.mjs` and `analyzr.mjs`, the skill's converter path with confirmation 4 per converter version and its picture path, the bundled CLI without a checkout, the report counted per path with the identity line and the web's labels, [M6 S3c step 4](#m6-s3c-step-4-2026-10-21); 0.1.5 in the decision-30 (2) safeguard step: the bundled `analyzr.mjs` with the new block reason and the narrowed rule suggestion, the report without „Bis analyzr das ausschließt, …“, [M6 decision-30 (2) safeguard](#m6-decision-30-2-safeguard-2026-10-28); 0.1.6 in M6 S6 step 2: the skill `/analyzr-integrate:interview-guide` with the bundled `analyzr-interview.mjs` and `reference/interviews.md`, the skill texts and the German Claude Desktop start prompts generated from one source per skill in `tools/integrate/skills/` (S6 step 1), both skills keeping the agent out of the workspace's `transcripts/`, [M6 S6 steps 1–2](#m6-s6-steps-12-2026-10-28)) with `/analyzr-integrate:integrate-landscape` for BPMN 2.0 exports and, since 0.1.4, Visio, ARIS AML and other machine-readable formats through an ad-hoc converter and pictures and PDFs read by the agent, and since 0.1.6 `/analyzr-integrate:interview-guide` (a German interview guide per contact group from analyzr's open questions, every question with its id), the reference notes per tool (since 0.1.4 also `images.md`, `analyzr-spec.md` and `converters.md`, since 0.1.6 `interviews.md`) and the bundled scripts `inspect.mjs`, `normalize-bpmn.mjs`, `analyzr-read.mjs` and, since 0.1.4, `analyzr-spec.mjs`, `analyzr-convert.mjs` and `analyzr.mjs` (analyzr's CLI without `seed` and `mcp`, bundled from `apps/cli`) and, since 0.1.6, `analyzr-interview.mjs`; their sources and tests in `@analyzr/integrate`; since M6 S3c step 1 also the sources of `analyzr-spec` (`analyzr-spec/1`, its validator and the deterministic renderer, [M6 S3c step 1](#m6-s3c-step-1-2026-10-21)) and since step 2 of the converter runner `analyzr-convert` (an agent's converter, approved by its sha256, run twice in a sandboxed child Node into specs and a run record, [M6 S3c step 2](#m6-s3c-step-2-2026-10-21)), bundled since 0.1.4; since M6 S6 step 1 the skill text generator (`scripts/texts.ts`, the sources in `tools/integrate/skills/` with shared fragments) and since step 2 the interview guide's sources (`src/interview/`, the entry `src/cli/analyzr-interview.ts`) and the shared strict YAML reader `src/yaml.ts`, bundled since 0.1.6 | working; 480 tests (normalized outputs extracted with `@analyzr/bpmn-facts`, keys and the rebuild from analyzr, bundle, inventory, the scripts as the plugin runs them, `analyzr-read` against a fake analyzr with its refusals, the drift test, the release table; since M6 S3c step 1 the spec validator, the renderer on 9 golden specs and 200 seeded random ones with their facts extracted, bpmn-js's tree walker with the importer's refusals and the layout checks; since step 2 the converter runner's escapes, limits, zip guards and run record on synthetic Visio and AML exports with example converters; since step 4 every bundle run from a copy away from `node_modules`, the skill's command lines and texts against the web's, and the reference notes' examples; since M6 S6 step 1 the generated skill texts and start prompts against their sources, the drift message naming the source; since step 2 the interview guide's three readers on synthetic JSON, Markdown and CSV fixtures checked against the server's renderer and rules, the four golden guides from source and bundle, the notes check, every refusal and warning, and the strict YAML reader's errors), the Playwright harness `e2e/spec-render-import.spec.ts` (renders in bpmn-js, no server, not in CI), the CLI and web tests on the golden bundle, the CLI e2e running the bundled `analyzr-read.mjs` against a real server ([M6 S2b follow-up step 4](#m6-s2b-follow-up-step-4-2026-10-20)) and since M6 S3c step 4 the bundled `analyzr-convert.mjs`, `analyzr-spec.mjs` and `analyzr.mjs` too, since M6 S6 step 2 the bundled `analyzr-interview.mjs` on a freshly seeded project's open questions as JSON, Markdown and CSV, `claude plugin validate --strict` (Claude Code 2.1.300; for 0.1.2 and 0.1.3 Claude Code 2.1.303, [M6 S2c-2](#m6-s2c-2-2026-10-20); for 0.1.4 Claude Code 2.1.306; not run for 0.1.5; for 0.1.6 Claude Code 2.1.312, also for the marketplace, [M6 S6 steps 1–2](#m6-s6-steps-12-2026-10-28)); followed by hand by the implementing agent and imported into a scratch stack with the checkout CLI and „Hochladen“; not yet invoked as a skill in a Claude Code or Codex session, its guard setup, the pre-approval of `analyzr-read.mjs`, the converter and picture paths, the interview guide and its read-only server `analyzr-lesen` not tried live ([HANDOFF.md](HANDOFF.md) §8) |
+| `examples/agents` (M3, placements since M4 S5): reference setups for Claude Code (interactive, headless `run-headless.sh [--skill placements]`), Claude Desktop (both bridge entries, German start prompts for relations, placements and drafting a chain; since M6 S6 step 2 two generated ones on the read-only connector `analyzr-lesen`, an interview guide from the Markdown export and specs from pictures and PDFs) and Codex; documentation, not workspace packages, not in the image; no Agent SDK setup for now (owner decision 16, [HANDOFF.md](HANDOFF.md) §4) | checked without a model ([M3](#m3-2026-10-08)): shellcheck and dry runs of `run-headless.sh` against fakes (incl. failed batches, a reused log directory and a trailing slash in `ANALYZR_URL`), the Codex TOML parses; since M6 S6 step 2 the two generated Desktop start prompts by `@analyzr/integrate`'s drift and texts tests (the picture prompt's example validated and rendered); no setup has run a model yet |
 | M2 backend: analysis pipeline (claim/submit/release, lease, long-poll), claim input (with the M3 additions: message-flow ends, partner and process documentation, findings, and `judged`/`skip`), submissions, ad-hoc proposals, review (accept/reject/hold/correct, bulk, notes, timeline), model engine, relation provenance, answered findings hidden ([below](#analysis-pipeline-and-review-m2)); judge each pair once (`analyzr-relations@0.2.0`: the basis of agent judgements, the assignment at the claim, stored no-links, `Relation.noLinks`, `uncovered`; [below](#judge-each-pair-once)) | working over REST and MCP; real-Postgres integration tests incl. concurrent claims, lease expiry, cancellation, decision memory across re-uploads, the claim-input size and additions on both corpus landscapes, judge each pair once (`judge-once.test.ts`); MCP contract test with the SDK client; reviewed in the web UI ([Review in the web UI](#review-in-the-web-ui-m2)); end to end against the Docker stack with the simulation agent (HTTP and the bridge in the container; before 0.2.0) and in the browser (`e2e/pipeline.spec.ts`: review, re-upload, `suppressed` vs. `reopened`) |
 | `apps/cli`: `analyzr seed` (M3: `--project`, `--token-name`; M4 S4: `--value-chains`), `import` (M6 S1: the shared file rule, keys derived before sending, skipped plain XML, extractor warnings, the waiting tasks and the next agent step), `models list/requeue/delete` (M6 S1; since S5c-2 `models amend|pull`), `questions` (M6 S4; since S5a `questions [list]` and `questions answer`; since S5c-1 `questions outside|link|place` and notes without kinds; since S5c-2 `questions amend`; since UX2a `questions --group` and the groups in its summary line), `amendments list|export|withdraw` (M6 S5c-2), the amendments in `import`'s output (M6 S5c-2), `import` reading the manifest `analyzr-import.json` (pinned keys, provenance, import warnings with `next:` lines) and `models external-ids` (M6 S2a), `import`'s `next:` line with the web link for the unique calls of derived models and its agent-token notice (M6 S2c-2), `rules add --derived` and, with the owner key, `import`'s dry-run line and `next:` step for owners' rules for derived calls (M6 S2c-3), `rules pre-trust` and the system line's count of acceptances from before the trust rule (M6 S2c-4), `import`'s owner-rule suggestion leaving out calls into this import's reconstructed or as-told files (owner decision 30 (2)), `token create/list/revoke`, `status`, `health`, and `analyzr mcp` (stdio bridge for Claude Desktop); since M6 S3c step 3 the commands both CLIs share in `src/core-program.ts` (every one but `seed` and `mcp`), the parse guard in both (a word that reads as a flag is no option value, exit 2) and `src/plugin-main.ts`, the entry of the integrate plugin's bundled CLI `analyzr.mjs` (bundled since 0.1.4: next steps naming `node <path> --url <url>`, the owner key for this machine only; [M6 S3c step 3](#m6-s3c-step-3-2026-10-21), [step 4](#m6-s3c-step-4-2026-10-21)) | working; unit tests, an e2e test against a real server, and a live check against the running Docker stack; since M6 S3c step 3 parity tests of the plugin's entry against the checkout's, from source and since step 4 on the bundle |
 | `apps/agent-sim`: `analyzr-agent-sim`, the LLM-free simulation agent (M2 item 8): works the pipeline over MCP (HTTP or the `analyzr mcp` bridge) with the deterministic policy `sim-policy-1`, since M4 S5 both task kinds (`--kinds`, the placement policy `decidePlacements`), and records claim inputs and submissions in `eval/recordings` ([below](#simulation-agent-and-evalreplay-m2)) | working; unit tests (both policies, recorder lines of both kinds, CLI, the loop against an in-memory MCP server) and an end-to-end server test on both corpus landscapes with their golden chains (every task done, provenance, nothing decided, the committed recordings reproduced byte for byte, the holdout placement recording by digest) |
@@ -702,10 +704,12 @@ packages/relations/  rules, candidates (with the prepared index indexCandidates)
 packages/procedures/ agent procedures as Markdown with frontmatter (relations.md = analyzr-relations; MCP get_procedure),
                      src/wrappers.ts (MCP prompt and skill text), scripts/generate.ts (writes the plugin's skill)
 plugins/analyzr/     Claude Code plugin: .claude-plugin/plugin.json, skills/relations/SKILL.md (generated, do not edit)
-plugins/analyzr-integrate/  Claude Code plugin (M6 S3b): skills/integrate-landscape/SKILL.md, reference/*.md,
-                     scripts/*.mjs and THIRD-PARTY-NOTICES.md (generated from tools/integrate, do not edit)
+plugins/analyzr-integrate/  Claude Code plugin (M6 S3b): reference/*.md; skills/{integrate-landscape,interview-guide}/SKILL.md
+                     (since M6 S6 generated from tools/integrate/skills), scripts/*.mjs and THIRD-PARTY-NOTICES.md
+                     (generated from tools/integrate, do not edit)
 .claude-plugin/   marketplace.json: this repository as the plugin marketplace `analyzr`
-examples/agents/  reference setups: claude-code/, claude-desktop/, codex/; not workspace packages
+examples/agents/  reference setups: claude-code/, claude-desktop/, codex/; not workspace packages (since M6 S6
+                  claude-desktop/start-prompt-{integrate-landscape,interview-guide}.de.md generated from tools/integrate/skills)
 eval/tools/       @analyzr/eval-tools: corpus generator/validator (.mjs) + eval:candidates, eval:replay, eval:live, eval:placements,
                   eval:descriptive (src/*.ts; its transforms in lib/descriptive.mjs)
 eval/recordings/  agent recordings <procedure>@<version>/<agent>/<llmModel>/<landscape>.jsonl (eval:replay input)
@@ -718,8 +722,12 @@ tools/integrate/  @analyzr/integrate (M6 S3b): sources and tests of the integrat
                   since M6 S3c step 1 src/spec/ and src/cli/analyzr-spec.ts (analyzr-spec/1 and its renderer);
                   since step 2 src/cli/analyzr-convert.ts (the converter runner, its modules in src/spec/); both bundled since
                   step 4 (plugin 0.1.4), which also bundles apps/cli/src/plugin-main.ts as analyzr.mjs;
+                  since M6 S6 step 1 skills/ (one source per skill and the shared fragments) and scripts/texts.ts, which
+                  writes the plugin's SKILL.md files and the Claude Desktop start prompts; since step 2 src/interview/ and
+                  src/cli/analyzr-interview.ts (the interview guide, bundled since plugin 0.1.6) and src/yaml.ts;
                   test/fixtures: a synthetic export, a golden bundle, the golden specs (fixtures/spec/), synthetic Visio and AML
-                  exports with their example converters (fixtures/converters/)
+                  exports with their example converters (fixtures/converters/), the interview guide's questions, notes and
+                  golden guides (fixtures/interview/)
 docs/             CONCEPT.md, HANDOFF.md, M1-SKELETON.md, M2-PIPELINE-REVIEW.md, M3-RELATIONS-PROCEDURE.md, M3-LIVE-RUNS.md,
                   M4-VALUE-CHAIN.md, M6-INTEGRATION-AND-GAPS.md, this file, adr/ (ADR-0001), screenshots/
 ```
@@ -791,7 +799,7 @@ Node cannot load it).
 | `ANALYZR_E2E_URL=http://127.0.0.1:7480 pnpm --filter @analyzr/web e2e demo` | Playwright walk through the demo's read views; fails on any write request, API error or write action shown (skips on a non-demo server) |
 | `pnpm --filter @analyzr/client generate` | regenerates `packages/client` after a contracts change |
 | `pnpm --filter @analyzr/procedures generate` | writes one skill per released pipeline procedure (`plugins/analyzr/skills/relations/SKILL.md` from `relations.md`, `plugins/analyzr/skills/placements/SKILL.md` from `placements.md`) and `PLUGIN_VERSION` into `plugins/analyzr/.claude-plugin/plugin.json`; run it after every change of a procedure or a wrapper and commit the result ([Conventions](#conventions)) |
-| `pnpm --filter @analyzr/integrate generate` | bundles `tools/integrate/src/cli/{inspect,normalize-bpmn,analyzr-read,analyzr-spec,analyzr-convert}.ts` and, since M6 S3c step 4, `apps/cli/src/plugin-main.ts` with rolldown into the self-contained `plugins/analyzr-integrate/scripts/{inspect,normalize-bpmn,analyzr-read,analyzr-spec,analyzr-convert,analyzr}.mjs` and writes the plugin's `THIRD-PARTY-NOTICES.md`; run it after every change of `tools/integrate/src`, of `apps/cli`, `packages/client` or `packages/contracts`, of the root `package.json`'s version or of a bundled dependency, and commit the result (the drift test fails until they match), and move the plugin version ([below](#the-integrate-plugin-and-toolsintegrate-m6-s3b)); before plugin 0.1.4 `analyzr-spec` and `analyzr-convert` ran from source only (`node tools/integrate/src/cli/analyzr-spec.ts`, `node tools/integrate/src/cli/analyzr-convert.ts`, as the tests still run them) |
+| `pnpm --filter @analyzr/integrate generate` | bundles `tools/integrate/src/cli/{inspect,normalize-bpmn,analyzr-read,analyzr-spec,analyzr-convert,analyzr-interview}.ts` (`analyzr-interview` since M6 S6 step 2) and, since M6 S3c step 4, `apps/cli/src/plugin-main.ts` with rolldown into the self-contained `plugins/analyzr-integrate/scripts/{inspect,normalize-bpmn,analyzr-read,analyzr-spec,analyzr-convert,analyzr-interview,analyzr}.mjs`, writes the plugin's `THIRD-PARTY-NOTICES.md` and, since M6 S6 step 1, renders the plugin's `skills/*/SKILL.md` and the Claude Desktop start prompts `examples/agents/claude-desktop/start-prompt-{integrate-landscape,interview-guide}.de.md` from `tools/integrate/skills/`; run it after every change of `tools/integrate/src`, of `tools/integrate/skills`, of `apps/cli`, `packages/client` or `packages/contracts`, of the root `package.json`'s version or of a bundled dependency, and commit the result (the drift test fails until they match), and move the plugin version ([below](#the-integrate-plugin-and-toolsintegrate-m6-s3b)); before plugin 0.1.4 `analyzr-spec` and `analyzr-convert` ran from source only (`node tools/integrate/src/cli/analyzr-spec.ts`, `node tools/integrate/src/cli/analyzr-convert.ts`, as the tests still run them) |
 | `pnpm --filter @analyzr/server db:generate` | writes the next migration after a schema change |
 
 ### Server configuration
@@ -2169,7 +2177,7 @@ keeps `Usage: analyzr …` with a description that says to run it as
 `plugins/analyzr-integrate` is a second Claude Code plugin, next to the pipeline plugin
 `plugins/analyzr`, for interactive, non-pipeline skills
 ([M6-INTEGRATION-AND-GAPS.md](M6-INTEGRATION-AND-GAPS.md) §3.7, "S3b as delivered" in §8). Its
-version lives in its own `.claude-plugin/plugin.json` (0.1.5, owner decision 30 (2)) and moves with
+version lives in its own `.claude-plugin/plugin.json` (0.1.6, M6 S6 step 2) and moves with
 every change of any plugin file: `RELEASES` in `tools/integrate/test/plugin.test.ts` pins a
 sha256 over the plugin's files per version, and the failing test prints the new hash. Its skills are unversioned (no
 `RELEASED` or `PLUGIN_RELEASES` row); the marketplace entry is pinned in
@@ -2177,7 +2185,10 @@ sha256 over the plugin's files per version, and the failing test prints the new 
 analyzr-integrate@analyzr` or `--plugin-dir plugins/analyzr-integrate`
 ([examples/agents/claude-code/README.md](../examples/agents/claude-code/README.md)); live runs never
 load it (`--plugin-dir plugins/analyzr` only). Codex reads the same `SKILL.md` by path
-([examples/agents/codex/README.md](../examples/agents/codex/README.md)).
+([examples/agents/codex/README.md](../examples/agents/codex/README.md)). Since M6 S6 step 1 every
+`SKILL.md` of the plugin is generated from `tools/integrate/skills/` (**The skill texts** below):
+edit the source, never the `SKILL.md`. Since 0.1.6 it holds two skills, `integrate-landscape` and
+`interview-guide` (below).
 
 `/analyzr-integrate:integrate-landscape <export> [--workspace <dir>]` (`disable-model-invocation`,
 needs a shell and Node 24) turns a customer's BPMN 2.0 export into an import bundle
@@ -2267,11 +2278,22 @@ while 4b's request to check picture models against the original stays and the fr
 `allowed-tools` is byte-identical. 0.1.5 assumes an analyzr with that safeguard (the skill checks no
 server version).
 
+0.1.6 (M6 S6 step 2, [below](#m6-s6-steps-12-2026-10-28); owner decision 31) adds the skill
+`/analyzr-integrate:interview-guide [<questions file>] [--workspace <dir>]` with its script
+`analyzr-interview.mjs` and the reference note `interviews.md` (**The interview guide** below), and
+integrate-landscape's ground rule 4 gains the `transcripts/` rule (never read, list, search or
+attach anything below the workspace's `transcripts/`, never give a script a path there or the
+workspace as the folder to read, search only in a folder named), its workspace tree `interviews/`
+and `transcripts/`; its frontmatter with `allowed-tools` is byte-identical. `analyzr-spec.mjs` and
+`analyzr-convert.mjs` are rebuilt with the shared strict YAML reader `src/yaml.ts`, their rendered
+bytes unchanged (`RENDER_OUTPUTS`).
+
 The scripts need Node 24 (`inspect`, `normalize-bpmn` and `analyzr-spec` no network;
-`analyzr-read` only analyzr on this machine; `analyzr-convert` below), never write into the export
-or into an analyzr checkout (`src/guards.ts`, symbolic links resolved), print short JSON on stdout
-and exit 0, 1 when the work fails, 2 on a usage error (`--help` prints the usage); `analyzr.mjs` is
-analyzr's CLI ([above](#the-analyzr-cli)):
+`analyzr-read` only analyzr on this machine; `analyzr-convert` below; `analyzr-interview` no
+network, environment or clock), never write into the export or into an analyzr checkout
+(`src/guards.ts`, symbolic links resolved), print short JSON on stdout and exit 0, 1 when the work
+fails, 2 on a usage error (`--help` prints the usage); `analyzr.mjs` is analyzr's CLI
+([above](#the-analyzr-cli)):
 
 | Script | What it does |
 |---|---|
@@ -2285,6 +2307,8 @@ analyzr's CLI ([above](#the-analyzr-cli)):
 | `analyzr-read.mjs preview <bundle> -p <project> --url <url> [--json-out <file.preview.json>]` | since 0.1.3: the import of a bundle (a folder with `analyzr-import.json`) previewed exactly as `analyzr import <bundle> --dry-run` sends it (`src/preview.ts`: the files `isImportPath` picks up in `comparePaths` order, each under the key the manifest pins, `modelKeyOwners`, local failures as the CLI's, batches of at most 50 files and 25 MB, each with the whole manifest, to `POST …/imports?dryRun=true`), the batches merged with the shared `mergeImpacts`; the file gets what `analyzr import --dry-run --json` prints, stdout `credential`, `batches`, `batchesWithNew` (batches holding a new model), `counts` (since 0.1.4 also `identityUpdated`, the unchanged files whose new place in the tool the import records, and `modelled`, the files analyzr would classify as modelled, which a spec bundle never holds), `manifest`, the files that would fail or carry warnings, `skipped`, the impact's counts and `agentWork` (relations `queued`, `cancelled`, `claimed` with `claimedKeys`, `pairs`, `rejudged`; placement `outcome`, `toPlace` counted as the web's `processesToPlace`, `again`); exit 1 when a file would fail, with the JSON printed |
 | `analyzr-spec.mjs validate\|render\|plan\|bundle …` | since 0.1.4 (M6 S3c step 1's entry): specs validated, rendered as BPMN, their keys planned and their bundles written, as "`analyzr-spec`" below describes it; runs no foreign code |
 | `analyzr-convert.mjs convert <export> --converter <file> --sha256 <64 hex> --derived converted\|reconstructed …` | since 0.1.4 (M6 S3c step 2's entry): one converter the agent wrote, exactly the approved bytes, run twice in a sandboxed child Node into a new spec folder with its run record, as "`analyzr-convert`" below describes it; never pre-approved |
+| `analyzr-interview.mjs groups <questions file> --workspace <dir> [--include-agent]` | since 0.1.6 (M6 S6 step 2): the contact groups of the open questions in a file below `<workspace>/interviews/questions/` (the CLI's JSON list, the web's Markdown or CSV export), each with its `slug`, `label` and `count` of the questions a guide would ask, in the order of their first question with „Ohne Ansprechpartner“ last, `leftOut` (`informational`, `answered`, `technical`, `agent`, `proposal`) and `warnings`; reads nothing else, writes nothing; never pre-approved |
+| `analyzr-interview.mjs guide <questions file> --workspace <dir> --group <slug> … [--date <YYYY-MM-DD>] [--max <n>] [--include-agent] [--notes <file>] [--out <file.md>] [--replace]` | since 0.1.6: the German interview guide of the chosen groups (slugs only) in `interviews/guides/`, every question verbatim with its id in the file's order, and its record `<name>.guide.json` (`analyzr-guide/1`); the agent's notes file checked first (nothing written with `errors`); an existing guide kept unless `--replace`; as "The interview guide" below describes it; never pre-approved |
 | `analyzr.mjs <command>` | since 0.1.4 (M6 S3c step 4): analyzr's CLI bundled from `apps/cli/src/plugin-main.ts`, every command but `seed` and `mcp` ([The `analyzr` CLI](#the-analyzr-cli)); the consultant runs the import with it without a checkout, the skill only its read fallbacks and `import --dry-run` |
 
 `plan` and `bundle` write their complete result into the file `--json-out` names; `analyzr-read`'s
@@ -2364,7 +2388,17 @@ build) loading only `process` and `buffer`. The modules the entries share are `s
 `ANALYZR_CONVERT_VERSION`, and `ANALYZR_READ_VERSION` 0.1.1 since the compact preview counts
 `identityUpdated` and `modelled`).
 
-**Guard.** The skill pre-approves only `inspect.mjs` and, since 0.1.3, `analyzr-read.mjs`
+Since plugin 0.1.6 (M6 S6 step 2) `ENTRIES` names seven scripts: `analyzr-interview.mjs` from
+`src/cli/analyzr-interview.ts` joins them (the built-ins crypto, fs, fs/promises, module, path and
+util; `yaml` and rolldown's helpers, so the notices name both for it too and still list 13
+packages), and `build()` also renders the skill texts and start prompts (`scripts/texts.ts`,
+**The skill texts** below), so the drift test's first case compares them too and names the source
+of a stale one. `src/version.ts` adds `ANALYZR_INTERVIEW_VERSION` (0.1.0), which moves whenever a
+guide or its record written from the same questions file changes; `GUIDE_OUTPUTS` in
+`test/interview-guide.test.ts` pins the goldens' sha256 per version. `src/yaml.ts` is the shared
+strict YAML reader of `analyzr-spec`, `analyzr-convert` and `analyzr-interview`.
+
+**Guard.** integrate-landscape pre-approves only `inspect.mjs` and, since 0.1.3, `analyzr-read.mjs`
 (`allowed-tools:`
 `Bash(node ${CLAUDE_SKILL_DIR}/../../scripts/inspect.mjs *), Bash(node ${CLAUDE_SKILL_DIR}/../../scripts/analyzr-read.mjs *)`),
 so Claude Code asks before every other command; it is not run in a bypass or auto-approve mode. The skill runs both exactly as shown and
@@ -2392,6 +2426,9 @@ never as a rule over the CLI form, which a real import can match (`import b -p p
 Since 0.1.4 `allowed-tools` is unchanged byte for byte (pinned), so `analyzr-spec.mjs`,
 `analyzr-convert.mjs` and `analyzr.mjs` always ask; the skill offers no lasting rule for them, never
 one for `analyzr-convert.mjs`, and its confirmation 4 ends the turn in every permission mode.
+interview-guide (since 0.1.6) pre-approves nothing (no `allowed-tools`: `guide` writes files), so
+the CLI's read command, both `analyzr-interview.mjs` commands and every MCP tool call ask, each
+approved on its own.
 
 **`analyzr-read.mjs`** (`src/analyzr.ts`, `src/preview.ts`, the entry `src/cli/analyzr-read.ts`)
 cannot import. `requestFor` builds exactly three requests, `GET …/projects/{p}/models?limit=200`
@@ -2627,6 +2664,137 @@ write specs and bundles and the preview's stop on modelled files and calls stay 
 the tests approve them by their sha256. The shape data names, the lane container formula, the
 off-page hyperlink row and the styled AML texts are assumptions, to verify with a sandbox export
 (M6 §10.4).
+
+**The skill texts** (M6 S6 step 1, [M6-INTEGRATION-AND-GAPS.md](M6-INTEGRATION-AND-GAPS.md) §3.7
+"Skill texts" and §8 "S6 steps 1–2 as delivered", [below](#m6-s6-steps-12-2026-10-28);
+`scripts/texts.ts`) are generated: `renderTexts(repoRoot)`, called by `build()`, renders the
+sources of each skill in `tools/integrate/skills/<skill>/` (integrate-landscape and
+interview-guide; interview-facts follows with S6 step 4):
+
+| Source | Generated file |
+|---|---|
+| `skill.src.md` (frontmatter and English body) | `plugins/analyzr-integrate/skills/<skill>/SKILL.md` |
+| `start-prompt.de.src.md` (German, optional) | `examples/agents/claude-desktop/start-prompt-<skill>.de.md` |
+| `_shared/<name>.md` | nothing of its own: included where a source names it |
+
+The fragments are `transcripts-rule` (in both skills), `interview-ground-rules` and
+`mcp-read-tools` (interview-guide) and `connector.de` and `rules.de` (both start prompts);
+`REQUIRED_FRAGMENTS` names where each must appear, and `test/texts.test.ts` finds the rendered
+fragment there word for word. A line `{{> _shared/<name>}}` includes a fragment (one level deep,
+every line of it indented like the include line); `{{text:<id>}}` inserts a German constant of
+`src/interview/texts.ts` (`TEXT_CONSTANTS`) or `guide-skeleton`, the skeleton the guide's own
+renderer gives (`guideSkeleton()`), so a Desktop chat writes the guide the script writes; a start
+prompt keeps only the consultant's placeholders `{{PROJEKT}}` and `{{MODELL_ID}}`. Errors: an
+unknown fragment, constant or placeholder, a fragment nobody includes, a fragment that includes
+another, a `{{` left in a `SKILL.md`, a CR line ending, and a file in a skill folder that is
+neither source. The output has no date, LF line endings and one trailing newline. Change a text in
+its source and run `generate`: the drift test fails on an edited `SKILL.md` or start prompt and
+names its source, and every `start-prompt-*.de.md` of `examples/agents/claude-desktop/` is either
+generated or one of the three hand-written ones (`start-prompt.de.md`,
+`start-prompt-placements.de.md`, `start-prompt-draft.de.md`). The web's labels the texts quote
+(„Für den Kunden exportieren …“, „Zum Lesen (Markdown)“, „Zum Ausfüllen (CSV)“, „Antworten aus CSV
+übernehmen …“) and the Markdown export's markers are constants of `src/interview/texts.ts`, tested
+against `customer-export-dialog.tsx`, `project-open-questions-page.tsx`, `answer-sheet-dialog.tsx`,
+the server's `export.ts` and `model.ts`. The two start prompts begin „Nutze nur den Connector
+`analyzr-lesen`.“ (a read-only connector of its own, set up in
+[examples/agents/claude-desktop/README.md](../examples/agents/claude-desktop/README.md)
+"Interviews and pictures") and name only `list_processes`, `get_process` and
+`which_processes_use`; the picture prompt's `analyzr-spec/1` example is validated and rendered by a
+test. When S7 serves the texts as MCP prompts, it may move the sources into `packages/procedures`;
+a changed byte of a skill then needs a plugin version.
+
+**The interview guide** (M6 S6 step 2, [M6-INTEGRATION-AND-GAPS.md](M6-INTEGRATION-AND-GAPS.md) §5
+item 1 and §8 "S6 steps 1–2 as delivered", owner decision 31 (2), (3),
+[below](#m6-s6-steps-12-2026-10-28); `src/interview/`: the readers `questions.ts`, the server's
+rules copied in `server-rules.ts`, the notes check `notes.ts`, the renderer `guide.ts` and its
+German texts `texts.ts`; the entry `src/cli/analyzr-interview.ts`) turns analyzr's open questions
+into a German interview guide per contact group. Since plugin 0.1.6 it is bundled as
+`scripts/analyzr-interview.mjs`, which the skill `interview-guide` runs; the examples run it from
+source, after the CLI's read command the skill runs (`$WS` the workspace):
+
+```
+pnpm analyzr questions list -p nordwind-handel --state open --group ask --group agent \
+  --format json -o "$WS/interviews/questions/2026-10-27.questions.json"
+I=tools/integrate/src/cli/analyzr-interview.ts
+Q="$WS/interviews/questions/2026-10-27.questions.json"
+node $I groups "$Q" --workspace "$WS"
+node $I guide "$Q" --workspace "$WS" --group organisationseinheit-lager \
+  --notes "$WS/interviews/guides/2026-10-27-organisationseinheit-lager.notes.yaml"
+```
+
+- **Input**: one file `<workspace>/interviews/questions/<YYYY-MM-DD>.questions.<json, md or csv>`
+  (a regular file of at most 20 MB in UTF-8, no symbolic or hard link; `interviews/` and its two
+  folders real folders; the workspace holds `analyzr-workspace.json` and lies outside any
+  checkout): the CLI's JSON list (preferred: every field, `unlocks`, `refs` and `actions` too), the
+  web's „Zum Lesen (Markdown)“ (the server's groups as `## ` headings, each item's id as
+  `<!-- q-… -->` after its heading; `escapeMarkdown` reversed, hard breaks included; a file without
+  ids refused, one without questions read as empty) or its „Zum Ausfüllen (CSV)“ (the contracts'
+  zod-free `parseOpenQuestionsCsv`, the older header „Ansprechpartner-Hinweis“ too; question and
+  reason in one cell, step owners and lanes joined into one contact). A refusal names the item and
+  the field, never the file's content.
+- **Groups and selection**: the server's `askWhoGroup` (step owners, else lanes, never the folder),
+  in the order of their first question, „Ohne Ansprechpartner“ last; a slug is the whole label by
+  the server's file-name rule (umlauts spelled out, ASCII and `-`, at most 60 characters), unique
+  with `-2`, `-3`, so `groups` prints `{slug, label, count}` and `guide --group` takes slugs only
+  (a label exits 2, an unknown slug 1 with the file's slugs). A guide asks the group `ask` and,
+  with `--include-agent`, `agent`; `leftOut` counts what it never asks: `informational`,
+  `answered` (an outside mark), `technical` (`TECHNICAL_KINDS`: `extractor-loss`, `unjudged` and
+  `amendment-conflict`, the consultant's work in analyzr), `agent` without `--include-agent`, and
+  `proposal` (decided on the value chain). The order is the file's, never re-sorted, across all
+  chosen groups (a Markdown export lists group by group), and `--max <n>` keeps its first n. The
+  warnings: `group-cut` (a chosen group `--max` leaves without a question), `group-empty`,
+  `order-unexpected` (a JSON list out of analyzr's order), `kind-unknown`, `personal-data` (an
+  e-mail address, phone number or IBAN in analyzr's own texts of a question: its `F<n>`, id and
+  field, never the value) and `address-form` (notes).
+- **Output**: `interviews/guides/<date>-<slugs>.md` by default (`--out`: a new `.md` there, never a
+  link, also with `--replace`; an existing guide is kept unless `--replace`, otherwise written with
+  `wx`), the date `--date` or the file name's, never the clock; the guide's parts are in M6 §8 "S6
+  steps 1–2 as delivered". Beside it the record `<name>.guide.json` (`analyzr-guide/1`: `project`,
+  `date`, `address` `du`, `input`, `questionsFile` relative to the workspace with its `sha256`,
+  `guide`, `notes`, `groups`, `total`, `max` and the `questions` with `n`, `id`, `kind`,
+  `kindLabel`, `text`, `detail`, `subjectLabel`, `contact`, `group`, `modelKeys`, `unlocks`,
+  `primaryAction`, `actions` and `latestNote`; from Markdown and CSV without `unlocks` and actions),
+  for what comes after the interview.
+- **Notes** (`--notes <name>.notes.yaml` in `interviews/guides/`, the agent's, optional;
+  `analyzr-guide-notes/1`, read as strict UTF-8 with the shared strict YAML reader, at most 256
+  KB): `known` (at most 50 names of 200 characters, the guide's „Die Landkarte kennt in diesem
+  Bereich“) and `questions` by id with `landscape` (300 characters, „Was die Landkarte schon
+  sagt“) and `followUps` (3 of 200, „Nachfragen“). Errors, with nothing written and exit 1: an
+  unknown key, an id not among the chosen groups' questions (checked before `--max`), a text
+  empty, too long or with a line break, too many items, a question id in a text, personal data, a
+  YAML tag, anchor or alias, and a file too large or not UTF-8; the warning `address-form` for
+  „Sie“ or „Ihnen“ anywhere and „Ihr…“ inside a sentence (the guide says „du“, decision 31 (2)).
+- **Fixtures** (`test/fixtures/interview/`, synthetic: invented warehouse and shipping questions of
+  `nordwind-handel`, no names of people): the questions as `analyzr questions list --format json`
+  writes them (validated against the contracts' `OpenQuestion`), the Markdown and the CSV the
+  server's renderer gives for them (compared with `apps/server/src/domain/open-questions/export.ts`
+  at test time), a notes file and `guides/` with the four golden guides and their records;
+  `ANALYZR_UPDATE_GOLDEN=1 pnpm --filter @analyzr/integrate test interview` rewrites them, and a
+  new `ANALYZR_INTERVIEW_VERSION` needs its row in `GUIDE_OUTPUTS`.
+
+**The skill `interview-guide`** (`/analyzr-integrate:interview-guide [<questions file>]
+[--workspace <dir>]`, `disable-model-invocation: true`, no `allowed-tools`): step 0 opens the
+workspace (as integrate-landscape does, making `interviews/questions/` and `interviews/guides/`),
+step 1 gets the questions file (one the consultant names, copied with `cp -n` under its canonical
+name, the path in single quotes, never from `transcripts/`; else the CLI's read command above,
+approved once; else it asks for the web's Markdown export), step 2 runs `groups` and asks one
+confirmation (the labels and counts; „Ohne Ansprechpartner“ named as a group whose models name
+nobody; above 20 questions the first 15 unless the consultant writes „alle“; the agents' and the
+technical questions counted; a CSV's groups, which differ), step 3 (optional) writes the notes file
+from analyzr's read-only MCP tools, step 4 runs `guide` until `errors` is empty, and step 5 hands
+over (the path, the count, the checklist, the transcript under `transcripts/` without names in the
+file name and to no AI assistant while names are in it, and how the answers map back: in „Offene
+Fragen“ by the question's text and „Betrifft“, since the web shows no ids, or by id through „Zum
+Ausfüllen (CSV)“ and „Antworten aus CSV übernehmen …“). Its MCP tools come only from a server of
+their own, `analyzr-lesen` (`mcp__analyzr-lesen__…`), which the consultant adds in a terminal with
+the `claude mcp add` line `token create -p <project> -n interviews -s analyzr:read` prints, under
+that name; the skill names only `list_processes`, `get_process`, `which_processes_use`,
+`find_unlinked_events`, `get_value_chain` and `get_landscape` (up to 40 models), each
+`readOnlyHint: true` in the MCP snapshot (a test checks it), and never a tool of the server
+`analyzr`, whose token may be an analysis run's. It never writes to analyzr (no `questions
+answer|outside|link|place|amend`, no `claim_*`, `propose_*`, `submit_*`, `release_*`, `withdraw_*`
+or `decide_*`), never reads the owner key or a token, and never opens, lists or searches
+`transcripts/`.
 
 ### Open questions (M6 S4)
 
@@ -5701,6 +5869,49 @@ agent's recordings ([Recordings](#simulation-agent-and-evalreplay-m2)).
   pairs ad hoc: the pair between the other two models accepted, the picture's pair proposed, and the
   edited rule's live preview listing „Modell KI-rekonstruiert oder aus Interview“ 1 and „Jetzt
   offen: 0 würden angenommen“).
+- M6 S6 steps 1–2 "the skill text generator and the interview guide": `tools/integrate/test` (480
+  tests, 407 before; 24 files) `texts.test.ts` (new: the texts that ship now, every include and
+  constant resolved and only `{{PROJEKT}}` and `{{MODELL_ID}}` left in a start prompt, every
+  required fragment rendered word for word where it must appear, every Desktop prompt beginning
+  „Nutze nur den Connector `analyzr-lesen`.“, the Desktop guide's skeleton equal to
+  `guideSkeleton()` line by line, the picture prompt's example validated and rendered without a
+  warning, the web's labels and the export's markers against `customer-export-dialog.tsx`,
+  `project-open-questions-page.tsx`, `answer-sheet-dialog.tsx`, `export.ts` and `model.ts`, every
+  constant used, every `start-prompt-*.de.md` generated or one of the three hand-written ones, the
+  include's indentation, and each error case of the generator), `interview-questions.test.ts`
+  (new: the JSON fixture valid `OpenQuestion`s in analyzr's order, the Markdown and CSV fixtures
+  equal to the server's renderer of it, the copied rules equal to the server's source; the three
+  readers, the Markdown unescaped with its hard breaks, what no guide asks; groups as the server's
+  with „Ohne Ansprechpartner“ last, unique ASCII slugs, the counts, selection by slug in the file's
+  order across groups, `--include-agent` from the Markdown and the CSV, `order-unexpected`; every
+  refusal of the three readers without echoing the file), `interview-guide.test.ts` (new: the four
+  goldens and `GUIDE_OUTPUTS`, the same bytes on every run from any folder, the checklist and „du“,
+  lines left out and escaped as the server escapes; the notes file: the fixture and the reference
+  example read, every error and `address-form`; the script from source: `groups` by slug, `guide`
+  by slug only, where it reads and writes, a workspace without its file or in a checkout, a bad
+  `--date`, `--replace`, nothing written when the notes fail, notes of a question `--max` cuts
+  unused, the order across groups and `group-cut`, no link of the interview folders or `--out`
+  followed, the size checked before the read (a sparse 21 MB file) and the notes as strict UTF-8,
+  `personal-data` naming the question and never the value, the usage with its version),
+  `yaml.test.ts` (new: 9 broken inputs giving a code and a position only, never the text, and a
+  valid file read alike with and without parser messages), `drift.test.ts` (the four texts in the
+  fresh build and the stale message naming their source; `analyzr-interview.mjs`'s built-ins, its
+  packages and no zod, network built-in, `fetch(`, `process.env`, clock or `transcripts` path in its
+  own regions; the copied bundle writing every golden byte for byte and printing the source's
+  `groups`) and `plugin.test.ts` (the files, the 0.1.6 row; interview-guide's frontmatter with no
+  `allowed-tools`, headings and ground rules, only shipped scripts and reference notes, nothing
+  that expands, slugs never labels, only the CLI's read command and the read token printed, never
+  an answer, the copy under its canonical name and never from `transcripts/`, the server
+  `analyzr-lesen` and never another, the technical kinds left out in one confirmation, only MCP
+  tools the snapshot marks `readOnlyHint: true`, German with „du“; integrate-landscape's ground rule
+  4 and workspace tree; no text naming a skill or script that does not ship; `interviews.md`'s
+  status line, sections and notes example); `apps/cli/test` (330 tests, 328 before, plus 7 skipped)
+  `e2e/cli.e2e.test.ts` (new: "the integrate plugin's analyzr-interview.mjs on a seeded project's
+  open questions (M6 S6)": a freshly seeded `nordwind-handel` project's open questions read with the
+  CLI as JSON, Markdown and CSV; the bundled script's groups equal from JSON and Markdown, „Ohne
+  Ansprechpartner“ last, the CSV asking as many; the guide of the largest other group from the JSON
+  and the Markdown (equal, every id once, in analyzr's order) and of the CSV's first group (every id
+  once, all from the list); two groups in the list's order; a label refused with exit 2; D1).
 
 ## CI
 
@@ -5717,7 +5928,8 @@ gate itself fails nothing), since M4 S4 `eval:placements` (fails on a gate; `eva
 be up to date, with no untracked file there), since M6 S3a `eval:descriptive` (report only; it
 fails when a transform yields BPMN the extractor warns about; `eval/reports` must be up to date,
 with no untracked file there), and the web build. The tests include `tools/integrate`'s drift
-test of the integrate plugin's bundled scripts and its release table. The eval steps print only
+test of the integrate plugin's bundled scripts (since M6 S6 also its generated skill texts and the
+Claude Desktop start prompts) and its release table. The eval steps print only
 `git diff --stat` (file names and counts), so no holdout line of a report or recording reaches
 the CI log. Job `docker`: builds the image
 and starts the Compose stack (`up -d --build --wait`), checks `/health` and `/`, runs `analyzr seed`,
@@ -8560,3 +8772,104 @@ modelled caller's unique call into a reconstructed callee (only the caller's cla
 an agent token uploaded blocks no owner's rule (S2c-3), the CLI's suggestion does not look up
 callees imported earlier, and a manifest-less upload of a spec bundle's BPMN files declares nothing
 and is not blocked.
+
+### M6 S6 steps 1–2 (2026-10-28)
+
+Same machine; steps 1 and 2 of M6 S6 "Interviews" (the skill text generator and the interview guide,
+[M6-INTEGRATION-AND-GAPS.md](M6-INTEGRATION-AND-GAPS.md) §3.7, §5 item 1 and §8 "S6's plan" and "S6
+steps 1–2 as delivered", owner decision 31, [The integrate plugin and
+`tools/integrate`](#the-integrate-plugin-and-toolsintegrate-m6-s3b)) on `feat/integration-and-gaps`
+on top of the decision-30 (2) safeguard (`49a60a3`). Step 1 generates the integrate plugin's skill
+texts and the German Claude Desktop start prompts from one source per skill in
+`tools/integrate/skills/` (`scripts/texts.ts`, called by `build()`, so `generate` writes them and
+the drift test compares them); integrate-landscape's source moved byte for byte, so the step alone
+changed no plugin byte. Step 2 adds the skill `/analyzr-integrate:interview-guide` with its
+deterministic script `analyzr-interview.mjs` (`groups`, `guide`): the open questions from a file
+below the workspace's `interviews/questions/` (the CLI's JSON list, else the web's Markdown, else
+its CSV), grouped as the server's export groups them, chosen by slug, in analyzr's order also across
+groups, written as a German guide with every question verbatim and its id, the agent's optional
+notes checked by the script, the neutral consent checklist first and „du“ to the interviewee
+(decision 31 (2), (3)); the skill pre-approves nothing, never writes to analyzr and reads the
+landscape only over the read-only MCP server `analyzr-lesen`. Both skills keep the agent out of
+`transcripts/`, the shared strict YAML reader `src/yaml.ts` serves the spec scripts and the guide,
+and the plugin is released as 0.1.6. Built by an implementing agent from the lead's plan (revised
+after a design and a privacy critique), reviewed adversarially (guide, security, generator); of the
+review round's 35 findings 31 fixed with tests, 3 in part and 1 rejected. The majors: with several
+groups and `--max` the guide sorted by group instead of keeping the list's order (now the file's
+order across the groups, `--max` cutting it, `group-cut`), and it put tool-maintenance questions to
+the interviewee (now `leftOut.technical`). Fixed among the others: „Die Landkarte kennt“ filled from
+too few subjects (now from the notes only); the hand-over not saying how answers find their question
+in a web that shows no ids; the checklist reaching beyond decision 31 (3) and promising names would
+be replaced (now the decision's words, what holds without a consent, and no transcript with names to
+an AI assistant); a second message for the question count; slugs that collided and changed with the
+input (now the whole label); the read-only MCP connection not set up as described (now a server of
+its own, `analyzr-lesen`); linked interview folders followed and no checkout guard on `--out`;
+quadratic slug collisions (40,000 colliding groups now 0.21 s); the size checked after the read;
+notes not read as strict UTF-8; `--out` a link with `--replace`; the copy of a named file with a
+loose path; no rule against reading the owner key; the YAML reader's errors untested for echoing
+text; a stale text's drift message not naming its source; the generator's skeleton built with
+`.replace`; `--include-agent` untested from the exports; the web's labels untested against the web;
+unused constants. In part, among them: „Ohne Ansprechpartner“ (the skill says the models name
+nobody; not split by folder, since the server's export never groups by folder) and transcripts in
+the workspace before the read lock ([HANDOFF.md](HANDOFF.md) §4 "Taken during M6 S6 steps 1–2" (c)).
+Rejected: a long source line (cosmetic). The readings taken are in [HANDOFF.md](HANDOFF.md) §4
+("Taken during M6 S6 steps 1–2"). For the first analysis: the open questions analyzr finds turn into
+a ready interview guide per contact group in one step, the questions that unlock the most first, and
+every answer maps back by its question id.
+
+1. Gates, from the fix round's run: every gate green (`pnpm format:check`, `pnpm -r typecheck`,
+   `pnpm -r lint`, `pnpm -r test` with Testcontainers: integrate 480 (407 before; 24 files), CLI
+   330 (328; plus 7 skipped, the live project), server 1,828, web 666, bpmn-facts 200, contracts
+   180, eval/tools 108, relations 91, agent-sim 57, procedures 37, demo 27, notices 9, client 4;
+   `pnpm eval:candidates`, `pnpm eval:replay`, `pnpm eval:placements`, `pnpm eval:descriptive`);
+   `git diff --exit-code eval/reports` clean; `pnpm notices` left the root `THIRD-PARTY-NOTICES.md`
+   unchanged (no dependency changed, the lockfile untouched); `pnpm --filter @analyzr/integrate
+   generate` run twice with identical bytes for all 28 files of the plugin and the Desktop
+   folder (the 12 that `generate` writes among them), then the drift, plugin, texts,
+   interview and YAML tests green (115). The plugin changes, by design, to exactly 0.1.6:
+   `plugin.json`, the new `scripts/analyzr-interview.mjs`, `skills/interview-guide/SKILL.md`
+   and `reference/interviews.md`, integrate-landscape's regenerated `SKILL.md`, the rebuilt
+   `analyzr-spec.mjs` and `analyzr-convert.mjs` and the notices; `RELEASES['0.1.6']` =
+   `5dc34ec06a1dbb5a6cf9e699647209a78a384198d569dad84c3f2afc574cacf1`, the older rows untouched;
+   `GUIDE_OUTPUTS['0.1.0']` = `ca5c16d479bc3f34b0cad97dbb5cc5a2ab75e9760d6b8ad9047a8ea9259b3032`;
+   `claude plugin validate --strict plugins/analyzr-integrate` "✔ Validation passed" (with the
+   informational `ICON_MISSING`, no icon; again in the docs pass with Claude Code 2.1.312, and
+   so did `claude plugin validate --strict .` for the marketplace). No server, contract, client,
+   web, MCP, procedure, migration, facts or trust-rule change; `apps/cli/src`, `plugins/analyzr`,
+   `.claude-plugin/marketplace.json`, `packages/procedures`, the recordings and the eval reports are
+   untouched, so it is live-run neutral; the MCP snapshots are unchanged. No Docker project of the
+   implementing agents' own was needed; only the tests' Testcontainers ran.
+2. What was checked: step 1's byte identity (integrate-landscape's `SKILL.md` and its moved source
+   with the same sha256, `git diff --exit-code plugins/analyzr-integrate` empty after `generate`);
+   the generator's syntax and every error case; the shared fragments in every text that needs
+   them; the three readers on synthetic fixtures whose Markdown and CSV the server's renderer
+   gives, and the copied rules against the server's source; the four golden guides from source and
+   from a copy of the bundle away from `node_modules`; every refusal and warning; the notes check;
+   the skill's command lines, slugs and read-only MCP tools against the snapshot; the bundle's
+   built-ins and its own regions without network, environment or clock; the CLI e2e on
+   Testcontainers: a freshly seeded `nordwind-handel` project's open questions read with the CLI
+   as JSON, Markdown and CSV, the bundled script's groups the same from JSON and Markdown, the guide
+   of the largest group but „Ohne Ansprechpartner“ from the JSON and the Markdown (equal, every id
+   once, in analyzr's order) and of the CSV's first group (every id once, all from the list), two
+   groups in the list's order, a label refused (D1). Probes on the bundle: a questions folder linked
+   into `transcripts/` refused, a model key with a backtick, a line break or empty refused, 40,000
+   colliding groups in 0.21 s. Sizes: `analyzr-interview.mjs` 261,385 bytes (62,557 gzip -9),
+   `analyzr-spec.mjs` 497,587, `analyzr-convert.mjs` 336,685, the interview-guide `SKILL.md` 17,028
+   and integrate-landscape's 72,383, the notices 18,585 bytes with 13 packages, the plugin 20 files
+   and 2,221,360 bytes.
+3. The lead's run: Every gate on the final tree, the CLI e2e suite on Testcontainers with the guide
+   from the server's own export (330 CLI tests plus 7 skipped), `generate` twice with identical
+   bytes, `claude plugin validate --strict` passed; no stack, since neither the server nor the web
+   changed. The commit (0.1.6 counts as released once it is committed):
+   this step's commit on the branch.
+
+Not checked: the skills in a Claude Code or Codex session (no LLM call was made), so neither
+Claude Code's prompts before each command, the `analyzr-lesen` server added under its own name and
+which of its read tools ask, nor an agent's notes file in practice; the two start prompts in Claude
+Desktop (nothing checks a chat's ids against the export); a real interview (the owner's checks
+before one, [HANDOFF.md](HANDOFF.md) §8); CI (the gates ran on this machine). Seen and not changed:
+until S6 step 4 brings the read lock, only the skills' texts keep an agent out of `transcripts/`;
+a CSV input groups differently from the JSON and the Markdown;
+`examples/agents/claude-code/README.md` and `examples/agents/codex/README.md` do not name the
+interview guide (nor `analyzr-lesen`), and the marketplace description still names only the BPMN
+path (S6 step 4).

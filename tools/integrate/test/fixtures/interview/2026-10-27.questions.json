@@ -1,0 +1,820 @@
+[
+  {
+    "id": "q-3f2a9c41d07be815",
+    "kind": "black-box-partner",
+    "source": "signal",
+    "group": "ask",
+    "subject": {
+      "type": "ref",
+      "id": "lager/wareneingang#Participant_Spedition"
+    },
+    "subjectLabel": "Pool in „Nordwind Handel – Wareneingang“",
+    "modelKeys": [
+      "lager/wareneingang"
+    ],
+    "text": "Externer Partner oder fehlendes Modell? Nachrichten: „Lieferavis“.",
+    "detail": "Der Pool hat im Modell keinen Prozess: ein externer Partner, oder ein Prozess, dessen Modell fehlt. Nachrichtenflüsse: „Lieferavis“ an „Ware angekündigt“.",
+    "context": null,
+    "label": null,
+    "askWho": {
+      "lanes": [
+        "Wareneingang"
+      ],
+      "stepOwners": [
+        "Lager"
+      ],
+      "folder": "lager"
+    },
+    "unlocks": 12,
+    "refs": [
+      "lager/wareneingang#Participant_Spedition",
+      "lager/wareneingang#Start_WareAngekuendigt"
+    ],
+    "raisedBy": {
+      "sourceKind": "rule",
+      "handle": null,
+      "seq": 31
+    },
+    "state": "open",
+    "answers": [
+      {
+        "id": "oqa_01M6S600000000000000000001",
+        "questionId": "q-3f2a9c41d07be815",
+        "kind": "answer",
+        "role": "note",
+        "target": "answer",
+        "text": "Laut Lagerleitung kommt das Avis über das Speditionsportal.",
+        "note": null,
+        "by": "human:berater",
+        "sourceKind": "human",
+        "seq": 200,
+        "at": "2026-10-21T09:30:00.000Z",
+        "withdrawal": null
+      }
+    ],
+    "actions": [
+      {
+        "type": "outside",
+        "primary": true,
+        "label": "Liegt außerhalb der Landschaft"
+      },
+      {
+        "type": "link",
+        "primary": false,
+        "label": "Verknüpfen mit …",
+        "pick": "process"
+      },
+      {
+        "type": "note",
+        "primary": false,
+        "label": "Notiz hinzufügen"
+      }
+    ]
+  },
+  {
+    "id": "q-8b1d0e2f4a6c9375",
+    "kind": "held",
+    "source": "hold",
+    "group": "ask",
+    "subject": {
+      "type": "relation",
+      "id": "rel_01M6S600000000000000000001"
+    },
+    "subjectLabel": "„Kommissionierung“ → „Versand vorbereiten“",
+    "modelKeys": [
+      "lager/kommissionierung",
+      "versand/versand-vorbereiten"
+    ],
+    "text": "Gilt die Übergabe an den Versand auch für Expressaufträge?\nUnd wer gibt sie frei?",
+    "detail": null,
+    "context": "Laut Workshop gibt es einen eigenen Express-Ablauf, siehe https://wiki.nordwind.example/lager [intern] *vorläufig*",
+    "label": "mit Lager klären",
+    "askWho": {
+      "lanes": [
+        "Kommissionierung"
+      ],
+      "stepOwners": [
+        "Lager"
+      ],
+      "folder": "lager"
+    },
+    "unlocks": 9,
+    "refs": [
+      "lager/kommissionierung#End_Kommissioniert",
+      "versand/versand-vorbereiten#Start_Versand"
+    ],
+    "raisedBy": {
+      "sourceKind": "human",
+      "handle": "human:berater",
+      "seq": 120
+    },
+    "state": "open",
+    "answers": [
+      {
+        "id": "oqa_01M6S600000000000000000002",
+        "questionId": "q-8b1d0e2f4a6c9375",
+        "kind": "answer",
+        "role": "note",
+        "target": "answer",
+        "text": "Express läuft über die Packstation 2.\nFreigabe durch die Schichtleitung.",
+        "note": null,
+        "by": "human:berater",
+        "sourceKind": "human",
+        "seq": 200,
+        "at": "2026-10-22T14:00:00.000Z",
+        "withdrawal": null
+      }
+    ],
+    "actions": [
+      {
+        "type": "decide",
+        "primary": true,
+        "label": "Vorschlag prüfen",
+        "decides": [
+          {
+            "type": "relation",
+            "id": "rel_01M6S600000000000000000001",
+            "version": 2
+          }
+        ]
+      },
+      {
+        "type": "note",
+        "primary": false,
+        "label": "Notiz hinzufügen"
+      }
+    ]
+  },
+  {
+    "id": "q-4b6d8f0a2c1e3957",
+    "kind": "external-partner",
+    "source": "no-link",
+    "group": "ask",
+    "subject": {
+      "type": "ref",
+      "id": "versand/paketversand#Participant_Paketdienst"
+    },
+    "subjectLabel": "Pool „Paketdienst“",
+    "modelKeys": [
+      "versand/paketversand"
+    ],
+    "text": "Ist „Paketdienst“ ein externer Partner?",
+    "detail": "Der Paketdienst ist ein externer Dienstleister.",
+    "context": null,
+    "label": null,
+    "askWho": {
+      "lanes": [
+        "Versand"
+      ],
+      "stepOwners": [],
+      "folder": "versand"
+    },
+    "unlocks": 8,
+    "refs": [
+      "versand/paketversand#Participant_Paketdienst"
+    ],
+    "raisedBy": {
+      "sourceKind": "agent",
+      "handle": "agent:claude-code-1",
+      "seq": 140
+    },
+    "state": "answered",
+    "answers": [
+      {
+        "id": "oqa_01M6S600000000000000000003",
+        "questionId": "q-4b6d8f0a2c1e3957",
+        "kind": "outside-landscape",
+        "role": "outside-mark",
+        "target": "answer",
+        "text": null,
+        "note": null,
+        "by": "human:berater",
+        "sourceKind": "human",
+        "seq": 200,
+        "at": "2026-10-20T10:00:00.000Z",
+        "withdrawal": null
+      }
+    ],
+    "actions": [
+      {
+        "type": "outside",
+        "primary": true,
+        "label": "Liegt außerhalb der Landschaft"
+      },
+      {
+        "type": "note",
+        "primary": false,
+        "label": "Notiz hinzufügen"
+      }
+    ]
+  },
+  {
+    "id": "q-c47e2a9b05d1f863",
+    "kind": "placement-unsure",
+    "source": "unsure",
+    "group": "ask",
+    "subject": {
+      "type": "process",
+      "id": "lager/bestandsueberwachung#Process_Bestand"
+    },
+    "subjectLabel": "„Bestandsüberwachung“",
+    "modelKeys": [
+      "lager/bestandsueberwachung"
+    ],
+    "text": "Auf welchen Schritt der Wertschöpfungskette gehört „Bestandsüberwachung“?",
+    "detail": "Die Bestandsüberwachung passt zu „Lager“ und zu „Controlling“; das Modell sagt nicht, wer sie verantwortet.",
+    "context": null,
+    "label": null,
+    "askWho": {
+      "lanes": [
+        "Lagerleitung"
+      ],
+      "stepOwners": [],
+      "folder": "lager"
+    },
+    "unlocks": 7,
+    "refs": [
+      "lager/bestandsueberwachung#Process_Bestand"
+    ],
+    "raisedBy": {
+      "sourceKind": "agent",
+      "handle": "agent:claude-code-1",
+      "seq": 150
+    },
+    "state": "open",
+    "answers": [],
+    "actions": [
+      {
+        "type": "place",
+        "primary": true,
+        "label": "Schritt wählen …",
+        "pick": "step"
+      },
+      {
+        "type": "note",
+        "primary": false,
+        "label": "Notiz hinzufügen"
+      }
+    ]
+  },
+  {
+    "id": "q-2c8e4a6f0b3d9175",
+    "kind": "message-partner-missing",
+    "source": "finding",
+    "group": "ask",
+    "subject": {
+      "type": "ref",
+      "id": "versand/tourenplanung#Throw_VersandAuftrag"
+    },
+    "subjectLabel": "„Versand_Auftrag*Eil“",
+    "modelKeys": [
+      "versand/tourenplanung"
+    ],
+    "text": "Wer empfängt, was „Versand_Auftrag*Eil“ sendet?",
+    "detail": "Kein anderer Prozess der Landschaft empfängt die Nachricht „Versand_Auftrag*Eil“, und kein Nachrichtenfluss führt zu einem Partner.",
+    "context": null,
+    "label": null,
+    "askWho": {
+      "lanes": [
+        "Disposition",
+        "Versand"
+      ],
+      "stepOwners": [],
+      "folder": "versand"
+    },
+    "unlocks": 6,
+    "refs": [
+      "versand/tourenplanung#Throw_VersandAuftrag"
+    ],
+    "raisedBy": {
+      "sourceKind": "rule",
+      "handle": null,
+      "seq": 40
+    },
+    "state": "open",
+    "answers": [],
+    "actions": [
+      {
+        "type": "link",
+        "primary": true,
+        "label": "Verknüpfen mit …",
+        "pick": "endpoint"
+      },
+      {
+        "type": "outside",
+        "primary": false,
+        "label": "Liegt außerhalb der Landschaft"
+      },
+      {
+        "type": "note",
+        "primary": false,
+        "label": "Notiz hinzufügen"
+      }
+    ]
+  },
+  {
+    "id": "q-1e5f7a3c9d2b4086",
+    "kind": "undocumented-process",
+    "source": "signal",
+    "group": "ask",
+    "subject": {
+      "type": "process",
+      "id": "lager/wareneingang#Process_Wareneingang"
+    },
+    "subjectLabel": "„Wareneingang“",
+    "modelKeys": [
+      "lager/wareneingang"
+    ],
+    "text": "Was leistet „Wareneingang“?",
+    "detail": "Der Prozess hat im Modell keine Dokumentation.",
+    "context": null,
+    "label": null,
+    "askWho": {
+      "lanes": [
+        "Wareneingang",
+        "Qualitätsprüfung"
+      ],
+      "stepOwners": [
+        "Lager"
+      ],
+      "folder": "lager"
+    },
+    "unlocks": 5,
+    "refs": [
+      "lager/wareneingang#Process_Wareneingang"
+    ],
+    "raisedBy": {
+      "sourceKind": "rule",
+      "handle": null,
+      "seq": 31
+    },
+    "state": "open",
+    "answers": [],
+    "actions": [
+      {
+        "type": "amend",
+        "primary": true,
+        "label": "Dokumentation ergänzen …"
+      },
+      {
+        "type": "note",
+        "primary": false,
+        "label": "Notiz hinzufügen"
+      }
+    ]
+  },
+  {
+    "id": "q-5a9c3e7b1f0d2846",
+    "kind": "agent-question",
+    "source": "agent-question",
+    "group": "agent",
+    "subject": {
+      "type": "relation",
+      "id": "rel_01M6S600000000000000000002"
+    },
+    "subjectLabel": "„Bestand prüfen“ → „Bestandsüberwachung“",
+    "modelKeys": [
+      "lager/bestandsueberwachung",
+      "lager/kommissionierung"
+    ],
+    "text": "Ist „Bestand prüfen“ derselbe Ablauf wie „Bestandsüberwachung“?",
+    "detail": null,
+    "context": null,
+    "label": null,
+    "askWho": {
+      "lanes": [
+        "Kommissionierung"
+      ],
+      "stepOwners": [
+        "Lager"
+      ],
+      "folder": "lager"
+    },
+    "unlocks": 4,
+    "refs": [
+      "lager/kommissionierung#Call_BestandPruefen",
+      "lager/bestandsueberwachung#Process_Bestand"
+    ],
+    "raisedBy": {
+      "sourceKind": "agent",
+      "handle": "agent:claude-code-1",
+      "seq": 151
+    },
+    "state": "open",
+    "answers": [],
+    "actions": [
+      {
+        "type": "decide",
+        "primary": true,
+        "label": "Vorschlag prüfen",
+        "decides": [
+          {
+            "type": "relation",
+            "id": "rel_01M6S600000000000000000002",
+            "version": 1
+          }
+        ]
+      },
+      {
+        "type": "note",
+        "primary": false,
+        "label": "Notiz hinzufügen"
+      }
+    ]
+  },
+  {
+    "id": "q-9d3b6f1a8e2c7054",
+    "kind": "call-target-unknown",
+    "source": "finding",
+    "group": "ask",
+    "subject": {
+      "type": "ref",
+      "id": "lager/kommissionierung#Call_Nachschub"
+    },
+    "subjectLabel": "„Nachschub anfordern“",
+    "modelKeys": [
+      "lager/kommissionierung"
+    ],
+    "text": "Welchen Prozess ruft „Nachschub anfordern“ auf?",
+    "detail": "Der Aufruf nennt kein Ziel, das ein Modell der Landschaft definiert.",
+    "context": null,
+    "label": null,
+    "askWho": {
+      "lanes": [
+        "Kommissionierung"
+      ],
+      "stepOwners": [
+        "Lager"
+      ],
+      "folder": "lager"
+    },
+    "unlocks": 3,
+    "refs": [
+      "lager/kommissionierung#Call_Nachschub"
+    ],
+    "raisedBy": {
+      "sourceKind": "rule",
+      "handle": null,
+      "seq": 33
+    },
+    "state": "open",
+    "answers": [],
+    "actions": [
+      {
+        "type": "amend",
+        "primary": true,
+        "label": "Ziel im Modell eintragen …"
+      },
+      {
+        "type": "link",
+        "primary": false,
+        "label": "Nur verknüpfen …",
+        "pick": "process"
+      },
+      {
+        "type": "outside",
+        "primary": false,
+        "label": "Liegt außerhalb der Landschaft"
+      },
+      {
+        "type": "note",
+        "primary": false,
+        "label": "Notiz hinzufügen"
+      }
+    ]
+  },
+  {
+    "id": "q-7f1a3c5e9b2d4608",
+    "kind": "call-target-dynamic",
+    "source": "finding",
+    "group": "ask",
+    "subject": {
+      "type": "ref",
+      "id": "versand/tourenplanung#Call_Spediteur"
+    },
+    "subjectLabel": "„Spediteur beauftragen“",
+    "modelKeys": [
+      "versand/tourenplanung"
+    ],
+    "text": "Welche Prozesse ruft „Spediteur beauftragen“ auf?",
+    "detail": "Das Ziel wird erst beim Ausführen bestimmt (${spediteurProzess}).",
+    "context": null,
+    "label": null,
+    "askWho": {
+      "lanes": [
+        "Disposition",
+        "Versand"
+      ],
+      "stepOwners": [],
+      "folder": "versand"
+    },
+    "unlocks": 2,
+    "refs": [
+      "versand/tourenplanung#Call_Spediteur"
+    ],
+    "raisedBy": {
+      "sourceKind": "rule",
+      "handle": null,
+      "seq": 40
+    },
+    "state": "open",
+    "answers": [],
+    "actions": [
+      {
+        "type": "link",
+        "primary": true,
+        "label": "Mögliche Ziele verknüpfen …",
+        "pick": "process",
+        "multiple": true
+      },
+      {
+        "type": "outside",
+        "primary": false,
+        "label": "Liegt außerhalb der Landschaft"
+      },
+      {
+        "type": "note",
+        "primary": false,
+        "label": "Notiz hinzufügen"
+      }
+    ]
+  },
+  {
+    "id": "q-6e0a2c4b8d1f5379",
+    "kind": "isolated-process",
+    "source": "signal",
+    "group": "ask",
+    "subject": {
+      "type": "process",
+      "id": "service/garantie#Process_Garantie"
+    },
+    "subjectLabel": "„Garantiefall prüfen“",
+    "modelKeys": [
+      "service/garantie"
+    ],
+    "text": "Mit welchen Prozessen hängt „Garantiefall prüfen“ zusammen?",
+    "detail": "Der Prozess hat keine Beziehung, keinen Kandidaten und keinen Nachrichtenfluss zu einem anderen Prozess.",
+    "context": null,
+    "label": null,
+    "askWho": {
+      "lanes": [],
+      "stepOwners": [],
+      "folder": "service"
+    },
+    "unlocks": 1,
+    "refs": [
+      "service/garantie#Process_Garantie"
+    ],
+    "raisedBy": {
+      "sourceKind": "rule",
+      "handle": null,
+      "seq": 36
+    },
+    "state": "open",
+    "answers": [],
+    "actions": [
+      {
+        "type": "link",
+        "primary": true,
+        "label": "Verknüpfen mit …",
+        "pick": "process"
+      },
+      {
+        "type": "outside",
+        "primary": false,
+        "label": "Liegt außerhalb der Landschaft"
+      },
+      {
+        "type": "note",
+        "primary": false,
+        "label": "Notiz hinzufügen"
+      }
+    ]
+  },
+  {
+    "id": "q-e3a5c7f9b1d0284a",
+    "kind": "extractor-loss",
+    "source": "signal",
+    "group": "ask",
+    "subject": {
+      "type": "model",
+      "id": "lager/packstation"
+    },
+    "subjectLabel": "„Packstation“ (lager/packstation)",
+    "modelKeys": [
+      "lager/packstation"
+    ],
+    "text": "Welche Elemente von „Packstation“ (lager/packstation) sind beim Import verloren gegangen?",
+    "detail": "analyzr hat 2 Elemente übersprungen: doppelte ID „Task_Packen“; ein Element ohne ID (bpmn:sequenceFlow). Was dort modelliert ist, fehlt der Analyse. Korrigiere das Modell im Quellsystem (oder lass den Export mit normalize-bpmn normalisieren) und importiere es erneut.",
+    "context": null,
+    "label": null,
+    "askWho": {
+      "lanes": [
+        "Packstation"
+      ],
+      "stepOwners": [
+        "Lager",
+        "Versand"
+      ],
+      "folder": "lager"
+    },
+    "unlocks": 0,
+    "refs": [],
+    "raisedBy": {
+      "sourceKind": "rule",
+      "handle": null,
+      "seq": 38
+    },
+    "state": "open",
+    "answers": [],
+    "actions": [
+      {
+        "type": "note",
+        "primary": true,
+        "label": "Notiz hinzufügen"
+      }
+    ]
+  },
+  {
+    "id": "q-0d2f4b6a8c3e1597",
+    "kind": "unlabelled-boundary",
+    "source": "signal",
+    "group": "ask",
+    "subject": {
+      "type": "process",
+      "id": "service/garantie#Process_Garantie"
+    },
+    "subjectLabel": "„Garantiefall prüfen“",
+    "modelKeys": [
+      "service/garantie"
+    ],
+    "text": "Wie heißen Start und Ende von „Garantiefall prüfen“?",
+    "detail": "Ein Start- und ein Endereignis haben keinen Namen.",
+    "context": null,
+    "label": null,
+    "askWho": {
+      "lanes": [
+        "Lager"
+      ],
+      "stepOwners": [],
+      "folder": "service"
+    },
+    "unlocks": 0,
+    "refs": [
+      "service/garantie#Start_1",
+      "service/garantie#End_1"
+    ],
+    "raisedBy": {
+      "sourceKind": "rule",
+      "handle": null,
+      "seq": 36
+    },
+    "state": "open",
+    "answers": [],
+    "actions": [
+      {
+        "type": "amend",
+        "primary": true,
+        "label": "Namen eintragen …"
+      },
+      {
+        "type": "note",
+        "primary": false,
+        "label": "Notiz hinzufügen"
+      }
+    ]
+  },
+  {
+    "id": "q-b2d4f6a8c0e1357a",
+    "kind": "process-without-step",
+    "source": "value-chain-finding",
+    "group": "ask",
+    "subject": {
+      "type": "process",
+      "id": "lager/inventur#Process_Inventur"
+    },
+    "subjectLabel": "„Inventur“",
+    "modelKeys": [
+      "lager/inventur"
+    ],
+    "text": "Auf welchen Schritt der Wertschöpfungskette gehört „Inventur“?",
+    "detail": "Der Prozess ist noch auf keinem Schritt platziert.",
+    "context": null,
+    "label": null,
+    "askWho": {
+      "lanes": [
+        "Lagerleitung"
+      ],
+      "stepOwners": [],
+      "folder": "lager"
+    },
+    "unlocks": 1,
+    "refs": [
+      "lager/inventur#Process_Inventur"
+    ],
+    "raisedBy": {
+      "sourceKind": "rule",
+      "handle": null,
+      "seq": 60
+    },
+    "state": "open",
+    "answers": [],
+    "actions": [
+      {
+        "type": "place",
+        "primary": true,
+        "label": "Schritt wählen …",
+        "pick": "step"
+      },
+      {
+        "type": "place",
+        "primary": false,
+        "label": "Gehört zu keinem Schritt",
+        "step": "@outside"
+      },
+      {
+        "type": "note",
+        "primary": false,
+        "label": "Notiz hinzufügen"
+      }
+    ]
+  },
+  {
+    "id": "q-a1c3e5f7092b4d68",
+    "kind": "step-without-process",
+    "source": "value-chain-finding",
+    "group": "proposal",
+    "subject": {
+      "type": "step",
+      "id": "step-lager"
+    },
+    "subjectLabel": "„Lager“",
+    "modelKeys": [],
+    "text": "Welche Prozesse gehören zu „Lager“?",
+    "detail": "Auf dem Schritt ist noch kein Prozess platziert.",
+    "context": null,
+    "label": null,
+    "askWho": {
+      "lanes": [],
+      "stepOwners": [
+        "Lager"
+      ],
+      "folder": null
+    },
+    "unlocks": 0,
+    "refs": [],
+    "raisedBy": {
+      "sourceKind": "rule",
+      "handle": null,
+      "seq": 60
+    },
+    "state": "open",
+    "answers": [],
+    "actions": [
+      {
+        "type": "decide",
+        "primary": true,
+        "label": "Auf der Kette prüfen",
+        "step": "step-lager"
+      },
+      {
+        "type": "note",
+        "primary": false,
+        "label": "Notiz hinzufügen"
+      }
+    ]
+  },
+  {
+    "id": "q-f0e1d2c3b4a59687",
+    "kind": "summary-note",
+    "source": "summary",
+    "group": "info",
+    "subject": {
+      "type": "model",
+      "id": "lager/kommissionierung"
+    },
+    "subjectLabel": "„Kommissionierung“ (lager/kommissionierung)",
+    "modelKeys": [
+      "lager/kommissionierung"
+    ],
+    "text": "Die Kommissionierung übergibt an den Versand; die Nachschubanforderung bleibt offen.",
+    "detail": null,
+    "context": null,
+    "label": null,
+    "askWho": {
+      "lanes": [],
+      "stepOwners": [],
+      "folder": "lager"
+    },
+    "unlocks": 0,
+    "refs": [],
+    "raisedBy": {
+      "sourceKind": "agent",
+      "handle": "agent:claude-code-1",
+      "seq": 152
+    },
+    "state": "open",
+    "answers": [],
+    "actions": []
+  }
+]

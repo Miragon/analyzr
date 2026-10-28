@@ -16,9 +16,9 @@ compares it).
 | min-dash | 5.1.0 | MIT | analyzr-spec.mjs, normalize-bpmn.mjs |
 | moddle | 8.2.1 | MIT | analyzr-spec.mjs, normalize-bpmn.mjs |
 | moddle-xml | 12.3.1 | MIT | analyzr-spec.mjs, normalize-bpmn.mjs |
-| rolldown | 1.2.12 | MIT | analyzr-convert.mjs, analyzr-spec.mjs, analyzr.mjs |
+| rolldown | 1.2.12 | MIT | analyzr-convert.mjs, analyzr-interview.mjs, analyzr-spec.mjs, analyzr.mjs |
 | saxen | 11.2.0 | MIT | analyzr-spec.mjs, normalize-bpmn.mjs |
-| yaml | 2.9.1 | ISC | analyzr-convert.mjs, analyzr-spec.mjs |
+| yaml | 2.9.1 | ISC | analyzr-convert.mjs, analyzr-interview.mjs, analyzr-spec.mjs |
 | zeebe-bpmn-moddle | 2.0.0 | MIT | normalize-bpmn.mjs |
 | zod | 4.6.5 | MIT | analyzr.mjs |
 

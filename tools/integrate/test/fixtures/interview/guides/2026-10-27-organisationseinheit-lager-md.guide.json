@@ -1,0 +1,94 @@
+{
+  "format": "analyzr-guide/1",
+  "project": {
+    "key": "nordwind-handel",
+    "name": "Nordwind Handel GmbH"
+  },
+  "date": "2026-10-27",
+  "address": "du",
+  "input": "md",
+  "questionsFile": "interviews/questions/2026-10-27.questions.md",
+  "sha256": "9388de1065fbeb0078c083b95d5ddfadd2c50d1e81ed5f93befb3abaaf315bf9",
+  "guide": "interviews/guides/2026-10-27-organisationseinheit-lager-md.md",
+  "notes": null,
+  "groups": [
+    {
+      "slug": "organisationseinheit-lager",
+      "label": "Organisationseinheit Lager"
+    }
+  ],
+  "total": 4,
+  "max": null,
+  "questions": [
+    {
+      "n": 1,
+      "id": "q-3f2a9c41d07be815",
+      "kind": "black-box-partner",
+      "kindLabel": "Pool ohne Prozess",
+      "text": "Externer Partner oder fehlendes Modell? Nachrichten: „Lieferavis“.",
+      "detail": "Der Pool hat im Modell keinen Prozess: ein externer Partner, oder ein Prozess, dessen Modell fehlt. Nachrichtenflüsse: „Lieferavis“ an „Ware angekündigt“.",
+      "subjectLabel": "Pool in „Nordwind Handel – Wareneingang“",
+      "contact": "Lager, Wareneingang",
+      "group": "organisationseinheit-lager",
+      "modelKeys": [],
+      "unlocks": null,
+      "primaryAction": null,
+      "actions": [],
+      "latestNote": {
+        "text": "Laut Lagerleitung kommt das Avis über das Speditionsportal.",
+        "date": "21.10.2026"
+      }
+    },
+    {
+      "n": 2,
+      "id": "q-8b1d0e2f4a6c9375",
+      "kind": "held",
+      "kindLabel": "Vorgemerkt",
+      "text": "Gilt die Übergabe an den Versand auch für Expressaufträge?\nUnd wer gibt sie frei?",
+      "detail": null,
+      "subjectLabel": "„Kommissionierung“ → „Versand vorbereiten“",
+      "contact": "Lager, Kommissionierung",
+      "group": "organisationseinheit-lager",
+      "modelKeys": [],
+      "unlocks": null,
+      "primaryAction": null,
+      "actions": [],
+      "latestNote": {
+        "text": "Express läuft über die Packstation 2.\nFreigabe durch die Schichtleitung.",
+        "date": "22.10.2026"
+      }
+    },
+    {
+      "n": 3,
+      "id": "q-1e5f7a3c9d2b4086",
+      "kind": "undocumented-process",
+      "kindLabel": "Prozess ohne Dokumentation",
+      "text": "Was leistet „Wareneingang“?",
+      "detail": "Der Prozess hat im Modell keine Dokumentation.",
+      "subjectLabel": "„Wareneingang“",
+      "contact": "Lager, Wareneingang, Qualitätsprüfung",
+      "group": "organisationseinheit-lager",
+      "modelKeys": [],
+      "unlocks": null,
+      "primaryAction": null,
+      "actions": [],
+      "latestNote": null
+    },
+    {
+      "n": 4,
+      "id": "q-9d3b6f1a8e2c7054",
+      "kind": "call-target-unknown",
+      "kindLabel": "Aufrufziel unbekannt",
+      "text": "Welchen Prozess ruft „Nachschub anfordern“ auf?",
+      "detail": "Der Aufruf nennt kein Ziel, das ein Modell der Landschaft definiert.",
+      "subjectLabel": "„Nachschub anfordern“",
+      "contact": "Lager, Kommissionierung",
+      "group": "organisationseinheit-lager",
+      "modelKeys": [],
+      "unlocks": null,
+      "primaryAction": null,
+      "actions": [],
+      "latestNote": null
+    }
+  ]
+}

@@ -1,7 +1,8 @@
 // `pnpm --filter @analyzr/integrate generate`: writes the bundled scripts and the
-// THIRD-PARTY-NOTICES.md of plugins/analyzr-integrate (scripts/bundle.ts). Run it after
-// every change of tools/integrate/src or of a bundled dependency, and commit the result;
-// the drift test fails until the files match.
+// THIRD-PARTY-NOTICES.md of plugins/analyzr-integrate (scripts/bundle.ts), its skill texts and
+// the Claude Desktop start prompts (scripts/texts.ts, from tools/integrate/skills/). Run it after
+// every change of tools/integrate/src, tools/integrate/skills or a bundled dependency, and
+// commit the result; the drift test fails until the files match.
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 

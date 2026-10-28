@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "license": "MIT",
-  "description": "Sources and tests of the scripts of the Claude Code plugin plugins/analyzr-integrate (M6 §3.7): inspect, normalize-bpmn, the read-only analyzr-read, analyzr-spec (renderer) and analyzr-convert (converter runner), bundled with the CLI's plugin entry (apps/cli/src/plugin-main.ts, as analyzr.mjs) into self-contained plugins/analyzr-integrate/scripts/*.mjs by `pnpm --filter @analyzr/integrate generate`; imported by nothing in apps/ or packages/",
+  "description": "Sources and tests of the scripts of the Claude Code plugin plugins/analyzr-integrate (M6 §3.7): inspect, normalize-bpmn, the read-only analyzr-read, analyzr-spec (renderer), analyzr-convert (converter runner) and analyzr-interview (interview guide, M6 S6), bundled with the CLI's plugin entry (apps/cli/src/plugin-main.ts, as analyzr.mjs) into self-contained plugins/analyzr-integrate/scripts/*.mjs, and of the plugin's skill texts and the Claude Desktop start prompts (sources in skills/), all written by `pnpm --filter @analyzr/integrate generate`; imported by nothing in apps/ or packages/",
   "type": "module",
   "engines": {
     "node": ">=24"

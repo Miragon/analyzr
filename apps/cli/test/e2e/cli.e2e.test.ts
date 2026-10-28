@@ -20,7 +20,9 @@
  * external-ids`, unchanged bytes, the import warnings), with the identities
  * unchanged bytes record since M6 S2b follow-up step 5 (moved folders), and the integrate
  * plugin's bundled scripts of M6 S3c: a converter run, the spec bundles and their import with
- * the plugin's `analyzr.mjs` against the checkout's `analyzr` (done-when D3 (d) and D4).
+ * the plugin's `analyzr.mjs` against the checkout's `analyzr` (done-when D3 (d) and D4), and its
+ * interview guide of M6 S6 (`analyzr-interview.mjs` on the seeded project's open questions as the
+ * CLI lists them and as the web exports them, done-when D1).
  */
 import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -2065,6 +2067,177 @@ describe("the integrate plugin's analyzr-convert.mjs, analyzr-spec.mjs and analy
       ['vertrieb/auftragsabwicklung', 'reconstructed', adhoc],
       ['vertrieb/finanzen/bonitaetspruefung', 'reconstructed', adhoc],
     ]);
+  });
+});
+
+describe("the integrate plugin's analyzr-interview.mjs on a seeded project's open questions (M6 S6)", () => {
+  const scripts = path.join(REPO_ROOT, 'plugins/analyzr-integrate/scripts');
+  const ws = () => path.join(dir, 's6-ws');
+  const questions = (ext: string) =>
+    path.join(ws(), 'interviews', 'questions', `2026-10-28.questions.${ext}`);
+  const guides = () => path.join(ws(), 'interviews', 'guides');
+
+  /** Runs the plugin's bundled analyzr-interview.mjs, without ANALYZR_* and a credential. */
+  async function guideScript(args: string[]) {
+    try {
+      const { stdout, stderr } = await promisify(execFile)(
+        process.execPath,
+        [path.join(scripts, 'analyzr-interview.mjs'), ...args],
+        { cwd: dir, env: cleanEnv({}) },
+      );
+      return { code: 0, stdout, stderr };
+    } catch (err) {
+      const e = err as { code?: number; stdout?: string; stderr?: string };
+      return { code: e.code ?? -1, stdout: e.stdout ?? '', stderr: e.stderr ?? '' };
+    }
+  }
+
+  interface Groups {
+    input: string;
+    questions: number;
+    groups: { slug: string; label: string; count: number }[];
+  }
+  interface Written {
+    written: boolean;
+    guide: string;
+    record: string;
+    ids: string[];
+  }
+
+  // skill steps 0 and 1: the workspace, the CLI's read command exactly as the skill runs it, and
+  // the web's two exports for the customer (the same filters)
+  beforeAll(async () => {
+    const seeded = await analyzr([
+      'seed',
+      'nordwind-handel',
+      '--project',
+      's6-guide',
+      '--value-chains',
+    ]);
+    expect(seeded.code).toBe(0);
+    await mkdir(path.join(ws(), 'interviews', 'questions'), { recursive: true });
+    await writeFile(
+      path.join(ws(), 'analyzr-workspace.json'),
+      JSON.stringify({
+        format: 'analyzr-workspace/1',
+        project: { key: 's6-guide', name: 'Nordwind Handel GmbH' },
+        analyzrUrl: server.url,
+        cli: 'plugin',
+        systems: [],
+      }),
+    );
+    const filters = ['-p', 's6-guide', '--state', 'open', '--group', 'ask', '--group', 'agent'];
+    for (const format of ['json', 'md', 'csv']) {
+      const r = await analyzr([
+        'questions',
+        'list',
+        ...filters,
+        '--format',
+        format,
+        '-o',
+        questions(format),
+      ]);
+      expect(r, format).toMatchObject({ code: 0, err: '' });
+    }
+  });
+
+  it('groups the CLI’s JSON as the Markdown export does and asks every question once (done-when D1)', async () => {
+    const items = JSON.parse(await readFile(questions('json'), 'utf8')) as {
+      id: string;
+      group: string;
+      kind: string;
+    }[];
+    // the questions to clarify but the work for the consultant in analyzr (the plugin's
+    // TECHNICAL_KINDS: a model to export again, unjudged pairs, an overtaken amendment)
+    const technical = ['extractor-loss', 'unjudged', 'amendment-conflict'];
+    const asked = items.filter((q) => q.group === 'ask' && !technical.includes(q.kind));
+    expect(asked.length).toBeGreaterThan(20);
+    const fromJson = await guideScript(['groups', questions('json'), '--workspace', ws()]);
+    expect(fromJson, fromJson.stderr).toMatchObject({ code: 0, stderr: '' });
+    const g = JSON.parse(fromJson.stdout) as Groups;
+    expect(g.questions).toBe(asked.length);
+    expect(g.groups.reduce((n, x) => n + x.count, 0)).toBe(asked.length);
+    expect(g.groups.at(-1)?.label).toBe('Ohne Ansprechpartner');
+    expect(g.groups.some((x) => x.label.startsWith('Organisationseinheit'))).toBe(true);
+    expect(g.groups.some((x) => x.label.startsWith('Lanes '))).toBe(true);
+    // the Markdown's groups are the server's: the same slugs, labels and counts
+    const fromMd = JSON.parse(
+      (await guideScript(['groups', questions('md'), '--workspace', ws()])).stdout,
+    ) as Groups;
+    expect(fromMd.groups).toEqual(g.groups);
+    // the CSV: every question too, in groups of its contact cell
+    const fromCsv = JSON.parse(
+      (await guideScript(['groups', questions('csv'), '--workspace', ws()])).stdout,
+    ) as Groups;
+    expect(fromCsv.questions).toBe(asked.length);
+    // the slugs are the labels' (a lane and an org unit of one name never share one)
+    for (const x of g.groups) {
+      expect(x.slug, x.label).toMatch(/^(organisationseinheit(en)?|lanes|ohne-ansprechpartner)\b/);
+    }
+  });
+
+  it('writes the guide of a group from each input, every question with its id in analyzr’s order', async () => {
+    const items = JSON.parse(await readFile(questions('json'), 'utf8')) as { id: string }[];
+    const order = new Map(items.map((q, i) => [q.id, i]));
+    const g = JSON.parse(
+      (await guideScript(['groups', questions('json'), '--workspace', ws()])).stdout,
+    ) as Groups;
+    // the contact group with the most questions, and „Ohne Ansprechpartner“
+    const top = g.groups
+      .filter((x) => x.slug !== 'ohne-ansprechpartner')
+      .sort((a, b) => b.count - a.count)[0]!;
+    const guideOf = async (ext: string, slugs: string[], name: string) => {
+      const r = await guideScript([
+        'guide',
+        questions(ext),
+        '--workspace',
+        ws(),
+        ...slugs.flatMap((s) => ['--group', s]),
+        '--out',
+        path.join(guides(), `${name}.md`),
+      ]);
+      expect(r, r.stderr).toMatchObject({ code: 0, stderr: '' });
+      const out = JSON.parse(r.stdout) as Written;
+      const guide = await readFile(out.guide, 'utf8');
+      const record = JSON.parse(await readFile(out.record, 'utf8')) as {
+        questions: { id: string }[];
+      };
+      expect(record.questions.map((q) => q.id)).toEqual(out.ids);
+      for (const id of out.ids) expect(guide.split(`\`${id}\``).length - 1, id).toBe(1);
+      expect(guide).toMatch(/^# Interviewleitfaden: /);
+      expect(guide).toContain('- [ ] Einverständnis eingeholt: ');
+      return out.ids;
+    };
+    const json = await guideOf('json', [top.slug], 'top-json');
+    expect(json).toHaveLength(top.count);
+    const inOrder = (ids: string[]) =>
+      expect(ids.map((id) => order.get(id))).toEqual(
+        [...ids.map((id) => order.get(id))].sort((a, b) => a! - b!),
+      );
+    // analyzr's order inside the group
+    inOrder(json);
+    expect(await guideOf('md', [top.slug], 'top-md')).toEqual(json);
+    const csv = JSON.parse(
+      (await guideScript(['groups', questions('csv'), '--workspace', ws()])).stdout,
+    ) as Groups;
+    const csvIds = await guideOf('csv', [csv.groups[0]!.slug], 'first-csv');
+    for (const id of csvIds) expect(order.has(id), id).toBe(true);
+    // two groups: the slugs' order does not matter, the file's does, across the groups too
+    const none = g.groups.find((x) => x.slug === 'ohne-ansprechpartner')!;
+    const both = await guideOf('json', ['ohne-ansprechpartner', top.slug], 'two');
+    expect(both).toHaveLength(json.length + none.count);
+    inOrder(both);
+    expect(both.filter((id) => json.includes(id))).toEqual(json);
+    // a label is never a group
+    const label = await guideScript([
+      'guide',
+      questions('json'),
+      '--workspace',
+      ws(),
+      '--group',
+      top.label,
+    ]);
+    expect(label.code).toBe(2);
   });
 });
 

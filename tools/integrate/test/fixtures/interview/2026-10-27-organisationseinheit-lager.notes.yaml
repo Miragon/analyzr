@@ -1,0 +1,13 @@
+format: analyzr-guide-notes/1
+known: [Wareneingang, Kommissionierung, Bestandsüberwachung, Inventur, Packstation]
+questions:
+  q-3f2a9c41d07be815:
+    landscape: Der Pool „Spedition“ schickt dem Wareneingang das Lieferavis; einen Prozess dafür hat die Landkarte nicht.
+    followUps:
+      - Wer im Lager bekommt das Lieferavis, und was passiert danach?
+      - Kommt jede Lieferung mit einem Avis an?
+  q-8b1d0e2f4a6c9375:
+    landscape: "„Kommissionierung“ endet mit „Kommissioniert“; „Versand vorbereiten“ beginnt mit einer Nachricht ohne Namen."
+  q-9d3b6f1a8e2c7054:
+    followUps:
+      - Wer stößt den Nachschub an, und wo kommt die Ware her?

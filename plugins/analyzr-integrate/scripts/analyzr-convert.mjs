@@ -7140,42 +7140,16 @@ var require_dist = __commonJSMin(((exports) => {
 	exports.visitAsync = visit.visitAsync;
 }));
 //#endregion
-//#region src/spec/yaml.ts
-function tooLargeProblem(bytes) {
-	return {
-		path: "",
-		code: "too-large",
-		message: `${bytes} bytes; a spec holds one model in at most ${MAX_SPEC_BYTES} bytes`
-	};
-}
-function tooLarge(bytes) {
-	return {
-		value: void 0,
-		errors: [tooLargeProblem(bytes)]
-	};
-}
-function parseSpecBytes(bytes) {
-	if (bytes.length > 2097152) return tooLarge(bytes.length);
-	let text;
-	try {
-		text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-	} catch {
-		return {
-			value: void 0,
-			errors: [{
-				path: "",
-				code: "encoding",
-				message: "not UTF-8: save the spec as UTF-8"
-			}]
-		};
-	}
-	return parseSpecText(text);
-}
-function parseSpecText(text) {
+//#region src/yaml.ts
+function parseStrictYaml(text, options) {
 	const size = Buffer.byteLength(text, "utf8");
-	if (size > 2097152) return tooLarge(size);
-	const lines = new import_dist.LineCounter();
-	const doc = (0, import_dist.parseDocument)(text, {
+	if (size > options.maxBytes) return {
+		value: void 0,
+		errors: [options.tooLarge(size)]
+	};
+	const maxProblems = options.maxProblems ?? 100;
+	const lines = new import_dist$1.LineCounter();
+	const doc = (0, import_dist$1.parseDocument)(text, {
 		version: "1.2",
 		schema: "core",
 		uniqueKeys: true,
@@ -7192,20 +7166,26 @@ function parseSpecText(text) {
 		return `line ${line}, column ${col}`;
 	};
 	const add = (offset, code, message) => {
-		if (errors.length >= 100) omitted++;
+		if (errors.length >= maxProblems) omitted++;
 		else errors.push({
 			path: at(offset),
 			code,
 			message
 		});
 	};
-	for (const e of [...doc.errors, ...doc.warnings]) add(e.pos[0], "yaml", YAML_MESSAGES[e.code] ?? `${e.message} (${e.code})`);
+	for (const e of [...doc.errors, ...doc.warnings]) {
+		const message = (e.code === "MULTIPLE_DOCS" ? options.multipleDocs : YAML_MESSAGES[e.code]) ?? (options.parserMessages ? `${e.message} (${e.code})` : `not valid YAML (${e.code})`);
+		add(e.pos[0], "yaml", message);
+	}
 	const refuseNode = (node) => {
 		const offset = node.range?.[0];
-		if (node.tag !== void 0) add(offset, "yaml-tag", `tags (${node.tag}) are not allowed; quote the value instead`);
+		if (node.tag !== void 0) {
+			const tag = options.parserMessages ? ` (${node.tag})` : "";
+			add(offset, "yaml-tag", `tags${tag} are not allowed; quote the value instead`);
+		}
 		if (node.anchor !== void 0) add(offset, "yaml-anchor", "anchors (&name) are not allowed: write every value out");
 	};
-	(0, import_dist.visit)(doc, {
+	(0, import_dist$1.visit)(doc, {
 		Alias(_, node) {
 			add(node.range?.[0], "yaml-alias", "aliases (*name) are not allowed: write every value out");
 		},
@@ -7220,8 +7200,8 @@ function parseSpecText(text) {
 		},
 		Pair(_, pair) {
 			const key = pair.key;
-			if ((0, import_dist.isAlias)(key)) return;
-			if (!(0, import_dist.isScalar)(key) || typeof key.value !== "string") {
+			if ((0, import_dist$1.isAlias)(key)) return;
+			if (!(0, import_dist$1.isScalar)(key) || typeof key.value !== "string") {
 				const offset = key?.range?.[0];
 				add(offset, "yaml-key", "keys are field names: write them as plain text");
 			} else if (key.value === "<<") add(key.range?.[0], "yaml-merge", "merge keys (<<) are not allowed: write every value out");
@@ -7247,10 +7227,58 @@ function parseSpecText(text) {
 			errors: [{
 				path: "",
 				code: "yaml",
-				message: err instanceof Error ? err.message : String(err)
+				message: options.parserMessages ? err instanceof Error ? err.message : String(err) : "the document could not be read"
 			}]
 		};
 	}
+}
+function decodeUtf8(bytes) {
+	try {
+		return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+	} catch {
+		return null;
+	}
+}
+var import_dist$1, YAML_MESSAGES;
+var init_yaml$1 = __esmMin((() => {
+	import_dist$1 = require_dist();
+	YAML_MESSAGES = {
+		DUPLICATE_KEY: "a key appears twice in one mapping",
+		TAG_RESOLVE_FAILED: "tags are not allowed; quote the value instead"
+	};
+}));
+//#endregion
+//#region src/spec/yaml.ts
+function tooLargeProblem(bytes) {
+	return {
+		path: "",
+		code: "too-large",
+		message: `${bytes} bytes; a spec holds one model in at most ${MAX_SPEC_BYTES} bytes`
+	};
+}
+function parseSpecBytes(bytes) {
+	if (bytes.length > 2097152) return {
+		value: void 0,
+		errors: [tooLargeProblem(bytes.length)]
+	};
+	const text = decodeUtf8(bytes);
+	if (text === null) return {
+		value: void 0,
+		errors: [{
+			path: "",
+			code: "encoding",
+			message: "not UTF-8: save the spec as UTF-8"
+		}]
+	};
+	return parseSpecText(text);
+}
+function parseSpecText(text) {
+	return parseStrictYaml(text, {
+		maxBytes: MAX_SPEC_BYTES,
+		tooLarge: tooLargeProblem,
+		multipleDocs: "more than one YAML document: write one spec per file",
+		parserMessages: true
+	});
 }
 function formatSpec(value) {
 	return (0, import_dist.stringify)(value, {
@@ -7259,15 +7287,12 @@ function formatSpec(value) {
 		aliasDuplicateObjects: false
 	});
 }
-var import_dist, MAX_SPEC_BYTES, YAML_MESSAGES;
+var import_dist, MAX_SPEC_BYTES, MAX_PROBLEMS;
 var init_yaml = __esmMin((() => {
 	import_dist = require_dist();
+	init_yaml$1();
 	MAX_SPEC_BYTES = 2097152;
-	YAML_MESSAGES = {
-		DUPLICATE_KEY: "a key appears twice in one mapping",
-		MULTIPLE_DOCS: "more than one YAML document: write one spec per file",
-		TAG_RESOLVE_FAILED: "tags are not allowed; quote the value instead"
-	};
+	MAX_PROBLEMS = 100;
 }));
 //#endregion
 //#region src/spec/validate.ts
@@ -7976,7 +8001,7 @@ var init_validate = __esmMin((() => {
 		omittedErrors = 0;
 		omittedWarnings = 0;
 		error(path, code, message) {
-			if (this.errors.length >= 100) this.omittedErrors++;
+			if (this.errors.length >= MAX_PROBLEMS) this.omittedErrors++;
 			else this.errors.push({
 				path,
 				code,
@@ -7984,7 +8009,7 @@ var init_validate = __esmMin((() => {
 			});
 		}
 		warn(path, code, message) {
-			if (this.warnings.length >= 100) this.omittedWarnings++;
+			if (this.warnings.length >= MAX_PROBLEMS) this.omittedWarnings++;
 			else this.warnings.push({
 				path,
 				code,

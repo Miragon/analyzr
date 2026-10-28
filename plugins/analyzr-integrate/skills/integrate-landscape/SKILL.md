@@ -80,6 +80,13 @@ approves each run on its own, never with „don't ask again“.
 4. **Customer data stays in the workspace.** Never copy exports, specs, bundles or reports into
    an analyzr checkout, its `eval/` folder or anywhere else, and never upload them (no web OCR,
    no converter service, no other connector for pictures).
+   **Never read, list or search `transcripts/`.** The workspace's `transcripts/` holds interview
+   transcripts and the consultant's own notes of interviews, with the names of people: never open,
+   list, search or attach anything below it, and never give a script a path below it, or the
+   workspace itself as the export or folder to read. Search (Grep, Glob, `ls`, `find`, `rg`) only
+   in a folder you name (the export, `exports/<folder>`, `specs/<folder>`, `interviews/questions`,
+   `reports`, …), never in the workspace root or above it, and never with a pattern that reaches
+   into `transcripts/`.
 5. **Ask, then wait.** Steps 2 and 3 have four confirmations (1: tool, format and path per group
    of files, for a converter with its derivation, and for BPMN files the folders to leave out; 2:
    the keys, for converter and picture paths also the folders to leave out; 3: complete export
@@ -112,6 +119,8 @@ One workspace per customer, outside any analyzr checkout:
   bundles/<YYYY-MM-DD>-<system>/      # the import bundles (a spec folder's named like it)
   reports/<YYYY-MM-DD>-<system>.md    # the German reports
   reports/<folder>.*.json             # the scripts' complete results (plan, bundle, convert, models, external-ids, preview)
+  interviews/                         # interview guides and their open questions (/analyzr-integrate:interview-guide)
+  transcripts/                        # interview transcripts and notes with names: never opened, listed or searched (ground rule 4)
 ```
 
 `<YYYY-MM-DD>` is the day the customer exported, `<system>` a lowercase slug (`signavio`,

@@ -1,8 +1,10 @@
-// The bundled scripts and the plugin's notices are generated (scripts/bundle.ts): they must match
-// a fresh build, import nothing but Node built-ins, and work without node_modules, giving what
-// their sources give (since plugin 0.1.4 also analyzr-spec.mjs, analyzr-convert.mjs with its
-// child in bundle mode, and analyzr.mjs, whose parity with the checkout's CLI
-// apps/cli/test/unit/plugin-main.test.ts checks on the bundle too).
+// The bundled scripts, the plugin's notices and the skill texts with the Desktop start prompts are
+// generated (scripts/bundle.ts, scripts/texts.ts): they must match a fresh build, the scripts
+// import nothing but Node built-ins and work without node_modules, giving what their sources give
+// (since plugin 0.1.4 also analyzr-spec.mjs, analyzr-convert.mjs with its child in bundle mode, and
+// analyzr.mjs, whose parity with the checkout's CLI apps/cli/test/unit/plugin-main.test.ts checks
+// on the bundle too; since 0.1.6 analyzr-interview.mjs, which also needs no network, environment
+// or clock).
 import { execFile } from 'node:child_process';
 import { chmod, copyFile, mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -18,10 +20,18 @@ import {
   REPO_ROOT,
   type BuildResult,
 } from '../scripts/bundle.ts';
+import { skillFile, sourceOf, startPromptFile } from '../scripts/texts.ts';
 import { inspectExport } from '../src/inspect.ts';
 
 import { CONVERT_ENTRY, fixtureConverter, visioExport, workspace } from './converter-support.ts';
 import { fakeAnalyzr, type FakeAnalyzr } from './fake-analyzr.ts';
+import {
+  GOLDEN_GUIDES,
+  GUIDE_GOLDENS,
+  interview,
+  interviewWorkspace,
+  NOTES_FIXTURE,
+} from './interview-support.ts';
 import { GOLDENS, goldenKey, SPEC_FIXTURES } from './spec-support.ts';
 import {
   PACKAGE_ROOT,
@@ -59,6 +69,7 @@ const BUILTINS: Readonly<Record<string, readonly string[]>> = {
     'vm',
     'zlib',
   ],
+  'analyzr-interview.mjs': ['crypto', 'fs', 'fs/promises', 'module', 'path', 'util'],
   'analyzr-read.mjs': ['fs', 'fs/promises', 'os', 'path', 'util'],
   'analyzr-spec.mjs': ['crypto', 'fs', 'fs/promises', 'module', 'path', 'util'],
   'analyzr.mjs': [
@@ -75,6 +86,21 @@ const BUILTINS: Readonly<Record<string, readonly string[]>> = {
   'inspect.mjs': ['crypto', 'fs', 'fs/promises', 'path', 'util'],
   'normalize-bpmn.mjs': ['crypto', 'fs', 'fs/promises', 'path', 'util'],
 };
+
+/** The generated texts (scripts/texts.ts): the skills and Desktop start prompts that ship now. */
+const TEXTS = [
+  skillFile('integrate-landscape'),
+  skillFile('interview-guide'),
+  startPromptFile('integrate-landscape'),
+  startPromptFile('interview-guide'),
+];
+
+/** The code of a bundle's own regions (`src/…` and the workspace's `@analyzr/…`), not the third-party code. */
+function ownRegions(code: string): string {
+  return [...code.matchAll(/^\/\/#region (src\/|@analyzr\/)[^\n]*\n([\s\S]*?)^\/\/#endregion$/gm)]
+    .map((m) => m[2] ?? '')
+    .join('\n');
+}
 
 /** Runs `script` with Node, giving its exit code instead of throwing. */
 async function node(
@@ -125,12 +151,21 @@ describe('plugins/analyzr-integrate generated files', () => {
       [
         ...Object.keys(ENTRIES).map((s) => `${PLUGIN_DIR}/scripts/${s}`),
         `${PLUGIN_DIR}/${NOTICES_FILE}`,
+        ...TEXTS,
       ].sort(),
     );
+    expect(fresh.texts).toEqual([...TEXTS].sort());
     for (const [file, content] of fresh.files) {
       const committed = await readFile(path.join(REPO_ROOT, file), 'utf8').catch(() => '');
-      // No diff: the bundles are long; the message says what to do.
-      const stale = file.endsWith('/analyzr.mjs') ? STALE_CLI : STALE;
+      // No diff: the bundles are long; the message says what to do. A text is generated from
+      // its source: an edit of the text itself is lost by generate, so it moves to the source.
+      const source = sourceOf(file);
+      const stale =
+        source !== null
+          ? `stale: it is generated from ${source} (and tools/integrate/skills/_shared/); make the change there, then run \`pnpm --filter @analyzr/integrate generate\` and commit both`
+          : file.endsWith('/analyzr.mjs')
+            ? STALE_CLI
+            : STALE;
       expect(committed === content, `${file} is ${stale}`).toBe(true);
     }
   });
@@ -200,9 +235,9 @@ describe('plugins/analyzr-integrate generated files', () => {
       'moddle@8.2.1 MIT analyzr-spec.mjs,normalize-bpmn.mjs',
       'moddle-xml@12.3.1 MIT analyzr-spec.mjs,normalize-bpmn.mjs',
       // its runtime helpers (`\0rolldown/runtime.js`)
-      'rolldown@1.2.12 MIT analyzr-convert.mjs,analyzr-spec.mjs,analyzr.mjs',
+      'rolldown@1.2.12 MIT analyzr-convert.mjs,analyzr-interview.mjs,analyzr-spec.mjs,analyzr.mjs',
       'saxen@11.2.0 MIT analyzr-spec.mjs,normalize-bpmn.mjs',
-      'yaml@2.9.1 ISC analyzr-convert.mjs,analyzr-spec.mjs',
+      'yaml@2.9.1 ISC analyzr-convert.mjs,analyzr-interview.mjs,analyzr-spec.mjs',
       'zeebe-bpmn-moddle@2.0.0 MIT normalize-bpmn.mjs',
       'zod@4.6.5 MIT analyzr.mjs',
     ]);
@@ -234,6 +269,33 @@ describe('plugins/analyzr-integrate generated files', () => {
       const runner = /vm\.createContext|createContext\(|__child/.test(code(script));
       expect(runner, script).toBe(script === 'analyzr-convert.mjs');
     }
+  });
+
+  it('keep analyzr-interview.mjs zod-free and without network, environment or clock', () => {
+    const code = fresh.files.get(`${PLUGIN_DIR}/scripts/analyzr-interview.mjs`) ?? '';
+    expect(code).not.toMatch(/\bzod\b|commander|bpmn-moddle|saxen/);
+    // the readers, the guide and the shared contracts' labels and CSV reader, not a copy
+    for (const fn of [
+      'function readQuestionsMarkdown(',
+      'function renderGuide(',
+      'function parseOpenQuestionsCsv(',
+      'function personalDataWarnings(',
+    ]) {
+      expect(code, fn).toContain(fn);
+    }
+    const own = ownRegions(code);
+    expect(own.length).toBeGreaterThan(10_000);
+    expect(own).not.toMatch(
+      /\bfetch\(|WebSocket|EventSource|XMLHttpRequest|process\.env|Date\.now|new Date\(\s*\)|performance\.now/,
+    );
+    expect(BUILTINS['analyzr-interview.mjs']).not.toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(/^(http|https|net|tls|dgram|dns|child_process|worker_threads|os)$/),
+      ]),
+    );
+    // it opens nothing below transcripts/: no path of its own names the folder (its texts do)
+    expect(own).not.toMatch(/["']transcripts["'/]/);
+    expect(own).toContain('`transcripts/`');
   });
 
   it('bundle the CLI’s own code into analyzr.mjs, without seed and mcp', () => {
@@ -429,6 +491,32 @@ describe('the bundled scripts, copied away from node_modules', () => {
     });
     expect(await filesOf(out('bundled'))).toEqual(await filesOf(out('source')));
   }, 120_000);
+
+  it('analyzr-interview writes every golden guide byte for byte', async () => {
+    const {
+      paths: [script = ''],
+    } = await copied('analyzr-interview.mjs');
+    for (const golden of GOLDEN_GUIDES) {
+      const w = await interviewWorkspace();
+      const args = ['guide', w.questions(golden.ext), '--workspace', w.ws, ...golden.args];
+      args.push('--out', path.join(w.guides, `${golden.name}.md`));
+      if (golden.notes === true) {
+        await mkdir(w.guides, { recursive: true });
+        await copyFile(NOTES_FIXTURE, path.join(w.guides, path.basename(NOTES_FIXTURE)));
+        args.push('--notes', path.join(w.guides, path.basename(NOTES_FIXTURE)));
+      }
+      const r = await interview(args, { script });
+      expect(r, r.stderr).toMatchObject({ code: 0, stderr: '' });
+      for (const file of [`${golden.name}.md`, `${golden.name}.guide.json`]) {
+        expect(await readFile(path.join(w.guides, file), 'utf8'), file).toBe(
+          await readFile(path.join(GUIDE_GOLDENS, file), 'utf8'),
+        );
+      }
+    }
+    const w = await interviewWorkspace();
+    const groups = ['groups', w.questions('md'), '--workspace', w.ws];
+    expect((await interview(groups, { script })).stdout).toBe((await interview(groups)).stdout);
+  }, 60_000);
 
   it('analyzr.mjs prints the root package’s version and a help without seed and mcp', async () => {
     const {

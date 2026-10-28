@@ -42,3 +42,10 @@ export const SPEC_IMPORTER = 'analyzr-integrate/analyzr-spec';
  * run record names it as `runner`.
  */
 export const ANALYZR_CONVERT_VERSION = '0.1.0';
+
+/**
+ * The version of `analyzr-interview` (M6 S6 §2), the interview guide: it moves whenever the
+ * guide or its record written from the same questions file changes, which `GUIDE_OUTPUTS` in
+ * `test/interview-guide.test.ts` pins over the golden guides.
+ */
+export const ANALYZR_INTERVIEW_VERSION = '0.1.0';

@@ -4,7 +4,8 @@
  * self-contained ES module for `plugins/analyzr-integrate/scripts/` (a
  * marketplace install has no node_modules) with rolldown, the bundler Vite
  * uses (one locked version in the workspace), and renders the plugin's
- * THIRD-PARTY-NOTICES.md from the modules each bundle contains. Used by
+ * THIRD-PARTY-NOTICES.md from the modules each bundle contains, and adds
+ * the skill texts and start prompts of `texts.ts` (M6 S6). Used by
  * `generate.ts` (writes) and the drift test (compares); the output depends
  * only on the sources and the lockfile: rolldown's `//#region <path>`
  * comments are rewritten to `<package>@<version>/<file>` (or `src/…` for this
@@ -17,6 +18,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { rolldown } from 'rolldown';
+
+import { renderTexts } from './texts.ts';
 
 export const PACKAGE_ROOT = fileURLToPath(new URL('../', import.meta.url));
 export const REPO_ROOT = fileURLToPath(new URL('../../../', import.meta.url));
@@ -34,6 +37,7 @@ export const PLUGIN_DIR = 'plugins/analyzr-integrate';
  */
 export const ENTRIES: Readonly<Record<string, string>> = {
   'analyzr-convert.mjs': 'src/cli/analyzr-convert.ts',
+  'analyzr-interview.mjs': 'src/cli/analyzr-interview.ts',
   'analyzr-read.mjs': 'src/cli/analyzr-read.ts',
   'analyzr-spec.mjs': 'src/cli/analyzr-spec.ts',
   'analyzr.mjs': '../../apps/cli/src/plugin-main.ts',
@@ -64,8 +68,10 @@ export interface BundledPackage {
 }
 
 export interface BuildResult {
-  /** Path relative to the repository root → content. */
+  /** Path relative to the repository root → content: the scripts, the notices and the texts. */
   files: Map<string, string>;
+  /** The generated skill texts and start prompts among {@link files} (scripts/texts.ts). */
+  texts: string[];
   packages: BundledPackage[];
 }
 
@@ -192,7 +198,7 @@ async function readPackage(dir: string): Promise<Omit<BundledPackage, 'scripts'>
   };
 }
 
-/** Bundles every entry and renders the notices (nothing is written). */
+/** Bundles every entry, renders the notices and the texts (nothing is written). */
 export async function build(): Promise<BuildResult> {
   const files = new Map<string, string>();
   const packages = new Map<string, BundledPackage>();
@@ -250,7 +256,9 @@ export async function build(): Promise<BuildResult> {
     (a, b) => compare(a.name, b.name) || compare(a.version, b.version),
   );
   files.set(`${PLUGIN_DIR}/${NOTICES_FILE}`, renderNotices(sorted));
-  return { files, packages: sorted };
+  const texts = await renderTexts(REPO_ROOT);
+  for (const [file, content] of texts) files.set(file, content);
+  return { files, texts: [...texts.keys()].sort(), packages: sorted };
 }
 
 /** The plugin's THIRD-PARTY-NOTICES.md. */
