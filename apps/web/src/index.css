@@ -72,8 +72,8 @@
   --accent-fill: var(--cd-blau);
   --accent-ink: var(--cd-blau-link);
   --brand: var(--cd-gruen);
-  /* dialog backdrop, derived from --cd-nacht (§8) */
-  --overlay: color-mix(in srgb, var(--cd-nacht) 42%, transparent);
+  /* dialog backdrop, derived from --cd-schwarz (§8) */
+  --overlay: color-mix(in srgb, var(--cd-schwarz) 42%, transparent);
 
   /* shadcn semantic tokens mapped onto the Miragon palette */
   --background: var(--paper);

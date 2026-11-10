@@ -19,3 +19,4 @@ packages/client/openapi.json
 
 # vendored brand tokens (Miragon/corporate-identity, copied unchanged)
 apps/web/src/theme/cd-tokens.generated.css
+.miragon/brand-assets.*
