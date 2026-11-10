@@ -15,11 +15,10 @@ export const palette = {
   linie: '#E6E2E2',
   kontur: '#8F8A8A',
   textLeise: '#6B6666',
-  nacht: '#080A20',
-  success: '#0B7A55',
-  warning: '#92610A',
-  danger: '#C92A2A',
-  info: '#2B50D4',
+  success: '#00E676',
+  warning: '#FFB000',
+  danger: '#CD1839',
+  info: '#335DE5',
 } as const;
 
 export type PaletteKey = keyof typeof palette;

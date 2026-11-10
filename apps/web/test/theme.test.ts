@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -7,6 +8,10 @@ import { cssVariableOf, palette, type PaletteKey } from '../src/theme/tokens';
 
 const tokensCss = readFileSync(
   join(import.meta.dirname, '../src/theme/cd-tokens.generated.css'),
+  'utf8',
+);
+const brandAssetChecksums = readFileSync(
+  join(import.meta.dirname, '../../../.miragon/brand-assets.sha256'),
   'utf8',
 );
 const indexCss = readFileSync(join(import.meta.dirname, '../src/index.css'), 'utf8');
@@ -27,8 +32,11 @@ describe('Miragon tokens (modeler-tool-design §13 drift test)', () => {
     }
   });
 
-  it('the vendored file is marked as generated and imported by the app CSS', () => {
-    expect(tokensCss.split('\n')[0]).toContain('Nicht ändern');
+  it('the vendored file matches .miragon/brand-assets.sha256 and is imported by the app CSS', () => {
+    const checksum = createHash('sha256').update(tokensCss).digest('hex');
+    expect(brandAssetChecksums).toContain(
+      `${checksum}  apps/web/src/theme/cd-tokens.generated.css`,
+    );
     expect(indexCss).toContain("@import './theme/cd-tokens.generated.css';");
   });
 
