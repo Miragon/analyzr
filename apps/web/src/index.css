@@ -31,7 +31,7 @@
   --color-card: var(--card);
   --color-foreground: var(--foreground);
   --color-background: var(--background);
-  /* Miragon status and brand colours (§3.3): text in the base colour, fills in -soft. */
+  /* Miragon status and brand colours (§3.3): success and warning never as text, fills in -soft. */
   --color-success: var(--cd-success);
   --color-success-soft: var(--cd-success-soft);
   --color-warning: var(--cd-warning);
@@ -187,9 +187,11 @@
 }
 .analyzr-overlay[data-tone='warning'] {
   background: var(--cd-warning);
+  color: var(--cd-schwarz);
 }
 .analyzr-overlay[data-tone='evidence'] {
   background: var(--cd-success);
+  color: var(--cd-schwarz);
 }
 .analyzr-canvas .djs-container {
   font-family: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
@@ -223,12 +225,10 @@
 .analyzr-vc-badge[data-tone='warning'] {
   border-color: var(--cd-warning);
   background: var(--cd-warning-soft);
-  color: var(--cd-warning);
 }
 .analyzr-vc-badge[data-tone='finding'] {
   border-color: var(--cd-warning);
   background: var(--cd-weiss);
-  color: var(--cd-warning);
   font-weight: 500;
 }
 .analyzr-vc-badge[data-tone='invalid'] {

@@ -44,9 +44,9 @@ import {
 } from '@/lib/labels';
 
 const TONE_CLASSES: Record<Tone, string> = {
-  success: 'bg-success-soft text-success',
+  success: 'bg-success-soft text-foreground [&>svg]:text-success',
   info: 'bg-info-soft text-info',
-  warning: 'bg-warning-soft text-warning',
+  warning: 'bg-warning-soft text-foreground [&>svg]:text-warning',
   danger: 'bg-danger-soft text-danger',
   neutral: 'border-border bg-card text-muted-foreground',
   primary: 'bg-primary text-primary-foreground',

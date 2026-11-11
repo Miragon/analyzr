@@ -109,11 +109,11 @@ export function QueueTable({
                   <span className="flex flex-wrap gap-x-2 text-xs text-muted-foreground">
                     {r.status === 'accepted' ? (
                       <span
-                        className="inline-flex items-center gap-1 text-warning"
+                        className="inline-flex items-center gap-1 text-foreground"
                         data-testid="queue-reconfirm"
                         title={ENDPOINT_STATES[r.endpointState].hint}
                       >
-                        <TriangleAlertIcon className="size-3.5" aria-hidden />
+                        <TriangleAlertIcon className="size-3.5 text-warning" aria-hidden />
                         Angenommen, {ENDPOINT_STATES[r.endpointState].label}
                       </span>
                     ) : null}
@@ -128,14 +128,14 @@ export function QueueTable({
                       </span>
                     ) : null}
                     {question ? (
-                      <span className="inline-flex items-center gap-1 text-warning">
-                        <CircleHelpIcon className="size-3.5" aria-hidden />
+                      <span className="inline-flex items-center gap-1 text-foreground">
+                        <CircleHelpIcon className="size-3.5 text-warning" aria-hidden />
                         Frage
                       </span>
                     ) : null}
                     {r.noLinks.length > 0 ? (
                       <span
-                        className="inline-flex items-center gap-1 text-warning"
+                        className="inline-flex items-center gap-1 text-foreground"
                         data-testid="queue-no-link"
                         title={
                           r.noLinks.length === 1
@@ -143,7 +143,7 @@ export function QueueTable({
                             : `Kein Zusammenhang laut Agent (${r.noLinks.length} Einwände)`
                         }
                       >
-                        <UnlinkIcon className="size-3.5" aria-hidden />
+                        <UnlinkIcon className="size-3.5 text-warning" aria-hidden />
                         Einwand
                       </span>
                     ) : null}

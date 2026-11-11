@@ -170,7 +170,11 @@ function StageModels({
                       <span className="font-mono">{task.claimedBy ?? 'Agent'}</span>, Versuch{' '}
                       {task.attempts},{' '}
                       {expired ? (
-                        <span className="text-warning" data-testid="lease-expired">
+                        <span
+                          className="inline-flex items-center gap-1.5 text-foreground"
+                          data-testid="lease-expired"
+                        >
+                          <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-warning" />
                           Lease abgelaufen am{' '}
                           {task.leaseUntil ? formatDateTime(task.leaseUntil) : '–'}
                         </span>

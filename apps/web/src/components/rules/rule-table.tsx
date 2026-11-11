@@ -183,11 +183,11 @@ export function RuleTable({
                       </ToneBadge>
                       {rule.authorIsOwner ? null : (
                         <span
-                          className="inline-flex items-center gap-1 text-xs text-warning"
+                          className="inline-flex items-center gap-1 text-xs text-foreground"
                           data-testid="author-not-owner"
                           title="Die Regel nimmt nichts an, bis ein Inhaber sie neu speichert (Bearbeiten, Speichern) und damit übernimmt."
                         >
-                          <TriangleAlertIcon className="size-3.5" aria-hidden />
+                          <TriangleAlertIcon className="size-3.5 text-warning" aria-hidden />
                           Urheber ist kein Inhaber mehr
                         </span>
                       )}

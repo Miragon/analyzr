@@ -208,9 +208,12 @@ function BulkList({
                     key={`${f.kind}:${f.text}`}
                     data-testid="generic-flag"
                     data-flag={f.kind}
-                    className="flex items-start gap-1.5 text-xs text-warning"
+                    className="flex items-start gap-1.5 text-xs text-foreground"
                   >
-                    <TriangleAlertIcon className="mt-px size-3.5 shrink-0" aria-hidden />
+                    <TriangleAlertIcon
+                      className="mt-px size-3.5 shrink-0 text-warning"
+                      aria-hidden
+                    />
                     <PlainText as="span" text={f.detail} />
                   </p>
                 ))}

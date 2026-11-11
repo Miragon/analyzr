@@ -88,8 +88,8 @@ function writeStored(key: string, value: string) {
 function tokenState(token: AgentToken, now: number): { label: string; tone: string } {
   if (token.revokedAt) return { label: 'Widerrufen', tone: 'bg-danger-soft text-danger' };
   if (Date.parse(token.expiresAt) <= now)
-    return { label: 'Abgelaufen', tone: 'bg-warning-soft text-warning' };
-  return { label: 'Aktiv', tone: 'bg-success-soft text-success' };
+    return { label: 'Abgelaufen', tone: 'bg-warning-soft text-foreground' };
+  return { label: 'Aktiv', tone: 'bg-success-soft text-foreground' };
 }
 
 function CreateTokenForm({

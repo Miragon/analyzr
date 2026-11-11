@@ -180,8 +180,8 @@ function FindingItem({
         replace
         className="flex flex-col gap-1 rounded-lg p-2.5 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
       >
-        <span className="flex items-center gap-1.5 text-xs font-medium text-warning">
-          <TriangleAlertIcon className="size-3.5" aria-hidden />
+        <span className="flex items-center gap-1.5 text-xs font-medium text-foreground">
+          <TriangleAlertIcon className="size-3.5 text-warning" aria-hidden />
           {FINDING_KINDS[finding.kind].label}
         </span>
         <span className="font-mono text-xs break-all">{elementId}</span>
