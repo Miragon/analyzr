@@ -116,9 +116,10 @@ function TreeItems({
           ) : null}
           {pending > 0 ? (
             <span
-              className="text-xs tabular-nums text-warning"
+              className="inline-flex items-center gap-1 text-xs tabular-nums text-foreground"
               title="Vorschläge und erneut zu bestätigende Platzierungen"
             >
+              <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-warning" />
               {pending} offen
             </span>
           ) : null}

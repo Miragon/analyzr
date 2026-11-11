@@ -774,7 +774,7 @@ export function ValueChainPage() {
           {mode === 'edit' && dirty ? (
             <Badge
               variant="outline"
-              className="border-warning bg-warning-soft text-warning"
+              className="border-warning bg-warning-soft text-foreground"
               data-testid="unsaved"
             >
               Ungespeichert
@@ -784,7 +784,7 @@ export function ValueChainPage() {
             <button
               type="button"
               onClick={() => void navigate({ search: {}, replace: true })}
-              className="rounded-sm bg-warning-soft px-1.5 text-xs text-warning hover:underline"
+              className="rounded-sm bg-warning-soft px-1.5 text-xs text-foreground hover:underline"
               data-testid="unplaced-chip"
             >
               {unplacedCount === 1

@@ -96,7 +96,8 @@ function LinkView({ project, step }: { project: string; step: ValueChainStep }) 
   return (
     <div className="flex flex-col gap-1" data-testid="step-link">
       <PlainText as="span" className="font-mono text-xs break-all" text={step.link} />
-      <span className="text-xs text-warning">
+      <span className="inline-flex items-center gap-1.5 text-xs text-foreground">
+        <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-warning" />
         {LINK_KINDS[step.linkKind].label}: nicht auflösbar
       </span>
     </div>

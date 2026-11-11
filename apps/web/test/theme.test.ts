@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
@@ -46,5 +46,33 @@ describe('Miragon tokens (modeler-tool-design §13 drift test)', () => {
     expect(own).not.toMatch(/\brgba?\(/);
     expect(own).not.toMatch(/\boklch\(/);
     expect(own).not.toMatch(/^\.dark\b/m);
+  });
+});
+
+describe('status colours as text (modeler-tool-design §3.3)', () => {
+  const sourceDir = join(import.meta.dirname, '../src');
+  const components = readdirSync(sourceDir, { recursive: true, encoding: 'utf8' })
+    .filter((file) => file.endsWith('.tsx'))
+    .map((file) => ({ file, source: readFileSync(join(sourceDir, file), 'utf8') }));
+
+  it('the app CSS never sets success or warning as the text colour', () => {
+    expect(indexCss).not.toMatch(/(^|[^-])color:\s*var\(--cd-(success|warning)\)/m);
+  });
+
+  it('components colour only icons in success or warning, never text', () => {
+    const textElements = components.flatMap(({ file, source }) =>
+      [...source.matchAll(/<(\w+)[^<>]*?className="[^"]*\btext-(success|warning)\b/g)]
+        .filter((match) => !match[1]!.endsWith('Icon'))
+        .map((match) => `${file}: <${match[1]}> text-${match[2]}`),
+    );
+    expect(textElements).toEqual([]);
+  });
+
+  it('badges and token states put success and warning text in the text colour', () => {
+    const toneClasses = components
+      .flatMap(({ source }) => [...source.matchAll(/'bg-(success|warning)-soft text-[^']*'/g)])
+      .map((match) => match[0]);
+    expect(toneClasses.length).toBeGreaterThan(0);
+    for (const classes of toneClasses) expect(classes).toContain('text-foreground');
   });
 });
