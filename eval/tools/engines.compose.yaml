@@ -40,7 +40,7 @@ services:
     # REST API v2 at /v2, gRPC on 26500, Operate at /operate (demo/demo).
     # Same setup as the official lightweight docker-compose of
     # camunda/camunda-distributions (8.9), minus connectors, with H2 in memory.
-    image: camunda/camunda:8.9.22
+    image: camunda/camunda:8.10.10
     ports:
       - "127.0.0.1:${ANALYZR_C8_PORT:-18088}:8080"
       - "127.0.0.1:${ANALYZR_C8_GRPC_PORT:-26500}:26500"
