@@ -30,10 +30,10 @@ jobs:
         run: sha256sum -c .miragon/brand-assets.sha256
 
       - name: Set up pnpm (version from package.json packageManager)
-        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
 
       - name: Set up Node
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .node-version
           cache: pnpm
@@ -132,10 +132,10 @@ jobs:
           docker compose -p analyzr -f docker/compose.yaml exec -T server sh -c 'ls /app/eval/value-chains/*/value-chain.vc.json >/dev/null && test -z "$(find /app/eval \( -name expected.yaml -o -name expected-placements.yaml -o -name "*.md" -o -name "*.mjs" -o -name "*.jsonl" \) -print)"'
 
       - name: Set up pnpm (version from package.json packageManager)
-        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
 
       - name: Set up Node
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .node-version
           cache: pnpm
@@ -182,10 +182,10 @@ jobs:
           docker compose -p analyzr-demo -f docker/compose.demo.yaml exec -T demo sh -c 'test ! -e /app/eval && test ! -e /app/apps/cli && test ! -e /app/apps/agent-sim && test "$(ls -A /opt/analyzr-demo | sort | tr "\n" " ")" = "pgdata-template seed.json "'
 
       - name: Set up pnpm (version from package.json packageManager)
-        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
 
       - name: Set up Node
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .node-version
           cache: pnpm
