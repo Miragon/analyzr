@@ -1,0 +1,93 @@
+version: 2
+updates:
+  - package-ecosystem: 'npm'
+    directory: '/'
+    schedule:
+      interval: 'weekly'
+    labels:
+      - 'dependencies'
+    rebase-strategy: 'auto'
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: 'fix'
+      prefix-development: 'chore'
+      include: 'scope'
+    cooldown:
+      default-days: 5
+      semver-major-days: 14
+      semver-minor-days: 5
+      semver-patch-days: 3
+    ignore:
+      - dependency-name: '@types/node'
+        update-types: ['version-update:semver-major']
+    groups:
+      npm-minor-patch:
+        applies-to: version-updates
+        patterns: ['*']
+        update-types: ['minor', 'patch']
+      npm-security:
+        applies-to: security-updates
+        patterns: ['*']
+
+  - package-ecosystem: 'docker-compose'
+    directory: '/docker'
+    schedule:
+      interval: 'weekly'
+    labels:
+      - 'dependencies'
+    rebase-strategy: 'auto'
+    commit-message:
+      prefix: 'fix'
+      include: 'scope'
+    cooldown:
+      default-days: 5
+    groups:
+      docker-compose-minor-patch:
+        applies-to: version-updates
+        patterns: ['*']
+        update-types: ['minor', 'patch']
+      docker-compose-security:
+        applies-to: security-updates
+        patterns: ['*']
+
+  - package-ecosystem: 'docker-compose'
+    directory: '/eval/tools'
+    schedule:
+      interval: 'monthly'
+    labels:
+      - 'dependencies'
+    rebase-strategy: 'auto'
+    commit-message:
+      prefix: 'chore'
+      include: 'scope'
+    cooldown:
+      default-days: 5
+    groups:
+      eval-engines-minor-patch:
+        applies-to: version-updates
+        patterns: ['*']
+        update-types: ['minor', 'patch']
+      eval-engines-security:
+        applies-to: security-updates
+        patterns: ['*']
+
+  - package-ecosystem: 'github-actions'
+    directory: '/'
+    schedule:
+      interval: 'monthly'
+    labels:
+      - 'dependencies'
+    rebase-strategy: 'auto'
+    commit-message:
+      prefix: 'chore'
+      include: 'scope'
+    cooldown:
+      default-days: 5
+    groups:
+      github-actions-minor-patch:
+        applies-to: version-updates
+        patterns: ['*']
+        update-types: ['minor', 'patch']
+      github-actions-security:
+        applies-to: security-updates
+        patterns: ['*']
